@@ -2,7 +2,6 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
 export async function createClient() {
-  // สำคัญ: ต้องมี await ตรงนี้ เพื่อรอให้ได้ cookie store จริงๆ ออกมา
   const cookieStore = await cookies()
 
   return createServerClient(
@@ -19,7 +18,9 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             )
           } catch {
-            // กรณีเรียก setAll จาก Server Component (ซึ่งทำไม่ได้) ให้ปล่อยผ่าน
+            // The `setAll` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing
+            // user sessions.
           }
         },
       },
