@@ -3,17 +3,16 @@
 import React from 'react'
 import { Page, Text, View, Document, StyleSheet, Font } from '@react-pdf/renderer'
 
-// [FIXED] เปลี่ยนไปใช้ไฟล์ .ttf แทน .woff (แก้ Error Unknown font format)
+// [FIXED] ใช้ Link ตรงจาก CDN (ไม่ต้องมีไฟล์ในเครื่อง ไม่ต้องตั้งค่า Vercel)
 Font.register({
   family: 'Sarabun',
   fonts: [
-    { src: 'https://cdn.jsdelivr.net/npm/@fontsource/sarabun@4.5.14/files/sarabun-thai-400-normal.woff' }, // ถ้ายัง error ให้ลองใช้ link .ttf ด้านล่างแทน
-    // หรือใช้ Link สำรองที่เป็น .ttf โดยตรง:
-    { src: 'https://github.com/google/fonts/raw/main/ofl/sarabun/Sarabun-Regular.ttf' },
-    { src: 'https://github.com/google/fonts/raw/main/ofl/sarabun/Sarabun-Bold.ttf', fontWeight: 'bold' }
+    { src: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sarabun/Sarabun-Regular.ttf' },
+    { src: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sarabun/Sarabun-Bold.ttf', fontWeight: 'bold' }
   ]
 })
 
+// --- Styles (เหมือนเดิม ไม่ต้องแก้) ---
 const styles = StyleSheet.create({
   page: { padding: 30, fontFamily: 'Sarabun', fontSize: 10, color: '#333' },
   header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
@@ -36,7 +35,7 @@ const styles = StyleSheet.create({
   col5: { width: '15%', textAlign: 'right' },
 
   summarySection: { flexDirection: 'row', justifyContent: 'flex-end' },
-  summaryTable: { width: '45%' }, // ขยายความกว้างนิดนึง
+  summaryTable: { width: '45%' },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
   netAmount: { fontSize: 14, fontWeight: 'bold', color: '#059669', borderTop: '1px solid #000', paddingTop: 4 },
 
@@ -45,7 +44,7 @@ const styles = StyleSheet.create({
 })
 
 export const BillingPdf = ({ data }: { data: any }) => {
-  // คำนวณยอดต่างๆ เพื่อแสดงผล
+  // คำนวณยอดต่างๆ
   const totalBase = (data.total_work_amount || 0) + (data.total_add_amount || 0)
   const whtAmount = (totalBase * (data.wht_percent || 0)) / 100
   const retentionAmount = (totalBase * (data.retention_percent || 0)) / 100
@@ -141,7 +140,6 @@ export const BillingPdf = ({ data }: { data: any }) => {
                     </View>
                 )}
 
-                {/* แสดง WHT */}
                 {whtAmount > 0 && (
                     <View style={styles.summaryRow}>
                         <Text>หัก ณ ที่จ่าย ({data.wht_percent}%)</Text>
@@ -149,7 +147,6 @@ export const BillingPdf = ({ data }: { data: any }) => {
                     </View>
                 )}
                 
-                {/* แสดง Retention */}
                  {retentionAmount > 0 && (
                     <View style={styles.summaryRow}>
                         <Text>หักประกันผลงาน ({data.retention_percent}%)</Text>
