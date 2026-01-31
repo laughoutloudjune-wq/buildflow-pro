@@ -66,19 +66,65 @@ export default function CreateBillingPage() {
     setAdjustments(adjustments.map(adj => adj.id === id ? { ...adj, [field]: value } : adj))
   }
 
-  // ฟังก์ชันติ๊กเลือกงาน
+  // ฟังก์ชันติ๊กเลือกงาน (Logic ใหม่: ใช้ % รวม)
   const toggleJob = (job: any, isChecked: boolean) => {
     if (isChecked) {
-      // Default ให้เบิกเท่ายอดคงเหลือ (แต่แก้ได้)
-      setSelectedJobs([...selectedJobs, { ...job, request_amount: job.remaining }])
+      const totalValue = job.totalBoq || 0
+      const alreadyPaid = job.paid || 0
+      const currentOverallPercent = totalValue > 0 ? (alreadyPaid / totalValue) * 100 : 0
+
+      setSelectedJobs([
+        ...selectedJobs,
+        { 
+          ...job, 
+          overall_progress_percent: parseFloat(currentOverallPercent.toFixed(2)), 
+          request_amount: 0 // เริ่มที่ 0 ตอนเลือก
+        }
+      ])
     } else {
       setSelectedJobs(selectedJobs.filter(j => j.id !== job.id))
     }
   }
 
-  // ฟังก์ชันแก้ตัวเลขยอดเบิกของงาน
+  // ฟังก์ชันแก้ตัวเลขยอดเบิกของงาน -> % รวม จะถูกคำนวณตาม
   const updateJobAmount = (jobId: string, amount: number) => {
-    setSelectedJobs(selectedJobs.map(j => j.id === jobId ? { ...j, request_amount: amount } : j))
+    setSelectedJobs(selectedJobs.map(j => {
+      if (j.id !== jobId) return j
+      
+      const safeAmount = Number.isFinite(amount) ? amount : 0
+      const remaining = j.remaining || 0
+      const cappedAmount = Math.min(Math.max(0, safeAmount), remaining)
+
+      const totalValue = j.totalBoq || 0
+      const alreadyPaid = j.paid || 0
+      const newTotalPaid = alreadyPaid + cappedAmount
+      const overallPercent = totalValue > 0 ? (newTotalPaid / totalValue) * 100 : 0
+      
+      return { ...j, request_amount: cappedAmount, overall_progress_percent: parseFloat(overallPercent.toFixed(2)) }
+    }))
+  }
+
+  // ฟังก์ชันคำนวณยอดเบิกจาก % Progress รวม
+  const updateOverallJobProgress = (jobId: string, overallProgress: number) => {
+    setSelectedJobs(selectedJobs.map(j => {
+      if (j.id !== jobId) return j
+
+      const totalValue = j.totalBoq || 0
+      const alreadyPaid = j.paid || 0
+      
+      // Handle NaN from parseFloat on empty string by treating it as 0 for calculation.
+      const progressForCalc = Number.isFinite(overallProgress) ? overallProgress : 0;
+      
+      // Cap progress for calculation purposes.
+      const safeProgress = Math.max(0, Math.min(100, progressForCalc));
+
+      const newTotalPaidAmount = totalValue * (safeProgress / 100)
+      const requestAmount = newTotalPaidAmount - alreadyPaid
+      
+      // For the state, store the raw `overallProgress` (which could be NaN)
+      // so the input field can be cleared by the user. The `value` prop will handle `?? ''`.
+      return { ...j, overall_progress_percent: overallProgress, request_amount: Math.max(0, requestAmount) }
+    }))
   }
 
   // --- Calculation (คำนวณเงินรวม) ---
@@ -92,9 +138,10 @@ export default function CreateBillingPage() {
     .filter(a => a.type === 'deduction')
     .reduce((sum, a) => sum + (a.quantity * a.unit_price), 0)
 
-  const baseAmount = totalWork + totalAdd // ยอดฐานเพื่อคิดภาษี (ไม่รวมหัก)
-  const whtAmount = (baseAmount * whtPercent) / 100
-  const retentionAmount = (baseAmount * retentionPercent) / 100
+  // Logic Change: เงินประกันผลงาน หักเฉพาะงานหลัก, ภาษี ณ ที่จ่ายหักเฉพาะ งานเพิ่ม
+  const retentionAmount = (totalWork * retentionPercent) / 100
+  const whtAmount = (totalAdd * whtPercent) / 100
+  const baseAmount = totalWork + totalAdd
   
   const netAmount = baseAmount - totalDeduct - whtAmount - retentionAmount
 
@@ -184,16 +231,18 @@ export default function CreateBillingPage() {
                      <tr>
                        <th className="p-3 w-[40px]"></th>
                        <th className="p-3">ชื่องาน / แปลง</th>
-                       <th className="p-3 text-right">คงเหลือให้เบิก</th>
+                       <th className="p-3 text-right">คงเหลือ / % จ่ายแล้ว</th>
+                       <th className="p-3 w-[110px] text-center">รวม % งาน</th>
                        <th className="p-3 w-[150px]">ยอดที่จะเบิก</th>
                      </tr>
                    </thead>
                    <tbody className="divide-y divide-slate-100">
                      {availableJobs.length === 0 ? (
-                       <tr><td colSpan={4} className="p-6 text-center text-slate-400">ไม่พบงานที่เบิกได้</td></tr>
+                       <tr><td colSpan={5} className="p-6 text-center text-slate-400">ไม่พบงานที่เบิกได้</td></tr>
                      ) : (
                        availableJobs.map(job => {
                          const isSelected = selectedJobs.some(s => s.id === job.id)
+                         const selectedJob = selectedJobs.find(s => s.id === job.id)
                          return (
                            <tr key={job.id} className={isSelected ? 'bg-indigo-50' : 'hover:bg-slate-50'}>
                              <td className="p-3 text-center">
@@ -208,15 +257,30 @@ export default function CreateBillingPage() {
                                <div className="font-medium">{job.boq_master?.item_name}</div>
                                <div className="text-xs text-slate-500">แปลง {job.plots?.name}</div>
                              </td>
-                             <td className="p-3 text-right text-slate-500">
-                               ฿{job.remaining.toLocaleString()}
+                             <td className="p-3 text-right">
+                               <div className="font-medium text-slate-600">฿{job.remaining.toLocaleString()}</div>
+                               {job.totalBoq > 0 && (
+                                   <div className="text-xs text-emerald-600 font-light">
+                                       ~ {((job.paid / job.totalBoq) * 100).toFixed(1)}% paid
+                                   </div>
+                               )}
+                             </td>
+                             <td className="p-3">
+                               {isSelected && (
+                                 <input 
+                                   type="number"
+                                   className="w-full border rounded px-2 py-1 text-center text-indigo-600"
+                                   value={selectedJob?.overall_progress_percent ?? ''}
+                                   onChange={(e) => updateOverallJobProgress(job.id, parseFloat(e.target.value))}
+                                 />
+                               )}
                              </td>
                              <td className="p-3">
                                {isSelected && (
                                  <input 
                                    type="number" 
                                    className="w-full border rounded px-2 py-1 text-right font-bold text-indigo-600"
-                                   value={selectedJobs.find(s => s.id === job.id)?.request_amount}
+                                   value={selectedJob?.request_amount ?? ''}
                                    onChange={(e) => updateJobAmount(job.id, parseFloat(e.target.value))}
                                  />
                                )}
@@ -314,7 +378,7 @@ export default function CreateBillingPage() {
                 </div>
                 
                 <div className="border-t pt-2 mt-2 font-bold flex justify-between">
-                   <span>ฐานคำนวณภาษี</span>
+                   <span>ยอดรวมก่อนหัก</span>
                    <span>฿{baseAmount.toLocaleString()}</span>
                 </div>
 
@@ -326,7 +390,7 @@ export default function CreateBillingPage() {
                 {/* Settings Input */}
                 <div className="bg-slate-50 p-3 rounded space-y-2 mt-2">
                    <div className="flex items-center justify-between">
-                      <label className="text-xs text-slate-500">หัก ณ ที่จ่าย (%)</label>
+                      <label className="text-xs text-slate-500">หัก ณ ที่จ่าย (จากงานเพิ่ม) (%)</label>
                       <input 
                         type="number" value={whtPercent} 
                         onChange={e => setWhtPercent(parseFloat(e.target.value))}
@@ -339,7 +403,7 @@ export default function CreateBillingPage() {
                    </div>
 
                    <div className="flex items-center justify-between pt-1">
-                      <label className="text-xs text-slate-500">หักประกันผลงาน (%)</label>
+                      <label className="text-xs text-slate-500">หักประกันผลงาน (จากงานหลัก) (%)</label>
                       <input 
                         type="number" value={retentionPercent} 
                         onChange={e => setRetentionPercent(parseFloat(e.target.value))}

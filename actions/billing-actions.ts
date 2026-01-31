@@ -41,15 +41,25 @@ export async function getBillableJobs(projectId: string, contractorId: string) {
   }
 
   return data.map((job: any) => {
-    const totalBoq = (job.boq_master?.quantity || 0) * (job.boq_master?.price_per_unit || 0)
-    const paid = job.payments?.reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0
+    const totalBoq = (job.boq_master?.quantity || 0) * (job.boq_master?.price_per_unit || 0);
+    console.log(`Job: ${job.boq_master?.item_name}, Total BOQ: ${totalBoq}`);
+    
+    const payments = Array.isArray(job.payments) ? job.payments : [];
+    console.log(`Job: ${job.boq_master?.item_name}, Payments:`, payments);
+
+    const paid = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+    console.log(`Job: ${job.boq_master?.item_name}, Paid: ${paid}`);
+
+    const remaining = totalBoq - paid;
+    console.log(`Job: ${job.boq_master?.item_name}, Remaining: ${remaining}`);
+
     return {
       ...job,
       totalBoq,
       paid,
-      remaining: totalBoq - paid
-    }
-  }).filter((j: any) => j.remaining > 0)
+      remaining: remaining
+    };
+  }).filter((j: any) => j.remaining > 0);
 }
 
 // 3. บันทึกบิล
@@ -83,7 +93,8 @@ export async function createBilling(data: any) {
     const jobsToInsert = data.selected_jobs.map((j: any) => ({
       billing_id: billingId,
       job_assignment_id: j.id,
-      amount: j.request_amount
+      amount: j.request_amount,
+      progress_percent: j.progress_percent ?? null
     }))
     await supabase.from('billing_jobs').insert(jobsToInsert)
 
@@ -138,13 +149,16 @@ export async function getBillingById(id: string) {
       projects (name),
       contractors (name, address, phone),
       billing_jobs (
+        id,
         amount,
+        progress_percent,
         job_assignments (
           plots (name),
-          boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, unit)
+          payments (amount),
+          boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, unit, quantity, price_per_unit)
         )
       ),
-      billing_adjustments (*)
+      billing_adjustments (id, type, description, unit, quantity, unit_price)
     `)
     .eq('id', id)
     .single()
@@ -154,4 +168,28 @@ export async function getBillingById(id: string) {
     return null
   }
   return data
+}
+
+// 6. ลบประวัติใบเบิกงวด
+export async function deleteBilling(id: string) {
+  const supabase = await createClient()
+
+  const { data: bill, error: billError } = await supabase
+    .from('billings')
+    .select('id, doc_no')
+    .eq('id', id)
+    .single()
+
+  if (billError) throw new Error(billError.message)
+
+  const note = `เบิกตามใบวางบิล #${bill?.doc_no || '-'}`
+
+  await supabase.from('payments').delete().match({ note })
+  await supabase.from('billing_jobs').delete().match({ billing_id: id })
+  await supabase.from('billing_adjustments').delete().match({ billing_id: id })
+
+  const { error } = await supabase.from('billings').delete().match({ id })
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/dashboard/billing')
 }

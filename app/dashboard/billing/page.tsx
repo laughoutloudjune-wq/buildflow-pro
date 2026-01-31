@@ -14,11 +14,16 @@ export default function BillingListPage() {
   // State สำหรับเปิด Modal
   const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null)
 
-  useEffect(() => {
+  const loadBillings = () => {
+    setLoading(true)
     getBillings().then((data) => {
       setBillings(data)
       setLoading(false)
     })
+  }
+
+  useEffect(() => {
+    loadBillings()
   }, [])
 
   return (
@@ -99,6 +104,7 @@ export default function BillingListPage() {
       <BillingModal 
          billingId={selectedBillingId} 
          onClose={() => setSelectedBillingId(null)} 
+         onDeleted={loadBillings}
       />
 
     </div>

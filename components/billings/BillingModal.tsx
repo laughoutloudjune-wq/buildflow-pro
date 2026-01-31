@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Printer, FileText, Loader2 } from 'lucide-react'
+import { X, Printer, FileText, Loader2, Trash2 } from 'lucide-react'
 import dynamic from 'next/dynamic'
-import { getBillingById } from '@/actions/billing-actions'
+import { deleteBilling, getBillingById } from '@/actions/billing-actions'
 import { BillingPdf } from '@/components/pdf/BillingPdf'
 
 // Dynamic Import แก้ PDF Loading
@@ -23,12 +23,14 @@ const PDFViewer = dynamic(
 interface BillingModalProps {
   billingId: string | null
   onClose: () => void
+  onDeleted?: () => void
 }
 
-export default function BillingModal({ billingId, onClose }: BillingModalProps) {
+export default function BillingModal({ billingId, onClose, onDeleted }: BillingModalProps) {
   const [billing, setBilling] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'details' | 'pdf'>('details')
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     if (billingId) {
@@ -53,6 +55,26 @@ export default function BillingModal({ billingId, onClose }: BillingModalProps) 
 
   const { wht, retention, totalBase } = calculateDetails(billing)
 
+  const handleDelete = async () => {
+    if (!billingId || isDeleting) return;
+    console.log('handleDelete called for billingId:', billingId);
+    const confirmDelete = window.confirm('ยืนยันการลบประวัติใบเบิกงวดนี้?');
+    console.log('window.confirm returned:', confirmDelete);
+    if (!confirmDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteBilling(billingId);
+      onClose();
+      onDeleted?.();
+    } catch (error) {
+      console.error('Error in handleDelete:', error);
+      alert('ลบรายการไม่สำเร็จ');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   if (!billingId) return null
 
   return (
@@ -68,9 +90,19 @@ export default function BillingModal({ billingId, onClose }: BillingModalProps) 
             </h2>
             <p className="text-xs text-slate-500">โครงการ: {billing?.projects?.name}</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition">
-            <X className="h-5 w-5 text-slate-500" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting || !billing}
+              className="p-2 hover:bg-red-50 rounded-full transition disabled:opacity-50"
+              title="ลบประวัติ"
+            >
+              <Trash2 className="h-5 w-5 text-red-500" />
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition">
+              <X className="h-5 w-5 text-slate-500" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -140,16 +172,19 @@ export default function BillingModal({ billingId, onClose }: BillingModalProps) 
                              ))}
                              
                              {/* [FIXED] เพิ่ม Key */}
-                             {billing.billing_adjustments?.map((adj: any) => (
-                                <tr key={`adj-${adj.id}`} className={adj.type === 'deduction' ? 'text-red-600 bg-red-50/30' : 'text-blue-600 bg-blue-50/30'}>
-                                   <td className="p-3">
-                                      {adj.type === 'addition' ? '[+]' : '[-]'} {adj.description} ({adj.quantity} {adj.unit})
-                                   </td>
-                                   <td className="p-3 text-right">
-                                      {adj.type === 'deduction' ? '-' : ''}฿{adj.total_amount?.toLocaleString()}
-                                   </td>
-                                </tr>
-                             ))}
+                             {billing.billing_adjustments?.map((adj: any) => {
+                               const total_amount = (adj.quantity || 0) * (adj.unit_price || 0);
+                               return (
+                                 <tr key={`adj-${adj.id}`} className={adj.type === 'deduction' ? 'text-red-600 bg-red-50/30' : 'text-blue-600 bg-blue-50/30'}>
+                                    <td className="p-3">
+                                       {adj.type === 'addition' ? '[+]' : '[-]'} {adj.description} ({adj.quantity} {adj.unit})
+                                    </td>
+                                    <td className="p-3 text-right">
+                                       {adj.type === 'deduction' ? '-' : ''}฿{total_amount.toLocaleString()}
+                                    </td>
+                                 </tr>
+                               );
+                             })}
                           </tbody>
                           <tfoot className="bg-slate-50 text-slate-700">
                              {/* [NEW] แสดงรายละเอียด หักภาษี / ประกัน */}
