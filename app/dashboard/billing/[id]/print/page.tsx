@@ -1,10 +1,14 @@
 import { getBillingById } from '@/actions/billing-actions'
+import { getOrganizationSettings } from '@/actions/settings-actions'
 import { BillingPdfViewer } from './BillingPdfViewer'
 
 export const dynamic = 'force-dynamic'
 
 export default async function PrintBillingPage({ params }: { params: { id: string } }) {
-  const billing = await getBillingById(params.id)
+  const [billing, settings] = await Promise.all([
+    getBillingById(params.id),
+    getOrganizationSettings()
+  ])
 
   if (!billing) {
     return (
@@ -25,7 +29,7 @@ export default async function PrintBillingPage({ params }: { params: { id: strin
          <a href="#" onClick={(e) => { e.preventDefault(); window.close(); }} className="text-sm text-slate-500 hover:text-red-500">ปิดหน้าต่าง</a>
       </div>
       
-      <BillingPdfViewer data={billing} />
+      <BillingPdfViewer data={billing} settings={settings} />
     </div>
   )
 }

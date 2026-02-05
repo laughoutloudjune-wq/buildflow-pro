@@ -3,10 +3,10 @@
 import { PDFViewer } from '@react-pdf/renderer'
 import { BillingPdf } from '@/components/pdf/BillingPdf'
 
-export function BillingPdfViewer({ data }: { data: any }) {
+export function BillingPdfViewer({ data, settings }: { data: any, settings: any }) {
   return (
     <PDFViewer className="w-full h-full">
-      <BillingPdf data={data} />
+      <BillingPdf data={data} settings={settings} />
     </PDFViewer>
   )
 }
