@@ -42,7 +42,12 @@ export async function createPlot(formData: FormData) {
   if (!plot) throw new Error('Failed to create plot.')
 
   // 2. สร้าง Job Assignments (เลือกวิธี: copy หรือ from template)
-  let jobsToCreate = []
+  let jobsToCreate: { 
+    plot_id: string; 
+    boq_item_id: any; 
+    contractor_id?: string | null; 
+    status: string; 
+  }[] = []
 
   if (source_plot_id) {
     // --- วิธีที่ 1: คัดลอกจากแปลงอื่น ---
