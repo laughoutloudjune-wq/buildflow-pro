@@ -8,11 +8,24 @@ import Modal from '@/components/ui/Modal'
 import { getHouseModels, createHouseModel, deleteHouseModel, updateHouseModel } from '@/actions/boq-actions'
 import { getProjects } from '@/actions/project-actions'
 
-type HouseModel = any; // Define a more specific type if available
+type HouseModel = {
+  id: string;
+  name: string;
+  code: string;
+  area: number;
+  project_id: string | null;
+  projects: {
+    name: string;
+  } | null;
+};
+type Project = {
+  id: string;
+  name: string;
+};
 
 export default function HouseModelsPage() {
   const [models, setModels] = useState<HouseModel[]>([])
-  const [projects, setProjects] = useState<any[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(true)
   
   const [isModalOpen, setIsModalOpen] = useState(false)

@@ -11,6 +11,26 @@ import { getHouseModels } from '@/actions/boq-actions'
 import { getContractors } from '@/actions/contractor-actions'
 import { createPayment, deletePayment } from '@/actions/payment-actions'
 
+// Define types for state
+type Plot = {
+  id: string;
+  name: string;
+  house_model_id: string;
+  house_models: {
+    name: string;
+  } | null;
+}
+type Job = any; // Can be more specific if structure is known
+type Contractor = {
+  id: string;
+  name: string;
+};
+type HouseModel = {
+  id: string;
+  name: string;
+};
+
+
 export default function PlotDetailPage() {
   const params = useParams()
   const projectId = params.id as string
@@ -20,14 +40,14 @@ export default function PlotDetailPage() {
   const [isPending, startTransition] = useTransition()
 
   // State ข้อมูลหลัก
-  const [plot, setPlot] = useState<any>(null)
-  const [jobs, setJobs] = useState<any[]>([])
-  const [contractors, setContractors] = useState<any[]>([])
-  const [houseModels, setHouseModels] = useState<any[]>([])
+  const [plot, setPlot] = useState<Plot | null>(null)
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [contractors, setContractors] = useState<Contractor[]>([])
+  const [houseModels, setHouseModels] = useState<HouseModel[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   // State สำหรับ Modal
-  const [selectedJob, setSelectedJob] = useState<any>(null)
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false) // loading ตอนกดจ่าย

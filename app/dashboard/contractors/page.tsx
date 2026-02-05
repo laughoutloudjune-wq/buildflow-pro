@@ -7,12 +7,26 @@ import Modal from '@/components/ui/Modal'
 import { getContractors, createContractor, deleteContractor, updateContractor } from '@/actions/contractor-actions'
 import { getContractorTypes } from '@/actions/contractor-type-actions'
 
-type Contractor = any; // You can define a more specific type if you have one
+type Contractor = {
+  id: string;
+  name: string;
+  type_id: number;
+  phone: string;
+  bank_account: string;
+  tax_id: string;
+  contractor_types: {
+    name: string;
+  } | null;
+};
+type ContractorType = {
+  id: number;
+  name: string;
+};
 
 export default function ContractorsPage() {
   // State สำหรับข้อมูล
   const [contractors, setContractors] = useState<Contractor[]>([])
-  const [types, setTypes] = useState<any[]>([])
+  const [types, setTypes] = useState<ContractorType[]>([])
   
   // State สำหรับ UI
   const [isModalOpen, setIsModalOpen] = useState(false)
