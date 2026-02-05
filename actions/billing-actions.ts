@@ -330,7 +330,7 @@ export async function getBillingById(id: string) {
 
   // Post-process to calculate totalBoq, paid, remaining for each job
   if (data && data.billing_jobs) {
-    const processedJobs = data.billing_jobs.map((billingJob: any) => {
+    const processedJobs = data.billing_jobs.map((billingJob) => {
       const job = billingJob.job_assignments;
       if (!job) return { ...billingJob, totalBoq: 0, paid: 0, previous_progress: 0 };
       
