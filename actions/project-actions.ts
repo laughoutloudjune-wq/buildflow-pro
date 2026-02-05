@@ -67,3 +67,24 @@ export async function deleteProject(id: string) {
   }
   revalidatePath('/dashboard/projects')
 }
+
+// อัปเดตโครงการ
+export async function updateProject(id: string, formData: FormData) {
+  const supabase = await createClient()
+  const name = formData.get('name') as string
+  const location = formData.get('location') as string
+
+  if (!name) return
+
+  const { error } = await supabase
+    .from('projects')
+    .update({ name, location })
+    .match({ id })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  revalidatePath('/dashboard/projects')
+  revalidatePath(`/dashboard/projects/${id}`)
+}

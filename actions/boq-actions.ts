@@ -62,6 +62,28 @@ export async function deleteHouseModel(id: string) {
   revalidatePath('/dashboard/boq')
 }
 
+export async function updateHouseModel(id: string, formData: FormData) {
+  const supabase = await createClient()
+  const name = formData.get('name') as string
+  const code = formData.get('code') as string
+  const area = formData.get('area') as string
+  const project_id = formData.get('project_id') as string
+
+  if (!name) return
+
+  const { error } = await supabase.from('house_models').update({
+    name,
+    code,
+    area: area ? parseFloat(area) : 0,
+    project_id: project_id || null
+  }).match({ id })
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/dashboard/boq')
+  revalidatePath(`/dashboard/boq/${id}`)
+}
+
+
 // --- BOQ ITEMS (รายการงาน) ---
 
 export async function getBOQItems(modelId: string) {

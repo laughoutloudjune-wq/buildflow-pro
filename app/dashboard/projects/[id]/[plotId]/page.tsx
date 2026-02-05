@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, User, Hammer, AlertCircle, RefreshCw, Banknote, Trash2, Plus, Calculator, PieChart, Loader2 } from 'lucide-react'
+import { ArrowLeft, User, Hammer, AlertCircle, RefreshCw, Banknote, Trash2, Plus, Calculator, PieChart, Loader2, Pencil } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import { getPlotById, getJobAssignments, assignContractor, updateJobStatus, syncPlotJobs } from '@/actions/job-actions'
+import { updatePlot } from '@/actions/plot-actions'
+import { getHouseModels } from '@/actions/boq-actions'
 import { getContractors } from '@/actions/contractor-actions'
 import { createPayment, deletePayment } from '@/actions/payment-actions'
 
@@ -21,11 +23,13 @@ export default function PlotDetailPage() {
   const [plot, setPlot] = useState<any>(null)
   const [jobs, setJobs] = useState<any[]>([])
   const [contractors, setContractors] = useState<any[]>([])
+  const [houseModels, setHouseModels] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   // State สำหรับ Modal
   const [selectedJob, setSelectedJob] = useState<any>(null)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false) // loading ตอนกดจ่าย
   
   // State คำนวณเงิน
@@ -40,15 +44,17 @@ export default function PlotDetailPage() {
   const loadData = async () => {
     try {
       setIsLoading(true)
-      const [pData, jData, cData] = await Promise.all([
+      const [pData, jData, cData, hmData] = await Promise.all([
         getPlotById(plotId),
         getJobAssignments(plotId),
-        getContractors()
+        getContractors(),
+        getHouseModels()
       ])
       
       setPlot(pData)
       setJobs(jData)
       setContractors(cData || [])
+      setHouseModels(hmData || [])
 
     } catch (error) {
       console.error(error)
@@ -175,6 +181,13 @@ export default function PlotDetailPage() {
     }
   }
 
+  const handleUpdatePlot = async (formData: FormData) => {
+    setIsEditModalOpen(false)
+    startTransition(async () => {
+      await updatePlot(plotId, projectId, formData)
+    })
+  }
+
   // [UPDATED] กดลบแล้วหน้าไม่รีเฟรช
   const handleDeletePayment = async (paymentId: string) => {
     if(!confirm('ลบรายการจ่ายเงินนี้?')) return
@@ -213,9 +226,14 @@ export default function PlotDetailPage() {
         </button>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-              <Hammer className="text-indigo-600"/> แปลง {plot.name}
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <Hammer className="text-indigo-600"/> แปลง {plot.name}
+              </h1>
+              <button onClick={() => setIsEditModalOpen(true)} className="text-slate-400 hover:text-indigo-600">
+                  <Pencil className="h-4 w-4" />
+              </button>
+            </div>
             <p className="text-sm text-slate-500">แบบบ้าน: {plot.house_models?.name}</p>
           </div>
           <div className="flex items-center gap-3">
@@ -307,6 +325,32 @@ export default function PlotDetailPage() {
           </table>
         </div>
       </Card>
+
+        <Modal
+            isOpen={isEditModalOpen}
+            onClose={() => setIsEditModalOpen(false)}
+            title="แก้ไขรายละเอียดแปลง"
+        >
+            <form action={handleUpdatePlot} className="space-y-4">
+                <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">ชื่อแปลง</label>
+                    <input name="name" required className="w-full" defaultValue={plot.name} />
+                </div>
+                <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">แบบบ้าน</label>
+                    <select name="house_model_id" required className="w-full" defaultValue={plot.house_model_id}>
+                        <option value="" disabled>-- เลือกแบบบ้าน --</option>
+                        {houseModels.map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                    <button type="button" onClick={() => setIsEditModalOpen(false)} className="btn-secondary">ยกเลิก</button>
+                    <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 shadow transition">บันทึก</button>
+                </div>
+            </form>
+        </Modal>
 
       <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title={`จัดการงวดงาน: ${selectedJob?.boq_master?.item_name || ''}`}>
          {selectedJob && (() => {

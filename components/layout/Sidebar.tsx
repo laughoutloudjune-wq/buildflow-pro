@@ -8,7 +8,8 @@ import {
   LogOut, 
   Building2,
   Users,
-  ClipboardList // ไอคอนสำหรับ BOQ
+  ClipboardList, // ไอคอนสำหรับ BOQ
+  ClipboardPlus // ไอคอนสำหรับใบขอเบิก
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -20,7 +21,8 @@ const menuItems = [
   { icon: Building2, label: 'โครงการ', href: '/dashboard/projects' },
   { icon: ClipboardList, label: 'แบบบ้าน & BOQ', href: '/dashboard/boq' }, // เมนูใหม่
   { icon: Users, label: 'ผู้รับเหมา', href: '/dashboard/contractors' },
-  { icon: FileText, label: 'เบิกงวดงาน (PM)', href: '/dashboard/billing' },
+  { icon: ClipboardPlus, label: 'สร้างใบขอเบิก (Foreman)', href: '/dashboard/billing/request' },
+  { icon: FileText, label: 'รายการเบิกจ่าย', href: '/dashboard/billing' },
   { icon: HardHat, label: 'ตรวจหน้างาน (Foreman)', href: '/dashboard/foreman' },
   { icon: Settings, label: 'ตั้งค่า', href: '/dashboard/settings' },
 ]

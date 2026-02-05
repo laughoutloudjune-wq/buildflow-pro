@@ -3,6 +3,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+// Helper function to get the current user
+async function getCurrentUser() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return user
+}
+
 // 1. ดึงข้อมูลเบื้องต้นสำหรับทำ Dropdown
 export async function getBillingOptions() {
   const supabase = await createClient()
@@ -42,16 +49,9 @@ export async function getBillableJobs(projectId: string, contractorId: string) {
 
   return data.map((job: any) => {
     const totalBoq = (job.boq_master?.quantity || 0) * (job.boq_master?.price_per_unit || 0);
-    console.log(`Job: ${job.boq_master?.item_name}, Total BOQ: ${totalBoq}`);
-    
     const payments = Array.isArray(job.payments) ? job.payments : [];
-    console.log(`Job: ${job.boq_master?.item_name}, Payments:`, payments);
-
     const paid = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-    console.log(`Job: ${job.boq_master?.item_name}, Paid: ${paid}`);
-
     const remaining = totalBoq - paid;
-    console.log(`Job: ${job.boq_master?.item_name}, Remaining: ${remaining}`);
 
     return {
       ...job,
@@ -62,10 +62,11 @@ export async function getBillableJobs(projectId: string, contractorId: string) {
   }).filter((j: any) => j.remaining > 0);
 }
 
-// 3. บันทึกบิล
+// 3. บันทึกบิล (Legacy or Direct Approved)
 export async function createBilling(data: any) {
   const supabase = await createClient()
-  
+  const user = await getCurrentUser()
+
   // 3.1 สร้าง Header
   const { data: bill, error: billError } = await supabase
     .from('billings')
@@ -79,7 +80,9 @@ export async function createBilling(data: any) {
       wht_percent: data.wht_percent,
       retention_percent: data.retention_percent,
       net_amount: data.net_amount,
-      status: 'approved'
+      status: 'approved',
+      submitted_by: user?.id,
+      approved_by: user?.id
     }])
     .select()
     .single()
@@ -124,6 +127,159 @@ export async function createBilling(data: any) {
   revalidatePath('/dashboard/billing')
 }
 
+// NEW: Create Billing Request (Foreman)
+export async function createBillingRequest(data: any) {
+  const supabase = await createClient()
+  const user = await getCurrentUser()
+
+  if (!user) throw new Error("User not found")
+
+  // 1. Create Billing Header with 'pending_review' status
+  const { data: bill, error: billError } = await supabase
+    .from('billings')
+    .insert([{
+      project_id: data.project_id,
+      contractor_id: data.contractor_id,
+      billing_date: data.billing_date,
+      note: data.note,
+      total_work_amount: data.total_work_amount,
+      total_add_amount: data.total_add_amount,
+      total_deduct_amount: data.total_deduct_amount,
+      net_amount: data.total_work_amount + data.total_add_amount - data.total_deduct_amount, // Net amount includes adjustments
+      status: 'pending_review',
+      submitted_by: user.id
+    }])
+    .select()
+    .single()
+
+  if (billError) throw new Error(billError.message)
+
+  const billingId = bill.id
+
+  // 2. Save Job line items
+  if (data.selected_jobs.length > 0) {
+    const jobsToInsert = data.selected_jobs.map((j: any) => ({
+      billing_id: billingId,
+      job_assignment_id: j.id,
+      amount: j.request_amount,
+      progress_percent: j.progress_percent ?? null
+    }))
+    await supabase.from('billing_jobs').insert(jobsToInsert)
+  }
+
+  // 3. บันทึกงานเพิ่ม/งานหัก (for Foreman)
+  if (data.adjustments?.length > 0) {
+    const adjToInsert = data.adjustments.map((adj: any) => ({
+      billing_id: billingId,
+      type: adj.type,
+      description: adj.description,
+      unit: adj.unit,
+      quantity: parseFloat(adj.quantity),
+      unit_price: parseFloat(adj.unit_price)
+    }))
+    await supabase.from('billing_adjustments').insert(adjToInsert)
+  }
+
+
+  revalidatePath('/dashboard/billing')
+  revalidatePath(`/dashboard/billing/${billingId}/review`)
+  
+  return bill
+}
+
+// NEW: Approve Billing Request (PM)
+export async function approveBilling(id: string, data: any) {
+  const supabase = await createClient()
+  const user = await getCurrentUser()
+
+  if (!user) throw new Error("User not found")
+
+  const billingId = id
+
+  // 1. Update Billing Header
+  const { data: bill, error: billError } = await supabase
+    .from('billings')
+    .update({
+      status: 'approved',
+      approved_by: user.id,
+      billing_date: data.billing_date,
+      total_work_amount: data.total_work_amount,
+      total_add_amount: data.total_add_amount,
+      total_deduct_amount: data.total_deduct_amount,
+      wht_percent: data.wht_percent,
+      retention_percent: data.retention_percent,
+      net_amount: data.net_amount,
+    })
+    .eq('id', billingId)
+    .select()
+    .single()
+
+  if (billError) throw new Error(billError.message)
+
+  // 2. Update/Insert billing_jobs
+  if (data.selected_jobs?.length > 0) {
+    const upsertJobs = data.selected_jobs.map((j: any) => ({
+      billing_id: billingId,
+      job_assignment_id: j.job_assignment_id || j.id, // Handle both cases
+      amount: j.request_amount,
+      progress_percent: j.progress_percent ?? null
+    }))
+    await supabase.from('billing_jobs').upsert(upsertJobs, { onConflict: 'billing_id, job_assignment_id' })
+  }
+
+  // 3. Update/Insert Adjustments
+  if (data.adjustments?.length > 0) {
+    await supabase.from('billing_adjustments').delete().eq('billing_id', billingId) // Clear existing
+    const adjToInsert = data.adjustments.map((adj: any) => ({
+      billing_id: billingId,
+      type: adj.type,
+      description: adj.description,
+      unit: adj.unit,
+      quantity: parseFloat(adj.quantity),
+      unit_price: parseFloat(adj.unit_price)
+    }))
+    await supabase.from('billing_adjustments').insert(adjToInsert)
+  }
+
+  // 4. Insert into Payments
+  const { data: billingJobs } = await supabase.from('billing_jobs').select('*').eq('billing_id', billingId)
+  if (billingJobs && billingJobs.length > 0) {
+      const paymentsToInsert = billingJobs.map((j: any) => ({
+      job_assignment_id: j.job_assignment_id,
+      amount: j.amount,
+      payment_date: data.billing_date,
+      note: `เบิกตามใบวางบิล #${bill.doc_no || '-'}`
+    }))
+    await supabase.from('payments').insert(paymentsToInsert)
+  }
+
+  revalidatePath('/dashboard/billing')
+  revalidatePath(`/dashboard/billing/${id}`)
+}
+
+// NEW: Reject Billing Request (PM)
+export async function rejectBilling(id: string, note?: string) {
+    const supabase = await createClient()
+    const user = await getCurrentUser()
+
+    if (!user) throw new Error("User not found")
+
+    const { error } = await supabase
+        .from('billings')
+        .update({ 
+            status: 'rejected', 
+            note: note, // PM can add a note on rejection
+            approved_by: user.id
+        })
+        .eq('id', id)
+        
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/billing')
+    revalidatePath(`/dashboard/billing/${id}`)
+}
+
+
 // 4. ดึงรายการบิลทั้งหมด
 export async function getBillings() {
   const supabase = await createClient()
@@ -148,11 +304,14 @@ export async function getBillingById(id: string) {
       *,
       projects (name),
       contractors (name, address, phone),
+      submitted_by,
+      approved_by,
       billing_jobs (
         id,
         amount,
         progress_percent,
         job_assignments (
+          id,
           plots (name),
           payments (amount),
           boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, unit, quantity, price_per_unit)
@@ -165,10 +324,38 @@ export async function getBillingById(id: string) {
 
   if (error) {
     console.error("Error fetching billing details:", error)
-    return null
+    // Return null or re-throw to be handled by the component
+    throw new Error(`Could not fetch billing details: ${error.message}`);
   }
+
+  // Post-process to calculate totalBoq, paid, remaining for each job
+  if (data && data.billing_jobs) {
+    const processedJobs = data.billing_jobs.map((billingJob: any) => {
+      const job = billingJob.job_assignments;
+      if (!job) return { ...billingJob, totalBoq: 0, paid: 0, previous_progress: 0 };
+      
+      const totalBoq = (job.boq_master?.quantity || 0) * (job.boq_master?.price_per_unit || 0);
+
+      // Calculate amount paid *before* this billing
+      const otherPayments = (job.payments || []).filter((p: any) => p.billing_id !== id);
+      const paid = otherPayments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+      
+      const previous_progress = totalBoq > 0 ? (paid / totalBoq) * 100 : 0;
+
+      return {
+        ...billingJob,
+        totalBoq,
+        paid,
+        previous_progress,
+      };
+    });
+    
+    return { ...data, billing_jobs: processedJobs };
+  }
+
   return data
 }
+
 
 // 6. ลบประวัติใบเบิกงวด
 export async function deleteBilling(id: string) {
@@ -176,15 +363,19 @@ export async function deleteBilling(id: string) {
 
   const { data: bill, error: billError } = await supabase
     .from('billings')
-    .select('id, doc_no')
+    .select('id, doc_no, status')
     .eq('id', id)
     .single()
 
   if (billError) throw new Error(billError.message)
+  if (!bill) throw new Error("Billing not found.")
 
-  const note = `เบิกตามใบวางบิล #${bill?.doc_no || '-'}`
+  // Only delete associated payments if the bill was approved
+  if (bill.status === 'approved') {
+    const note = `เบิกตามใบวางบิล #${bill?.doc_no || '-'}`
+    await supabase.from('payments').delete().match({ note })
+  }
 
-  await supabase.from('payments').delete().match({ note })
   await supabase.from('billing_jobs').delete().match({ billing_id: id })
   await supabase.from('billing_adjustments').delete().match({ billing_id: id })
 
@@ -193,3 +384,4 @@ export async function deleteBilling(id: string) {
 
   revalidatePath('/dashboard/billing')
 }
+

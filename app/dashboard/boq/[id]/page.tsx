@@ -6,7 +6,7 @@ import { Plus, Trash2, ArrowLeft, Loader2, Coins, Layers, AlertCircle } from 'lu
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import { getHouseModelById, getBOQItems, createBOQItem, deleteBOQItem } from '@/actions/boq-actions'
-import { getContractorTypes } from '@/actions/contractor-actions'
+import { getContractorTypes } from '@/actions/contractor-type-actions';
 
 export default function BOQDetailPage() {
   const params = useParams()
@@ -146,7 +146,7 @@ export default function BOQDetailPage() {
                 <th className="px-4 py-3 font-semibold text-right">หน่วย</th>
                 <th className="px-4 py-3 font-semibold text-right">ราคา/หน่วย</th>
                 <th className="px-4 py-3 font-semibold text-right">รวมเป็นเงิน</th>
-                <th className="px-4 py-3 font-semibold text-center w-[50px]">ลบ</th>
+                <th className="px-4 py-3 font-semibold text-center w-12.5">ลบ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">

@@ -22,7 +22,7 @@ export default async function DashboardLayout({
       <Sidebar />
       <div className="relative flex flex-1 flex-col overflow-y-auto overflow-x-hidden ml-64">
         <Header userEmail={user.email} />
-        <main className="w-full flex-grow p-6">
+        <main className="w-full grow p-6">
           {children}
         </main>
       </div>
