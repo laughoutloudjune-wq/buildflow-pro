@@ -275,7 +275,7 @@ export default function ReviewBillingPage() {
                             <td className="px-6 py-4">{job.job_assignments.boq_master.item_name}</td>
                             <td className="px-6 py-4 text-right">{job.totalBoq.toFixed(2)}</td>
                             <td className="px-6 py-4 text-right">{job.paid.toFixed(2)}</td>
-                            <td className="px-6 py-4 text-right font-semibold text-blue-600">{billing.billing_jobs.find(bj => bj.id === job.id)?.progress_percent?.toFixed(2)}%</td>
+                            <td className="px-6 py-4 text-right font-semibold text-blue-600">{billing.billing_jobs.find((bj: any) => bj.id === job.id)?.progress_percent?.toFixed(2)}%</td>
                             <td className="px-6 py-4 text-right">
                                 <input
                                 type="number"

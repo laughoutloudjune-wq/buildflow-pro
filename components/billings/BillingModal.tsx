@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { X, Printer, FileText, Loader2, Trash2 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { deleteBilling, getBillingById } from '@/actions/billing-actions'
+import { getOrganizationSettings } from '@/actions/settings-actions'
 import { BillingPdf } from '@/components/pdf/BillingPdf'
 
 // Dynamic Import แก้ PDF Loading
@@ -28,6 +29,7 @@ interface BillingModalProps {
 
 export default function BillingModal({ billingId, onClose, onDeleted }: BillingModalProps) {
   const [billing, setBilling] = useState<any>(null)
+  const [settings, setSettings] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'details' | 'pdf'>('details')
   const [isDeleting, setIsDeleting] = useState(false)
@@ -35,12 +37,17 @@ export default function BillingModal({ billingId, onClose, onDeleted }: BillingM
   useEffect(() => {
     if (billingId) {
       setLoading(true)
-      getBillingById(billingId).then((data) => {
-        setBilling(data)
+      Promise.all([
+        getBillingById(billingId),
+        getOrganizationSettings()
+      ]).then(([billingData, settingsData]) => {
+        setBilling(billingData)
+        setSettings(settingsData)
         setLoading(false)
       })
     } else {
       setBilling(null)
+      setSettings(null)
     }
   }, [billingId])
 
@@ -229,7 +236,7 @@ export default function BillingModal({ billingId, onClose, onDeleted }: BillingM
                {activeTab === 'pdf' && billing && (
                  <div className="h-full w-full bg-slate-500 rounded-lg shadow-inner overflow-hidden flex flex-col">
                     <PDFViewer className="w-full h-full border-none">
-                       <BillingPdf data={billing} />
+                       <BillingPdf data={billing} settings={settings} />
                     </PDFViewer>
                  </div>
                )}

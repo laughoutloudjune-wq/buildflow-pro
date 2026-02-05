@@ -128,6 +128,7 @@ export default function PlotDetailPage() {
   }
 
   const handleSync = () => {
+    if (!plot) return
     if(!confirm('ต้องการดึงรายการ BOQ ล่าสุดมาเพิ่มใช่ไหม?')) return
     startTransition(async () => {
       await syncPlotJobs(plotId, plot.house_model_id, projectId)
