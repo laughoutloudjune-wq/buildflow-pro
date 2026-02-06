@@ -304,8 +304,6 @@ export async function getBillingById(id: string) {
       *,
       projects (name),
       contractors (name, address, phone),
-      submitted_by_user:profiles!billings_submitted_by_fkey(full_name),
-      approved_by_user:profiles!billings_approved_by_fkey(full_name),
       billing_jobs (
         id,
         amount,
@@ -326,6 +324,23 @@ export async function getBillingById(id: string) {
     console.error("Error fetching billing details:", error)
     // Return null or re-throw to be handled by the component
     throw new Error(`Could not fetch billing details: ${error.message}`);
+  }
+
+  // Fetch submitted/approved user names separately to avoid missing FK relationship errors.
+  if (data?.submitted_by || data?.approved_by) {
+    const userIds = [data.submitted_by, data.approved_by].filter(Boolean)
+    const { data: users, error: usersError } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', userIds)
+
+    if (usersError) {
+      console.error("Error fetching billing users:", usersError)
+    } else if (users) {
+      const byId = new Map(users.map((u: any) => [u.id, u]))
+      data.submitted_by_user = byId.get(data.submitted_by) || null
+      data.approved_by_user = byId.get(data.approved_by) || null
+    }
   }
 
   // Define a specific type for the billing job object
