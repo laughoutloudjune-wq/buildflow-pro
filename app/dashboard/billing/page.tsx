@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation' // Import useRouter
-import { Plus, Printer, FileText, Loader2, Search, Eye, Edit } from 'lucide-react'
+import { Plus, Loader2, Eye, Edit } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { getBillings } from '@/actions/billing-actions'
 import BillingModal from '@/components/billings/BillingModal'
@@ -16,9 +16,9 @@ const getStatusChip = (status: string) => {
     case 'pending_review':
       return <div className="bg-yellow-100 text-yellow-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full">รอตรวจสอบ</div>
     case 'rejected':
-      return <div className="bg-red-100 text-red-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full">ปฏิเสธ</div>
+      return <div className="bg-red-100 text-red-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full">ไม่อนุมัติ</div>
     case 'draft':
-        return <div className="bg-gray-100 text-gray-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full">ฉบับร่าง</div>
+      return <div className="bg-gray-100 text-gray-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full">ฉบับร่าง</div>
     default:
       return <div className="bg-gray-100 text-gray-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full">{status}</div>
   }
@@ -57,18 +57,18 @@ export default function BillingListPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">เบิกจ่ายงวดงาน (Billing)</h1>
-          <p className="text-sm text-slate-500">จัดการเอกสารวางบิล งานเพิ่ม และรายการหัก</p>
+          <h1 className="text-2xl font-bold text-slate-800">รายการเบิกจ่ายงวดงาน</h1>
+          <p className="text-sm text-slate-500">จัดการใบเบิกงวดงานหลักและงานเพิ่ม (DC) พร้อมติดตามสถานะอนุมัติ</p>
         </div>
         <div className="flex items-center gap-2">
-            <Link href="/dashboard/billing/request">
+            <Link href="/dashboard/foreman/create-progress">
               <button className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shadow-sm transition">
-                <Plus className="h-4 w-4" /> สร้างใบขอเบิก
+                <Plus className="h-4 w-4" /> สร้างใบเบิกงวดงาน
               </button>
             </Link>
-            <Link href="/dashboard/billing/create">
+            <Link href="/dashboard/foreman/create-dc">
               <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm transition">
-                <Plus className="h-4 w-4" /> สร้างใบเบิกงวด
+                <Plus className="h-4 w-4" /> สร้างใบเบิกงานเพิ่ม (DC)
               </button>
             </Link>
         </div>
@@ -82,7 +82,7 @@ export default function BillingListPage() {
                 <th className="px-4 py-3 font-semibold">เลขที่เอกสาร</th>
                 <th className="px-4 py-3 font-semibold">วันที่</th>
                 <th className="px-4 py-3 font-semibold">ผู้รับเหมา / โครงการ</th>
-                <th className="px-4 py-3 font-semibold text-right">ยอดสุทธิ (Net)</th>
+                <th className="px-4 py-3 font-semibold text-right">ยอดสุทธิ</th>
                 <th className="px-4 py-3 font-semibold text-center">สถานะ</th>
                 <th className="px-4 py-3 font-semibold text-center">จัดการ</th>
               </tr>
@@ -91,7 +91,7 @@ export default function BillingListPage() {
               {loading ? (
                  <tr><td colSpan={6} className="p-8 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto"/></td></tr>
               ) : billings.length === 0 ? (
-                 <tr><td colSpan={6} className="p-12 text-center text-slate-400">ยังไม่มีเอกสารวางบิล</td></tr>
+                 <tr><td colSpan={6} className="p-12 text-center text-slate-400">ยังไม่มีเอกสารเบิกจ่าย</td></tr>
               ) : (
                  billings.map((bill) => (
                    <tr 
@@ -145,3 +145,4 @@ export default function BillingListPage() {
     </div>
   )
 }
+

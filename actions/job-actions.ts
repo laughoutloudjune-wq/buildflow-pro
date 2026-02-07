@@ -71,6 +71,27 @@ export async function updateJobStatus(jobId: string, status: string, plotId: str
   revalidatePath(`/dashboard/projects/${projectId}/${plotId}`)
 }
 
+export async function updateAgreedPricePerUnit(
+  jobId: string,
+  agreedPricePerUnit: number | null,
+  plotId: string,
+  projectId: string
+) {
+  const supabase = await createClient()
+
+  if (agreedPricePerUnit != null && (!Number.isFinite(agreedPricePerUnit) || agreedPricePerUnit < 0)) {
+    throw new Error('Invalid agreed price per unit')
+  }
+
+  const { error } = await supabase
+    .from('job_assignments')
+    .update({ agreed_price_per_unit: agreedPricePerUnit })
+    .eq('id', jobId)
+
+  if (error) throw new Error(error.message)
+  revalidatePath(`/dashboard/projects/${projectId}/${plotId}`)
+}
+
 // ฟังก์ชัน Sync (Log ละเอียด)
 export async function syncPlotJobs(plotId: string, houseModelId: string, projectId: string) {
   const supabase = await createClient()

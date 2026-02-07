@@ -1,28 +1,29 @@
-'use client'
+﻿'use client'
 
-import { 
-  LayoutDashboard, 
-  HardHat, 
-  FileText, 
-  Settings, 
-  LogOut, 
+import {
+  LayoutDashboard,
+  HardHat,
+  FileText,
+  Settings,
+  LogOut,
   Building2,
   Users,
-  ClipboardList, // ไอคอนสำหรับ BOQ
-  ClipboardPlus // ไอคอนสำหรับใบขอเบิก
+  ClipboardList,
+  ClipboardPlus,
+  BarChart3,
 } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 
 const menuItems = [
   { icon: LayoutDashboard, label: 'ภาพรวม', href: '/dashboard' },
   { icon: Building2, label: 'โครงการ', href: '/dashboard/projects' },
-  { icon: ClipboardList, label: 'แบบบ้าน & BOQ', href: '/dashboard/boq' }, // เมนูใหม่
+  { icon: ClipboardList, label: 'แบบบ้าน & BOQ', href: '/dashboard/boq' },
   { icon: Users, label: 'ผู้รับเหมา', href: '/dashboard/contractors' },
-  { icon: ClipboardPlus, label: 'สร้างใบขอเบิก (Foreman)', href: '/dashboard/billing/request' },
+  { icon: ClipboardPlus, label: 'สร้างใบขอเบิก (Foreman)', href: '/dashboard/foreman/create-progress' },
   { icon: FileText, label: 'รายการเบิกจ่าย', href: '/dashboard/billing' },
+  { icon: BarChart3, label: 'รายงาน DC', href: '/dashboard/reports/dc-history' },
   { icon: HardHat, label: 'ตรวจหน้างาน (Foreman)', href: '/dashboard/foreman' },
   { icon: Settings, label: 'ตั้งค่า', href: '/dashboard/settings' },
 ]
@@ -51,10 +52,10 @@ export default function Sidebar() {
 
       <nav className="space-y-1 p-4">
         {menuItems.map((item) => {
-          const isActive = pathname.startsWith(item.href) && item.href !== '/dashboard' 
-            ? true 
+          const isActive = pathname.startsWith(item.href) && item.href !== '/dashboard'
+            ? true
             : pathname === item.href
-            
+
           return (
             <Link
               key={item.href}

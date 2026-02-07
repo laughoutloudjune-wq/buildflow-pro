@@ -10,6 +10,14 @@ async function getCurrentUser() {
   return user
 }
 
+async function getPlotNameMap(supabase: any, plotIds: (string | null | undefined)[]) {
+  const ids = Array.from(new Set((plotIds || []).filter(Boolean))) as string[]
+  if (ids.length === 0) return new Map<string, string>()
+  const { data, error } = await supabase.from('plots').select('id, name').in('id', ids)
+  if (error) throw new Error(error.message)
+  return new Map((data || []).map((p: any) => [p.id, p.name]))
+}
+
 // 1. ดึงข้อมูลเบื้องต้นสำหรับทำ Dropdown
 export async function getBillingOptions() {
   const supabase = await createClient()
@@ -26,21 +34,26 @@ export async function getBillingOptions() {
 }
 
 // 2. ดึงงานที่พร้อมเบิก (แก้ Foreign Key แล้ว)
-export async function getBillableJobs(projectId: string, contractorId: string) {
+export async function getBillableJobs(projectId: string, contractorId: string, plotId?: string) {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('job_assignments')
     .select(`
       id,
       status,
+      agreed_price_per_unit,
       boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, unit, quantity, price_per_unit),
-      plots!inner (name, project_id),
+      plots!inner (id, name, project_id),
       payments (amount)
     `)
     .eq('contractor_id', contractorId)
     .eq('plots.project_id', projectId)
     .neq('status', 'pending') 
+
+  if (plotId) query = query.eq('plots.id', plotId)
+
+  const { data, error } = await query
 
   if (error) {
     console.error("Error fetching billable jobs:", error)
@@ -48,13 +61,16 @@ export async function getBillableJobs(projectId: string, contractorId: string) {
   }
 
   return data.map((job: any) => {
-    const totalBoq = (job.boq_master?.quantity || 0) * (job.boq_master?.price_per_unit || 0);
+    const pricePerUnit = job.agreed_price_per_unit ?? job.boq_master?.price_per_unit ?? 0
+    const totalBoq = (job.boq_master?.quantity || 0) * pricePerUnit;
     const payments = Array.isArray(job.payments) ? job.payments : [];
     const paid = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
     const remaining = totalBoq - paid;
 
     return {
       ...job,
+      effective_price_per_unit: pricePerUnit,
+      pricing_source: job.agreed_price_per_unit != null ? 'assignment' : 'boq_master',
       totalBoq,
       paid,
       remaining: remaining
@@ -134,19 +150,39 @@ export async function createBillingRequest(data: any) {
 
   if (!user) throw new Error("User not found")
 
+  const requestType = data.type === 'extra_work' ? 'extra_work' : 'progress'
+  const isExtraWork = requestType === 'extra_work'
+  const adjustments = Array.isArray(data.adjustments) ? data.adjustments : []
+  const totalAddAmount = data.total_add_amount ?? adjustments
+    .filter((adj: any) => adj.type === 'addition')
+    .reduce((sum: number, adj: any) => sum + (parseFloat(adj.quantity) || 0) * (parseFloat(adj.unit_price) || 0), 0)
+  const totalDeductAmount = data.total_deduct_amount ?? adjustments
+    .filter((adj: any) => adj.type === 'deduction')
+    .reduce((sum: number, adj: any) => sum + (parseFloat(adj.quantity) || 0) * (parseFloat(adj.unit_price) || 0), 0)
+  const totalWorkAmount = isExtraWork ? 0 : (data.total_work_amount || 0)
+  const netAmount = isExtraWork
+    ? (totalAddAmount - totalDeductAmount)
+    : (totalWorkAmount + totalAddAmount - totalDeductAmount)
+
   // 1. Create Billing Header with 'pending_review' status
   const { data: bill, error: billError } = await supabase
     .from('billings')
     .insert([{
       project_id: data.project_id,
       contractor_id: data.contractor_id,
+      plot_id: data.plot_id || null,
       billing_date: data.billing_date,
       note: data.note,
-      total_work_amount: data.total_work_amount,
-      total_add_amount: data.total_add_amount,
-      total_deduct_amount: data.total_deduct_amount,
-      net_amount: data.total_work_amount + data.total_add_amount - data.total_deduct_amount, // Net amount includes adjustments
+      total_work_amount: totalWorkAmount,
+      total_add_amount: totalAddAmount,
+      total_deduct_amount: totalDeductAmount,
+      net_amount: netAmount,
       status: 'pending_review',
+      type: requestType,
+      attachment_urls: data.attachment_urls || null,
+      reason_for_dc: data.reason_for_dc || null,
+      created_by: user.id,
+      submitted_at: new Date().toISOString(),
       submitted_by: user.id
     }])
     .select()
@@ -156,8 +192,8 @@ export async function createBillingRequest(data: any) {
 
   const billingId = bill.id
 
-  // 2. Save Job line items
-  if (data.selected_jobs.length > 0) {
+  // 2. Save Job line items (Progress only)
+  if (!isExtraWork && data.selected_jobs?.length > 0) {
     const jobsToInsert = data.selected_jobs.map((j: any) => ({
       billing_id: billingId,
       job_assignment_id: j.id,
@@ -168,8 +204,8 @@ export async function createBillingRequest(data: any) {
   }
 
   // 3. บันทึกงานเพิ่ม/งานหัก (for Foreman)
-  if (data.adjustments?.length > 0) {
-    const adjToInsert = data.adjustments.map((adj: any) => ({
+  if (adjustments.length > 0) {
+    const adjToInsert = adjustments.map((adj: any) => ({
       billing_id: billingId,
       type: adj.type,
       description: adj.description,
@@ -279,6 +315,143 @@ export async function rejectBilling(id: string, note?: string) {
     revalidatePath(`/dashboard/billing/${id}`)
 }
 
+export async function updateBillingRequest(id: string, data: any) {
+  const supabase = await createClient()
+  const user = await getCurrentUser()
+  if (!user) throw new Error("User not found")
+
+  const { data: current, error: currentError } = await supabase
+    .from('billings')
+    .select('id, status, created_by, submitted_by')
+    .eq('id', id)
+    .single()
+  if (currentError) throw new Error(currentError.message)
+  if (!current) throw new Error("Billing not found")
+  if (current.status !== 'pending_review') throw new Error("Can edit pending review only")
+  if (current.created_by && current.created_by !== user.id) throw new Error("No permission to edit this request")
+  if (!current.created_by && current.submitted_by !== user.id) throw new Error("No permission to edit this request")
+
+  const requestType = data.type === 'extra_work' ? 'extra_work' : 'progress'
+  const isExtraWork = requestType === 'extra_work'
+  const adjustments = Array.isArray(data.adjustments) ? data.adjustments : []
+  const totalAddAmount = data.total_add_amount ?? adjustments
+    .filter((adj: any) => adj.type === 'addition')
+    .reduce((sum: number, adj: any) => sum + (parseFloat(adj.quantity) || 0) * (parseFloat(adj.unit_price) || 0), 0)
+  const totalDeductAmount = data.total_deduct_amount ?? adjustments
+    .filter((adj: any) => adj.type === 'deduction')
+    .reduce((sum: number, adj: any) => sum + (parseFloat(adj.quantity) || 0) * (parseFloat(adj.unit_price) || 0), 0)
+  const totalWorkAmount = isExtraWork ? 0 : (data.total_work_amount || 0)
+  const netAmount = isExtraWork
+    ? (totalAddAmount - totalDeductAmount)
+    : (totalWorkAmount + totalAddAmount - totalDeductAmount)
+
+  const { error: updateError } = await supabase
+    .from('billings')
+    .update({
+      project_id: data.project_id,
+      contractor_id: data.contractor_id,
+      plot_id: data.plot_id || null,
+      billing_date: data.billing_date,
+      note: data.note,
+      total_work_amount: totalWorkAmount,
+      total_add_amount: totalAddAmount,
+      total_deduct_amount: totalDeductAmount,
+      net_amount: netAmount,
+      type: requestType,
+      attachment_urls: data.attachment_urls || null,
+      reason_for_dc: data.reason_for_dc || null,
+      submitted_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (updateError) throw new Error(updateError.message)
+
+  await supabase.from('billing_jobs').delete().eq('billing_id', id)
+  await supabase.from('billing_adjustments').delete().eq('billing_id', id)
+
+  if (!isExtraWork && data.selected_jobs?.length > 0) {
+    const jobsToInsert = data.selected_jobs.map((j: any) => ({
+      billing_id: id,
+      job_assignment_id: j.id,
+      amount: j.request_amount,
+      progress_percent: j.progress_percent ?? null
+    }))
+    await supabase.from('billing_jobs').insert(jobsToInsert)
+  }
+
+  if (adjustments.length > 0) {
+    const adjToInsert = adjustments.map((adj: any) => ({
+      billing_id: id,
+      type: adj.type,
+      description: adj.description,
+      unit: adj.unit,
+      quantity: parseFloat(adj.quantity),
+      unit_price: parseFloat(adj.unit_price)
+    }))
+    await supabase.from('billing_adjustments').insert(adjToInsert)
+  }
+
+  revalidatePath('/dashboard/foreman/history')
+  revalidatePath(`/dashboard/billing/${id}/review`)
+}
+
+export async function getBillingsByCreator() {
+  const supabase = await createClient()
+  const user = await getCurrentUser()
+  if (!user) throw new Error("User not found")
+
+  const { data, error } = await supabase
+    .from('billings')
+    .select(`
+      *,
+      projects (name),
+      contractors (name)
+    `)
+    .or(`created_by.eq.${user.id},submitted_by.eq.${user.id}`)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
+
+  const plotMap = await getPlotNameMap(supabase, (data || []).map((b: any) => b.plot_id))
+  return (data || []).map((bill: any) => ({
+    ...bill,
+    plots: bill.plot_id ? { name: plotMap.get(bill.plot_id) || null } : null,
+  }))
+}
+
+export async function getExtraWorkReport(filters: {
+  projectId?: string
+  plotId?: string
+  reason?: string
+  dateFrom?: string
+  dateTo?: string
+} = {}) {
+  const supabase = await createClient()
+  let query = supabase
+    .from('billings')
+    .select(`
+      *,
+      projects (name),
+      contractors (name),
+      billing_adjustments (type, quantity, unit_price)
+    `)
+    .eq('type', 'extra_work')
+    .order('billing_date', { ascending: false })
+
+  if (filters.projectId) query = query.eq('project_id', filters.projectId)
+  if (filters.plotId) query = query.eq('plot_id', filters.plotId)
+  if (filters.reason) query = query.eq('reason_for_dc', filters.reason)
+  if (filters.dateFrom) query = query.gte('billing_date', filters.dateFrom)
+  if (filters.dateTo) query = query.lte('billing_date', filters.dateTo)
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+
+  const plotMap = await getPlotNameMap(supabase, (data || []).map((b: any) => b.plot_id))
+  return (data || []).map((bill: any) => ({
+    ...bill,
+    plots: bill.plot_id ? { name: plotMap.get(bill.plot_id) || null } : null,
+  }))
+}
+
 
 // 4. ดึงรายการบิลทั้งหมด
 export async function getBillings() {
@@ -310,6 +483,7 @@ export async function getBillingById(id: string) {
         progress_percent,
         job_assignments (
           id,
+          agreed_price_per_unit,
           plots (name),
           payments (amount),
           boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, unit, quantity, price_per_unit)
@@ -350,6 +524,7 @@ export async function getBillingById(id: string) {
     progress_percent: number | null;
     job_assignments: {
       id: string;
+      agreed_price_per_unit: number | null;
       plots: { name: string } | null;
       payments: { amount: number }[];
       boq_master: {
@@ -367,7 +542,8 @@ export async function getBillingById(id: string) {
       const job = billingJob.job_assignments;
       if (!job) return { ...billingJob, totalBoq: 0, paid: 0, previous_progress: 0 };
       
-      const totalBoq = (job.boq_master?.quantity || 0) * (job.boq_master?.price_per_unit || 0);
+      const pricePerUnit = (job.agreed_price_per_unit ?? job.boq_master?.price_per_unit) || 0
+      const totalBoq = (job.boq_master?.quantity || 0) * pricePerUnit;
 
       // Calculate amount paid *before* this billing
       // This logic seems complex, ensure it's correct. It seems to be filtering payments that are *not* part of the current bill.
