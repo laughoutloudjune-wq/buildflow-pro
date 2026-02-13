@@ -104,6 +104,7 @@ export async function getBOQItems(modelId: string) {
 export async function createBOQItem(formData: FormData) {
   const supabase = await createClient()
   const house_model_id = formData.get('house_model_id') as string
+  const formProjectId = formData.get('project_id') as string
   const item_name = formData.get('item_name') as string
   const contractor_type_id = formData.get('contractor_type_id') as string
   const unit = formData.get('unit') as string
@@ -112,7 +113,21 @@ export async function createBOQItem(formData: FormData) {
 
   if (!item_name || !house_model_id) return
 
+  const { data: model, error: modelError } = await supabase
+    .from('house_models')
+    .select('project_id')
+    .eq('id', house_model_id)
+    .maybeSingle()
+
+  if (modelError) throw new Error(modelError.message)
+
+  const project_id = formProjectId || model?.project_id
+  if (!project_id) {
+    throw new Error('House model is missing project. Please set project on this house model first.')
+  }
+
   const { error } = await supabase.from('boq_master').insert([{
+    project_id,
     house_model_id,
     item_name,
     contractor_type_id: parseInt(contractor_type_id),

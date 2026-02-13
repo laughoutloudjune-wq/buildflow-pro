@@ -57,9 +57,14 @@ export default function BOQDetailPage() {
   const handleSubmit = async (formData: FormData) => {
     setIsModalOpen(false)
     startTransition(async () => {
-      formData.append('house_model_id', id)
-      await createBOQItem(formData)
-      await loadData()
+      try {
+        formData.append('house_model_id', id)
+        await createBOQItem(formData)
+        await loadData()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to create BOQ item'
+        alert(message)
+      }
     })
   }
 
@@ -208,6 +213,7 @@ export default function BOQDetailPage() {
         title="เพิ่มรายการ BOQ"
       >
         <form action={handleSubmit} className="space-y-4">
+          <input type="hidden" name="project_id" value={model?.project_id || ''} />
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">ชื่อรายการงาน</label>
             <input name="item_name" required className="w-full" placeholder="เช่น เทคอนกรีตฐานราก" />
