@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, Loader2, Coins, Layers, AlertCircle } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
-import { getHouseModelById, getBOQItems, createBOQItem, deleteBOQItem } from '@/actions/boq-actions'
+import { getHouseModelById, getBOQItems, createBOQItem, deleteBOQItem, updateBOQItem, getHouseModels, importBOQItems } from '@/actions/boq-actions'
 import { getContractorTypes } from '@/actions/contractor-type-actions';
 import { formatCurrency } from '@/lib/currency'
 
@@ -18,11 +18,17 @@ export default function BOQDetailPage() {
   const [model, setModel] = useState<any>(null)
   const [items, setItems] = useState<any[]>([])
   const [types, setTypes] = useState<any[]>([])
+  const [allModels, setAllModels] = useState<any[]>([])
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [sourceModelId, setSourceModelId] = useState('')
+  const [sourceItems, setSourceItems] = useState<any[]>([])
+  const [selectedImportItems, setSelectedImportItems] = useState<Record<string, { selected: boolean; price: string }>>({})
   
   // Loading State (สำคัญมาก)
   const [isLoading, setIsLoading] = useState(true)
 
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<any | null>(null)
   const [isPending, startTransition] = useTransition()
 
   // โหลดข้อมูลเมื่อเข้าหน้าเว็บ
@@ -35,10 +41,11 @@ export default function BOQDetailPage() {
       setIsLoading(true)
       console.log("Fetching BOQ data for ID:", id) // Debug Log
 
-      const [m, i, t] = await Promise.all([
+      const [m, i, t, hm] = await Promise.all([
         getHouseModelById(id),
         getBOQItems(id),
-        getContractorTypes()
+        getContractorTypes(),
+        getHouseModels(),
       ])
 
       console.log("Model Data:", m) // Debug Log
@@ -46,6 +53,7 @@ export default function BOQDetailPage() {
       if (m) setModel(m)
       if (i) setItems(i)
       if (t) setTypes(t)
+      if (hm) setAllModels(hm.filter((x: any) => x.id !== id))
 
     } catch (error) {
       console.error("Error loading BOQ Detail:", error)
@@ -59,10 +67,105 @@ export default function BOQDetailPage() {
     startTransition(async () => {
       try {
         formData.append('house_model_id', id)
-        await createBOQItem(formData)
+        if (editingItem?.id) {
+          await updateBOQItem(editingItem.id, formData)
+        } else {
+          await createBOQItem(formData)
+        }
+        setEditingItem(null)
         await loadData()
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to create BOQ item'
+        const message = error instanceof Error ? error.message : 'Failed to save BOQ item'
+        alert(message)
+      }
+    })
+  }
+
+  const openCreateModal = () => {
+    setEditingItem(null)
+    setIsModalOpen(true)
+  }
+
+  const openEditModal = (item: any) => {
+    setEditingItem(item)
+    setIsModalOpen(true)
+  }
+
+  const openImportModal = () => {
+    setSourceModelId('')
+    setSourceItems([])
+    setSelectedImportItems({})
+    setIsImportModalOpen(true)
+  }
+
+  const handleSourceModelChange = async (value: string) => {
+    setSourceModelId(value)
+    setSourceItems([])
+    setSelectedImportItems({})
+    if (!value) return
+
+    const rows = await getBOQItems(value)
+    setSourceItems(rows || [])
+
+    const initialSelection: Record<string, { selected: boolean; price: string }> = {}
+    ;(rows || []).forEach((row: any) => {
+      initialSelection[row.id] = {
+        selected: true,
+        price: String(row.price_per_unit || 0),
+      }
+    })
+    setSelectedImportItems(initialSelection)
+  }
+
+  const toggleImportRow = (itemId: string, selected: boolean) => {
+    setSelectedImportItems((prev) => ({
+      ...prev,
+      [itemId]: {
+        selected,
+        price: prev[itemId]?.price ?? '0',
+      },
+    }))
+  }
+
+  const updateImportPrice = (itemId: string, price: string) => {
+    setSelectedImportItems((prev) => ({
+      ...prev,
+      [itemId]: {
+        selected: prev[itemId]?.selected ?? true,
+        price,
+      },
+    }))
+  }
+
+  const handleImportSubmit = () => {
+    if (!sourceModelId) {
+      alert('กรุณาเลือกแบบบ้านต้นทาง')
+      return
+    }
+
+    const itemsToImport = sourceItems
+      .filter((row) => selectedImportItems[row.id]?.selected)
+      .map((row) => ({
+        source_item_id: row.id as string,
+        price_per_unit: parseFloat(selectedImportItems[row.id]?.price || '0') || 0,
+      }))
+
+    if (itemsToImport.length === 0) {
+      alert('กรุณาเลือกรายการอย่างน้อย 1 รายการ')
+      return
+    }
+
+    startTransition(async () => {
+      try {
+        await importBOQItems({
+          target_model_id: id,
+          source_model_id: sourceModelId,
+          items: itemsToImport,
+        })
+        setIsImportModalOpen(false)
+        await loadData()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to import BOQ items'
         alert(message)
       }
     })
@@ -131,7 +234,14 @@ export default function BOQDetailPage() {
                 <div className="text-xl font-bold text-emerald-600">฿{formatCurrency(grandTotal)}</div>
             </div>
             <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={openImportModal}
+            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 shadow-sm transition"
+            >
+            <CopyPlus className="h-4 w-4" />
+            นำเข้า BOQ
+            </button>
+            <button
+            onClick={openCreateModal}
             className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 shadow-sm transition"
             >
             <Plus className="h-4 w-4" />
@@ -152,7 +262,7 @@ export default function BOQDetailPage() {
                 <th className="px-4 py-3 font-semibold text-right">หน่วย</th>
                 <th className="px-4 py-3 font-semibold text-right">ราคา/หน่วย</th>
                 <th className="px-4 py-3 font-semibold text-right">รวมเป็นเงิน</th>
-                <th className="px-4 py-3 font-semibold text-center w-12.5">ลบ</th>
+                <th className="px-4 py-3 font-semibold text-center w-[90px]">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -181,9 +291,18 @@ export default function BOQDetailPage() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button
+                        onClick={() => openEditModal(item)}
+                        disabled={isPending}
+                        className="rounded p-1 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition"
+                        title="แก้ไข"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
                         onClick={() => handleDelete(item.id)}
                         disabled={isPending}
                         className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 transition"
+                        title="ลบ"
                       >
                         {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                       </button>
@@ -209,19 +328,22 @@ export default function BOQDetailPage() {
       {/* Modal เพิ่มรายการ */}
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="เพิ่มรายการ BOQ"
+        onClose={() => {
+          setIsModalOpen(false)
+          setEditingItem(null)
+        }}
+        title={editingItem ? 'แก้ไขรายการ BOQ' : 'เพิ่มรายการ BOQ'}
       >
-        <form action={handleSubmit} className="space-y-4">
+        <form key={editingItem?.id || 'new'} action={handleSubmit} className="space-y-4">
           <input type="hidden" name="project_id" value={model?.project_id || ''} />
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">ชื่อรายการงาน</label>
-            <input name="item_name" required className="w-full" placeholder="เช่น เทคอนกรีตฐานราก" />
+            <input name="item_name" required className="w-full" placeholder="เช่น เทคอนกรีตฐานราก" defaultValue={editingItem?.item_name} />
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">ประเภทช่าง</label>
-            <select name="contractor_type_id" required className="w-full">
+            <select name="contractor_type_id" required className="w-full" defaultValue={editingItem?.contractor_type_id || ''}>
               <option value="">-- เลือกประเภทช่าง --</option>
               {types.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
@@ -232,11 +354,11 @@ export default function BOQDetailPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">จำนวนปริมาณ</label>
-              <input name="quantity" type="number" step="0.01" required className="w-full" placeholder="100" />
+              <input name="quantity" type="number" step="0.01" required className="w-full" placeholder="100" defaultValue={editingItem?.quantity} />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">หน่วย</label>
-              <input name="unit" required className="w-full" placeholder="ตร.ม. / เหมา" />
+              <input name="unit" required className="w-full" placeholder="ตร.ม. / เหมา" defaultValue={editingItem?.unit} />
             </div>
           </div>
 
@@ -244,15 +366,108 @@ export default function BOQDetailPage() {
             <label className="mb-1 block text-sm font-medium text-slate-700">ราคาต่อหน่วย (บาท)</label>
             <div className="relative">
                 <Coins className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <input name="price_per_unit" type="number" step="0.01" required className="w-full pl-9" placeholder="0.00" />
+                <input name="price_per_unit" type="number" step="0.01" required className="w-full pl-9" placeholder="0.00" defaultValue={editingItem?.price_per_unit} />
             </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">ยกเลิก</button>
-            <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 shadow transition">บันทึกรายการ</button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsModalOpen(false)
+                setEditingItem(null)
+              }}
+              className="btn-secondary"
+            >
+              ยกเลิก
+            </button>
+            <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 shadow transition">
+              {editingItem ? 'บันทึกการแก้ไข' : 'บันทึกรายการ'}
+            </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        title="นำเข้า BOQ จากแบบบ้านอื่น"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">เลือกแบบบ้านต้นทาง</label>
+            <select
+              className="w-full"
+              value={sourceModelId}
+              onChange={(e) => handleSourceModelChange(e.target.value)}
+            >
+              <option value="">-- เลือกแบบบ้าน --</option>
+              {allModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} {m.code ? `(${m.code})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {sourceItems.length > 0 && (
+            <div className="max-h-[320px] overflow-auto border rounded-lg">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 sticky top-0">
+                  <tr>
+                    <th className="p-2 text-left">เลือก</th>
+                    <th className="p-2 text-left">รายการงาน</th>
+                    <th className="p-2 text-right">จำนวน</th>
+                    <th className="p-2 text-right">ราคาเดิม</th>
+                    <th className="p-2 text-right">ราคาใหม่</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {sourceItems.map((row) => (
+                    <tr key={row.id}>
+                      <td className="p-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedImportItems[row.id]?.selected || false}
+                          onChange={(e) => toggleImportRow(row.id, e.target.checked)}
+                        />
+                      </td>
+                      <td className="p-2">
+                        <div className="font-medium text-slate-700">{row.item_name}</div>
+                        <div className="text-xs text-slate-400">{row.unit || '-'}</div>
+                      </td>
+                      <td className="p-2 text-right">{row.quantity}</td>
+                      <td className="p-2 text-right">{formatCurrency(row.price_per_unit)}</td>
+                      <td className="p-2 text-right">
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="w-28 text-right"
+                          value={selectedImportItems[row.id]?.price ?? '0'}
+                          onChange={(e) => updateImportPrice(row.id, e.target.value)}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-2 border-t">
+            <button type="button" onClick={() => setIsImportModalOpen(false)} className="btn-secondary">
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              onClick={handleImportSubmit}
+              disabled={isPending || !sourceModelId}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              นำเข้า
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   )
