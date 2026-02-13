@@ -7,6 +7,7 @@ import { Plus, Loader2, Eye, Edit } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { getBillings } from '@/actions/billing-actions'
 import BillingModal from '@/components/billings/BillingModal'
+import { formatCurrency } from '@/lib/currency'
 
 // Helper function to get status styles
 const getStatusChip = (status: string) => {
@@ -112,7 +113,7 @@ export default function BillingListPage() {
                        <div className="text-xs text-slate-500">{bill.projects?.name}</div>
                      </td>
                      <td className="px-4 py-3 text-right font-bold text-emerald-600">
-                       ฿{bill.net_amount?.toLocaleString()}
+                       ฿{formatCurrency(bill.net_amount)}
                      </td>
                      <td className="px-4 py-3 text-center">
                         {getStatusChip(bill.status)}

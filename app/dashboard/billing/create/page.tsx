@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Save, Plus, Trash2, Calculator, Briefcase, FileMinus, FilePlus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { getBillingOptions, getBillableJobs, createBilling } from '@/actions/billing-actions'
+import { formatCurrency } from '@/lib/currency'
 
 export default function CreateBillingPage() {
   const router = useRouter()
@@ -258,7 +259,7 @@ export default function CreateBillingPage() {
                                <div className="text-xs text-slate-500">แปลง {job.plots?.name}</div>
                              </td>
                              <td className="p-3 text-right">
-                               <div className="font-medium text-slate-600">฿{job.remaining.toLocaleString()}</div>
+                               <div className="font-medium text-slate-600">฿{formatCurrency(job.remaining)}</div>
                                {job.totalBoq > 0 && (
                                    <div className="text-xs text-emerald-600 font-light">
                                        ~ {((job.paid / job.totalBoq) * 100).toFixed(1)}% paid
@@ -293,7 +294,7 @@ export default function CreateBillingPage() {
                  </table>
                </div>
                <div className="p-3 bg-slate-50 border-t text-right font-bold text-slate-700">
-                 รวมค่างาน: ฿{totalWork.toLocaleString()}
+                 รวมค่างาน: ฿{formatCurrency(totalWork)}
                </div>
             </Card>
           )}
@@ -370,21 +371,21 @@ export default function CreateBillingPage() {
              <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
                    <span className="text-slate-500">รวมค่างานตามสัญญา</span>
-                   <span className="font-medium">฿{totalWork.toLocaleString()}</span>
+                   <span className="font-medium">฿{formatCurrency(totalWork)}</span>
                 </div>
                 <div className="flex justify-between text-blue-600">
                    <span>+ งานเพิ่ม (DC)</span>
-                   <span>฿{totalAdd.toLocaleString()}</span>
+                   <span>฿{formatCurrency(totalAdd)}</span>
                 </div>
                 
                 <div className="border-t pt-2 mt-2 font-bold flex justify-between">
                    <span>ยอดรวมก่อนหัก</span>
-                   <span>฿{baseAmount.toLocaleString()}</span>
+                   <span>฿{formatCurrency(baseAmount)}</span>
                 </div>
 
                 <div className="flex justify-between text-red-600 pt-2">
                    <span>- รายการหัก (Deduction)</span>
-                   <span>฿{totalDeduct.toLocaleString()}</span>
+                   <span>฿{formatCurrency(totalDeduct)}</span>
                 </div>
 
                 {/* Settings Input */}
@@ -399,7 +400,7 @@ export default function CreateBillingPage() {
                    </div>
                    <div className="flex justify-between text-xs text-slate-400 pl-2">
                       <span>ยอดหัก</span>
-                      <span>-฿{whtAmount.toLocaleString()}</span>
+                      <span>-฿{formatCurrency(whtAmount)}</span>
                    </div>
 
                    <div className="flex items-center justify-between pt-1">
@@ -412,14 +413,14 @@ export default function CreateBillingPage() {
                    </div>
                    <div className="flex justify-between text-xs text-slate-400 pl-2">
                       <span>ยอดหัก</span>
-                      <span>-฿{retentionAmount.toLocaleString()}</span>
+                      <span>-฿{formatCurrency(retentionAmount)}</span>
                    </div>
                 </div>
 
                 <div className="border-t border-dashed pt-4 mt-4">
                    <div className="flex justify-between items-end">
                       <span className="font-bold text-lg text-slate-800">ยอดสุทธิ</span>
-                      <span className="font-bold text-2xl text-emerald-600">฿{netAmount.toLocaleString()}</span>
+                      <span className="font-bold text-2xl text-emerald-600">฿{formatCurrency(netAmount)}</span>
                    </div>
                    <p className="text-xs text-right text-slate-400 mt-1">(Net Payment)</p>
                 </div>

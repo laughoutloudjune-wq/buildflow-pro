@@ -8,6 +8,7 @@ import { getBillingOptions, createBillingRequest } from '@/actions/billing-actio
 import { getPlotsByProjectId } from '@/actions/plot-actions'
 import { Plus, Trash2, Camera, CheckCircle } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
+import { formatCurrency } from '@/lib/currency'
 
 type Project = { id: string; name: string }
 type Contractor = { id: string; name: string }
@@ -220,7 +221,7 @@ export default function CreateExtraWorkPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-500">ยอดรวมงานเพิ่ม</p>
-              <p className="text-2xl font-bold text-amber-700">{totalAddAmount.toFixed(2)} บาท</p>
+              <p className="text-2xl font-bold text-amber-700">{formatCurrency(totalAddAmount)} บาท</p>
             </div>
             <button onClick={handleSubmit} disabled={isSubmitting} className="px-6 py-3 bg-amber-600 text-white font-bold rounded-md hover:bg-amber-700 disabled:bg-gray-400">
               {isSubmitting ? 'กำลังส่ง...' : 'ส่งคำขอเพื่อพิจารณา'}

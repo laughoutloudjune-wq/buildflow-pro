@@ -17,6 +17,7 @@ import { updatePlot } from '@/actions/plot-actions'
 import { getHouseModels } from '@/actions/boq-actions'
 import { getContractors } from '@/actions/contractor-actions'
 import { createPayment, deletePayment } from '@/actions/payment-actions'
+import { formatCurrency } from '@/lib/currency'
 
 type Plot = {
   id: string
@@ -343,7 +344,7 @@ export default function PlotDetailPage() {
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-800">{job.boq_master?.item_name}</div>
                       <div className="text-xs text-slate-400">
-                        {job.boq_master?.quantity} {job.boq_master?.unit} x {job.boq_master?.price_per_unit?.toLocaleString()}
+                        {job.boq_master?.quantity} {job.boq_master?.unit} x {formatCurrency(job.boq_master?.price_per_unit)}
                       </div>
                     </td>
 
@@ -378,15 +379,15 @@ export default function PlotDetailPage() {
                         </div>
                         <div className="text-[11px] text-slate-500">
                           {job.agreed_price_per_unit != null
-                            ? `ใช้ราคาตกลง: ฿${Number(effectivePrice).toLocaleString()}`
-                            : `ใช้ราคา BOQ: ฿${Number(effectivePrice).toLocaleString()}`}
+                            ? `ใช้ราคาตกลง: ฿${formatCurrency(Number(effectivePrice))}`
+                            : `ใช้ราคา BOQ: ฿${formatCurrency(Number(effectivePrice))}`}
                         </div>
                       </div>
                     </td>
 
-                    <td className="px-4 py-3 text-right text-slate-600 font-medium">฿{totalBoq.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-slate-600 font-medium">฿{formatCurrency(totalBoq)}</td>
                     <td className={`px-4 py-3 text-right font-bold ${isOverBudget ? 'text-red-600' : 'text-emerald-600'}`}>
-                      ฿{paid.toLocaleString()}
+                      ฿{formatCurrency(paid)}
                     </td>
 
                     <td className="px-4 py-3">
@@ -486,23 +487,23 @@ export default function PlotDetailPage() {
           return (
             <div className="space-y-5">
               <div className="rounded border border-indigo-100 bg-indigo-50 p-2 text-xs text-indigo-700">
-                Effective price per unit: ฿{Number(effectivePrice).toLocaleString()}{' '}
+                Effective price per unit: ฿{formatCurrency(Number(effectivePrice))}{' '}
                 {selectedJob?.agreed_price_per_unit != null ? '(variable price)' : '(BOQ default)'}
               </div>
 
               <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-100 text-center">
                 <div>
                   <div className="text-xs text-slate-500 mb-1">งบ BOQ</div>
-                  <div className="text-sm font-bold text-slate-800">฿{totalBoq.toLocaleString()}</div>
+                  <div className="text-sm font-bold text-slate-800">฿{formatCurrency(totalBoq)}</div>
                 </div>
                 <div>
                   <div className="text-xs text-emerald-600 mb-1">จ่ายแล้ว ({paidPercent.toFixed(0)}%)</div>
-                  <div className="text-sm font-bold text-emerald-600">฿{paid.toLocaleString()}</div>
+                  <div className="text-sm font-bold text-emerald-600">฿{formatCurrency(paid)}</div>
                 </div>
                 <div>
                   <div className="text-xs text-slate-500 mb-1">คงเหลือ</div>
                   <div className={`text-sm font-bold ${remaining < 0 ? 'text-red-500' : 'text-slate-800'}`}>
-                    ฿{remaining.toLocaleString()}
+                    ฿{formatCurrency(remaining)}
                   </div>
                 </div>
               </div>
@@ -588,7 +589,7 @@ export default function PlotDetailPage() {
                     {selectedJob.payments.map((p: any) => (
                       <div key={p.id} className="flex justify-between items-center text-xs bg-white p-2 rounded shadow-sm">
                         <div className="flex flex-col">
-                          <span className="font-bold text-slate-700">฿{p.amount.toLocaleString()}</span>
+                          <span className="font-bold text-slate-700">฿{formatCurrency(p.amount)}</span>
                           <span className="text-slate-400">{p.note || '-'}</span>
                         </div>
                         <div className="flex items-center gap-3">

@@ -6,6 +6,7 @@ import { getBillingOptions, getBillableJobs, createBillingRequest } from '@/acti
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import { Plus, Trash2, CheckCircle } from 'lucide-react'
+import { formatCurrency } from '@/lib/currency'
 
 type Project = { id: string; name: string }
 type Contractor = { id: string; name: string }
@@ -202,7 +203,7 @@ export default function CreateBillingRequestPage() {
                 <div className="bg-gray-50 p-4 rounded-lg text-left mb-6">
                     <p><strong>โครงการ:</strong> {projects.find(p => p.id === submittedData.project_id)?.name}</p>
                     <p><strong>ผู้รับเหมา:</strong> {contractors.find(c => c.id === submittedData.contractor_id)?.name}</p>
-                    <p className="mt-2 text-lg font-bold">ยอดขอเบิกรวม: <span className="text-blue-600">{submittedData.net_amount.toFixed(2)} บาท</span></p>
+                    <p className="mt-2 text-lg font-bold">ยอดขอเบิกรวม: <span className="text-blue-600">{formatCurrency(submittedData.net_amount)} บาท</span></p>
                 </div>
                 <button 
                     onClick={handleModalClose}
@@ -266,8 +267,8 @@ export default function CreateBillingRequestPage() {
                     <tr key={job.id}>
                       <td className="px-6 py-4"><input type="checkbox" onChange={() => handleJobSelection(job.id, job)} checked={selectedJobs.has(job.id)} /></td>
                       <td className="px-6 py-4">{job.boq_master.item_name} ({job.plots.name})</td>
-                      <td className="px-6 py-4 text-right">{job.totalBoq.toFixed(2)}</td>
-                      <td className="px-6 py-4 text-right">{job.paid.toFixed(2)}</td>
+                      <td className="px-6 py-4 text-right">{formatCurrency(job.totalBoq)}</td>
+                      <td className="px-6 py-4 text-right">{formatCurrency(job.paid)}</td>
                       <td className="px-6 py-4 text-right">{job.previous_progress.toFixed(2)}%</td>
                       <td className="px-6 py-4 text-right">
                         {selectedJobs.has(job.id) && (
@@ -283,7 +284,7 @@ export default function CreateBillingRequestPage() {
                           />
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right">{selectedJobs.has(job.id) ? selectedJobs.get(job.id)?.request_amount.toFixed(2) : '0.00'}</td>
+                      <td className="px-6 py-4 text-right">{selectedJobs.has(job.id) ? formatCurrency(selectedJobs.get(job.id)?.request_amount || 0) : '0.00'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -328,10 +329,10 @@ export default function CreateBillingRequestPage() {
                   />
               </div>
               <div className="space-y-2 text-right">
-                  <p className="text-gray-500">ยอดเบิกตามเนื้องาน: <span className="font-semibold text-gray-800">{totalWorkAmount.toFixed(2)}</span></p>
-                  <p className="text-gray-500">ยอดงานเพิ่ม: <span className="font-semibold text-green-600">{totalAddAmount.toFixed(2)}</span></p>
-                  <p className="text-gray-500">ยอดงานหัก: <span className="font-semibold text-red-600">-{totalDeductAmount.toFixed(2)}</span></p>
-                  <p className="text-lg font-bold">ยอดรวมขอเบิก: <span className="text-2xl">{netAmount.toFixed(2)}</span></p>
+                  <p className="text-gray-500">ยอดเบิกตามเนื้องาน: <span className="font-semibold text-gray-800">{formatCurrency(totalWorkAmount)}</span></p>
+                  <p className="text-gray-500">ยอดงานเพิ่ม: <span className="font-semibold text-green-600">{formatCurrency(totalAddAmount)}</span></p>
+                  <p className="text-gray-500">ยอดงานหัก: <span className="font-semibold text-red-600">-{formatCurrency(totalDeductAmount)}</span></p>
+                  <p className="text-lg font-bold">ยอดรวมขอเบิก: <span className="text-2xl">{formatCurrency(netAmount)}</span></p>
               </div>
             </div>
         </div>

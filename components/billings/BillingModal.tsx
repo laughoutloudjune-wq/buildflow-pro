@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic'
 import { deleteBilling, getBillingById } from '@/actions/billing-actions'
 import { getOrganizationSettings } from '@/actions/settings-actions'
 import { BillingPdf } from '@/components/pdf/BillingPdf'
+import { formatCurrency } from '@/lib/currency'
 
 // Dynamic Import แก้ PDF Loading
 const PDFViewer = dynamic(
@@ -174,7 +175,7 @@ export default function BillingModal({ billingId, onClose, onDeleted }: BillingM
                                       <div className="font-medium text-slate-700">{job.job_assignments?.boq_master?.item_name}</div>
                                       <div className="text-xs text-slate-400">แปลง {job.job_assignments?.plots?.name}</div>
                                    </td>
-                                   <td className="p-3 text-right">฿{job.amount?.toLocaleString()}</td>
+                                   <td className="p-3 text-right">฿{formatCurrency(job.amount)}</td>
                                 </tr>
                              ))}
                              
@@ -187,7 +188,7 @@ export default function BillingModal({ billingId, onClose, onDeleted }: BillingM
                                        {adj.type === 'addition' ? '[+]' : '[-]'} {adj.description} ({adj.quantity} {adj.unit})
                                     </td>
                                     <td className="p-3 text-right">
-                                       {adj.type === 'deduction' ? '-' : ''}฿{total_amount.toLocaleString()}
+                                       {adj.type === 'deduction' ? '-' : ''}฿{formatCurrency(total_amount)}
                                     </td>
                                  </tr>
                                );
@@ -197,34 +198,34 @@ export default function BillingModal({ billingId, onClose, onDeleted }: BillingM
                              {/* [NEW] แสดงรายละเอียด หักภาษี / ประกัน */}
                              <tr>
                                 <td className="p-3 text-right font-bold">รวมค่างาน (Subtotal)</td>
-                                <td className="p-3 text-right font-bold">฿{totalBase.toLocaleString()}</td>
+                                <td className="p-3 text-right font-bold">฿{formatCurrency(totalBase)}</td>
                              </tr>
 
                              {billing.total_deduct_amount > 0 && (
                                 <tr>
                                    <td className="p-3 text-right text-red-600">รายการหัก (Deduction)</td>
-                                   <td className="p-3 text-right text-red-600">-฿{billing.total_deduct_amount?.toLocaleString()}</td>
+                                   <td className="p-3 text-right text-red-600">-฿{formatCurrency(billing.total_deduct_amount)}</td>
                                 </tr>
                              )}
 
                              {wht > 0 && (
                                 <tr>
                                    <td className="p-3 text-right text-slate-500">หัก ณ ที่จ่าย ({billing.wht_percent}%)</td>
-                                   <td className="p-3 text-right text-slate-500">-฿{wht.toLocaleString()}</td>
+                                   <td className="p-3 text-right text-slate-500">-฿{formatCurrency(wht)}</td>
                                 </tr>
                              )}
 
                              {retention > 0 && (
                                 <tr>
                                    <td className="p-3 text-right text-slate-500">หักประกันผลงาน ({billing.retention_percent}%)</td>
-                                   <td className="p-3 text-right text-slate-500">-฿{retention.toLocaleString()}</td>
+                                   <td className="p-3 text-right text-slate-500">-฿{formatCurrency(retention)}</td>
                                 </tr>
                              )}
 
                              {/* Net Amount */}
                              <tr className="bg-emerald-50 text-emerald-700">
                                 <td className="p-3 text-right text-lg font-bold">ยอดสุทธิ (Net Amount)</td>
-                                <td className="p-3 text-right text-lg font-bold">฿{billing.net_amount?.toLocaleString()}</td>
+                                <td className="p-3 text-right text-lg font-bold">฿{formatCurrency(billing.net_amount)}</td>
                              </tr>
                           </tfoot>
                        </table>

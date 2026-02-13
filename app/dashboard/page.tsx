@@ -5,6 +5,7 @@ import { Building2, Home, Wallet, Activity, TrendingUp, Clock, ArrowRight } from
 import { Card } from '@/components/ui/Card'
 import Link from 'next/link'
 import { getDashboardStats } from '@/actions/dashboard-actions'
+import { formatCurrency } from '@/lib/currency'
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null)
@@ -65,7 +66,7 @@ export default function DashboardPage() {
         />
         <StatsCard 
           title="จ่ายเงินแล้ว" 
-          value={`฿${stats.totalPaid.toLocaleString()}`} 
+          value={`฿${formatCurrency(stats.totalPaid)}`} 
           icon={<Wallet className="h-6 w-6 text-emerald-600" />}
           bg="bg-emerald-50"
           desc="ยอดรวมรายจ่ายทั้งหมด"
@@ -120,7 +121,7 @@ export default function DashboardPage() {
                 stats.recentPayments.map((pay: any) => (
                 <div key={pay.id} className="flex items-center justify-between p-4 hover:bg-slate-50 transition">
                     <div>
-                    <p className="font-bold text-slate-800">฿{pay.amount.toLocaleString()}</p>
+                    <p className="font-bold text-slate-800">฿{formatCurrency(pay.amount)}</p>
                     <p className="text-xs text-slate-500 truncate w-[150px]">
                         {pay.job_assignments?.plots?.name} ({pay.job_assignments?.plots?.projects?.name})
                     </p>

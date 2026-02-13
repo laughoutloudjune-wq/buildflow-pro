@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useTransition } from 'react'
-import { Plus, Trash2, Loader2, HardHat, Phone, CreditCard, User, Pencil } from 'lucide-react'
+import { Plus, Trash2, Loader2, HardHat, Phone, CreditCard, User, Pencil, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import { getContractors, createContractor, deleteContractor, updateContractor } from '@/actions/contractor-actions'
 import { getContractorTypes } from '@/actions/contractor-type-actions'
+import { formatCurrency } from '@/lib/currency'
 
 type Contractor = {
   id: string;
@@ -14,6 +15,7 @@ type Contractor = {
   phone: string;
   bank_account: string;
   tax_id: string;
+  total_paid: number;
   contractor_types: {
     name: string;
   } | null;
@@ -35,7 +37,7 @@ export default function ContractorsPage() {
 
   // โหลดข้อมูลเมื่อเข้าหน้าเว็บ
   useEffect(() => {
-    loadData()
+    void Promise.resolve().then(loadData)
   }, [])
 
   const loadData = async () => {
@@ -126,6 +128,13 @@ export default function ContractorsPage() {
               </div>
 
               <div className="space-y-2 text-sm text-slate-500 mt-4 pt-4 border-t border-slate-50">
+                <div className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
+                  <div className="flex items-center gap-2 text-emerald-700">
+                    <Wallet className="h-4 w-4" />
+                    <span>ยอดจ่ายสะสม</span>
+                  </div>
+                  <span className="font-semibold text-emerald-700">฿{formatCurrency(c.total_paid || 0)}</span>
+                </div>
                 <div className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-slate-400" />
                   {c.phone || '-'}

@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { getExtraWorkReport, getBillingOptions } from '@/actions/billing-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
 import { Loader2 } from 'lucide-react'
+import { formatCurrency } from '@/lib/currency'
 
 type Project = { id: string; name: string }
 type Plot = { id: string; name: string }
@@ -115,12 +116,12 @@ export default function DCHistoryReportPage() {
             {totalsByPlot.map(([plot, value]) => (
               <div key={plot} className="p-3 border rounded">
                 <p className="text-xs text-slate-500">{plot}</p>
-                <p className="text-lg font-bold text-amber-700">฿{value.toLocaleString()}</p>
+                <p className="text-lg font-bold text-amber-700">฿{formatCurrency(value)}</p>
               </div>
             ))}
             <div className="p-3 border rounded bg-amber-50">
               <p className="text-xs text-slate-500">รวมทั้งหมด</p>
-              <p className="text-lg font-bold text-amber-800">฿{totalAll.toLocaleString()}</p>
+              <p className="text-lg font-bold text-amber-800">฿{formatCurrency(totalAll)}</p>
             </div>
           </div>
         )}
@@ -150,7 +151,7 @@ export default function DCHistoryReportPage() {
                     <td className="px-4 py-3">{row.projects?.name}</td>
                     <td className="px-4 py-3">{row.plots?.name || '-'}</td>
                     <td className="px-4 py-3">{row.reason_for_dc || '-'}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-amber-700">฿{row.net_amount?.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-amber-700">฿{formatCurrency(row.net_amount)}</td>
                   </tr>
                 ))
               )}

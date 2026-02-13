@@ -8,6 +8,7 @@ import { getOrganizationSettings } from '@/actions/settings-actions'
 import { Card } from '@/components/ui/Card'
 import { BillingPdf } from '@/components/pdf/BillingPdf'
 import { Plus, Trash2, Edit, Printer, Loader2 } from 'lucide-react'
+import { formatCurrency } from '@/lib/currency'
 
 const PDFViewer = dynamic(
   () => import('@react-pdf/renderer').then((mod) => mod.PDFViewer),
@@ -308,8 +309,8 @@ export default function ReviewBillingPage() {
                     {jobs.map((job) => (
                       <tr key={job.id}>
                         <td className="px-6 py-4">{job.job_assignments.boq_master.item_name}</td>
-                        <td className="px-6 py-4 text-right">{job.totalBoq.toFixed(2)}</td>
-                        <td className="px-6 py-4 text-right">{job.paid.toFixed(2)}</td>
+                        <td className="px-6 py-4 text-right">{formatCurrency(job.totalBoq)}</td>
+                        <td className="px-6 py-4 text-right">{formatCurrency(job.paid)}</td>
                         <td className="px-6 py-4 text-right font-semibold text-blue-600">{billing.billing_jobs.find((bj: any) => bj.id === job.id)?.progress_percent?.toFixed(2)}%</td>
                         <td className="px-6 py-4 text-right">
                           <input
@@ -322,7 +323,7 @@ export default function ReviewBillingPage() {
                             step="0.01"
                           />
                         </td>
-                        <td className="px-6 py-4 text-right font-medium">{job.amount?.toFixed(2) || '0.00'}</td>
+                        <td className="px-6 py-4 text-right font-medium">{formatCurrency(job.amount || 0)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -359,15 +360,15 @@ export default function ReviewBillingPage() {
                 <div><label className="block text-sm font-medium text-gray-700">ประกันผลงาน (Retention) %</label><input type="number" value={retentionPercent} onChange={(e) => setRetentionPercent(parseFloat(e.target.value))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" /></div>
               </div>
               <div className="mt-4 p-4 bg-white rounded-lg border text-right space-y-1">
-                <p className="text-sm text-gray-600">ยอดเบิกตามเนื้องาน: <span className="font-semibold text-gray-800 w-32 inline-block">{totalWorkAmount.toFixed(2)}</span></p>
-                <p className="text-sm text-gray-600">ยอดงานเพิ่ม: <span className="font-semibold text-green-600 w-32 inline-block">{totalAddAmount.toFixed(2)}</span></p>
-                <p className="text-sm text-gray-600">ยอดงานหัก: <span className="font-semibold text-red-600 w-32 inline-block">-{totalDeductAmount.toFixed(2)}</span></p>
+                <p className="text-sm text-gray-600">ยอดเบิกตามเนื้องาน: <span className="font-semibold text-gray-800 w-32 inline-block">{formatCurrency(totalWorkAmount)}</span></p>
+                <p className="text-sm text-gray-600">ยอดงานเพิ่ม: <span className="font-semibold text-green-600 w-32 inline-block">{formatCurrency(totalAddAmount)}</span></p>
+                <p className="text-sm text-gray-600">ยอดงานหัก: <span className="font-semibold text-red-600 w-32 inline-block">-{formatCurrency(totalDeductAmount)}</span></p>
                 <hr className="my-1" />
-                <p className="font-semibold">ยอดรวมก่อนหักภาษี: <span className="w-32 inline-block">{grossAmount.toFixed(2)}</span></p>
-                <p className="text-sm text-gray-600">หัก ณ ที่จ่าย ({whtPercent}% จากยอดงานเพิ่ม): <span className="font-semibold text-red-600 w-32 inline-block">-{whtAmount.toFixed(2)}</span></p>
-                <p className="text-sm text-gray-600">หักประกันผลงาน ({retentionPercent}% จากยอดงานหลัก): <span className="font-semibold text-red-600 w-32 inline-block">-{retentionAmount.toFixed(2)}</span></p>
+                <p className="font-semibold">ยอดรวมก่อนหักภาษี: <span className="w-32 inline-block">{formatCurrency(grossAmount)}</span></p>
+                <p className="text-sm text-gray-600">หัก ณ ที่จ่าย ({whtPercent}% จากยอดงานเพิ่ม): <span className="font-semibold text-red-600 w-32 inline-block">-{formatCurrency(whtAmount)}</span></p>
+                <p className="text-sm text-gray-600">หักประกันผลงาน ({retentionPercent}% จากยอดงานหลัก): <span className="font-semibold text-red-600 w-32 inline-block">-{formatCurrency(retentionAmount)}</span></p>
                 <hr className="my-1" />
-                <p className="font-bold text-xl">ยอดสุทธิที่ต้องจ่าย (Net): <span className="text-2xl text-emerald-700">{netAmount.toFixed(2)}</span></p>
+                <p className="font-bold text-xl">ยอดสุทธิที่ต้องจ่าย (Net): <span className="text-2xl text-emerald-700">{formatCurrency(netAmount)}</span></p>
               </div>
             </div>
 

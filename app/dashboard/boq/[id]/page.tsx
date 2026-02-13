@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import { getHouseModelById, getBOQItems, createBOQItem, deleteBOQItem } from '@/actions/boq-actions'
 import { getContractorTypes } from '@/actions/contractor-type-actions';
+import { formatCurrency } from '@/lib/currency'
 
 export default function BOQDetailPage() {
   const params = useParams()
@@ -122,7 +123,7 @@ export default function BOQDetailPage() {
         <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
                 <div className="text-sm text-slate-500">ราคากลางรวม (BOQ)</div>
-                <div className="text-xl font-bold text-emerald-600">฿{grandTotal.toLocaleString()}</div>
+                <div className="text-xl font-bold text-emerald-600">฿{formatCurrency(grandTotal)}</div>
             </div>
             <button
             onClick={() => setIsModalOpen(true)}
@@ -169,9 +170,9 @@ export default function BOQDetailPage() {
                     </td>
                     <td className="px-4 py-3 text-right">{item.quantity}</td>
                     <td className="px-4 py-3 text-right text-slate-500">{item.unit}</td>
-                    <td className="px-4 py-3 text-right">฿{item.price_per_unit?.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right">฿{formatCurrency(item.price_per_unit)}</td>
                     <td className="px-4 py-3 text-right font-semibold text-slate-700">
-                      ฿{(item.total_price || 0).toLocaleString()}
+                      ฿{formatCurrency(item.total_price || 0)}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button
@@ -191,7 +192,7 @@ export default function BOQDetailPage() {
                 <tfoot className="bg-slate-50 font-bold text-slate-800">
                     <tr>
                         <td colSpan={5} className="px-4 py-3 text-right">รวมทั้งสิ้น</td>
-                        <td className="px-4 py-3 text-right text-emerald-600">฿{grandTotal.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right text-emerald-600">฿{formatCurrency(grandTotal)}</td>
                         <td></td>
                     </tr>
                 </tfoot>

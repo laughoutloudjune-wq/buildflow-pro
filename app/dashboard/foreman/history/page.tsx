@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { getBillingsByCreator, deleteBilling } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
 import { Loader2, Trash2, Pencil } from 'lucide-react'
+import { formatCurrency } from '@/lib/currency'
 
 const getStatusChip = (status: string) => {
   switch (status) {
@@ -96,7 +97,7 @@ export default function ForemanHistoryPage() {
                       <div className="font-semibold text-slate-800">{bill.contractors?.name}</div>
                       <div className="text-xs text-slate-500">{bill.projects?.name}</div>
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-emerald-600">฿{bill.net_amount?.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-emerald-600">฿{formatCurrency(bill.net_amount)}</td>
                     <td className="px-4 py-3 text-center">{getStatusChip(bill.status)}</td>
                     <td className="px-4 py-3 text-center">
                       {bill.status === 'pending_review' ? (
