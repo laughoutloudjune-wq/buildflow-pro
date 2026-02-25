@@ -1,7 +1,21 @@
-﻿import Link from 'next/link'
+'use client'
+
+import Link from 'next/link'
+import { useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 
 export default function CreateProgressPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const editId = searchParams.get('editId')
+
+  useEffect(() => {
+    if (editId) {
+      router.replace(`/dashboard/billing/request?editId=${editId}`)
+    }
+  }, [editId, router])
+
   return (
     <Card className="p-6">
       <h1 className="text-2xl font-bold text-slate-800">สร้างใบขอเบิกงวดงานหลัก</h1>

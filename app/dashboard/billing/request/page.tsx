@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
-import { getBillingOptions, getBillableJobs, createBillingRequest } from '@/actions/billing-actions'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { getBillingOptions, getBillableJobs, createBillingRequest, getBillingById, updateBillingRequest } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import { Plus, Trash2, CheckCircle } from 'lucide-react'
@@ -29,6 +29,8 @@ type Adjustment = {
 
 export default function CreateBillingRequestPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const editId = searchParams.get('editId')
   const [projects, setProjects] = useState<Project[]>([])
   const [contractors, setContractors] = useState<Contractor[]>([])
   const [selectedProject, setSelectedProject] = useState('')
@@ -41,6 +43,8 @@ export default function CreateBillingRequestPage() {
   const [error, setError] = useState<string | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [submittedData, setSubmittedData] = useState<any>(null)
+  const [editingBilling, setEditingBilling] = useState<any>(null)
+  const [didPrefillJobs, setDidPrefillJobs] = useState(false)
 
   useEffect(() => {
     async function fetchOptions() {
@@ -50,6 +54,34 @@ export default function CreateBillingRequestPage() {
     }
     fetchOptions()
   }, [])
+
+  useEffect(() => {
+    if (!editId) return
+    async function fetchBillingForEdit() {
+      try {
+        const billingId = editId as string
+        const billing = await getBillingById(billingId)
+        if (!billing) return
+        setEditingBilling(billing)
+        setSelectedProject(billing.project_id || '')
+        setSelectedContractor(billing.contractor_id || '')
+        setNote(billing.note || '')
+        setAdjustments(
+          (billing.billing_adjustments || []).map((adj: any) => ({
+            type: adj.type,
+            description: adj.description || '',
+            unit: adj.unit || '',
+            quantity: Number(adj.quantity || 0),
+            unit_price: Number(adj.unit_price || 0),
+          }))
+        )
+        setDidPrefillJobs(false)
+      } catch (err: any) {
+        setError(err.message || 'Failed to load billing')
+      }
+    }
+    fetchBillingForEdit()
+  }, [editId])
 
   useEffect(() => {
     if (selectedProject && selectedContractor) {
@@ -69,6 +101,22 @@ export default function CreateBillingRequestPage() {
       fetchJobs()
     }
   }, [selectedProject, selectedContractor])
+
+  useEffect(() => {
+    if (!editId || !editingBilling || didPrefillJobs || billableJobs.length === 0) return
+
+    const next = new Map<string, { progress: string; request_amount: number }>()
+    for (const row of editingBilling.billing_jobs || []) {
+      const jobAssignmentId = row.job_assignments?.id
+      if (!jobAssignmentId) continue
+      next.set(jobAssignmentId, {
+        progress: row.progress_percent == null ? '' : String(row.progress_percent),
+        request_amount: Number(row.amount || 0),
+      })
+    }
+    setSelectedJobs(next)
+    setDidPrefillJobs(true)
+  }, [editId, editingBilling, didPrefillJobs, billableJobs])
 
   const handleJobSelection = (jobId: string, job: Job) => {
     const newSelectedJobs = new Map(selectedJobs)
@@ -177,7 +225,9 @@ export default function CreateBillingRequestPage() {
 
     setIsLoading(true)
     try {
-      const result = await createBillingRequest(dataToSubmit)
+      const result = editId
+        ? await updateBillingRequest(editId, { ...dataToSubmit, type: 'progress' })
+        : await createBillingRequest(dataToSubmit)
       setSubmittedData({ ...dataToSubmit, doc_no: result.doc_no, net_amount: netAmount });
       setShowSuccessModal(true);
     } catch (err: any) {

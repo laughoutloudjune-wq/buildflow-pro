@@ -39,7 +39,7 @@ export default function ForemanHistoryPage() {
   const handleEdit = (bill: any) => {
     const target = bill.type === 'extra_work'
       ? `/dashboard/foreman/create-dc?editId=${bill.id}`
-      : '/dashboard/foreman/create-progress'
+      : `/dashboard/billing/request?editId=${bill.id}`
     router.push(target)
   }
 
@@ -95,7 +95,11 @@ export default function ForemanHistoryPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-semibold text-slate-800">{bill.contractors?.name}</div>
-                      <div className="text-xs text-slate-500">{bill.projects?.name}</div>
+                      <div className="text-xs text-slate-500">
+                        {bill.type === 'extra_work' && bill.plots?.name
+                          ? `${bill.projects?.name} • แปลง ${bill.plots.name}`
+                          : bill.projects?.name}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-emerald-600">฿{formatCurrency(bill.net_amount)}</td>
                     <td className="px-4 py-3 text-center">{getStatusChip(bill.status)}</td>

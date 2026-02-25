@@ -21,10 +21,9 @@ const menuItems = [
   { icon: Building2, label: 'โครงการ', href: '/dashboard/projects' },
   { icon: ClipboardList, label: 'แบบบ้าน & BOQ', href: '/dashboard/boq' },
   { icon: Users, label: 'ผู้รับเหมา', href: '/dashboard/contractors' },
-  { icon: ClipboardPlus, label: 'สร้างใบขอเบิก (Foreman)', href: '/dashboard/foreman/create-progress' },
   { icon: FileText, label: 'รายการเบิกจ่าย', href: '/dashboard/billing' },
   { icon: BarChart3, label: 'รายงาน DC', href: '/dashboard/reports/dc-history' },
-  { icon: HardHat, label: 'ตรวจหน้างาน (Foreman)', href: '/dashboard/foreman' },
+  { icon: HardHat, label: 'ตรวจหน้างาน (Foreman)', href: '/dashboard/foreman/create-progress' },
   { icon: Settings, label: 'ตั้งค่า', href: '/dashboard/settings' },
 ]
 

@@ -62,6 +62,11 @@ export default function BillingModal({ billingId, onClose, onDeleted }: BillingM
   }
 
   const { wht, retention, totalBase } = calculateDetails(billing)
+  const plotLabel = billing?.plots?.name
+    || (billing?.billing_jobs || [])
+      .map((j: any) => j.job_assignments?.plots?.name)
+      .filter(Boolean)
+      .join(', ')
 
   const handleDelete = async () => {
     if (!billingId || isDeleting) return;
@@ -96,7 +101,7 @@ export default function BillingModal({ billingId, onClose, onDeleted }: BillingM
               <FileText className="h-5 w-5 text-indigo-600"/> 
               รายละเอียดใบวางบิล #{billing?.doc_no ? String(billing.doc_no).padStart(4, '0') : '...'}
             </h2>
-            <p className="text-xs text-slate-500">โครงการ: {billing?.projects?.name}</p>
+            <p className="text-xs text-slate-500">โครงการ: {billing?.projects?.name}{plotLabel ? ` • แปลง ${plotLabel}` : ''}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -147,6 +152,7 @@ export default function BillingModal({ billingId, onClose, onDeleted }: BillingM
                              <label className="text-xs text-slate-500">ผู้รับเหมา</label>
                              <div className="font-bold text-slate-800">{billing.contractors?.name}</div>
                              <div className="text-sm text-slate-500">{billing.contractors?.phone || '-'}</div>
+                             <div className="text-xs text-slate-500 mt-1">แปลง: {plotLabel || '-'}</div>
                           </div>
                           <div className="text-right">
                              <label className="text-xs text-slate-500">วันที่เอกสาร</label>

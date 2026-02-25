@@ -322,7 +322,7 @@ export async function updateBillingRequest(id: string, data: any) {
 
   const { data: current, error: currentError } = await supabase
     .from('billings')
-    .select('id, status, created_by, submitted_by')
+    .select('id, doc_no, status, created_by, submitted_by')
     .eq('id', id)
     .single()
   if (currentError) throw new Error(currentError.message)
@@ -392,6 +392,8 @@ export async function updateBillingRequest(id: string, data: any) {
 
   revalidatePath('/dashboard/foreman/history')
   revalidatePath(`/dashboard/billing/${id}/review`)
+
+  return { id, doc_no: current.doc_no }
 }
 
 export async function getBillingsByCreator() {
@@ -464,7 +466,12 @@ export async function getBillings() {
       contractors (name)
     `)
     .order('created_at', { ascending: false })
-  return data || []
+  const rows = data || []
+  const plotMap = await getPlotNameMap(supabase, rows.map((b: any) => b.plot_id))
+  return rows.map((bill: any) => ({
+    ...bill,
+    plots: bill.plot_id ? { name: plotMap.get(bill.plot_id) || null } : null,
+  }))
 }
 
 // 5. [FIXED] ดึงข้อมูลบิลเดียว (แก้ Error ที่ทำให้ Modal ว่างเปล่า)
@@ -498,6 +505,13 @@ export async function getBillingById(id: string) {
     console.error("Error fetching billing details:", error)
     // Return null or re-throw to be handled by the component
     throw new Error(`Could not fetch billing details: ${error.message}`);
+  }
+
+  if (data?.plot_id) {
+    const plotMap = await getPlotNameMap(supabase, [data.plot_id])
+    data.plots = { name: plotMap.get(data.plot_id) || null }
+  } else if (data) {
+    data.plots = null
   }
 
   // Fetch submitted/approved user names separately to avoid missing FK relationship errors.

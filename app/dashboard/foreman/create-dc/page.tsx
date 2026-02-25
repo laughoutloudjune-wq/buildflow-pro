@@ -1,10 +1,10 @@
 ﻿'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { createClient } from '@/lib/supabase/client'
-import { getBillingOptions, createBillingRequest } from '@/actions/billing-actions'
+import { getBillingOptions, createBillingRequest, getBillingById, updateBillingRequest } from '@/actions/billing-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
 import { Plus, Trash2, Camera, CheckCircle } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
@@ -25,6 +25,8 @@ const DC_REASONS = ['Owner Request', 'Site Condition', 'Design Error', 'Scope Ch
 
 export default function CreateExtraWorkPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const editId = searchParams.get('editId')
 
   const [projects, setProjects] = useState<Project[]>([])
   const [contractors, setContractors] = useState<Contractor[]>([])
@@ -37,12 +39,13 @@ export default function CreateExtraWorkPage() {
   const [reason, setReason] = useState(DC_REASONS[0])
   const [items, setItems] = useState<DCItem[]>([])
   const [newFiles, setNewFiles] = useState<File[]>([])
-  const [billingDate] = useState(new Date().toISOString())
+  const [billingDate, setBillingDate] = useState(new Date().toISOString())
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [docNo, setDocNo] = useState<string | number>('')
+  const [existingAttachmentUrls, setExistingAttachmentUrls] = useState<string[]>([])
 
   useEffect(() => {
     async function fetchOptions() {
@@ -52,6 +55,37 @@ export default function CreateExtraWorkPage() {
     }
     fetchOptions()
   }, [])
+
+  useEffect(() => {
+    if (!editId) return
+    async function fetchForEdit() {
+      try {
+        const billingId = editId as string
+        const billing = await getBillingById(billingId)
+        if (!billing) return
+        setSelectedProject(billing.project_id || '')
+        setSelectedContractor(billing.contractor_id || '')
+        setSelectedPlot(billing.plot_id || '')
+        setReason(billing.reason_for_dc || DC_REASONS[0])
+        setBillingDate(billing.billing_date || billingDate)
+        setExistingAttachmentUrls(Array.isArray(billing.attachment_urls) ? billing.attachment_urls : [])
+        setItems(
+          (billing.billing_adjustments || [])
+            .filter((adj: any) => adj.type === 'addition')
+            .map((adj: any) => ({
+              description: adj.description || '',
+              unit: adj.unit || 'หน่วย',
+              quantity: Number(adj.quantity || 0),
+              unit_price: Number(adj.unit_price || 0),
+            }))
+        )
+      } catch (err: any) {
+        setError(err.message || 'Failed to load DC request')
+      }
+    }
+    fetchForEdit()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId])
 
   useEffect(() => {
     if (!selectedProject) {
@@ -111,7 +145,7 @@ export default function CreateExtraWorkPage() {
 
     setIsSubmitting(true)
     try {
-      const attachment_urls = await uploadFiles()
+      const attachment_urls = [...existingAttachmentUrls, ...(await uploadFiles())]
       const adjustments = items.map((item) => ({
         type: 'addition',
         description: item.description,
@@ -120,12 +154,12 @@ export default function CreateExtraWorkPage() {
         unit_price: item.unit_price,
       }))
 
-      const result = await createBillingRequest({
+      const payload = {
         project_id: selectedProject,
         contractor_id: selectedContractor,
         plot_id: selectedPlot,
         billing_date: billingDate,
-        type: 'extra_work',
+        type: 'extra_work' as const,
         reason_for_dc: reason,
         attachment_urls,
         selected_jobs: [],
@@ -133,7 +167,11 @@ export default function CreateExtraWorkPage() {
         total_work_amount: 0,
         total_add_amount: totalAddAmount,
         total_deduct_amount: 0,
-      })
+      }
+
+      const result = editId
+        ? await updateBillingRequest(editId, payload)
+        : await createBillingRequest(payload)
 
       setDocNo(result?.doc_no || '-')
       setShowSuccessModal(true)

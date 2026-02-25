@@ -33,6 +33,13 @@ export default function BillingListPage() {
   
   const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null)
 
+  const getPlotLabel = (bill: any) => {
+    if (bill.type === 'extra_work') {
+      return bill.plots?.name ? `${bill.projects?.name} • แปลง ${bill.plots.name}` : bill.projects?.name
+    }
+    return bill.plots?.name ? `${bill.projects?.name} • แปลง ${bill.plots.name}` : bill.projects?.name
+  }
+
   const loadBillings = () => {
     setLoading(true)
     getBillings().then((data) => {
@@ -110,7 +117,7 @@ export default function BillingListPage() {
                      </td>
                      <td className="px-4 py-3">
                        <div className="font-bold text-slate-800">{bill.contractors?.name}</div>
-                       <div className="text-xs text-slate-500">{bill.projects?.name}</div>
+                       <div className="text-xs text-slate-500">{getPlotLabel(bill)}</div>
                      </td>
                      <td className="px-4 py-3 text-right font-bold text-emerald-600">
                        ฿{formatCurrency(bill.net_amount)}

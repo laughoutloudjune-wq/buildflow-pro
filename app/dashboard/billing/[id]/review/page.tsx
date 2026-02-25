@@ -85,6 +85,14 @@ export default function ReviewBillingPage() {
   }, [id])
 
   const isExtraWork = billing?.type === 'extra_work'
+  const plotNames = useMemo(() => {
+    if (!billing) return []
+    if (billing.plots?.name) return [billing.plots.name]
+    const names = (billing.billing_jobs || [])
+      .map((j: any) => j.job_assignments?.plots?.name)
+      .filter(Boolean)
+    return Array.from(new Set(names))
+  }, [billing])
 
   const handleProgressChange = (jobAssignmentId: string, newProgress: number) => {
     if (newProgress < 0 || newProgress > 100) return
@@ -253,6 +261,7 @@ export default function ReviewBillingPage() {
             <h2 className="text-xl font-semibold mb-3">ข้อมูลจาก Foreman</h2>
             <div className="grid grid-cols-2 gap-4">
               <p><span className="font-semibold">โครงการ:</span> {billing.projects?.name}</p>
+              <p><span className="font-semibold">แปลง:</span> {plotNames.length ? plotNames.join(', ') : '-'}</p>
               <p><span className="font-semibold">ผู้รับเหมา:</span> {billing.contractors?.name}</p>
               <p><span className="font-semibold">ผู้ส่งคำขอ:</span> {billing.submitted_by_user?.full_name || billing.submitted_by || 'N/A'}</p>
               <p><span className="font-semibold">วันที่ส่ง:</span> {new Date(billing.created_at).toLocaleString('th-TH')}</p>
@@ -308,7 +317,10 @@ export default function ReviewBillingPage() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {jobs.map((job) => (
                       <tr key={job.id}>
-                        <td className="px-6 py-4">{job.job_assignments.boq_master.item_name}</td>
+                        <td className="px-6 py-4">
+                          <div>{job.job_assignments.boq_master.item_name}</div>
+                          <div className="text-xs text-slate-500">แปลง {job.job_assignments.plots?.name || '-'}</div>
+                        </td>
                         <td className="px-6 py-4 text-right">{formatCurrency(job.totalBoq)}</td>
                         <td className="px-6 py-4 text-right">{formatCurrency(job.paid)}</td>
                         <td className="px-6 py-4 text-right font-semibold text-blue-600">{billing.billing_jobs.find((bj: any) => bj.id === job.id)?.progress_percent?.toFixed(2)}%</td>
