@@ -23,6 +23,7 @@ const menuItems = [
   { icon: Users, label: 'ผู้รับเหมา', href: '/dashboard/contractors' },
   { icon: FileText, label: 'รายการเบิกจ่าย', href: '/dashboard/billing' },
   { icon: BarChart3, label: 'รายงาน DC', href: '/dashboard/reports/dc-history' },
+  { icon: BarChart3, label: 'รอบจ่ายผู้รับเหมา', href: '/dashboard/reports/contractor-cycle' },
   { icon: HardHat, label: 'ตรวจหน้างาน (Foreman)', href: '/dashboard/foreman/create-progress' },
   { icon: Settings, label: 'ตั้งค่า', href: '/dashboard/settings' },
 ]

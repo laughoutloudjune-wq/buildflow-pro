@@ -21,6 +21,7 @@ type HouseModel = {
 type Project = {
   id: string;
   name: string;
+  location?: string | null;
 };
 
 export default function HouseModelsPage() {
@@ -31,6 +32,7 @@ export default function HouseModelsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<HouseModel | null>(null)
   const [isPending, startTransition] = useTransition()
+  const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
 
   useEffect(() => {
     loadData()
@@ -88,6 +90,30 @@ export default function HouseModelsPage() {
     )
   }
 
+  const projectMetaById = new Map(projects.map((p: any) => [p.id, p]))
+  const groupedModels = models
+    .slice()
+    .sort((a, b) => {
+      const pa = a.project_id ? projectMetaById.get(a.project_id) : null
+      const pb = b.project_id ? projectMetaById.get(b.project_id) : null
+      const locA = (pa?.location || 'ZZZ ไม่ระบุโครงการ').toString()
+      const locB = (pb?.location || 'ZZZ ไม่ระบุโครงการ').toString()
+      const locationCompare = collator.compare(locA, locB)
+      if (locationCompare !== 0) return locationCompare
+      const projectCompare = collator.compare(pa?.name || 'ไม่ระบุโครงการ', pb?.name || 'ไม่ระบุโครงการ')
+      if (projectCompare !== 0) return projectCompare
+      return collator.compare(a.name || a.code || '', b.name || b.code || '')
+    })
+    .reduce((acc, model) => {
+      const project = model.project_id ? projectMetaById.get(model.project_id) : null
+      const key = project
+        ? `${project.location || 'ไม่ระบุทำเล'}|||${project.name}`
+        : 'ไม่ระบุโครงการ|||แบบบ้านกลาง (ใช้ได้ทุกโครงการ)'
+      if (!acc.has(key)) acc.set(key, [])
+      acc.get(key)!.push(model)
+      return acc
+    }, new Map<string, HouseModel[]>())
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -104,8 +130,17 @@ export default function HouseModelsPage() {
         </button>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {models.map((model) => (
+      <div className="space-y-6">
+        {Array.from(groupedModels.entries()).map(([groupKey, groupModels]) => {
+          const [locationLabel, projectLabel] = groupKey.split('|||')
+          return (
+            <div key={groupKey} className="space-y-3">
+              <div className="px-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{locationLabel}</div>
+                <div className="text-sm font-bold text-slate-800">{projectLabel}</div>
+              </div>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {groupModels.map((model) => (
           <Card key={model.id} className="group relative overflow-hidden transition-all hover:shadow-md hover:border-indigo-300 cursor-pointer h-full flex flex-col">
             <Link href={`/dashboard/boq/${model.id}`} className="flex-grow">
               <div className="p-5 space-y-4">
@@ -155,7 +190,11 @@ export default function HouseModelsPage() {
                 </button>
               </div>
           </Card>
-        ))}
+                ))}
+              </div>
+            </div>
+          )
+        })}
 
         {models.length === 0 && (
           <div className="col-span-full py-16 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">

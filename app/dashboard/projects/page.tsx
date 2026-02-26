@@ -19,6 +19,7 @@ export default function ProjectsPage() {
   const [isLoading, setIsLoading] = useState(true) // ✅ เริ่มต้นเป็น true เสมอ
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
   
   // โหลดข้อมูลเมื่อเข้าหน้าเว็บ
   useEffect(() => {
@@ -87,7 +88,14 @@ export default function ProjectsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {projects.map((project) => (
+        {projects
+          .slice()
+          .sort((a, b) => {
+            const byLocation = collator.compare(a.location || '', b.location || '')
+            if (byLocation !== 0) return byLocation
+            return collator.compare(a.name || '', b.name || '')
+          })
+          .map((project) => (
           <Link key={project.id} href={`/dashboard/projects/${project.id}`}>
             <Card className="group relative overflow-hidden transition-all hover:shadow-md hover:border-indigo-200 cursor-pointer h-full">
               <div className="p-5">

@@ -18,6 +18,43 @@ async function getPlotNameMap(supabase: any, plotIds: (string | null | undefined
   return new Map((data || []).map((p: any) => [p.id, p.name]))
 }
 
+async function getPlotDetailMap(supabase: any, plotIds: (string | null | undefined)[]) {
+  const ids = Array.from(new Set((plotIds || []).filter(Boolean))) as string[]
+  if (ids.length === 0) return new Map<string, any>()
+  const { data, error } = await supabase
+    .from('plots')
+    .select('id, name, house_models (name, code)')
+    .in('id', ids)
+  if (error) throw new Error(error.message)
+  return new Map((data || []).map((p: any) => [p.id, p]))
+}
+
+function encodeAdjustmentDescription(description: string, plotName?: string | null) {
+  const cleanDesc = (description || '').trim()
+  const cleanPlot = (plotName || '').trim()
+  if (!cleanPlot) return cleanDesc
+  return `[PLOT:${cleanPlot}] ${cleanDesc}`.trim()
+}
+
+function decodeAdjustmentDescription(rawDescription: string | null | undefined) {
+  const raw = rawDescription || ''
+  const match = raw.match(/^\[PLOT:(.+?)\]\s*(.*)$/)
+  if (!match) return { description: raw, plot_name: '' }
+  return { plot_name: (match[1] || '').trim(), description: (match[2] || '').trim() }
+}
+
+function normalizeAdjustmentsWithPlot(adjustments: any[] | null | undefined) {
+  return (adjustments || []).map((adj: any) => {
+    const parsed = decodeAdjustmentDescription(adj.description)
+    return {
+      ...adj,
+      description: parsed.description,
+      plot_name: parsed.plot_name || '',
+      raw_description: adj.description || '',
+    }
+  })
+}
+
 // 1. ดึงข้อมูลเบื้องต้นสำหรับทำ Dropdown
 export async function getBillingOptions() {
   const supabase = await createClient()
@@ -132,7 +169,7 @@ export async function createBilling(data: any) {
     const adjToInsert = data.adjustments.map((adj: any) => ({
       billing_id: billingId,
       type: adj.type,
-      description: adj.description,
+      description: encodeAdjustmentDescription(adj.description, adj.plot_name),
       unit: adj.unit,
       quantity: parseFloat(adj.quantity),
       unit_price: parseFloat(adj.unit_price)
@@ -208,7 +245,7 @@ export async function createBillingRequest(data: any) {
     const adjToInsert = adjustments.map((adj: any) => ({
       billing_id: billingId,
       type: adj.type,
-      description: adj.description,
+      description: encodeAdjustmentDescription(adj.description, adj.plot_name),
       unit: adj.unit,
       quantity: parseFloat(adj.quantity),
       unit_price: parseFloat(adj.unit_price)
@@ -269,7 +306,7 @@ export async function approveBilling(id: string, data: any) {
     const adjToInsert = data.adjustments.map((adj: any) => ({
       billing_id: billingId,
       type: adj.type,
-      description: adj.description,
+      description: encodeAdjustmentDescription(adj.description, adj.plot_name),
       unit: adj.unit,
       quantity: parseFloat(adj.quantity),
       unit_price: parseFloat(adj.unit_price)
@@ -291,6 +328,9 @@ export async function approveBilling(id: string, data: any) {
 
   revalidatePath('/dashboard/billing')
   revalidatePath(`/dashboard/billing/${id}`)
+  revalidatePath('/dashboard/foreman/history')
+  revalidatePath('/dashboard/reports/dc-history')
+  revalidatePath('/dashboard/reports/contractor-cycle')
 }
 
 // NEW: Reject Billing Request (PM)
@@ -313,6 +353,46 @@ export async function rejectBilling(id: string, note?: string) {
 
     revalidatePath('/dashboard/billing')
     revalidatePath(`/dashboard/billing/${id}`)
+    revalidatePath('/dashboard/foreman/history')
+    revalidatePath('/dashboard/reports/dc-history')
+    revalidatePath('/dashboard/reports/contractor-cycle')
+}
+
+export async function undoApproveBilling(id: string) {
+  const supabase = await createClient()
+  const user = await getCurrentUser()
+  if (!user) throw new Error("User not found")
+
+  const { data: bill, error: billError } = await supabase
+    .from('billings')
+    .select('id, doc_no, status')
+    .eq('id', id)
+    .single()
+
+  if (billError) throw new Error(billError.message)
+  if (!bill) throw new Error("Billing not found")
+  if (bill.status !== 'approved') throw new Error("Only approved billing can be reverted")
+
+  // Remove payment records created during approval so job balances return to pending-review state.
+  const note = `เน€เธเธดเธเธ•เธฒเธกเนเธเธงเธฒเธเธเธดเธฅ #${bill?.doc_no || '-'}`
+  const { error: paymentDeleteError } = await supabase.from('payments').delete().match({ note })
+  if (paymentDeleteError) throw new Error(paymentDeleteError.message)
+
+  const { error: updateError } = await supabase
+    .from('billings')
+    .update({
+      status: 'pending_review',
+      approved_by: null,
+    })
+    .eq('id', id)
+
+  if (updateError) throw new Error(updateError.message)
+
+  revalidatePath('/dashboard/billing')
+  revalidatePath(`/dashboard/billing/${id}/review`)
+  revalidatePath('/dashboard/foreman/history')
+  revalidatePath('/dashboard/reports/dc-history')
+  revalidatePath('/dashboard/reports/contractor-cycle')
 }
 
 export async function updateBillingRequest(id: string, data: any) {
@@ -382,7 +462,7 @@ export async function updateBillingRequest(id: string, data: any) {
     const adjToInsert = adjustments.map((adj: any) => ({
       billing_id: id,
       type: adj.type,
-      description: adj.description,
+      description: encodeAdjustmentDescription(adj.description, adj.plot_name),
       unit: adj.unit,
       quantity: parseFloat(adj.quantity),
       unit_price: parseFloat(adj.unit_price)
@@ -415,6 +495,7 @@ export async function getBillingsByCreator() {
   const plotMap = await getPlotNameMap(supabase, (data || []).map((b: any) => b.plot_id))
   return (data || []).map((bill: any) => ({
     ...bill,
+    billing_adjustments: normalizeAdjustmentsWithPlot(bill.billing_adjustments),
     plots: bill.plot_id ? { name: plotMap.get(bill.plot_id) || null } : null,
   }))
 }
@@ -433,9 +514,9 @@ export async function getExtraWorkReport(filters: {
       *,
       projects (name),
       contractors (name),
-      billing_adjustments (type, quantity, unit_price)
+      billing_adjustments (id, type, description, unit, quantity, unit_price)
     `)
-    .eq('type', 'extra_work')
+    .or('type.eq.extra_work,total_add_amount.gt.0,total_deduct_amount.gt.0')
     .order('billing_date', { ascending: false })
 
   if (filters.projectId) query = query.eq('project_id', filters.projectId)
@@ -456,6 +537,53 @@ export async function getExtraWorkReport(filters: {
 
 
 // 4. ดึงรายการบิลทั้งหมด
+export async function getApprovedContractorCycleReport(filters: {
+  contractorId?: string
+  projectId?: string
+  dateFrom?: string
+  dateTo?: string
+} = {}) {
+  const supabase = await createClient()
+  let query = supabase
+    .from('billings')
+    .select(`
+      *,
+      projects (name),
+      contractors (name),
+      billing_jobs (
+        id,
+        amount,
+        progress_percent,
+        job_assignments (
+          id,
+          agreed_price_per_unit,
+          plots (name, house_models (name, code)),
+          boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, unit, quantity, price_per_unit)
+        )
+      ),
+      billing_adjustments (id, type, description, unit, quantity, unit_price)
+    `)
+    .eq('status', 'approved')
+    .order('billing_date', { ascending: true })
+    .order('created_at', { ascending: true })
+
+  if (filters.contractorId) query = query.eq('contractor_id', filters.contractorId)
+  if (filters.projectId) query = query.eq('project_id', filters.projectId)
+  if (filters.dateFrom) query = query.gte('billing_date', filters.dateFrom)
+  if (filters.dateTo) query = query.lte('billing_date', filters.dateTo)
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+
+  const rows = data || []
+  const plotMap = await getPlotDetailMap(supabase, rows.map((b: any) => b.plot_id))
+  return rows.map((bill: any) => ({
+    ...bill,
+    billing_adjustments: normalizeAdjustmentsWithPlot(bill.billing_adjustments),
+    plots: bill.plot_id ? plotMap.get(bill.plot_id) || null : null,
+  }))
+}
+
 export async function getBillings() {
   const supabase = await createClient()
   const { data } = await supabase
@@ -575,10 +703,10 @@ export async function getBillingById(id: string) {
       };
     });
     
-    return { ...data, billing_jobs: processedJobs };
+    return { ...data, billing_jobs: processedJobs, billing_adjustments: normalizeAdjustmentsWithPlot(data.billing_adjustments) };
   }
 
-  return data
+  return data ? { ...data, billing_adjustments: normalizeAdjustmentsWithPlot(data.billing_adjustments) } : data
 }
 
 

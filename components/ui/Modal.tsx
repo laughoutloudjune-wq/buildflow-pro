@@ -8,9 +8,11 @@ interface ModalProps {
   onClose: () => void
   title?: string // Make title optional
   children: React.ReactNode
+  panelClassName?: string
+  bodyClassName?: string
 }
 
-export default function Modal({ isOpen, onClose, title, children }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, panelClassName, bodyClassName }: ModalProps) {
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -23,7 +25,7 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+      <div className={`w-full ${panelClassName || 'max-w-md'} animate-in fade-in zoom-in-95 duration-200`}>
         <div className="relative rounded-xl bg-white shadow-2xl ring-1 ring-slate-900/5">
           {title && ( // Conditionally render header
             <div className="flex items-center justify-between border-b p-4">
@@ -36,7 +38,7 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
               </button>
             </div>
           )}
-          <div className="p-4">{children}</div>
+          <div className={`p-4 ${bodyClassName || ''}`}>{children}</div>
         </div>
       </div>
     </div>

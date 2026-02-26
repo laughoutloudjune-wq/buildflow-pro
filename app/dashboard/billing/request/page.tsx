@@ -22,6 +22,7 @@ type Job = {
 type Adjustment = {
   type: 'addition' | 'deduction';
   description: string;
+  plot_name?: string;
   unit: string;
   quantity: number;
   unit_price: number;
@@ -70,6 +71,7 @@ export default function CreateBillingRequestPage() {
           (billing.billing_adjustments || []).map((adj: any) => ({
             type: adj.type,
             description: adj.description || '',
+            plot_name: adj.plot_name || '',
             unit: adj.unit || '',
             quantity: Number(adj.quantity || 0),
             unit_price: Number(adj.unit_price || 0),
@@ -159,7 +161,7 @@ export default function CreateBillingRequestPage() {
   };
 
   const addAdjustment = (type: 'addition' | 'deduction') => {
-    setAdjustments([...adjustments, { type, description: '', unit: 'หน่วย', quantity: 1, unit_price: 0 }]);
+    setAdjustments([...adjustments, { type, description: '', plot_name: '', unit: 'หน่วย', quantity: 1, unit_price: 0 }]);
   };
 
   const removeAdjustment = (index: number) => {
@@ -177,6 +179,12 @@ export default function CreateBillingRequestPage() {
     const netAmount = totalWorkAmount + totalAddAmount - totalDeductAmount;
     return { totalWorkAmount, totalAddAmount, totalDeductAmount, netAmount };
   }, [selectedJobs, adjustments])
+
+  const adjustmentPlotOptions = useMemo(() => {
+    const names = Array.from(new Set((billableJobs || []).map((j) => j.plots?.name).filter(Boolean)))
+    names.sort((a, b) => a.localeCompare(b, 'th', { numeric: true, sensitivity: 'base' }))
+    return names
+  }, [billableJobs])
 
   const handleSubmit = async () => {
     setError(null)
@@ -354,9 +362,19 @@ export default function CreateBillingRequestPage() {
                             <option value="deduction">งานหัก</option>
                         </select>
                     </div>
-                    <div className="col-span-4"><input type="text" placeholder="รายละเอียด" value={adj.description} onChange={e => handleAdjustmentChange(index, 'description', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                    <div className="col-span-2">
+                      {adjustmentPlotOptions.length > 0 ? (
+                        <select value={adj.plot_name || ''} onChange={e => handleAdjustmentChange(index, 'plot_name', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md">
+                          <option value="">???? (?????)</option>
+                          {adjustmentPlotOptions.map((plot) => <option key={plot} value={plot}>{plot}</option>)}
+                        </select>
+                      ) : (
+                        <input type="text" placeholder="????" value={adj.plot_name || ''} onChange={e => handleAdjustmentChange(index, 'plot_name', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
+                      )}
+                    </div>
+                    <div className="col-span-3"><input type="text" placeholder="??????????" value={adj.description} onChange={e => handleAdjustmentChange(index, 'description', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
                     <div className="col-span-1"><input type="text" placeholder="หน่วย" value={adj.unit} onChange={e => handleAdjustmentChange(index, 'unit', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
-                    <div className="col-span-2"><input type="number" placeholder="จำนวน" value={adj.quantity} onChange={e => handleAdjustmentChange(index, 'quantity', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                    <div className="col-span-1"><input type="number" placeholder="จำนวน" value={adj.quantity} onChange={e => handleAdjustmentChange(index, 'quantity', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" /></div>
                     <div className="col-span-2"><input type="number" placeholder="ราคาต่อหน่วย" value={adj.unit_price} onChange={e => handleAdjustmentChange(index, 'unit_price', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" /></div>
                     <div className="col-span-1"><button onClick={() => removeAdjustment(index)} className="p-2 text-red-500 hover:text-red-700"><Trash2 className="h-5 w-5"/></button></div>
                 </div>

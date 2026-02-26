@@ -10,7 +10,7 @@ export async function getHouseModels() {
   const { data, error } = await supabase
     .from('house_models')
     .select(`*, projects (name)`)
-    .order('created_at', { ascending: false })
+    .order('name', { ascending: true })
   
   if (error) {
     console.error("Error fetching house models:", error)

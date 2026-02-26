@@ -9,7 +9,8 @@ export async function getProjects() {
   const { data, error } = await supabase
     .from('projects')
     .select('*')
-    .order('created_at', { ascending: false })
+    .order('location', { ascending: true })
+    .order('name', { ascending: true })
   
   // ✅ วิธีเช็ค Error ที่ปลอดภัยที่สุด
   if (error) {

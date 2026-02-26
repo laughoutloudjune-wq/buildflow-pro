@@ -27,6 +27,7 @@ export default function ProjectDetailPage() {
   const [selectedHouseModelId, setSelectedHouseModelId] = useState('')
   
   const [isPending, startTransition] = useTransition()
+  const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
   
   useEffect(() => {
   
@@ -68,8 +69,9 @@ export default function ProjectDetailPage() {
   
         
   
-        const validModels = hm?.filter((m: any) => !m.project_id || m.project_id === projectId) || []
-  
+        const validModels = (hm?.filter((m: any) => !m.project_id || m.project_id === projectId) || [])
+          .sort((a: any, b: any) => collator.compare(a?.name || a?.code || '', b?.name || b?.code || ''))
+
         setHouseModels(validModels)
   
   
@@ -130,9 +132,11 @@ export default function ProjectDetailPage() {
   
   
   
+    const sortedPlots = [...plots].sort((a, b) => collator.compare(a?.name || '', b?.name || ''))
+
     const plotsWithSameModel = selectedHouseModelId 
   
-      ? plots.filter(p => p.house_models?.id === selectedHouseModelId) 
+      ? sortedPlots.filter(p => p.house_models?.id === selectedHouseModelId) 
   
       : []
   
@@ -264,7 +268,7 @@ export default function ProjectDetailPage() {
   
         <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
   
-          {plots.map((plot) => (
+          {sortedPlots.map((plot) => (
   
             <Link key={plot.id} href={`/dashboard/projects/${projectId}/${plot.id}`}>
   
