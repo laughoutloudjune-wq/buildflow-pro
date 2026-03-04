@@ -486,7 +486,15 @@ export async function getBillingsByCreator() {
     .select(`
       *,
       projects (name),
-      contractors (name)
+      contractors (name),
+      billing_jobs (
+        id,
+        job_assignments (
+          plots (name),
+          boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name)
+        )
+      ),
+      billing_adjustments (id, type, description)
     `)
     .or(`created_by.eq.${user.id},submitted_by.eq.${user.id}`)
     .order('created_at', { ascending: false })
@@ -584,6 +592,60 @@ export async function getApprovedContractorCycleReport(filters: {
   }))
 }
 
+export async function getPlotHistoryReport(filters: {
+  projectId?: string
+  plotId?: string
+  dateFrom?: string
+  dateTo?: string
+} = {}) {
+  const supabase = await createClient()
+  let query = supabase
+    .from('billings')
+    .select(`
+      *,
+      projects (name),
+      contractors (name),
+      billing_jobs (
+        id,
+        amount,
+        progress_percent,
+        job_assignments (
+          plots (id, name, house_models (name, code)),
+          boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, unit)
+        )
+      ),
+      billing_adjustments (id, type, description, unit, quantity, unit_price)
+    `)
+    .order('billing_date', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (filters.projectId) query = query.eq('project_id', filters.projectId)
+  if (filters.dateFrom) query = query.gte('billing_date', filters.dateFrom)
+  if (filters.dateTo) query = query.lte('billing_date', filters.dateTo)
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+
+  const rawRows = data || []
+  const plotMap = await getPlotDetailMap(supabase, rawRows.map((b: any) => b.plot_id))
+
+  const rows = rawRows.map((bill: any) => ({
+    ...bill,
+    billing_adjustments: normalizeAdjustmentsWithPlot(bill.billing_adjustments),
+    plots: bill.plot_id ? plotMap.get(bill.plot_id) || null : null,
+  }))
+
+  if (!filters.plotId) return rows
+
+  return rows.filter((bill: any) => {
+    if (bill.plot_id && String(bill.plot_id) === String(filters.plotId)) return true
+    const matchedJob = (bill.billing_jobs || []).some(
+      (j: any) => String(j.job_assignments?.plots?.id || '') === String(filters.plotId)
+    )
+    return matchedJob
+  })
+}
+
 export async function getBillings() {
   const supabase = await createClient()
   const { data } = await supabase
@@ -591,13 +653,22 @@ export async function getBillings() {
     .select(`
       *,
       projects (name),
-      contractors (name)
+      contractors (name),
+      billing_jobs (
+        id,
+        job_assignments (
+          plots (name),
+          boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name)
+        )
+      ),
+      billing_adjustments (id, type, description)
     `)
     .order('created_at', { ascending: false })
   const rows = data || []
   const plotMap = await getPlotNameMap(supabase, rows.map((b: any) => b.plot_id))
   return rows.map((bill: any) => ({
     ...bill,
+    billing_adjustments: normalizeAdjustmentsWithPlot(bill.billing_adjustments),
     plots: bill.plot_id ? { name: plotMap.get(bill.plot_id) || null } : null,
   }))
 }

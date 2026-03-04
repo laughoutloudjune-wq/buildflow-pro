@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Card } from '@/components/ui/Card'
@@ -167,7 +167,7 @@ export default function ContractorCycleReportPage() {
     const html = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Contractor Cycle Print Preview</title>
 <style>
-body{font-family:"Noto Sans Thai","Segoe UI",system-ui,-apple-system,sans-serif;background:#f8fafc;margin:0;padding:12px;color:#0f172a;font-size:13px;line-height:1.35}
+body{font-family:"Google Sans","Google Sans Text","Product Sans","Noto Sans Thai","Segoe UI",system-ui,-apple-system,sans-serif;background:#f8fafc;margin:0;padding:12px;color:#0f172a;font-size:13px;line-height:1.35}
 .toolbar{position:sticky;top:0;background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
 .toolbar button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 12px;cursor:pointer}
 .invoice-sheet{background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:14px;margin-bottom:12px;page-break-inside:avoid;box-shadow:0 1px 2px rgba(15,23,42,.04)}
@@ -234,7 +234,7 @@ ${sectionsHtml || '<div class=\"contractor-section\">ไม่พบข้อม
     const html = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Print</title>
 <style>
-body{font-family:"Noto Sans Thai","Segoe UI",system-ui,-apple-system,sans-serif;background:#fff;margin:0;padding:10px;color:#0f172a;font-size:13px;line-height:1.35}
+body{font-family:"Google Sans","Google Sans Text","Product Sans","Noto Sans Thai","Segoe UI",system-ui,-apple-system,sans-serif;background:#fff;margin:0;padding:10px;color:#0f172a;font-size:13px;line-height:1.35}
 .invoice-sheet{background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:14px;margin-bottom:12px;page-break-inside:avoid}
 .invoice-head{display:flex;justify-content:space-between;gap:14px;border-bottom:2px solid #0f172a;padding-bottom:8px;margin-bottom:8px}
 .brand{font-size:13px;letter-spacing:1.8px;color:#64748b;font-weight:800}
@@ -640,33 +640,27 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         </div>
         <div className="mt-3 flex justify-end gap-2">
           <button onClick={runReport} className="px-4 py-2 bg-slate-900 text-white rounded">ค้นหา</button>
-                    <button onClick={() => setShowHtmlModalPreview(true)} className="px-4 py-2 bg-slate-700 text-white rounded inline-flex items-center gap-2">
-            <Printer className="h-4 w-4" /> HTML ใน Modal
-          </button>
-<button onClick={openBrowserPrintPreview} className="px-4 py-2 bg-indigo-600 text-white rounded inline-flex items-center gap-2">
-            <Printer className="h-4 w-4" /> ตัวอย่างพิมพ์ (Template)
+          <button onClick={() => setShowHtmlModalPreview(true)} className="px-4 py-2 bg-indigo-600 text-white rounded inline-flex items-center gap-2">
+            <Printer className="h-4 w-4" /> Print
           </button>
         </div>
       </Card>
       <Modal
         isOpen={showHtmlModalPreview}
         onClose={() => setShowHtmlModalPreview(false)}
-        title="HTML Template Preview (Modal)"
+        title="Print Preview"
         panelClassName="max-w-[98vw] h-[92vh]"
         bodyClassName="p-2 h-[calc(92vh-72px)]"
       >
         <div className="space-y-3 html-preview-modal-host">
           <div className="flex justify-end gap-2 no-print-in-modal">
             <button onClick={printModalTemplate} className="px-3 py-2 bg-emerald-600 text-white rounded text-sm">
-              พิมพ์จาก Modal นี้
-            </button>
-            <button onClick={openBrowserPrintPreview} className="px-3 py-2 bg-indigo-600 text-white rounded text-sm">
-              เปิด Browser Print Preview
+              Print
             </button>
           </div>
           <div className="h-[calc(92vh-150px)] overflow-auto rounded border bg-slate-50 p-3">
             <style>{`
-              .html-preview-modal{font-family:"Noto Sans Thai","Segoe UI",system-ui,-apple-system,sans-serif;color:#0f172a;font-size:14px;line-height:1.45}
+              .html-preview-modal{font-family:"Google Sans","Google Sans Text","Product Sans","Noto Sans Thai","Segoe UI",system-ui,-apple-system,sans-serif;color:#0f172a;font-size:14px;line-height:1.45}
               .html-preview-modal .invoice-sheet{background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:18px;margin-bottom:18px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
               .html-preview-modal .invoice-head{display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #0f172a;padding-bottom:12px;margin-bottom:12px}
               .html-preview-modal .brand{font-size:13px;letter-spacing:1.8px;color:#64748b;font-weight:800}
@@ -949,6 +943,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
     </div>
   )
 }
+
 
 
 

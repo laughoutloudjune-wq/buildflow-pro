@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Printer, FileText, Loader2, Trash2 } from 'lucide-react'
+import { X, FileText, Loader2, Trash2 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { deleteBilling, getBillingById } from '@/actions/billing-actions'
 import { getOrganizationSettings } from '@/actions/settings-actions'
@@ -125,12 +125,6 @@ export default function BillingModal({ billingId, onClose, onDeleted }: BillingM
              className={`flex-1 py-3 text-sm font-bold transition ${activeTab === 'details' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50' : 'text-slate-500 hover:bg-slate-50'}`}
            >
              รายละเอียด (View)
-           </button>
-           <button 
-             onClick={() => setActiveTab('pdf')}
-             className={`flex-1 py-3 text-sm font-bold transition flex items-center justify-center gap-2 ${activeTab === 'pdf' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50' : 'text-slate-500 hover:bg-slate-50'}`}
-           >
-             <Printer className="h-4 w-4"/> ตัวอย่างก่อนพิมพ์ (Print Preview)
            </button>
         </div>
 
