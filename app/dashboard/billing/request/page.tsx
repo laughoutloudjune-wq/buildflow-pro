@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { Fragment, useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { getBillingOptions, getBillableJobs, createBillingRequest, getBillingById, updateBillingRequest } from '@/actions/billing-actions'
+import { getBillingOptions, getBillableJobs, createBillingRequest, getBillingById, updateBillingRequest, getJobProgressHistory } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import { Plus, Trash2, CheckCircle } from 'lucide-react'
@@ -27,6 +27,15 @@ type Adjustment = {
   quantity: number
   unit_price: number
 }
+type ProgressHistoryItem = {
+  id: string
+  amount: number
+  progress_percent: number | null
+  billing_date?: string
+  created_at?: string
+  doc_no?: string
+  status?: string
+}
 
 export default function CreateBillingRequestPage() {
   const router = useRouter()
@@ -41,6 +50,7 @@ export default function CreateBillingRequestPage() {
   const [jobSearch, setJobSearch] = useState('')
   const [jobPlotFilter, setJobPlotFilter] = useState('')
   const [selectedJobs, setSelectedJobs] = useState<Map<string, { progress: string; request_amount: number }>>(new Map())
+  const [progressHistoryByJob, setProgressHistoryByJob] = useState<Record<string, ProgressHistoryItem[]>>({})
   const [adjustments, setAdjustments] = useState<Adjustment[]>([])
   const [note, setNote] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -88,20 +98,20 @@ export default function CreateBillingRequestPage() {
   }, [editId])
 
   useEffect(() => {
-    if (selectedProject && selectedContractor) {
-      async function fetchJobs() {
-        setIsLoading(true)
-        const jobs = await getBillableJobs(selectedProject, selectedContractor)
-        const jobsWithProgress = jobs.map((job: any) => ({
-          ...job,
-          previous_progress: job.totalBoq > 0 ? (job.paid / job.totalBoq) * 100 : 0,
-        }))
-        setBillableJobs(jobsWithProgress)
-        setSelectedJobs(new Map())
-        setIsLoading(false)
-      }
-      fetchJobs()
+    if (!selectedProject || !selectedContractor) return
+    async function fetchJobs() {
+      setIsLoading(true)
+      const jobs = await getBillableJobs(selectedProject, selectedContractor)
+      const jobsWithProgress = jobs.map((job: any) => ({
+        ...job,
+        previous_progress: job.totalBoq > 0 ? (job.paid / job.totalBoq) * 100 : 0,
+      }))
+      setBillableJobs(jobsWithProgress)
+      setSelectedJobs(new Map())
+      setProgressHistoryByJob({})
+      setIsLoading(false)
     }
+    fetchJobs()
   }, [selectedProject, selectedContractor])
 
   useEffect(() => {
@@ -119,6 +129,27 @@ export default function CreateBillingRequestPage() {
     setSelectedJobs(next)
     setDidPrefillJobs(true)
   }, [editId, editingBilling, didPrefillJobs, billableJobs])
+
+  useEffect(() => {
+    const selectedIds = Array.from(selectedJobs.keys())
+    if (selectedIds.length === 0) {
+      setProgressHistoryByJob({})
+      return
+    }
+
+    let mounted = true
+    getJobProgressHistory(selectedIds)
+      .then((res: any) => {
+        if (mounted) setProgressHistoryByJob(res || {})
+      })
+      .catch(() => {
+        if (mounted) setProgressHistoryByJob({})
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [selectedJobs])
 
   const handleJobSelection = (jobId: string, job: Job) => {
     const newSelectedJobs = new Map(selectedJobs)
@@ -167,12 +198,8 @@ export default function CreateBillingRequestPage() {
 
   const { totalWorkAmount, totalAddAmount, totalDeductAmount, netAmount } = useMemo(() => {
     const totalWorkAmount = Array.from(selectedJobs.values()).reduce((sum, job) => sum + job.request_amount, 0)
-    const totalAddAmount = adjustments
-      .filter(adj => adj.type === 'addition')
-      .reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
-    const totalDeductAmount = adjustments
-      .filter(adj => adj.type === 'deduction')
-      .reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
+    const totalAddAmount = adjustments.filter((adj) => adj.type === 'addition').reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
+    const totalDeductAmount = adjustments.filter((adj) => adj.type === 'deduction').reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
     const netAmount = totalWorkAmount + totalAddAmount - totalDeductAmount
     return { totalWorkAmount, totalAddAmount, totalDeductAmount, netAmount }
   }, [selectedJobs, adjustments])
@@ -247,7 +274,6 @@ export default function CreateBillingRequestPage() {
       const result = editId
         ? await updateBillingRequest(editId, { ...dataToSubmit, type: 'progress' })
         : await createBillingRequest(dataToSubmit)
-
       setSubmittedData({ ...dataToSubmit, doc_no: result.doc_no, net_amount: netAmount })
       setShowSuccessModal(true)
     } catch (err: any) {
@@ -273,38 +299,28 @@ export default function CreateBillingRequestPage() {
             <div className="bg-gray-50 p-4 rounded-lg text-left mb-6">
               <p><strong>โครงการ:</strong> {projects.find(p => p.id === submittedData.project_id)?.name}</p>
               <p><strong>ผู้รับเหมา:</strong> {contractors.find(c => c.id === submittedData.contractor_id)?.name}</p>
-              <p className="mt-2 text-lg font-bold">
-                ยอดขอเบิกรวม: <span className="text-blue-600">{formatCurrency(submittedData.net_amount)} บาท</span>
-              </p>
+              <p className="mt-2 text-lg font-bold">ยอดขอเบิกรวม: <span className="text-blue-600">{formatCurrency(submittedData.net_amount)} บาท</span></p>
             </div>
-            <button onClick={handleModalClose} className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-              กลับไปที่หน้ารายการ
-            </button>
+            <button onClick={handleModalClose} className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">กลับไปที่หน้ารายการ</button>
           </div>
         </Modal>
       )}
 
       <h1 className="text-2xl font-bold mb-4">สร้างใบขอเบิก (สำหรับ Foreman)</h1>
-
       <Card className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">โครงการ</label>
             <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
               <option value="">เลือกโครงการ</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700">ผู้รับเหมา</label>
             <select value={selectedContractor} onChange={(e) => setSelectedContractor(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
               <option value="">เลือกผู้รับเหมา</option>
-              {contractors.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
+              {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
         </div>
@@ -313,71 +329,131 @@ export default function CreateBillingRequestPage() {
           <div className="mt-6">
             <h2 className="text-xl font-semibold mb-2">งานที่สามารถเบิกได้</h2>
             <div className="mb-3 grid grid-cols-1 md:grid-cols-3 gap-2">
-              <input
-                type="text"
-                value={jobSearch}
-                onChange={(e) => setJobSearch(e.target.value)}
-                placeholder="ค้นหาชื่องานหรือแปลง..."
-                className="w-full p-2 border border-gray-300 rounded-md"
-              />
+              <input type="text" value={jobSearch} onChange={(e) => setJobSearch(e.target.value)} placeholder="ค้นหาชื่องานหรือแปลง..." className="w-full p-2 border border-gray-300 rounded-md" />
               <select value={jobPlotFilter} onChange={(e) => setJobPlotFilter(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md">
                 <option value="">ทุกแปลง</option>
-                {adjustmentPlotOptions.map((plot) => (
-                  <option key={plot} value={plot}>{plot}</option>
-                ))}
+                {adjustmentPlotOptions.map((plot) => <option key={plot} value={plot}>{plot}</option>)}
               </select>
-              <button
-                type="button"
-                onClick={() => { setJobSearch(''); setJobPlotFilter('') }}
-                className="px-3 py-2 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
-              >
-                ล้างตัวกรอง
-              </button>
+              <button type="button" onClick={() => { setJobSearch(''); setJobPlotFilter('') }} className="px-3 py-2 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50">ล้างตัวกรอง</button>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="min-w-full divide-y divide-gray-200 text-[14px]">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">เลือก</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ชื่องาน</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">มูลค่าทั้งหมด</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">เบิกแล้ว</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">ความคืบหน้าเดิม %</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">ความคืบหน้าปัจจุบัน %</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">ยอดขอเบิก</th>
+                    <th className="px-4 py-3 text-left">เลือก</th>
+                    <th className="px-4 py-3 text-left">ชื่องาน</th>
+                    <th className="px-4 py-3 text-right">มูลค่าทั้งหมด</th>
+                    <th className="px-4 py-3 text-right">เบิกแล้ว</th>
+                    <th className="px-4 py-3 text-right">คงเหลือก่อนเบิก</th>
+                    <th className="px-4 py-3 text-right">คืบหน้าเดิม %</th>
+                    <th className="px-4 py-3 text-right">คืบหน้าปัจจุบัน %</th>
+                    <th className="px-4 py-3 text-right">ยอดขอเบิก</th>
+                    <th className="px-4 py-3 text-right">คงเหลือหลังเบิก</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredBillableJobs.map((job) => (
-                    <tr key={job.id}>
-                      <td className="px-6 py-4">
-                        <input type="checkbox" onChange={() => handleJobSelection(job.id, job)} checked={selectedJobs.has(job.id)} />
-                      </td>
-                      <td className="px-6 py-4">{job.boq_master.item_name} ({job.plots.name})</td>
-                      <td className="px-6 py-4 text-right">{formatCurrency(job.totalBoq)}</td>
-                      <td className="px-6 py-4 text-right">{formatCurrency(job.paid)}</td>
-                      <td className="px-6 py-4 text-right">{job.previous_progress.toFixed(2)}%</td>
-                      <td className="px-6 py-4 text-right">
+                  {filteredBillableJobs.map((job) => {
+                    const selected = selectedJobs.get(job.id)
+                    const requested = Number(selected?.request_amount || 0)
+                    const remainingBefore = Math.max(0, Number(job.remaining || 0))
+                    const remainingAfter = Math.max(0, remainingBefore - requested)
+                    const historyRows = progressHistoryByJob[job.id] || []
+
+                    return (
+                      <Fragment key={job.id}>
+                        <tr key={job.id}>
+                          <td className="px-4 py-3"><input type="checkbox" onChange={() => handleJobSelection(job.id, job)} checked={selectedJobs.has(job.id)} /></td>
+                          <td className="px-4 py-3">{job.boq_master.item_name} ({job.plots.name})</td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(job.totalBoq)}</td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(job.paid)}</td>
+                          <td className="px-4 py-3 text-right font-medium text-slate-700">{formatCurrency(remainingBefore)}</td>
+                          <td className="px-4 py-3 text-right">{job.previous_progress.toFixed(2)}%</td>
+                          <td className="px-4 py-3 text-right">
+                            {selectedJobs.has(job.id) && (
+                              <input
+                                type="number"
+                                className="w-24 p-1 border border-gray-300 rounded-md text-right"
+                                value={selected?.progress || ''}
+                                onChange={(e) => handleProgressChange(job.id, job, e.target.value)}
+                                min={job.previous_progress.toFixed(2)}
+                                max="100"
+                                step="0.01"
+                                placeholder={job.previous_progress.toFixed(2)}
+                              />
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(requested)}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-emerald-700">{formatCurrency(remainingAfter)}</td>
+                        </tr>
+
                         {selectedJobs.has(job.id) && (
-                          <input
-                            type="number"
-                            className="w-24 p-1 border border-gray-300 rounded-md text-right"
-                            value={selectedJobs.get(job.id)?.progress || ''}
-                            onChange={(e) => handleProgressChange(job.id, job, e.target.value)}
-                            min={job.previous_progress.toFixed(2)}
-                            max="100"
-                            step="0.01"
-                            placeholder={job.previous_progress.toFixed(2)}
-                          />
+                          <tr>
+                            <td colSpan={9} className="px-4 pb-4 pt-1">
+                              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div className="text-xs font-semibold text-slate-700 mb-2">ประวัติความคืบหน้า (แสดงเฉพาะงานที่เลือก)</div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm border border-slate-200 bg-white">
+                                    <thead className="bg-slate-100">
+                                      <tr>
+                                        <th className="px-2 py-1 text-left">เลขที่ใบเบิก</th>
+                                        <th className="px-2 py-1 text-left">วันที่</th>
+                                        <th className="px-2 py-1 text-left">สถานะ</th>
+                                        <th className="px-2 py-1 text-right">ยอดสะสมก่อนเบิก</th>
+                                        <th className="px-2 py-1 text-right">ยอดสะสมหลังเบิก</th>
+                                        <th className="px-2 py-1 text-right">คงเหลือก่อนเบิก</th>
+                                        <th className="px-2 py-1 text-right">คงเหลือหลังเบิก</th>
+                                        <th className="px-2 py-1 text-right">%</th>
+                                        <th className="px-2 py-1 text-right">ยอดเบิก</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {historyRows.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={9} className="px-2 py-2 text-center text-slate-400">ยังไม่มีประวัติ</td>
+                                        </tr>
+                                      ) : (() => {
+                                        const asc = [...historyRows].sort((a, b) => {
+                                          const ta = new Date(a.billing_date || a.created_at || 0).getTime()
+                                          const tb = new Date(b.billing_date || b.created_at || 0).getTime()
+                                          return ta - tb
+                                        })
+                                        let paidSoFar = 0
+                                        const withBalances = asc.map((h) => {
+                                          const beforePaid = paidSoFar
+                                          const amount = Number(h.amount || 0)
+                                          const afterPaid = beforePaid + amount
+                                          paidSoFar = afterPaid
+                                          return { ...h, beforePaid, afterPaid }
+                                        }).reverse()
+                                        return withBalances.map((h) => (
+                                          <tr key={h.id} className="border-t border-slate-100">
+                                            <td className="px-2 py-1">#{String(h.doc_no || '-').padStart(4, '0')}</td>
+                                            <td className="px-2 py-1">{h.billing_date ? new Date(h.billing_date).toLocaleDateString('th-TH') : (h.created_at ? new Date(h.created_at).toLocaleDateString('th-TH') : '-')}</td>
+                                            <td className="px-2 py-1">{h.status || '-'}</td>
+                                            <td className="px-2 py-1 text-right">{formatCurrency(h.beforePaid || 0)}</td>
+                                            <td className="px-2 py-1 text-right">{formatCurrency(h.afterPaid || 0)}</td>
+                                            <td className="px-2 py-1 text-right">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(h.beforePaid || 0)))}</td>
+                                            <td className="px-2 py-1 text-right">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(h.afterPaid || 0)))}</td>
+                                            <td className="px-2 py-1 text-right">{h.progress_percent == null ? '-' : `${Number(h.progress_percent).toFixed(2)}%`}</td>
+                                            <td className="px-2 py-1 text-right">{formatCurrency(h.amount || 0)}</td>
+                                          </tr>
+                                        ))
+                                      })()}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="px-6 py-4 text-right">{selectedJobs.has(job.id) ? formatCurrency(selectedJobs.get(job.id)?.request_amount || 0) : '0.00'}</td>
-                    </tr>
-                  ))}
+                      </Fragment>
+                    )
+                  })}
+
                   {filteredBillableJobs.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-6 py-4 text-center text-slate-400">ไม่พบงานตามตัวกรอง</td>
+                      <td colSpan={9} className="px-6 py-4 text-center text-slate-400">ไม่พบงานตามตัวกรอง</td>
                     </tr>
                   )}
                 </tbody>
@@ -398,40 +474,23 @@ export default function CreateBillingRequestPage() {
               </div>
               <div className="col-span-2">
                 {adjustmentPlotOptions.length > 0 ? (
-                  <select value={adj.plot_name || ''} onChange={e => handleAdjustmentChange(index, 'plot_name', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md">
+                  <select value={adj.plot_name || ''} onChange={(e) => handleAdjustmentChange(index, 'plot_name', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md">
                     <option value="">แปลง (ถ้ามี)</option>
                     {adjustmentPlotOptions.map((plot) => <option key={plot} value={plot}>{plot}</option>)}
                   </select>
                 ) : (
-                  <input type="text" placeholder="แปลง" value={adj.plot_name || ''} onChange={e => handleAdjustmentChange(index, 'plot_name', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
+                  <input type="text" placeholder="แปลง" value={adj.plot_name || ''} onChange={(e) => handleAdjustmentChange(index, 'plot_name', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
                 )}
               </div>
-              <div className="col-span-3">
-                <input type="text" placeholder="รายละเอียดงาน" value={adj.description} onChange={e => handleAdjustmentChange(index, 'description', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
-              </div>
-              <div className="col-span-1">
-                <input type="text" placeholder="หน่วย" value={adj.unit} onChange={e => handleAdjustmentChange(index, 'unit', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
-              </div>
-              <div className="col-span-1">
-                <input type="number" placeholder="จำนวน" value={adj.quantity} onChange={e => handleAdjustmentChange(index, 'quantity', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" />
-              </div>
-              <div className="col-span-2">
-                <input type="number" placeholder="ราคาต่อหน่วย" value={adj.unit_price} onChange={e => handleAdjustmentChange(index, 'unit_price', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" />
-              </div>
-              <div className="col-span-1">
-                <button onClick={() => removeAdjustment(index)} className="p-2 text-red-500 hover:text-red-700">
-                  <Trash2 className="h-5 w-5" />
-                </button>
-              </div>
+              <div className="col-span-3"><input type="text" placeholder="รายละเอียดงาน" value={adj.description} onChange={(e) => handleAdjustmentChange(index, 'description', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+              <div className="col-span-1"><input type="text" placeholder="หน่วย" value={adj.unit} onChange={(e) => handleAdjustmentChange(index, 'unit', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+              <div className="col-span-1"><input type="number" placeholder="จำนวน" value={adj.quantity} onChange={(e) => handleAdjustmentChange(index, 'quantity', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+              <div className="col-span-2"><input type="number" placeholder="ราคาต่อหน่วย" value={adj.unit_price} onChange={(e) => handleAdjustmentChange(index, 'unit_price', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+              <div className="col-span-1"><button onClick={() => removeAdjustment(index)} className="p-2 text-red-500 hover:text-red-700"><Trash2 className="h-5 w-5" /></button></div>
             </div>
           ))}
-
-          <button onClick={() => addAdjustment('addition')} className="flex items-center gap-1 text-sm text-green-600 hover:text-green-800 mt-2">
-            <Plus className="h-4 w-4" /> เพิ่มรายการงานเพิ่ม
-          </button>
-          <button onClick={() => addAdjustment('deduction')} className="flex items-center gap-1 text-sm text-red-600 hover:text-red-800 mt-1">
-            <Plus className="h-4 w-4" /> เพิ่มรายการงานหัก
-          </button>
+          <button onClick={() => addAdjustment('addition')} className="flex items-center gap-1 text-sm text-green-600 hover:text-green-800 mt-2"><Plus className="h-4 w-4" />เพิ่มรายการงานเพิ่ม</button>
+          <button onClick={() => addAdjustment('deduction')} className="flex items-center gap-1 text-sm text-red-600 hover:text-red-800 mt-1"><Plus className="h-4 w-4" />เพิ่มรายการงานหัก</button>
         </div>
 
         <div className="mt-6 bg-slate-50 p-4 rounded-lg">
@@ -439,13 +498,7 @@ export default function CreateBillingRequestPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700">หมายเหตุ (ถึง PM)</label>
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={3}
-                className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
-                placeholder="ใส่ข้อความเพิ่มเติมถึงผู้ตรวจสอบ..."
-              />
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="ใส่ข้อความเพิ่มเติมถึงผู้ตรวจสอบ..." />
             </div>
             <div className="space-y-2 text-right">
               <p className="text-gray-500">ยอดเบิกตามเนื้องาน: <span className="font-semibold text-gray-800">{formatCurrency(totalWorkAmount)}</span></p>
@@ -459,11 +512,7 @@ export default function CreateBillingRequestPage() {
         {error && <p className="mt-4 text-red-500">{error}</p>}
 
         <div className="mt-6 flex justify-end">
-          <button
-            onClick={handleSubmit}
-            disabled={isLoading || !selectedProject || !selectedContractor}
-            className="px-6 py-3 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 disabled:bg-gray-400"
-          >
+          <button onClick={handleSubmit} disabled={isLoading || !selectedProject || !selectedContractor} className="px-6 py-3 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 disabled:bg-gray-400">
             {isLoading ? 'กำลังส่ง...' : 'ส่งใบขอเบิกเพื่อตรวจสอบ'}
           </button>
         </div>

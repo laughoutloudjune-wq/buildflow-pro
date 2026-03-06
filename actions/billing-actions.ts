@@ -10,6 +10,31 @@ async function getCurrentUser() {
   return user
 }
 
+async function getCurrentUserRole(supabase: any, userId: string): Promise<'admin' | 'pm' | 'foreman'> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .maybeSingle()
+  const role = data?.role
+  if (role === 'admin' || role === 'pm' || role === 'foreman') return role
+  return 'foreman'
+}
+
+function requireRole(allowed: Array<'admin' | 'pm' | 'foreman'>, role: 'admin' | 'pm' | 'foreman', message: string) {
+  if (!allowed.includes(role)) throw new Error(message)
+}
+
+async function getCurrentUserProfile(supabase: any, userId: string) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, role')
+    .eq('id', userId)
+    .single()
+  if (error) return null
+  return data
+}
+
 async function getPlotNameMap(supabase: any, plotIds: (string | null | undefined)[]) {
   const ids = Array.from(new Set((plotIds || []).filter(Boolean))) as string[]
   if (ids.length === 0) return new Map<string, string>()
@@ -29,18 +54,53 @@ async function getPlotDetailMap(supabase: any, plotIds: (string | null | undefin
   return new Map((data || []).map((p: any) => [p.id, p]))
 }
 
-function encodeAdjustmentDescription(description: string, plotName?: string | null) {
+function encodeAdjustmentDescription(
+  description: string,
+  plotName?: string | null,
+  signature?: {
+    user_id?: string | null
+    full_name?: string | null
+    role?: string | null
+    action?: string | null
+    at?: string | null
+  } | null
+) {
   const cleanDesc = (description || '').trim()
   const cleanPlot = (plotName || '').trim()
-  if (!cleanPlot) return cleanDesc
-  return `[PLOT:${cleanPlot}] ${cleanDesc}`.trim()
+  const segments: string[] = []
+  if (cleanPlot) segments.push(`[PLOT:${cleanPlot}]`)
+  if (signature?.user_id) {
+    const name = (signature.full_name || '').replace(/[|]/g, ' ').trim() || '-'
+    const role = (signature.role || '').replace(/[|]/g, ' ').trim() || '-'
+    const action = (signature.action || '').replace(/[|]/g, ' ').trim() || 'edit'
+    const at = signature.at || new Date().toISOString()
+    segments.push(`[SIG:${signature.user_id}|${name}|${role}|${at}|${action}]`)
+  }
+  segments.push(cleanDesc)
+  return segments.join(' ').trim()
 }
 
 function decodeAdjustmentDescription(rawDescription: string | null | undefined) {
-  const raw = rawDescription || ''
-  const match = raw.match(/^\[PLOT:(.+?)\]\s*(.*)$/)
-  if (!match) return { description: raw, plot_name: '' }
-  return { plot_name: (match[1] || '').trim(), description: (match[2] || '').trim() }
+  let rest = rawDescription || ''
+  let plot_name = ''
+  let signature: any = null
+
+  // Supports stacked prefixes: [PLOT:...] [SIG:...] description
+  while (true) {
+    const m = rest.match(/^\[(PLOT|SIG):([^\]]+)\]\s*(.*)$/)
+    if (!m) break
+    const kind = m[1]
+    const payload = m[2]
+    rest = m[3] || ''
+    if (kind === 'PLOT') {
+      plot_name = payload.trim()
+    } else if (kind === 'SIG') {
+      const [user_id = '', full_name = '', role = '', at = '', action = ''] = payload.split('|')
+      signature = { user_id, full_name, role, at, action }
+    }
+  }
+
+  return { description: rest, plot_name, signature }
 }
 
 function normalizeAdjustmentsWithPlot(adjustments: any[] | null | undefined) {
@@ -50,9 +110,61 @@ function normalizeAdjustmentsWithPlot(adjustments: any[] | null | undefined) {
       ...adj,
       description: parsed.description,
       plot_name: parsed.plot_name || '',
+      signature: parsed.signature || null,
       raw_description: adj.description || '',
     }
   })
+}
+
+export async function getJobProgressHistory(jobAssignmentIds: string[]) {
+  const supabase = await createClient()
+  const ids = Array.from(new Set((jobAssignmentIds || []).filter(Boolean)))
+  if (ids.length === 0) return {}
+
+  const { data, error } = await supabase
+    .from('billing_jobs')
+    .select(`
+      id,
+      job_assignment_id,
+      amount,
+      progress_percent,
+      billings!inner (
+        id,
+        doc_no,
+        billing_date,
+        status,
+        created_at
+      )
+    `)
+    .in('job_assignment_id', ids)
+
+  if (error) throw new Error(error.message)
+
+  const out: Record<string, any[]> = {}
+  for (const row of data || []) {
+    const key = String(row.job_assignment_id)
+    if (!out[key]) out[key] = []
+    const bill = Array.isArray(row.billings) ? row.billings[0] : row.billings
+    out[key].push({
+      id: row.id,
+      amount: Number(row.amount || 0),
+      progress_percent: row.progress_percent == null ? null : Number(row.progress_percent),
+      created_at: bill?.created_at,
+      doc_no: bill?.doc_no,
+      billing_date: bill?.billing_date,
+      status: bill?.status,
+    })
+  }
+
+  // Stable sort newest first using bill date/time (schema-safe, no dependency on billing_jobs.created_at).
+  for (const key of Object.keys(out)) {
+    out[key].sort((a, b) => {
+      const ta = new Date(a.billing_date || a.created_at || 0).getTime()
+      const tb = new Date(b.billing_date || b.created_at || 0).getTime()
+      return tb - ta
+    })
+  }
+  return out
 }
 
 // 1. ดึงข้อมูลเบื้องต้นสำหรับทำ Dropdown
@@ -186,6 +298,9 @@ export async function createBillingRequest(data: any) {
   const user = await getCurrentUser()
 
   if (!user) throw new Error("User not found")
+  const role = await getCurrentUserRole(supabase, user.id)
+  requireRole(['foreman', 'pm', 'admin'], role, 'No permission to create billing request')
+  const profile = await getCurrentUserProfile(supabase, user.id)
 
   const requestType = data.type === 'extra_work' ? 'extra_work' : 'progress'
   const isExtraWork = requestType === 'extra_work'
@@ -245,7 +360,13 @@ export async function createBillingRequest(data: any) {
     const adjToInsert = adjustments.map((adj: any) => ({
       billing_id: billingId,
       type: adj.type,
-      description: encodeAdjustmentDescription(adj.description, adj.plot_name),
+      description: encodeAdjustmentDescription(adj.description, adj.plot_name, {
+        user_id: user.id,
+        full_name: profile?.full_name || '',
+        role: profile?.role || 'foreman',
+        action: 'create',
+        at: new Date().toISOString(),
+      }),
       unit: adj.unit,
       quantity: parseFloat(adj.quantity),
       unit_price: parseFloat(adj.unit_price)
@@ -266,6 +387,9 @@ export async function approveBilling(id: string, data: any) {
   const user = await getCurrentUser()
 
   if (!user) throw new Error("User not found")
+  const role = await getCurrentUserRole(supabase, user.id)
+  requireRole(['pm', 'admin'], role, 'Only PM/Admin can approve billing')
+  const profile = await getCurrentUserProfile(supabase, user.id)
 
   const billingId = id
 
@@ -306,7 +430,13 @@ export async function approveBilling(id: string, data: any) {
     const adjToInsert = data.adjustments.map((adj: any) => ({
       billing_id: billingId,
       type: adj.type,
-      description: encodeAdjustmentDescription(adj.description, adj.plot_name),
+      description: encodeAdjustmentDescription(adj.description, adj.plot_name, {
+        user_id: user.id,
+        full_name: profile?.full_name || '',
+        role: profile?.role || 'pm',
+        action: 'approve_edit',
+        at: new Date().toISOString(),
+      }),
       unit: adj.unit,
       quantity: parseFloat(adj.quantity),
       unit_price: parseFloat(adj.unit_price)
@@ -339,6 +469,8 @@ export async function rejectBilling(id: string, note?: string) {
     const user = await getCurrentUser()
 
     if (!user) throw new Error("User not found")
+    const role = await getCurrentUserRole(supabase, user.id)
+    requireRole(['pm', 'admin'], role, 'Only PM/Admin can reject billing')
 
     const { error } = await supabase
         .from('billings')
@@ -362,6 +494,8 @@ export async function undoApproveBilling(id: string) {
   const supabase = await createClient()
   const user = await getCurrentUser()
   if (!user) throw new Error("User not found")
+  const role = await getCurrentUserRole(supabase, user.id)
+  requireRole(['pm', 'admin'], role, 'Only PM/Admin can undo approve')
 
   const { data: bill, error: billError } = await supabase
     .from('billings')
@@ -399,6 +533,9 @@ export async function updateBillingRequest(id: string, data: any) {
   const supabase = await createClient()
   const user = await getCurrentUser()
   if (!user) throw new Error("User not found")
+  const profile = await getCurrentUserProfile(supabase, user.id)
+  const role = profile?.role || 'foreman'
+  const isPrivileged = role === 'pm' || role === 'admin'
 
   const { data: current, error: currentError } = await supabase
     .from('billings')
@@ -408,8 +545,10 @@ export async function updateBillingRequest(id: string, data: any) {
   if (currentError) throw new Error(currentError.message)
   if (!current) throw new Error("Billing not found")
   if (current.status !== 'pending_review') throw new Error("Can edit pending review only")
-  if (current.created_by && current.created_by !== user.id) throw new Error("No permission to edit this request")
-  if (!current.created_by && current.submitted_by !== user.id) throw new Error("No permission to edit this request")
+  if (!isPrivileged) {
+    if (current.created_by && current.created_by !== user.id) throw new Error("No permission to edit this request")
+    if (!current.created_by && current.submitted_by !== user.id) throw new Error("No permission to edit this request")
+  }
 
   const requestType = data.type === 'extra_work' ? 'extra_work' : 'progress'
   const isExtraWork = requestType === 'extra_work'
@@ -462,7 +601,13 @@ export async function updateBillingRequest(id: string, data: any) {
     const adjToInsert = adjustments.map((adj: any) => ({
       billing_id: id,
       type: adj.type,
-      description: encodeAdjustmentDescription(adj.description, adj.plot_name),
+      description: encodeAdjustmentDescription(adj.description, adj.plot_name, {
+        user_id: user.id,
+        full_name: profile?.full_name || '',
+        role: role,
+        action: 'edit',
+        at: new Date().toISOString(),
+      }),
       unit: adj.unit,
       quantity: parseFloat(adj.quantity),
       unit_price: parseFloat(adj.unit_price)
@@ -718,7 +863,7 @@ export async function getBillingById(id: string) {
     const userIds = [data.submitted_by, data.approved_by].filter(Boolean)
     const { data: users, error: usersError } = await supabase
       .from('profiles')
-      .select('id, full_name')
+      .select('id, full_name, email')
       .in('id', userIds)
 
     if (usersError) {
@@ -784,15 +929,26 @@ export async function getBillingById(id: string) {
 // 6. ลบประวัติใบเบิกงวด
 export async function deleteBilling(id: string) {
   const supabase = await createClient()
+  const user = await getCurrentUser()
+  if (!user) throw new Error("User not found")
+  const role = await getCurrentUserRole(supabase, user.id)
 
   const { data: bill, error: billError } = await supabase
     .from('billings')
-    .select('id, doc_no, status')
+    .select('id, doc_no, status, created_by, submitted_by')
     .eq('id', id)
     .single()
 
   if (billError) throw new Error(billError.message)
   if (!bill) throw new Error("Billing not found.")
+
+  const isOwner = bill.created_by === user.id || bill.submitted_by === user.id
+  if (bill.status === 'approved' && !(role === 'pm' || role === 'admin')) {
+    throw new Error('Only PM/Admin can delete approved billing')
+  }
+  if (bill.status !== 'approved' && !(isOwner || role === 'pm' || role === 'admin')) {
+    throw new Error('No permission to delete this billing')
+  }
 
   // Only delete associated payments if the bill was approved
   if (bill.status === 'approved') {

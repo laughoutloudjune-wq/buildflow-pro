@@ -69,7 +69,8 @@ export default function SettingsPage() {
              try {
                 await updateUserRole(userId, newRole)
                 setUsers(users.map(u => u.id === userId ? {...u, role: newRole } : u))
-                setSuccess(`User role updated for ${userId}`)
+                const target = users.find(u => u.id === userId)
+                setSuccess(`User role updated for ${target?.email || target?.full_name || 'selected user'}`)
             } catch (e: any) {
                 setError(e.message)
             }
@@ -172,7 +173,11 @@ export default function SettingsPage() {
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {users.map(user => (
+                                {users.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={3} className="px-6 py-8 text-center text-slate-400">No users found in profiles table.</td>
+                                    </tr>
+                                ) : users.map(user => (
                                     <tr key={user.id}>
                                         <td className="px-6 py-4 whitespace-nowrap">{user.full_name}</td>
                                         <td className="px-6 py-4 whitespace-nowrap">{user.email}</td>

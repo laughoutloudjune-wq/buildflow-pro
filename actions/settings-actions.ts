@@ -3,6 +3,42 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+async function getCurrentUserAndRole(supabase: any) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { user: null, role: 'foreman' as const }
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle()
+  const role = profile?.role === 'admin' || profile?.role === 'pm' || profile?.role === 'foreman'
+    ? profile.role
+    : 'foreman'
+  return { user, role }
+}
+
+async function ensureCurrentUserProfile(supabase: any) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  const { data: existing } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (existing?.id) return
+
+  await supabase
+    .from('profiles')
+    .upsert([{
+      id: user.id,
+      email: user.email || '',
+      full_name: (user.user_metadata?.full_name || user.email || 'User') as string,
+      role: 'foreman',
+    }], { onConflict: 'id' })
+}
+
 /**
  * Retrieves the organization settings.
  * Assumes there is only ever one row in the table.
@@ -78,6 +114,20 @@ export async function updateOrganizationSettings(formData: FormData) {
  */
 export async function getUsers() {
     const supabase = await createClient()
+    await ensureCurrentUserProfile(supabase)
+    const { user, role } = await getCurrentUserAndRole(supabase)
+    if (!user) return []
+
+    // Non-admin can only see themselves.
+    if (role !== 'admin') {
+      const { data: me } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, role')
+        .eq('id', user.id)
+        .maybeSingle()
+      return me ? [me] : []
+    }
+
     const { data, error } = await supabase
         .from('profiles')
         .select(`
@@ -85,11 +135,18 @@ export async function getUsers() {
             full_name,
             email,
             role
-        `);
+        `)
+        .order('email', { ascending: true })
 
     if (error) {
         console.error('Error fetching users:', error);
-        return [];
+        // Fallback to current user only.
+        const { data: me } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, role')
+          .eq('id', user.id)
+          .maybeSingle()
+        return me ? [me] : []
     }
     return data;
 }
@@ -100,6 +157,8 @@ export async function getUsers() {
  */
 export async function updateUserRole(userId: string, newRole: 'admin' | 'pm' | 'foreman') {
   const supabase = await createClient()
+  const { role } = await getCurrentUserAndRole(supabase)
+  if (role !== 'admin') throw new Error('Only admin can update user roles')
   
   const { error } = await supabase
     .from('profiles')

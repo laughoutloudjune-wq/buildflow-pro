@@ -1,9 +1,9 @@
 ﻿'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { Fragment, useState, useEffect, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling } from '@/actions/billing-actions'
+import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling, getJobProgressHistory } from '@/actions/billing-actions'
 import { getOrganizationSettings } from '@/actions/settings-actions'
 import { Card } from '@/components/ui/Card'
 import { BillingPdf } from '@/components/pdf/BillingPdf'
@@ -49,6 +49,8 @@ export default function ReviewBillingPage() {
   const [whtPercent, setWhtPercent] = useState(0)
   const [retentionPercent, setRetentionPercent] = useState(0)
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit')
+  const [progressHistoryByJob, setProgressHistoryByJob] = useState<Record<string, any[]>>({})
+  const [expandedHistoryRows, setExpandedHistoryRows] = useState<Set<string>>(new Set())
 
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -155,6 +157,34 @@ export default function ReviewBillingPage() {
     names.sort((a, b) => a.localeCompare(b, 'th', { numeric: true, sensitivity: 'base' }))
     return names
   }, [jobs])
+
+  useEffect(() => {
+    const ids = Array.from(new Set((jobs || []).map((j: any) => j.job_assignments?.id).filter(Boolean)))
+    if (ids.length === 0) {
+      setProgressHistoryByJob({})
+      return
+    }
+    let mounted = true
+    getJobProgressHistory(ids)
+      .then((res: any) => {
+        if (mounted) setProgressHistoryByJob(res || {})
+      })
+      .catch(() => {
+        if (mounted) setProgressHistoryByJob({})
+      })
+    return () => {
+      mounted = false
+    }
+  }, [jobs])
+
+  const toggleHistory = (jobAssignmentId: string) => {
+    setExpandedHistoryRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(jobAssignmentId)) next.delete(jobAssignmentId)
+      else next.add(jobAssignmentId)
+      return next
+    })
+  }
 
   const handleApprove = async () => {
     setError(null)
@@ -294,7 +324,7 @@ export default function ReviewBillingPage() {
               <p><span className="font-semibold">โครงการ:</span> {billing.projects?.name}</p>
               <p><span className="font-semibold">แปลง:</span> {plotNames.length ? plotNames.join(', ') : '-'}</p>
               <p><span className="font-semibold">ผู้รับเหมา:</span> {billing.contractors?.name}</p>
-              <p><span className="font-semibold">ผู้ส่งคำขอ:</span> {billing.submitted_by_user?.full_name || billing.submitted_by || 'N/A'}</p>
+              <p><span className="font-semibold">ผู้ส่งคำขอ:</span> {billing.submitted_by_user?.full_name || billing.submitted_by_user?.email || 'ไม่ระบุผู้ใช้'}</p>
               <p><span className="font-semibold">วันที่ส่ง:</span> {new Date(billing.created_at).toLocaleString('th-TH')}</p>
             </div>
             {billing.note && <p className="mt-4"><span className="font-semibold">หมายเหตุ:</span> {billing.note}</p>}
@@ -340,35 +370,90 @@ export default function ReviewBillingPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ชื่องาน</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">มูลค่าทั้งหมด</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">เบิกแล้ว</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">คงเหลือก่อนเบิก</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Foreman %</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">PM %</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">ยอดเงิน</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">คงเหลือหลังเบิก</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {jobs.map((job) => (
-                      <tr key={job.id}>
-                        <td className="px-6 py-4">
-                          <div>{job.job_assignments.boq_master.item_name}</div>
-                          <div className="text-xs text-slate-500">แปลง {job.job_assignments.plots?.name || '-'}</div>
-                        </td>
-                        <td className="px-6 py-4 text-right">{formatCurrency(job.totalBoq)}</td>
-                        <td className="px-6 py-4 text-right">{formatCurrency(job.paid)}</td>
-                        <td className="px-6 py-4 text-right font-semibold text-blue-600">{billing.billing_jobs.find((bj: any) => bj.id === job.id)?.progress_percent?.toFixed(2)}%</td>
-                        <td className="px-6 py-4 text-right">
-                          <input
-                            type="number"
-                            className="w-24 p-1 border border-gray-300 rounded-md text-right"
-                            value={job.progress_percent || ''}
-                            onChange={(e) => handleProgressChange(job.job_assignments.id, parseFloat(e.target.value))}
-                            min={job.previous_progress.toFixed(2)}
-                            max="100"
-                            step="0.01"
-                          />
-                        </td>
-                        <td className="px-6 py-4 text-right font-medium">{formatCurrency(job.amount || 0)}</td>
-                      </tr>
-                    ))}
+                    {jobs.map((job) => {
+                      const jobAssignmentId = job.job_assignments?.id
+                      const isExpanded = expandedHistoryRows.has(jobAssignmentId)
+                      const historyRows = (progressHistoryByJob[jobAssignmentId] || []).filter((h: any) => String(h.status || '') !== 'pending_review' || String(h.doc_no || '') !== String(billing.doc_no || ''))
+                      return (
+                        <Fragment key={job.id}>
+                          <tr>
+                            <td className="px-6 py-4">
+                              <div>{job.job_assignments.boq_master.item_name}</div>
+                              <div className="text-xs text-slate-500">แปลง {job.job_assignments.plots?.name || '-'}</div>
+                              <button
+                                type="button"
+                                onClick={() => toggleHistory(jobAssignmentId)}
+                                className="mt-1 text-xs text-indigo-600 hover:text-indigo-800"
+                              >
+                                {isExpanded ? 'ซ่อนประวัติความคืบหน้า' : 'ดูประวัติความคืบหน้า'}
+                              </button>
+                            </td>
+                            <td className="px-6 py-4 text-right">{formatCurrency(job.totalBoq)}</td>
+                            <td className="px-6 py-4 text-right">{formatCurrency(job.paid)}</td>
+                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(job.paid || 0)))}</td>
+                            <td className="px-6 py-4 text-right font-semibold text-blue-600">{billing.billing_jobs.find((bj: any) => bj.id === job.id)?.progress_percent?.toFixed(2)}%</td>
+                            <td className="px-6 py-4 text-right">
+                              <input
+                                type="number"
+                                className="w-24 p-1 border border-gray-300 rounded-md text-right"
+                                value={job.progress_percent || ''}
+                                onChange={(e) => handleProgressChange(job.job_assignments.id, parseFloat(e.target.value))}
+                                min={job.previous_progress.toFixed(2)}
+                                max="100"
+                                step="0.01"
+                              />
+                            </td>
+                            <td className="px-6 py-4 text-right font-medium">{formatCurrency(job.amount || 0)}</td>
+                            <td className="px-6 py-4 text-right font-semibold text-emerald-700">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(job.paid || 0) - Number(job.amount || 0)))}</td>
+                          </tr>
+                          {isExpanded && (
+                            <tr>
+                              <td colSpan={8} className="px-6 pb-4 pt-1">
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                  <div className="text-xs font-semibold text-slate-700 mb-2">ประวัติความคืบหน้าเดิม</div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-sm border border-slate-200 bg-white">
+                                      <thead className="bg-slate-100">
+                                        <tr>
+                                          <th className="px-2 py-1 text-left">เลขที่ใบเบิก</th>
+                                          <th className="px-2 py-1 text-left">วันที่</th>
+                                          <th className="px-2 py-1 text-left">สถานะ</th>
+                                          <th className="px-2 py-1 text-right">%</th>
+                                          <th className="px-2 py-1 text-right">ยอดเบิก</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {historyRows.length === 0 ? (
+                                          <tr>
+                                            <td colSpan={5} className="px-2 py-2 text-center text-slate-400">ยังไม่มีประวัติก่อนหน้า</td>
+                                          </tr>
+                                        ) : historyRows.map((h: any) => (
+                                          <tr key={h.id} className="border-t border-slate-100">
+                                            <td className="px-2 py-1">#{String(h.doc_no || '-').padStart(4, '0')}</td>
+                                            <td className="px-2 py-1">{h.billing_date ? new Date(h.billing_date).toLocaleDateString('th-TH') : (h.created_at ? new Date(h.created_at).toLocaleDateString('th-TH') : '-')}</td>
+                                            <td className="px-2 py-1">{h.status || '-'}</td>
+                                            <td className="px-2 py-1 text-right">{h.progress_percent == null ? '-' : `${Number(h.progress_percent).toFixed(2)}%`}</td>
+                                            <td className="px-2 py-1 text-right">{formatCurrency(h.amount || 0)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -395,7 +480,16 @@ export default function ReviewBillingPage() {
                     <input type="text" placeholder="แปลง" value={adj.plot_name || ''} onChange={(e) => handleAdjustmentChange(index, 'plot_name', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
                   )}
                 </div>
-                <div className="col-span-3"><input type="text" placeholder="รายละเอียด" value={adj.description} onChange={(e) => handleAdjustmentChange(index, 'description', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                <div className="col-span-3">
+                  <input type="text" placeholder="รายละเอียด" value={adj.description} onChange={(e) => handleAdjustmentChange(index, 'description', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
+                  {(adj as any).signature?.user_id ? (
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      ลงชื่อโดย {(adj as any).signature?.full_name || 'ไม่ระบุผู้แก้ไข'}
+                      {(adj as any).signature?.role ? ` (${(adj as any).signature?.role})` : ''}
+                      {(adj as any).signature?.at ? ` • ${new Date((adj as any).signature?.at).toLocaleString('th-TH')}` : ''}
+                    </div>
+                  ) : null}
+                </div>
                 <div className="col-span-1"><input type="text" placeholder="หน่วย" value={adj.unit} onChange={(e) => handleAdjustmentChange(index, 'unit', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
                 <div className="col-span-1"><input type="number" placeholder="จำนวน" value={adj.quantity} onChange={(e) => handleAdjustmentChange(index, 'quantity', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" /></div>
                 <div className="col-span-2"><input type="number" placeholder="ราคาต่อหน่วย" value={adj.unit_price} onChange={(e) => handleAdjustmentChange(index, 'unit_price', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" /></div>

@@ -47,7 +47,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // 3. ถ้าเข้าหน้า Login (/login) แล้วมี User อยู่แล้ว -> ดีดไป Dashboard (ไม่ต้อง login ซ้ำ)
-  if (url.pathname === '/login' && user) {
+  if ((url.pathname === '/login' || url.pathname === '/register') && user) {
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
