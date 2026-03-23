@@ -1,15 +1,21 @@
 ﻿'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, Loader2, Eye, Edit } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { getBillings } from '@/actions/billing-actions'
 import BillingModal from '@/components/billings/BillingModal'
 import { formatCurrency } from '@/lib/currency'
+import NoticeBanner, { type NoticeTone } from '@/components/ui/NoticeBanner'
+import ClientRoleGate from '@/components/auth/ClientRoleGate'
 
-const getStatusChip = (status: string) => {
+type BillingListItem = Awaited<ReturnType<typeof getBillings>>[number]
+type BillingJobLine = NonNullable<BillingListItem['billing_jobs']>[number]
+type BillingAdjustmentLine = NonNullable<BillingListItem['billing_adjustments']>[number]
+
+const getStatusChip = (status?: string | null) => {
   const base = "inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-4"
   switch (status) {
     case 'approved':
@@ -26,15 +32,24 @@ const getStatusChip = (status: string) => {
 }
 
 export default function BillingListPage() {
-  const [billings, setBillings] = useState<any[]>([])
+  const [billings, setBillings] = useState<BillingListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null)
+  const [flash, setFlash] = useState<{ tone: 'success' | 'error' | 'info' | 'warning'; message: string } | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const queryFlash = useMemo(() => {
+    const message = searchParams.get('message')
+    const type = searchParams.get('type')
+    if (!message) return null
+    const tone: NoticeTone = type === 'error' || type === 'warning' || type === 'info' ? type : 'success'
+    return { tone, message }
+  }, [searchParams])
 
-  const getPlotLabel = (bill: any) => {
+  const getPlotLabel = (bill: BillingListItem) => {
     const baseProject = bill.projects?.name || '-'
     const jobPlots = Array.from(
-      new Set((bill.billing_jobs || []).map((j: any) => j.job_assignments?.plots?.name).filter(Boolean))
+      new Set((bill.billing_jobs || []).map((j: BillingJobLine) => j.job_assignments?.plots?.name).filter(Boolean))
     ) as string[]
 
     if (bill.plots?.name) return `${baseProject} • แปลง ${bill.plots.name}`
@@ -46,23 +61,23 @@ export default function BillingListPage() {
     return baseProject
   }
 
-  const getBriefJobLines = (bill: any) => {
-    const mainLines = (bill.billing_jobs || []).map((job: any) => {
+  const getBriefJobLines = (bill: BillingListItem) => {
+    const mainLines = (bill.billing_jobs || []).map((job: BillingJobLine) => {
       const name = job.job_assignments?.boq_master?.item_name || 'งานหลัก'
       const plot = job.job_assignments?.plots?.name
       return plot ? `${name} • แปลง ${plot}` : name
     })
-    const adjLines = (bill.billing_adjustments || []).map((adj: any) => {
+    const adjLines = (bill.billing_adjustments || []).map((adj: BillingAdjustmentLine) => {
       const prefix = adj.type === 'deduction' ? 'หัก' : 'เพิ่ม'
       return `${prefix}: ${adj.description || '-'}`
     })
     return [...mainLines, ...adjLines].slice(0, 3)
   }
 
-  const getJobTypeLabel = (bill: any) => {
+  const getJobTypeLabel = (bill: BillingListItem) => {
     const hasMain = (bill.billing_jobs || []).length > 0
-    const hasAdd = (bill.billing_adjustments || []).some((a: any) => a.type === 'addition')
-    const hasDeduct = (bill.billing_adjustments || []).some((a: any) => a.type === 'deduction')
+    const hasAdd = (bill.billing_adjustments || []).some((a: BillingAdjustmentLine) => a.type === 'addition')
+    const hasDeduct = (bill.billing_adjustments || []).some((a: BillingAdjustmentLine) => a.type === 'deduction')
     const tags: string[] = []
     if (hasMain) tags.push('งานหลัก')
     if (hasAdd) tags.push('งานเพิ่ม')
@@ -80,10 +95,19 @@ export default function BillingListPage() {
   }
 
   useEffect(() => {
-    loadBillings()
+    let mounted = true
+    getBillings().then((data) => {
+      if (!mounted) return
+      setBillings(data)
+      setLoading(false)
+    })
+
+    return () => {
+      mounted = false
+    }
   }, [])
 
-  const handleRowClick = (bill: any) => {
+  const handleRowClick = (bill: BillingListItem) => {
     if (bill.status === 'pending_review') {
       router.push(`/dashboard/billing/${bill.id}/review`)
     } else {
@@ -93,6 +117,8 @@ export default function BillingListPage() {
 
   return (
     <div className="space-y-6">
+      <ClientRoleGate allowedRoles={['admin', 'pm']} />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">รายการเบิกจ่ายงวดงาน</h1>
@@ -111,6 +137,12 @@ export default function BillingListPage() {
           </Link>
         </div>
       </div>
+
+      {queryFlash ? (
+        <NoticeBanner tone={queryFlash.tone} message={queryFlash.message} onClose={() => router.replace('/dashboard/billing')} />
+      ) : flash ? (
+        <NoticeBanner tone={flash.tone} message={flash.message} onClose={() => setFlash(null)} />
+      ) : null}
 
       <Card className="p-4 bg-slate-50/60 border-slate-200">
         {loading ? (
@@ -131,7 +163,9 @@ export default function BillingListPage() {
                       #{bill.doc_no?.toString().padStart(4, '0')}
                     </div>
                   </div>
-                  <div className="text-slate-600 text-sm">{new Date(bill.billing_date).toLocaleDateString('th-TH')}</div>
+                  <div className="text-slate-600 text-sm">
+                    {bill.billing_date ? new Date(bill.billing_date).toLocaleDateString('th-TH') : '-'}
+                  </div>
                   <div>
                     <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">
                       {getJobTypeLabel(bill)}
@@ -170,6 +204,7 @@ export default function BillingListPage() {
         billingId={selectedBillingId}
         onClose={() => setSelectedBillingId(null)}
         onDeleted={loadBillings}
+        onStatus={(status) => setFlash(status)}
       />
     </div>
   )

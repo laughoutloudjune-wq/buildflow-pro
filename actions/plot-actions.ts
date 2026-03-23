@@ -10,7 +10,7 @@ export async function getPlotsByProjectId(projectId: string) {
     .from('plots')
     .select(`
       *,
-      house_models (name, code)
+      house_models (id, name, code)
     `)
     .eq('project_id', projectId)
     .order('name', { ascending: true })

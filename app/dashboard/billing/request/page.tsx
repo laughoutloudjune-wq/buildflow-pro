@@ -7,57 +7,32 @@ import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import { Plus, Trash2, CheckCircle } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
+import type { BillingAdjustmentForm, BillableJob, BillingAdjustmentRecord, ContractorOption, ProgressHistoryItem, ProjectOption, SelectedBillingJobState } from '@/lib/types/billing'
 
-type Project = { id: string; name: string }
-type Contractor = { id: string; name: string }
-type Job = {
-  id: string
-  totalBoq: number
-  paid: number
-  remaining: number
-  boq_master: { item_name: string; unit: string }
-  plots: { name: string }
-  previous_progress: number
-}
-type Adjustment = {
-  type: 'addition' | 'deduction'
-  description: string
-  plot_name?: string
-  unit: string
-  quantity: number
-  unit_price: number
-}
-type ProgressHistoryItem = {
-  id: string
-  amount: number
-  progress_percent: number | null
-  billing_date?: string
-  created_at?: string
-  doc_no?: string
-  status?: string
-}
+type Adjustment = BillingAdjustmentForm
+type BillingDetail = Awaited<ReturnType<typeof getBillingById>>
 
 export default function CreateBillingRequestPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editId = searchParams.get('editId')
 
-  const [projects, setProjects] = useState<Project[]>([])
-  const [contractors, setContractors] = useState<Contractor[]>([])
+  const [projects, setProjects] = useState<ProjectOption[]>([])
+  const [contractors, setContractors] = useState<ContractorOption[]>([])
   const [selectedProject, setSelectedProject] = useState('')
   const [selectedContractor, setSelectedContractor] = useState('')
-  const [billableJobs, setBillableJobs] = useState<Job[]>([])
+  const [billableJobs, setBillableJobs] = useState<BillableJob[]>([])
   const [jobSearch, setJobSearch] = useState('')
   const [jobPlotFilter, setJobPlotFilter] = useState('')
-  const [selectedJobs, setSelectedJobs] = useState<Map<string, { progress: string; request_amount: number }>>(new Map())
+  const [selectedJobs, setSelectedJobs] = useState<Map<string, SelectedBillingJobState>>(new Map())
   const [progressHistoryByJob, setProgressHistoryByJob] = useState<Record<string, ProgressHistoryItem[]>>({})
   const [adjustments, setAdjustments] = useState<Adjustment[]>([])
   const [note, setNote] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
-  const [submittedData, setSubmittedData] = useState<any>(null)
-  const [editingBilling, setEditingBilling] = useState<any>(null)
+  const [submittedData, setSubmittedData] = useState<{ project_id: string; contractor_id: string; net_amount: number; doc_no?: string | number } | null>(null)
+  const [editingBilling, setEditingBilling] = useState<BillingDetail>(null)
   const [didPrefillJobs, setDidPrefillJobs] = useState(false)
 
   useEffect(() => {
@@ -80,7 +55,7 @@ export default function CreateBillingRequestPage() {
         setSelectedContractor(billing.contractor_id || '')
         setNote(billing.note || '')
         setAdjustments(
-          (billing.billing_adjustments || []).map((adj: any) => ({
+          (billing.billing_adjustments || []).map((adj: BillingAdjustmentRecord) => ({
             type: adj.type,
             description: adj.description || '',
             plot_name: adj.plot_name || '',
@@ -90,8 +65,8 @@ export default function CreateBillingRequestPage() {
           }))
         )
         setDidPrefillJobs(false)
-      } catch (err: any) {
-        setError(err.message || 'โหลดข้อมูลใบขอเบิกไม่สำเร็จ')
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'โหลดข้อมูลใบขอเบิกไม่สำเร็จ')
       }
     }
     fetchBillingForEdit()
@@ -102,7 +77,7 @@ export default function CreateBillingRequestPage() {
     async function fetchJobs() {
       setIsLoading(true)
       const jobs = await getBillableJobs(selectedProject, selectedContractor)
-      const jobsWithProgress = jobs.map((job: any) => ({
+      const jobsWithProgress = jobs.map((job: BillableJob) => ({
         ...job,
         previous_progress: job.totalBoq > 0 ? (job.paid / job.totalBoq) * 100 : 0,
       }))
@@ -139,7 +114,7 @@ export default function CreateBillingRequestPage() {
 
     let mounted = true
     getJobProgressHistory(selectedIds)
-      .then((res: any) => {
+      .then((res: Record<string, ProgressHistoryItem[]>) => {
         if (mounted) setProgressHistoryByJob(res || {})
       })
       .catch(() => {
@@ -151,17 +126,18 @@ export default function CreateBillingRequestPage() {
     }
   }, [selectedJobs])
 
-  const handleJobSelection = (jobId: string, job: Job) => {
+  const handleJobSelection = (jobId: string, job: BillableJob) => {
     const newSelectedJobs = new Map(selectedJobs)
+    const previousProgress = job.previous_progress ?? 0
     if (newSelectedJobs.has(jobId)) {
       newSelectedJobs.delete(jobId)
     } else {
-      newSelectedJobs.set(jobId, { progress: job.previous_progress.toFixed(2), request_amount: 0 })
+      newSelectedJobs.set(jobId, { progress: previousProgress.toFixed(2), request_amount: 0 })
     }
     setSelectedJobs(newSelectedJobs)
   }
 
-  const handleProgressChange = (jobId: string, job: Job, progressStr: string) => {
+  const handleProgressChange = (jobId: string, job: BillableJob, progressStr: string) => {
     const newSelectedJobs = new Map(selectedJobs)
 
     if (progressStr === '') {
@@ -182,9 +158,9 @@ export default function CreateBillingRequestPage() {
     setSelectedJobs(newSelectedJobs)
   }
 
-  const handleAdjustmentChange = (index: number, field: keyof Adjustment, value: any) => {
+  const handleAdjustmentChange = (index: number, field: keyof Adjustment, value: Adjustment[keyof Adjustment]) => {
     const newAdjustments = [...adjustments]
-    ;(newAdjustments[index] as any)[field] = value
+    newAdjustments[index] = { ...newAdjustments[index], [field]: value }
     setAdjustments(newAdjustments)
   }
 
@@ -193,7 +169,7 @@ export default function CreateBillingRequestPage() {
   }
 
   const removeAdjustment = (index: number) => {
-    setAdjustments(adjustments.filter((_, i) => i !== index))
+    setAdjustments(adjustments.filter((_: Adjustment, i: number) => i !== index))
   }
 
   const { totalWorkAmount, totalAddAmount, totalDeductAmount, netAmount } = useMemo(() => {
@@ -205,14 +181,16 @@ export default function CreateBillingRequestPage() {
   }, [selectedJobs, adjustments])
 
   const adjustmentPlotOptions = useMemo(() => {
-    const names = Array.from(new Set((billableJobs || []).map((j) => j.plots?.name).filter(Boolean)))
+    const names = Array.from(
+      new Set((billableJobs || []).map((job: BillableJob) => job.plots?.name).filter((name: string | undefined): name is string => Boolean(name)))
+    )
     names.sort((a, b) => a.localeCompare(b, 'th', { numeric: true, sensitivity: 'base' }))
     return names
   }, [billableJobs])
 
   const filteredBillableJobs = useMemo(() => {
     const q = jobSearch.trim().toLowerCase()
-    return (billableJobs || []).filter((job) => {
+    return (billableJobs || []).filter((job: BillableJob) => {
       const jobName = String(job.boq_master?.item_name || '').toLowerCase()
       const plotName = String(job.plots?.name || '')
       const matchSearch = q.length === 0 || jobName.includes(q) || plotName.toLowerCase().includes(q)
@@ -236,17 +214,19 @@ export default function CreateBillingRequestPage() {
 
     const jobsPayload: { id: string; progress_percent: number; request_amount: number }[] = []
     for (const [id, data] of selectedJobs.entries()) {
-      const job = billableJobs.find(j => j.id === id)
+      const job = billableJobs.find((billableJob: BillableJob) => billableJob.id === id)
       if (!job) continue
 
       const progress = parseFloat(data.progress)
+      const previousProgress = job.previous_progress ?? 0
+      const jobName = job.boq_master?.item_name || 'งานหลัก'
       if (isNaN(progress)) {
-        setError(`ความคืบหน้าของงาน "${job.boq_master.item_name}" ไม่ถูกต้อง`)
+        setError(`ความคืบหน้าของงาน "${jobName}" ไม่ถูกต้อง`)
         return
       }
 
-      if (progress <= job.previous_progress) {
-        setError(`ความคืบหน้าของงาน "${job.boq_master.item_name}" ต้องมากกว่า ${job.previous_progress.toFixed(2)}%`)
+      if (progress <= previousProgress) {
+        setError(`ความคืบหน้าของงาน "${jobName}" ต้องมากกว่า ${previousProgress.toFixed(2)}%`)
         return
       }
 
@@ -276,8 +256,8 @@ export default function CreateBillingRequestPage() {
         : await createBillingRequest(dataToSubmit)
       setSubmittedData({ ...dataToSubmit, doc_no: result.doc_no, net_amount: netAmount })
       setShowSuccessModal(true)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save billing request')
     } finally {
       setIsLoading(false)
     }
@@ -297,8 +277,8 @@ export default function CreateBillingRequestPage() {
             <h2 className="text-2xl font-bold mb-2">ส่งคำขอสำเร็จ</h2>
             <p className="text-gray-600 mb-4">ใบขอเบิกเลขที่ #{submittedData.doc_no} ถูกส่งเพื่อรอการตรวจสอบแล้ว</p>
             <div className="bg-gray-50 p-4 rounded-lg text-left mb-6">
-              <p><strong>โครงการ:</strong> {projects.find(p => p.id === submittedData.project_id)?.name}</p>
-              <p><strong>ผู้รับเหมา:</strong> {contractors.find(c => c.id === submittedData.contractor_id)?.name}</p>
+              <p><strong>โครงการ:</strong> {projects.find((project: ProjectOption) => project.id === submittedData.project_id)?.name}</p>
+              <p><strong>ผู้รับเหมา:</strong> {contractors.find((contractor: ContractorOption) => contractor.id === submittedData.contractor_id)?.name}</p>
               <p className="mt-2 text-lg font-bold">ยอดขอเบิกรวม: <span className="text-blue-600">{formatCurrency(submittedData.net_amount)} บาท</span></p>
             </div>
             <button onClick={handleModalClose} className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">กลับไปที่หน้ารายการ</button>
@@ -364,11 +344,11 @@ export default function CreateBillingRequestPage() {
                       <Fragment key={job.id}>
                         <tr key={job.id}>
                           <td className="px-4 py-3"><input type="checkbox" onChange={() => handleJobSelection(job.id, job)} checked={selectedJobs.has(job.id)} /></td>
-                          <td className="px-4 py-3">{job.boq_master.item_name} ({job.plots.name})</td>
+                          <td className="px-4 py-3">{job.boq_master?.item_name || 'งานหลัก'} ({job.plots?.name || '-'})</td>
                           <td className="px-4 py-3 text-right">{formatCurrency(job.totalBoq)}</td>
                           <td className="px-4 py-3 text-right">{formatCurrency(job.paid)}</td>
                           <td className="px-4 py-3 text-right font-medium text-slate-700">{formatCurrency(remainingBefore)}</td>
-                          <td className="px-4 py-3 text-right">{job.previous_progress.toFixed(2)}%</td>
+                          <td className="px-4 py-3 text-right">{(job.previous_progress ?? 0).toFixed(2)}%</td>
                           <td className="px-4 py-3 text-right">
                             {selectedJobs.has(job.id) && (
                               <input
@@ -376,10 +356,10 @@ export default function CreateBillingRequestPage() {
                                 className="w-24 p-1 border border-gray-300 rounded-md text-right"
                                 value={selected?.progress || ''}
                                 onChange={(e) => handleProgressChange(job.id, job, e.target.value)}
-                                min={job.previous_progress.toFixed(2)}
+                                min={(job.previous_progress ?? 0).toFixed(2)}
                                 max="100"
                                 step="0.01"
-                                placeholder={job.previous_progress.toFixed(2)}
+                                placeholder={(job.previous_progress ?? 0).toFixed(2)}
                               />
                             )}
                           </td>
@@ -413,20 +393,20 @@ export default function CreateBillingRequestPage() {
                                           <td colSpan={9} className="px-2 py-2 text-center text-slate-400">ยังไม่มีประวัติ</td>
                                         </tr>
                                       ) : (() => {
-                                        const asc = [...historyRows].sort((a, b) => {
+                                        const asc = [...historyRows].sort((a: ProgressHistoryItem, b: ProgressHistoryItem) => {
                                           const ta = new Date(a.billing_date || a.created_at || 0).getTime()
                                           const tb = new Date(b.billing_date || b.created_at || 0).getTime()
                                           return ta - tb
                                         })
                                         let paidSoFar = 0
-                                        const withBalances = asc.map((h) => {
+                                        const withBalances = asc.map((h: ProgressHistoryItem) => {
                                           const beforePaid = paidSoFar
                                           const amount = Number(h.amount || 0)
                                           const afterPaid = beforePaid + amount
                                           paidSoFar = afterPaid
                                           return { ...h, beforePaid, afterPaid }
                                         }).reverse()
-                                        return withBalances.map((h) => (
+                                        return withBalances.map((h: ProgressHistoryItem & { beforePaid: number; afterPaid: number }) => (
                                           <tr key={h.id} className="border-t border-slate-100">
                                             <td className="px-2 py-1">#{String(h.doc_no || '-').padStart(4, '0')}</td>
                                             <td className="px-2 py-1">{h.billing_date ? new Date(h.billing_date).toLocaleDateString('th-TH') : (h.created_at ? new Date(h.created_at).toLocaleDateString('th-TH') : '-')}</td>

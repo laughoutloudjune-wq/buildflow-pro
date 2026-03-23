@@ -17,9 +17,19 @@ export default async function DashboardLayout({
     redirect('/')
   }
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  const role = profile?.role === 'admin' || profile?.role === 'pm' || profile?.role === 'foreman'
+    ? profile.role
+    : 'foreman'
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar />
+      <Sidebar userRole={role} />
       <div className="relative flex flex-1 flex-col overflow-y-auto overflow-x-hidden ml-64">
         <Header userEmail={user.email} />
         <main className="w-full grow p-6">

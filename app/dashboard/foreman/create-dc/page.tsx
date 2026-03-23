@@ -9,10 +9,8 @@ import { getPlotsByProjectId } from '@/actions/plot-actions'
 import { Plus, Trash2, Camera, CheckCircle } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { formatCurrency } from '@/lib/currency'
-
-type Project = { id: string; name: string }
-type Contractor = { id: string; name: string }
-type Plot = { id: string; name: string }
+import type { BillingAdjustmentInput, BillingPayload } from '@/lib/billing'
+import type { ContractorOption, PlotOption, ProjectOption } from '@/lib/types/billing'
 
 type DCItem = {
   description: string
@@ -21,6 +19,9 @@ type DCItem = {
   unit_price: number
 }
 
+type BillingDetail = Awaited<ReturnType<typeof getBillingById>>
+type BillingAdjustmentLine = NonNullable<NonNullable<BillingDetail>['billing_adjustments']>[number]
+
 const DC_REASONS = ['Owner Request', 'Site Condition', 'Design Error', 'Scope Change', 'Other']
 
 export default function CreateExtraWorkPage() {
@@ -28,9 +29,9 @@ export default function CreateExtraWorkPage() {
   const searchParams = useSearchParams()
   const editId = searchParams.get('editId')
 
-  const [projects, setProjects] = useState<Project[]>([])
-  const [contractors, setContractors] = useState<Contractor[]>([])
-  const [plots, setPlots] = useState<Plot[]>([])
+  const [projects, setProjects] = useState<ProjectOption[]>([])
+  const [contractors, setContractors] = useState<ContractorOption[]>([])
+  const [plots, setPlots] = useState<PlotOption[]>([])
 
   const [selectedProject, setSelectedProject] = useState('')
   const [selectedContractor, setSelectedContractor] = useState('')
@@ -71,16 +72,16 @@ export default function CreateExtraWorkPage() {
         setExistingAttachmentUrls(Array.isArray(billing.attachment_urls) ? billing.attachment_urls : [])
         setItems(
           (billing.billing_adjustments || [])
-            .filter((adj: any) => adj.type === 'addition')
-            .map((adj: any) => ({
+            .filter((adj: BillingAdjustmentLine) => adj.type === 'addition')
+            .map((adj: BillingAdjustmentLine) => ({
               description: adj.description || '',
               unit: adj.unit || 'หน่วย',
               quantity: Number(adj.quantity || 0),
               unit_price: Number(adj.unit_price || 0),
             }))
         )
-      } catch (err: any) {
-        setError(err.message || 'Failed to load DC request')
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load DC request')
       }
     }
     fetchForEdit()
@@ -98,9 +99,9 @@ export default function CreateExtraWorkPage() {
 
   const addItem = () => setItems([...items, { description: '', unit: 'หน่วย', quantity: 1, unit_price: 0 }])
   const removeItem = (index: number) => setItems(items.filter((_, i) => i !== index))
-  const updateItem = (index: number, field: keyof DCItem, value: any) => {
+  const updateItem = (index: number, field: keyof DCItem, value: DCItem[keyof DCItem]) => {
     const next = [...items]
-    ;(next[index] as any)[field] = value
+    next[index] = { ...next[index], [field]: value }
     setItems(next)
   }
 
@@ -146,7 +147,7 @@ export default function CreateExtraWorkPage() {
     setIsSubmitting(true)
     try {
       const attachment_urls = [...existingAttachmentUrls, ...(await uploadFiles())]
-      const adjustments = items.map((item) => ({
+      const adjustments: BillingAdjustmentInput[] = items.map((item) => ({
         type: 'addition',
         description: item.description,
         unit: item.unit,
@@ -154,7 +155,7 @@ export default function CreateExtraWorkPage() {
         unit_price: item.unit_price,
       }))
 
-      const payload = {
+      const payload: BillingPayload = {
         project_id: selectedProject,
         contractor_id: selectedContractor,
         plot_id: selectedPlot,
@@ -175,8 +176,8 @@ export default function CreateExtraWorkPage() {
 
       setDocNo(result?.doc_no || '-')
       setShowSuccessModal(true)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save DC request')
     } finally {
       setIsSubmitting(false)
     }

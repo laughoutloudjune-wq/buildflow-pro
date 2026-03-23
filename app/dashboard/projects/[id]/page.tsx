@@ -28,6 +28,17 @@ export default function ProjectDetailPage() {
   
   const [isPending, startTransition] = useTransition()
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
+
+  const getHouseModelLabel = (model: any) => {
+    const projectName = model?.projects?.name
+    const projectLocation = model?.projects?.location
+    const scopeLabel = projectName
+      ? [projectLocation, projectName].filter(Boolean).join(' - ')
+      : 'ทุกโครงการ'
+    const codeLabel = model?.code ? ` (${model.code})` : ''
+
+    return `${model?.name || 'ไม่ระบุแบบบ้าน'}${codeLabel} - ${scopeLabel}`
+  }
   
   useEffect(() => {
   
@@ -409,7 +420,7 @@ export default function ProjectDetailPage() {
   
                 {houseModels.map(m => (
   
-                  <option key={m.id} value={m.id}>{m.name} ({m.code})</option>
+                  <option key={m.id} value={m.id}>{getHouseModelLabel(m)}</option>
   
                 ))}
   

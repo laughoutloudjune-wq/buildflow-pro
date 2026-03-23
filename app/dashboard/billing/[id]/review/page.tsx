@@ -9,6 +9,11 @@ import { Card } from '@/components/ui/Card'
 import { BillingPdf } from '@/components/pdf/BillingPdf'
 import { Plus, Trash2, Edit, Loader2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import Modal from '@/components/ui/Modal'
+import NoticeBanner from '@/components/ui/NoticeBanner'
+import ClientRoleGate from '@/components/auth/ClientRoleGate'
+import type { BillingAdjustmentForm, ProgressHistoryItem } from '@/lib/types/billing'
 
 const PDFViewer = dynamic(
   () => import('@react-pdf/renderer').then((mod) => mod.PDFViewer),
@@ -25,16 +30,8 @@ const PDFViewer = dynamic(
 
 type BillingData = Awaited<ReturnType<typeof getBillingById>>
 type SettingsData = Awaited<ReturnType<typeof getOrganizationSettings>>
-type Job = NonNullable<BillingData>['billing_jobs'][0]
-type Adjustment = {
-  id?: string
-  type: 'addition' | 'deduction'
-  description: string
-  plot_name?: string
-  unit: string
-  quantity: number
-  unit_price: number
-}
+type Job = NonNullable<NonNullable<BillingData>['billing_jobs']>[number]
+type Adjustment = BillingAdjustmentForm & { id?: string }
 
 export default function ReviewBillingPage() {
   const router = useRouter()
@@ -49,12 +46,15 @@ export default function ReviewBillingPage() {
   const [whtPercent, setWhtPercent] = useState(0)
   const [retentionPercent, setRetentionPercent] = useState(0)
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit')
-  const [progressHistoryByJob, setProgressHistoryByJob] = useState<Record<string, any[]>>({})
+  const [progressHistoryByJob, setProgressHistoryByJob] = useState<Record<string, ProgressHistoryItem[]>>({})
   const [expandedHistoryRows, setExpandedHistoryRows] = useState<Set<string>>(new Set())
 
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'delete' | 'undoApprove' | null>(null)
+  const [rejectModalOpen, setRejectModalOpen] = useState(false)
+  const [rejectNote, setRejectNote] = useState('')
 
   useEffect(() => {
     if (!id) return
@@ -70,7 +70,7 @@ export default function ReviewBillingPage() {
           setJobs(Array.isArray(billingData.billing_jobs) ? billingData.billing_jobs : [])
           setAdjustments(
             Array.isArray(billingData.billing_adjustments)
-              ? billingData.billing_adjustments.map((adj: any) => ({
+              ? billingData.billing_adjustments.map((adj: Adjustment) => ({
                   ...adj,
                   plot_name: adj.plot_name || '',
                 }))
@@ -85,8 +85,8 @@ export default function ReviewBillingPage() {
           setError('ไม่พบใบเบิกนี้')
         }
         setSettings(settingsData)
-      } catch (e: any) {
-        setError(e.message)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to load billing')
       } finally {
         setIsLoading(false)
       }
@@ -99,8 +99,8 @@ export default function ReviewBillingPage() {
     if (!billing) return []
     if (billing.plots?.name) return [billing.plots.name]
     const names = (billing.billing_jobs || [])
-      .map((j: any) => j.job_assignments?.plots?.name)
-      .filter(Boolean)
+      .map((job: Job) => job.job_assignments?.plots?.name)
+      .filter((name: string | null | undefined): name is string => Boolean(name))
     return Array.from(new Set(names))
   }, [billing])
 
@@ -124,9 +124,9 @@ export default function ReviewBillingPage() {
     )
   }
 
-  const handleAdjustmentChange = (index: number, field: keyof Adjustment, value: any) => {
+  const handleAdjustmentChange = (index: number, field: keyof Adjustment, value: Adjustment[keyof Adjustment]) => {
     const next = [...adjustments]
-    ;(next[index] as any)[field] = value
+    next[index] = { ...next[index], [field]: value }
     setAdjustments(next)
   }
 
@@ -153,20 +153,32 @@ export default function ReviewBillingPage() {
   }, [jobs, adjustments, whtPercent, retentionPercent])
 
   const adjustmentPlotOptions = useMemo(() => {
-    const names = Array.from(new Set((jobs || []).map((j: any) => j.job_assignments?.plots?.name).filter(Boolean)))
+    const names = Array.from(
+      new Set(
+        (jobs || [])
+          .map((job: Job) => job.job_assignments?.plots?.name)
+          .filter((name: string | null | undefined): name is string => Boolean(name))
+      )
+    )
     names.sort((a, b) => a.localeCompare(b, 'th', { numeric: true, sensitivity: 'base' }))
     return names
   }, [jobs])
 
   useEffect(() => {
-    const ids = Array.from(new Set((jobs || []).map((j: any) => j.job_assignments?.id).filter(Boolean)))
+    const ids = Array.from(
+      new Set(
+        (jobs || [])
+          .map((job: Job) => job.job_assignments?.id)
+          .filter((jobId: string | undefined): jobId is string => Boolean(jobId))
+      )
+    )
     if (ids.length === 0) {
       setProgressHistoryByJob({})
       return
     }
     let mounted = true
     getJobProgressHistory(ids)
-      .then((res: any) => {
+      .then((res: Record<string, ProgressHistoryItem[]>) => {
         if (mounted) setProgressHistoryByJob(res || {})
       })
       .catch(() => {
@@ -193,7 +205,8 @@ export default function ReviewBillingPage() {
       const approvalData = {
         billing_date: billingDate,
         selected_jobs: jobs.map((j) => ({
-          job_assignment_id: j.job_assignments.id,
+          id: j.job_assignments?.id || '',
+          job_assignment_id: j.job_assignments?.id || '',
           request_amount: j.amount,
           progress_percent: j.progress_percent,
         })),
@@ -209,63 +222,53 @@ export default function ReviewBillingPage() {
         reason_for_dc: billing?.reason_for_dc,
       }
       await approveBilling(id, approvalData)
-      alert('อนุมัติใบเบิกเรียบร้อยแล้ว')
-      router.push('/dashboard/billing')
-    } catch (e: any) {
-      setError(e.message)
+      router.push('/dashboard/billing?type=success&message=อนุมัติใบเบิกเรียบร้อยแล้ว')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Approve failed')
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const handleReject = async () => {
-    const note = prompt('กรุณาใส่เหตุผลที่ปฏิเสธ (ไม่บังคับ):')
-    if (note === null) return
     setError(null)
     setIsSubmitting(true)
     try {
-      await rejectBilling(id, note || undefined)
-      alert('ปฏิเสธใบเบิกเรียบร้อยแล้ว')
-      router.push('/dashboard/billing')
-    } catch (e: any) {
-      setError(e.message)
+      await rejectBilling(id, rejectNote.trim() || undefined)
+      router.push('/dashboard/billing?type=success&message=ปฏิเสธใบเบิกเรียบร้อยแล้ว')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Reject failed')
     } finally {
       setIsSubmitting(false)
+      setRejectModalOpen(false)
+      setRejectNote('')
     }
   }
 
   const handleDelete = async () => {
-    if (isSubmitting) return
-    const confirmDelete = window.confirm('ต้องการลบใบขอเบิกนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้')
-    if (!confirmDelete) return
-
     setIsSubmitting(true)
     try {
       await deleteBilling(id)
-      alert('ลบใบขอเบิกเรียบร้อยแล้ว')
-      router.push('/dashboard/billing')
-    } catch (e: any) {
-      setError(e.message)
+      router.push('/dashboard/billing?type=success&message=ลบใบขอเบิกเรียบร้อยแล้ว')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
     } finally {
       setIsSubmitting(false)
+      setConfirmAction(null)
     }
   }
 
   const handleUndoApprove = async () => {
-    if (isSubmitting) return
-    const confirmed = window.confirm('ต้องการย้อนสถานะอนุมัติกลับไปเป็นรอตรวจสอบใช่หรือไม่? ระบบจะลบรายการจ่ายที่สร้างจากใบเบิกนี้')
-    if (!confirmed) return
-
     setError(null)
     setIsSubmitting(true)
     try {
       await undoApproveBilling(id)
-      alert('ยกเลิกการอนุมัติเรียบร้อยแล้ว')
-      router.push('/dashboard/billing')
-    } catch (e: any) {
-      setError(e.message)
+      router.push('/dashboard/billing?type=success&message=ยกเลิกการอนุมัติเรียบร้อยแล้ว')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Undo approve failed')
     } finally {
       setIsSubmitting(false)
+      setConfirmAction(null)
     }
   }
 
@@ -286,24 +289,28 @@ export default function ReviewBillingPage() {
   )
 
   if (isLoading) return <p className="text-center p-8">กำลังโหลด...</p>
-  if (error) return <p className="text-red-500 text-center p-8">{error}</p>
+  if (error && !billing) return <p className="text-red-500 text-center p-8">{error}</p>
   if (!billing) return <p className="text-center p-8">ไม่พบข้อมูลใบเบิก</p>
 
   return (
     <div className="container mx-auto p-4 space-y-4">
+      <ClientRoleGate allowedRoles={['admin', 'pm']} />
+
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold mb-0">ตรวจสอบใบขอเบิก #{billing.doc_no}</h1>
         <div className="flex items-center gap-3">
           {billing.status === 'approved' && (
-            <button onClick={handleUndoApprove} disabled={isSubmitting} className="flex items-center gap-2 text-sm text-amber-700 hover:text-amber-900 disabled:opacity-50">
+            <button onClick={() => setConfirmAction('undoApprove')} disabled={isSubmitting} className="flex items-center gap-2 text-sm text-amber-700 hover:text-amber-900 disabled:opacity-50">
               <Edit className="h-4 w-4" /> Undo Approve
             </button>
           )}
-          <button onClick={handleDelete} className="flex items-center gap-2 text-sm text-red-600 hover:text-red-800">
+          <button onClick={() => setConfirmAction('delete')} className="flex items-center gap-2 text-sm text-red-600 hover:text-red-800">
             <Trash2 className="h-4 w-4" /> ลบใบคำขอ
           </button>
         </div>
       </div>
+
+      {error ? <NoticeBanner tone="error" message={error} onClose={() => setError(null)} /> : null}
 
       <div className="flex border-b">
         <button
@@ -325,7 +332,7 @@ export default function ReviewBillingPage() {
               <p><span className="font-semibold">แปลง:</span> {plotNames.length ? plotNames.join(', ') : '-'}</p>
               <p><span className="font-semibold">ผู้รับเหมา:</span> {billing.contractors?.name}</p>
               <p><span className="font-semibold">ผู้ส่งคำขอ:</span> {billing.submitted_by_user?.full_name || billing.submitted_by_user?.email || 'ไม่ระบุผู้ใช้'}</p>
-              <p><span className="font-semibold">วันที่ส่ง:</span> {new Date(billing.created_at).toLocaleString('th-TH')}</p>
+              <p><span className="font-semibold">วันที่ส่ง:</span> {billing.created_at ? new Date(billing.created_at).toLocaleString('th-TH') : '-'}</p>
             </div>
             {billing.note && <p className="mt-4"><span className="font-semibold">หมายเหตุ:</span> {billing.note}</p>}
           </Card>
@@ -381,7 +388,10 @@ export default function ReviewBillingPage() {
                     {jobs.map((job) => {
                       const jobAssignmentId = job.job_assignments?.id
                       const isExpanded = expandedHistoryRows.has(jobAssignmentId)
-                      const historyRows = (progressHistoryByJob[jobAssignmentId] || []).filter((h: any) => String(h.status || '') !== 'pending_review' || String(h.doc_no || '') !== String(billing.doc_no || ''))
+                      const historyRows = (progressHistoryByJob[jobAssignmentId] || []).filter(
+                        (history: ProgressHistoryItem) =>
+                          String(history.status || '') !== 'pending_review' || String(history.doc_no || '') !== String(billing.doc_no || '')
+                      )
                       return (
                         <Fragment key={job.id}>
                           <tr>
@@ -399,7 +409,9 @@ export default function ReviewBillingPage() {
                             <td className="px-6 py-4 text-right">{formatCurrency(job.totalBoq)}</td>
                             <td className="px-6 py-4 text-right">{formatCurrency(job.paid)}</td>
                             <td className="px-6 py-4 text-right font-medium text-slate-700">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(job.paid || 0)))}</td>
-                            <td className="px-6 py-4 text-right font-semibold text-blue-600">{billing.billing_jobs.find((bj: any) => bj.id === job.id)?.progress_percent?.toFixed(2)}%</td>
+                            <td className="px-6 py-4 text-right font-semibold text-blue-600">
+                              {billing.billing_jobs.find((billingJob: Job) => billingJob.id === job.id)?.progress_percent?.toFixed(2)}%
+                            </td>
                             <td className="px-6 py-4 text-right">
                               <input
                                 type="number"
@@ -435,13 +447,21 @@ export default function ReviewBillingPage() {
                                           <tr>
                                             <td colSpan={5} className="px-2 py-2 text-center text-slate-400">ยังไม่มีประวัติก่อนหน้า</td>
                                           </tr>
-                                        ) : historyRows.map((h: any) => (
-                                          <tr key={h.id} className="border-t border-slate-100">
-                                            <td className="px-2 py-1">#{String(h.doc_no || '-').padStart(4, '0')}</td>
-                                            <td className="px-2 py-1">{h.billing_date ? new Date(h.billing_date).toLocaleDateString('th-TH') : (h.created_at ? new Date(h.created_at).toLocaleDateString('th-TH') : '-')}</td>
-                                            <td className="px-2 py-1">{h.status || '-'}</td>
-                                            <td className="px-2 py-1 text-right">{h.progress_percent == null ? '-' : `${Number(h.progress_percent).toFixed(2)}%`}</td>
-                                            <td className="px-2 py-1 text-right">{formatCurrency(h.amount || 0)}</td>
+                                        ) : historyRows.map((history: ProgressHistoryItem) => (
+                                          <tr key={history.id} className="border-t border-slate-100">
+                                            <td className="px-2 py-1">#{String(history.doc_no || '-').padStart(4, '0')}</td>
+                                            <td className="px-2 py-1">
+                                              {history.billing_date
+                                                ? new Date(history.billing_date).toLocaleDateString('th-TH')
+                                                : history.created_at
+                                                  ? new Date(history.created_at).toLocaleDateString('th-TH')
+                                                  : '-'}
+                                            </td>
+                                            <td className="px-2 py-1">{history.status || '-'}</td>
+                                            <td className="px-2 py-1 text-right">
+                                              {history.progress_percent == null ? '-' : `${Number(history.progress_percent).toFixed(2)}%`}
+                                            </td>
+                                            <td className="px-2 py-1 text-right">{formatCurrency(history.amount || 0)}</td>
                                           </tr>
                                         ))}
                                       </tbody>
@@ -482,11 +502,11 @@ export default function ReviewBillingPage() {
                 </div>
                 <div className="col-span-3">
                   <input type="text" placeholder="รายละเอียด" value={adj.description} onChange={(e) => handleAdjustmentChange(index, 'description', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
-                  {(adj as any).signature?.user_id ? (
+                  {adj.signature?.user_id ? (
                     <div className="mt-1 text-[11px] text-slate-500">
-                      ลงชื่อโดย {(adj as any).signature?.full_name || 'ไม่ระบุผู้แก้ไข'}
-                      {(adj as any).signature?.role ? ` (${(adj as any).signature?.role})` : ''}
-                      {(adj as any).signature?.at ? ` • ${new Date((adj as any).signature?.at).toLocaleString('th-TH')}` : ''}
+                      ลงชื่อโดย {adj.signature?.full_name || 'ไม่ระบุผู้แก้ไข'}
+                      {adj.signature?.role ? ` (${adj.signature.role})` : ''}
+                      {adj.signature?.at ? ` • ${new Date(adj.signature.at).toLocaleString('th-TH')}` : ''}
                     </div>
                   ) : null}
                 </div>
@@ -520,7 +540,7 @@ export default function ReviewBillingPage() {
             </div>
 
             <div className="mt-6 flex justify-end gap-4">
-              <button onClick={handleReject} disabled={isSubmitting} className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 font-semibold">
+              <button onClick={() => setRejectModalOpen(true)} disabled={isSubmitting} className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 font-semibold">
                 {isSubmitting ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}
               </button>
               <button onClick={handleApprove} disabled={isSubmitting} className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 font-bold">
@@ -538,6 +558,57 @@ export default function ReviewBillingPage() {
           </PDFViewer>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'delete'}
+        title="ลบใบขอเบิก"
+        message="ต้องการลบใบขอเบิกนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้"
+        confirmLabel={isSubmitting ? 'กำลังลบ...' : 'ลบใบคำขอ'}
+        cancelLabel="ยกเลิก"
+        busy={isSubmitting}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'undoApprove'}
+        title="ย้อนสถานะอนุมัติ"
+        message="ต้องการย้อนสถานะอนุมัติกลับไปเป็นรอตรวจสอบใช่หรือไม่? ระบบจะลบรายการจ่ายที่สร้างจากใบเบิกนี้"
+        confirmLabel={isSubmitting ? 'กำลังย้อนสถานะ...' : 'ย้อนสถานะ'}
+        cancelLabel="ยกเลิก"
+        tone="primary"
+        busy={isSubmitting}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={handleUndoApprove}
+      />
+
+      <Modal isOpen={rejectModalOpen} onClose={() => setRejectModalOpen(false)} title="ปฏิเสธใบเบิก">
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">เหตุผลที่ปฏิเสธ (ไม่บังคับ)</label>
+            <textarea
+              rows={4}
+              value={rejectNote}
+              onChange={(e) => setRejectNote(e.target.value)}
+              className="w-full rounded-md border border-slate-300 p-2"
+              placeholder="ระบุเหตุผลหรือข้อแก้ไขที่ต้องการแจ้งกลับ"
+            />
+          </div>
+          <div className="flex justify-end gap-3 border-t pt-4">
+            <button type="button" onClick={() => setRejectModalOpen(false)} className="btn-secondary">
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              onClick={handleReject}
+              disabled={isSubmitting}
+              className="rounded-lg bg-red-600 px-4 py-2 text-white shadow transition hover:bg-red-700 disabled:opacity-60"
+            >
+              {isSubmitting ? 'กำลังปฏิเสธ...' : 'ยืนยันการปฏิเสธ'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

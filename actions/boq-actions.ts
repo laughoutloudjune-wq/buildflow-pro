@@ -9,7 +9,7 @@ export async function getHouseModels() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('house_models')
-    .select(`*, projects (name)`)
+    .select(`*, projects (name, location)`)
     .order('name', { ascending: true })
   
   if (error) {
@@ -24,7 +24,7 @@ export async function getHouseModelById(id: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('house_models')
-    .select(`*, projects (name)`)
+    .select(`*, projects (name, location)`)
     .eq('id', id)
     .maybeSingle() // ✅ เปลี่ยนเป็น maybeSingle
 

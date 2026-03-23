@@ -2,25 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-
-function decodeAdjustmentDescription(rawDescription: string | null | undefined) {
-  const raw = rawDescription || ''
-  const match = raw.match(/^\[PLOT:(.+?)\]\s*(.*)$/)
-  if (!match) return { description: raw, plot_name: '' }
-  return { plot_name: (match[1] || '').trim(), description: (match[2] || '').trim() }
-}
-
-function normalizeAdjustmentsWithPlot(adjustments: any[] | null | undefined) {
-  return (adjustments || []).map((adj: any) => {
-    const parsed = decodeAdjustmentDescription(adj.description)
-    return {
-      ...adj,
-      description: parsed.description,
-      plot_name: parsed.plot_name || '',
-      raw_description: adj.description || '',
-    }
-  })
-}
+import { normalizeAdjustmentsWithPlot } from '@/actions/_shared/billing-adjustments'
 
 // ดึงรายชื่อผู้รับเหมาทั้งหมด (พร้อมชื่อประเภทช่าง)
 export async function getContractors() {

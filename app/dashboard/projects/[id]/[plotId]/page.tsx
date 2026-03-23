@@ -36,6 +36,11 @@ type Contractor = {
 type HouseModel = {
   id: string
   name: string
+  code?: string | null
+  projects?: {
+    name?: string | null
+    location?: string | null
+  } | null
 }
 
 export default function PlotDetailPage() {
@@ -61,6 +66,17 @@ export default function PlotDetailPage() {
   const [payAmount, setPayAmount] = useState('')
   const [payPercent, setPayPercent] = useState('')
   const [note, setNote] = useState('')
+
+  const getHouseModelLabel = (model: HouseModel) => {
+    const projectName = model?.projects?.name
+    const projectLocation = model?.projects?.location
+    const scopeLabel = projectName
+      ? [projectLocation, projectName].filter(Boolean).join(' - ')
+      : 'ทุกโครงการ'
+    const codeLabel = model?.code ? ` (${model.code})` : ''
+
+    return `${model?.name || 'ไม่ระบุแบบบ้าน'}${codeLabel} - ${scopeLabel}`
+  }
 
   useEffect(() => {
     loadData()
@@ -460,7 +476,7 @@ export default function PlotDetailPage() {
               </option>
               {houseModels.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name}
+                  {getHouseModelLabel(m)}
                 </option>
               ))}
             </select>
