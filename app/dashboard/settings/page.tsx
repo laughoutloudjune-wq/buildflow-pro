@@ -7,15 +7,22 @@ import {
     getOrganizationSettings, 
     updateOrganizationSettings, 
     getUsers, 
-    updateUserRole 
+    updateUserRole
 } from '@/actions/settings-actions'
-import { Building, Banknote, Users, Hammer } from 'lucide-react'
+import { Building, Banknote, Users, Hammer, ShieldCheck } from 'lucide-react'
 
 type Settings = Awaited<ReturnType<typeof getOrganizationSettings>>
 type User = Awaited<ReturnType<typeof getUsers>>[0]
+type TabKey = 'company' | 'financial' | 'users'
+type TabButtonProps = {
+    label: string
+    icon: React.ReactNode
+    isActive: boolean
+    onClick: () => void
+}
 
 // Tab Button Component
-const TabButton = ({ label, icon, isActive, onClick }: any) => (
+const TabButton = ({ label, icon, isActive, onClick }: TabButtonProps) => (
     <button
         onClick={onClick}
         className={`flex-1 py-3 text-sm font-bold transition flex items-center justify-center gap-2 ${isActive ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50' : 'text-slate-500 hover:bg-slate-50'}`}
@@ -26,7 +33,7 @@ const TabButton = ({ label, icon, isActive, onClick }: any) => (
 )
 
 export default function SettingsPage() {
-    const [activeTab, setActiveTab] = useState('company')
+    const [activeTab, setActiveTab] = useState<TabKey>('company')
     const [settings, setSettings] = useState<Settings | null>(null)
     const [users, setUsers] = useState<User[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -58,8 +65,8 @@ export default function SettingsPage() {
             try {
                 await updateOrganizationSettings(formData)
                 setSuccess("Settings updated successfully!")
-            } catch (e: any) {
-                setError(e.message)
+            } catch (e) {
+                setError(e instanceof Error ? e.message : 'Failed to update settings')
             }
         })
     }
@@ -71,8 +78,8 @@ export default function SettingsPage() {
                 setUsers(users.map(u => u.id === userId ? {...u, role: newRole } : u))
                 const target = users.find(u => u.id === userId)
                 setSuccess(`User role updated for ${target?.email || target?.full_name || 'selected user'}`)
-            } catch (e: any) {
-                setError(e.message)
+            } catch (e) {
+                setError(e instanceof Error ? e.message : 'Failed to update role')
             }
         })
     }
@@ -93,6 +100,10 @@ export default function SettingsPage() {
                 <Link href="/dashboard/settings/contractor-types" className="flex-1 py-3 text-sm font-bold transition flex items-center justify-center gap-2 text-slate-500 hover:bg-slate-50">
                     <Hammer size={16}/>
                     Contractor Types
+                </Link>
+                <Link href="/dashboard/settings/permissions" className="flex-1 py-3 text-sm font-bold transition flex items-center justify-center gap-2 text-slate-500 hover:bg-slate-50">
+                    <ShieldCheck size={16}/>
+                    Permissions
                 </Link>
             </div>
 
@@ -184,7 +195,7 @@ export default function SettingsPage() {
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <select 
                                                 value={user.role || 'foreman'} 
-                                                onChange={(e) => handleRoleChange(user.id, e.target.value as any)}
+                                                onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'pm' | 'foreman')}
                                                 disabled={isPending}
                                                 className="p-1 border rounded-md"
                                             >

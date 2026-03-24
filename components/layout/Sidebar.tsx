@@ -14,51 +14,66 @@ import {
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import type { PermissionModule } from '@/lib/permissions'
 
-type UserRole = 'admin' | 'pm' | 'foreman'
+type CurrentPermissions = Record<PermissionModule, boolean>
+type SidebarItem = {
+  icon: typeof LayoutDashboard
+  label: string
+  href: string
+  permission?: PermissionModule
+}
+type SidebarSection = {
+  title: string
+  items: SidebarItem[]
+}
 
-const menuSections = [
+const menuSections: SidebarSection[] = [
   {
     title: 'ภาพรวม',
-    items: [{ icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard', roles: ['admin', 'pm', 'foreman'] }],
+    items: [{ icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' }],
   },
   {
     title: 'ข้อมูลหลัก',
     items: [
-      { icon: Building2, label: 'โครงการ', href: '/dashboard/projects', roles: ['admin', 'pm'] },
-      { icon: ClipboardList, label: 'แบบบ้าน & BOQ', href: '/dashboard/boq', roles: ['admin', 'pm'] },
-      { icon: Users, label: 'ผู้รับเหมา', href: '/dashboard/contractors', roles: ['admin', 'pm'] },
+      { icon: Building2, label: 'โครงการ', href: '/dashboard/projects', permission: 'projects' as const },
+      { icon: ClipboardList, label: 'แบบบ้าน & BOQ', href: '/dashboard/boq', permission: 'boq' as const },
+      { icon: Users, label: 'ผู้รับเหมา', href: '/dashboard/contractors', permission: 'contractors' as const },
     ],
   },
   {
     title: 'งานประจำวัน',
     items: [
-      { icon: HardHat, label: 'ตรวจหน้างาน (Foreman)', href: '/dashboard/foreman/create-progress', roles: ['admin', 'foreman'] },
-      { icon: FileText, label: 'รายการเบิกจ่าย (For PM)', href: '/dashboard/billing', roles: ['admin', 'pm'] },
+      { icon: HardHat, label: 'ตรวจหน้างาน (Foreman)', href: '/dashboard/foreman/create-progress', permission: 'foreman' as const },
+      { icon: FileText, label: 'รายการเบิกจ่าย (For PM)', href: '/dashboard/billing', permission: 'billing' as const },
     ],
   },
   {
     title: 'รายงาน',
     items: [
-      { icon: BarChart3, label: 'รายงาน DC', href: '/dashboard/reports/dc-history', roles: ['admin', 'pm'] },
-      { icon: BarChart3, label: 'ประวัติบ้านเลขที่', href: '/dashboard/reports/house-history', roles: ['admin', 'pm'] },
-      { icon: BarChart3, label: 'รอบจ่ายผู้รับเหมา', href: '/dashboard/reports/contractor-cycle', roles: ['admin', 'pm'] },
+      { icon: BarChart3, label: 'รายงาน DC', href: '/dashboard/reports/dc-history', permission: 'reports' as const },
+      { icon: BarChart3, label: 'ประวัติบ้านเลขที่', href: '/dashboard/reports/house-history', permission: 'reports' as const },
+      { icon: BarChart3, label: 'รอบจ่ายผู้รับเหมา', href: '/dashboard/reports/contractor-cycle', permission: 'reports' as const },
     ],
   },
   {
     title: 'ระบบ',
-    items: [{ icon: Settings, label: 'ตั้งค่า', href: '/dashboard/settings', roles: ['admin'] }],
+    items: [{ icon: Settings, label: 'ตั้งค่า', href: '/dashboard/settings', permission: 'settings' as const }],
   },
 ]
 
-export default function Sidebar({ userRole = 'foreman' }: { userRole?: UserRole }) {
+export default function Sidebar({
+  permissions,
+}: {
+  permissions: CurrentPermissions
+}) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
   const visibleSections = menuSections
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => item.roles.includes(userRole)),
+      items: section.items.filter((item) => (item.permission ? permissions[item.permission] : true)),
     }))
     .filter((section) => section.items.length > 0)
 

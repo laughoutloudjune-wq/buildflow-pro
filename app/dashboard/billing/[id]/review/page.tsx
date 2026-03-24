@@ -294,7 +294,7 @@ export default function ReviewBillingPage() {
 
   return (
     <div className="container mx-auto p-4 space-y-4">
-      <ClientRoleGate allowedRoles={['admin', 'pm']} />
+      <ClientRoleGate moduleKey="billing" />
 
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold mb-0">ตรวจสอบใบขอเบิก #{billing.doc_no}</h1>

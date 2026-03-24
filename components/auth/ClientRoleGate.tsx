@@ -3,16 +3,19 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
-import { getCurrentViewerRole } from '@/actions/auth-actions'
+import { getCurrentViewerPermissions, getCurrentViewerRole } from '@/actions/auth-actions'
+import type { PermissionModule } from '@/lib/permissions'
 import type { UserRole } from '@/lib/types/billing'
 
 type ClientRoleGateProps = {
-  allowedRoles: UserRole[]
+  allowedRoles?: UserRole[]
+  moduleKey?: PermissionModule
   fallbackHref?: string
 }
 
 export default function ClientRoleGate({
   allowedRoles,
+  moduleKey,
   fallbackHref = '/dashboard',
 }: ClientRoleGateProps) {
   const router = useRouter()
@@ -21,10 +24,24 @@ export default function ClientRoleGate({
   useEffect(() => {
     let mounted = true
 
-    getCurrentViewerRole()
-      .then((role) => {
+    const check = moduleKey ? getCurrentViewerPermissions() : getCurrentViewerRole()
+
+    check
+      .then((result) => {
         if (!mounted) return
-        if (!role || !allowedRoles.includes(role)) {
+
+        if (moduleKey) {
+          const permissions = result as Record<PermissionModule, boolean> | null
+          if (!permissions?.[moduleKey]) {
+            router.replace(fallbackHref)
+            return
+          }
+          setIsChecking(false)
+          return
+        }
+
+        const role = result as UserRole | null
+        if (!role || !allowedRoles?.includes(role)) {
           router.replace(fallbackHref)
           return
         }
@@ -38,7 +55,7 @@ export default function ClientRoleGate({
     return () => {
       mounted = false
     }
-  }, [allowedRoles, fallbackHref, router])
+  }, [allowedRoles, fallbackHref, moduleKey, router])
 
   if (!isChecking) return null
 

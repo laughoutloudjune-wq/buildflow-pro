@@ -117,7 +117,7 @@ export default function BillingListPage() {
 
   return (
     <div className="space-y-6">
-      <ClientRoleGate allowedRoles={['admin', 'pm']} />
+      <ClientRoleGate moduleKey="billing" />
 
       <div className="flex items-center justify-between">
         <div>
