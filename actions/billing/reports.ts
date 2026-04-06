@@ -205,6 +205,7 @@ export async function getPlotHistoryReport(
       ),
       billing_adjustments (id, type, description, unit, quantity, unit_price)
     `)
+    .eq('status', 'approved')
     .order('billing_date', { ascending: false })
     .order('created_at', { ascending: false })
 

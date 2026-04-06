@@ -27,6 +27,7 @@ export default async function DashboardPage() {
       hint: `${stats.plotCount} plots`,
       icon: <Building2 className="h-5 w-5 text-blue-600" />,
       bg: 'bg-blue-50',
+      href: '/dashboard/projects',
     },
     {
       title: 'Active Jobs',
@@ -34,6 +35,7 @@ export default async function DashboardPage() {
       hint: `${stats.pendingApprovals} pending PM approvals`,
       icon: <Activity className="h-5 w-5 text-indigo-600" />,
       bg: 'bg-indigo-50',
+      href: '/dashboard/billing',
     },
     {
       title: 'Paid Out',
@@ -41,6 +43,7 @@ export default async function DashboardPage() {
       hint: 'From posted payments',
       icon: <Wallet className="h-5 w-5 text-emerald-600" />,
       bg: 'bg-emerald-50',
+      href: '/dashboard/reports/house-history',
     },
     {
       title: 'Approved This Month',
@@ -48,6 +51,7 @@ export default async function DashboardPage() {
       hint: 'Approved billing net amount',
       icon: <TrendingUp className="h-5 w-5 text-teal-600" />,
       bg: 'bg-teal-50',
+      href: '/dashboard/reports/contractor-cycle',
     },
     {
       title: 'Quality Alerts',
@@ -55,6 +59,7 @@ export default async function DashboardPage() {
       hint: 'Requests waiting > 3 days',
       icon: <AlertTriangle className="h-5 w-5 text-amber-600" />,
       bg: 'bg-amber-50',
+      href: '/dashboard/billing',
     },
   ]
 
@@ -77,16 +82,18 @@ export default async function DashboardPage() {
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {kpis.map((kpi) => (
-          <Card key={kpi.title} className="p-4">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{kpi.title}</p>
-                <p className="mt-1 text-2xl font-semibold text-slate-900">{kpi.value}</p>
-                <p className="mt-1 text-xs text-slate-500">{kpi.hint}</p>
+          <Link key={kpi.title} href={kpi.href} className="group block">
+            <Card className="p-4 transition-shadow group-hover:shadow-md group-hover:border-slate-300">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{kpi.title}</p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-900">{kpi.value}</p>
+                  <p className="mt-1 text-xs text-slate-500">{kpi.hint}</p>
+                </div>
+                <div className={`rounded-lg p-2 ${kpi.bg}`}>{kpi.icon}</div>
               </div>
-              <div className={`rounded-lg p-2 ${kpi.bg}`}>{kpi.icon}</div>
-            </div>
-          </Card>
+            </Card>
+          </Link>
         ))}
       </div>
 

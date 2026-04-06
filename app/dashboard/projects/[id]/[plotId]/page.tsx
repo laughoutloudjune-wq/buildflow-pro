@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Banknote, Calculator, Hammer, Loader2, Pencil, Plus, RefreshCw, Trash2, User } from 'lucide-react'
+import { ArrowLeft, Hammer, Pencil, RefreshCw, User } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import {
@@ -16,7 +16,6 @@ import {
 import { updatePlot } from '@/actions/plot-actions'
 import { getHouseModels } from '@/actions/boq-actions'
 import { getContractors } from '@/actions/contractor-actions'
-import { createPayment, deletePayment } from '@/actions/payment-actions'
 import { formatCurrency } from '@/lib/currency'
 
 type Plot = {
@@ -58,14 +57,7 @@ export default function PlotDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
 
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null)
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
-
-  const [payAmount, setPayAmount] = useState('')
-  const [payPercent, setPayPercent] = useState('')
-  const [note, setNote] = useState('')
 
   const getHouseModelLabel = (model: HouseModel) => {
     const projectName = model?.projects?.name
@@ -107,38 +99,6 @@ export default function PlotDetailPage() {
       console.error(error)
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const updateJobWithNewPayment = (jobId: string, newPayment: any) => {
-    setJobs((prevJobs) =>
-      prevJobs.map((job) => {
-        if (job.id === jobId) {
-          const currentPayments = job.payments || []
-          return { ...job, payments: [newPayment, ...currentPayments] }
-        }
-        return job
-      })
-    )
-
-    if (selectedJob && selectedJob.id === jobId) {
-      const currentPayments = selectedJob.payments || []
-      setSelectedJob({ ...selectedJob, payments: [newPayment, ...currentPayments] })
-    }
-  }
-
-  const removePaymentFromJob = (jobId: string, paymentId: string) => {
-    setJobs((prevJobs) =>
-      prevJobs.map((job) => {
-        if (job.id === jobId) {
-          return { ...job, payments: job.payments.filter((p: any) => p.id !== paymentId) }
-        }
-        return job
-      })
-    )
-
-    if (selectedJob && selectedJob.id === jobId) {
-      setSelectedJob({ ...selectedJob, payments: selectedJob.payments.filter((p: any) => p.id !== paymentId) })
     }
   }
 
@@ -203,19 +163,6 @@ export default function PlotDetailPage() {
     })
   }
 
-  const openPaymentModal = (job: any) => {
-    const sortedJob = {
-      ...job,
-      payments:
-        job.payments?.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) || [],
-    }
-    setSelectedJob(sortedJob)
-    setPayAmount('')
-    setPayPercent('')
-    setNote('')
-    setIsPaymentModalOpen(true)
-  }
-
   const getJobFinancials = (job: any) => {
     if (!job) return { totalBoq: 0, paid: 0, remaining: 0, paidPercent: 0, effectivePrice: 0 }
 
@@ -228,71 +175,11 @@ export default function PlotDetailPage() {
     return { totalBoq, paid, remaining, paidPercent, effectivePrice }
   }
 
-  const handlePercentChange = (val: string) => {
-    setPayPercent(val)
-    if (!val || !selectedJob) return
-
-    const percent = parseFloat(val)
-    const { totalBoq, paidPercent } = getJobFinancials(selectedJob)
-    if (!isNaN(percent)) {
-      const calculatedAmount = (totalBoq * percent) / 100
-      setPayAmount(calculatedAmount.toFixed(2))
-      const newTotalPercent = paidPercent + percent
-      setNote(`เบิกงวดงาน ${percent}% (สะสม ${newTotalPercent.toFixed(1)}%)`)
-    }
-  }
-
-  const handlePayRemaining = () => {
-    if (!selectedJob) return
-    const { remaining, totalBoq } = getJobFinancials(selectedJob)
-    setPayAmount(remaining.toFixed(2))
-    const remainingPercent = totalBoq > 0 ? (remaining / totalBoq) * 100 : 0
-    setPayPercent(remainingPercent.toFixed(2))
-    setNote('ปิดงวดงานสุดท้าย (100%)')
-  }
-
-  const handlePaymentSubmit = async (formData: FormData) => {
-    if (!selectedJob) return
-    setIsSubmittingPayment(true)
-
-    formData.append('job_assignment_id', selectedJob.id)
-    formData.set('amount', payAmount)
-    formData.set('note', note)
-
-    try {
-      const newPayment = await createPayment(formData, projectId, plotId)
-      if (newPayment) {
-        updateJobWithNewPayment(selectedJob.id, newPayment)
-        setPayAmount('')
-        setPayPercent('')
-        setNote('')
-      }
-    } catch (error) {
-      console.error(error)
-      alert('เกิดข้อผิดพลาดในการบันทึก')
-    } finally {
-      setIsSubmittingPayment(false)
-    }
-  }
-
   const handleUpdatePlot = async (formData: FormData) => {
     setIsEditModalOpen(false)
     startTransition(async () => {
       await updatePlot(plotId, projectId, formData)
     })
-  }
-
-  const handleDeletePayment = async (paymentId: string) => {
-    if (!selectedJob) return
-    if (!confirm('ลบรายการจ่ายเงินนี้?')) return
-
-    try {
-      await deletePayment(paymentId, projectId, plotId)
-      removePaymentFromJob(selectedJob.id, paymentId)
-    } catch (error) {
-      console.error(error)
-      alert('ลบไม่สำเร็จ')
-    }
   }
 
   if (isLoading) return <div className="p-8 text-center text-slate-500">กำลังโหลดข้อมูล...</div>
@@ -347,7 +234,6 @@ export default function PlotDetailPage() {
                 <th className="px-4 py-3 font-semibold text-right">จ่ายแล้ว</th>
                 <th className="px-4 py-3 font-semibold w-[200px]">ผู้รับเหมา</th>
                 <th className="px-4 py-3 font-semibold w-[120px]">สถานะ</th>
-                <th className="px-4 py-3 font-semibold text-center w-[50px]">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -445,15 +331,6 @@ export default function PlotDetailPage() {
                       </select>
                     </td>
 
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => openPaymentModal(job)}
-                        className="p-1.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition"
-                        title="บันทึกการจ่ายเงิน"
-                      >
-                        <Banknote className="h-4 w-4" />
-                      </button>
-                    </td>
                   </tr>
                 )
               })}
@@ -492,137 +369,6 @@ export default function PlotDetailPage() {
         </form>
       </Modal>
 
-      <Modal
-        isOpen={isPaymentModalOpen}
-        onClose={() => setIsPaymentModalOpen(false)}
-        title={`จัดการงวดงาน: ${selectedJob?.boq_master?.item_name || ''}`}
-      >
-        {selectedJob && (() => {
-          const { totalBoq, paid, remaining, paidPercent, effectivePrice } = getJobFinancials(selectedJob)
-
-          return (
-            <div className="space-y-5">
-              <div className="rounded border border-indigo-100 bg-indigo-50 p-2 text-xs text-indigo-700">
-                Effective price per unit: ฿{formatCurrency(Number(effectivePrice))}{' '}
-                {selectedJob?.agreed_price_per_unit != null ? '(variable price)' : '(BOQ default)'}
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-100 text-center">
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">งบ BOQ</div>
-                  <div className="text-sm font-bold text-slate-800">฿{formatCurrency(totalBoq)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-emerald-600 mb-1">จ่ายแล้ว ({paidPercent.toFixed(0)}%)</div>
-                  <div className="text-sm font-bold text-emerald-600">฿{formatCurrency(paid)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">คงเหลือ</div>
-                  <div className={`text-sm font-bold ${remaining < 0 ? 'text-red-500' : 'text-slate-800'}`}>
-                    ฿{formatCurrency(remaining)}
-                  </div>
-                </div>
-              </div>
-
-              <form action={handlePaymentSubmit} className="space-y-4">
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <h4 className="text-sm font-medium text-slate-800 flex items-center gap-2">
-                      <Calculator className="h-4 w-4 text-indigo-500" /> คำนวณยอดเบิกงวดนี้
-                    </h4>
-                    <button type="button" onClick={handlePayRemaining} className="text-xs text-indigo-600 hover:underline">
-                      เบิกส่วนที่เหลือทั้งหมด
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-12 gap-3 items-end">
-                    <div className="col-span-4">
-                      <label className="text-xs text-slate-500 mb-1 block">ความคืบหน้า (%)</label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          placeholder="0"
-                          value={payPercent}
-                          onChange={(e) => handlePercentChange(e.target.value)}
-                          className="w-full text-sm border p-2 rounded pr-6 focus:ring-2 focus:ring-indigo-500 outline-none"
-                        />
-                        <span className="absolute right-2 top-2 text-slate-400 text-xs">%</span>
-                      </div>
-                    </div>
-
-                    <div className="col-span-8">
-                      <label className="text-xs text-slate-500 mb-1 block">จำนวนเงิน (บาท)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        name="amount"
-                        required
-                        placeholder="0.00"
-                        value={payAmount}
-                        onChange={(e) => setPayAmount(e.target.value)}
-                        className="w-full text-sm border p-2 rounded font-bold text-emerald-600 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">วันที่จ่าย</label>
-                    <input type="date" name="payment_date" defaultValue={new Date().toISOString().split('T')[0]} className="w-full text-sm border p-2 rounded" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">บันทึกช่วยจำ</label>
-                    <input
-                      name="note"
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder="เช่น เบิกงวดที่ 1"
-                      className="w-full text-sm border p-2 rounded"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2 border-t">
-                  <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="btn-secondary text-sm">
-                    ปิด
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmittingPayment}
-                    className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded text-sm hover:bg-emerald-700 shadow-sm disabled:opacity-50"
-                  >
-                    {isSubmittingPayment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    ยืนยันจ่ายเงิน
-                  </button>
-                </div>
-              </form>
-
-              {selectedJob.payments?.length > 0 && (
-                <div className="pt-2">
-                  <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">ประวัติการเบิกจ่าย</h4>
-                  <div className="space-y-2 max-h-[120px] overflow-y-auto bg-slate-50 p-2 rounded border">
-                    {selectedJob.payments.map((p: any) => (
-                      <div key={p.id} className="flex justify-between items-center text-xs bg-white p-2 rounded shadow-sm">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-700">฿{formatCurrency(p.amount)}</span>
-                          <span className="text-slate-400">{p.note || '-'}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-slate-300">{new Date(p.payment_date).toLocaleDateString('th-TH')}</span>
-                          <button onClick={() => handleDeletePayment(p.id)} className="text-slate-300 hover:text-red-500">
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })()}
-      </Modal>
     </div>
   )
 }
