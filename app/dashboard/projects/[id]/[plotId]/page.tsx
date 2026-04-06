@@ -134,7 +134,6 @@ export default function PlotDetailPage() {
 
     if (raw === '') {
       setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, agreed_price_per_unit: null } : j)))
-      if (selectedJob?.id === job.id) setSelectedJob({ ...selectedJob, agreed_price_per_unit: null })
       startTransition(async () => {
         await updateAgreedPricePerUnit(job.id, null, plotId, projectId)
       })
@@ -148,7 +147,6 @@ export default function PlotDetailPage() {
     }
 
     setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, agreed_price_per_unit: parsed } : j)))
-    if (selectedJob?.id === job.id) setSelectedJob({ ...selectedJob, agreed_price_per_unit: parsed })
     startTransition(async () => {
       await updateAgreedPricePerUnit(job.id, parsed, plotId, projectId)
     })
@@ -157,7 +155,6 @@ export default function PlotDetailPage() {
   const handleResetVariablePrice = (job: any) => {
     setPriceDrafts((prev) => ({ ...prev, [job.id]: '' }))
     setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, agreed_price_per_unit: null } : j)))
-    if (selectedJob?.id === job.id) setSelectedJob({ ...selectedJob, agreed_price_per_unit: null })
     startTransition(async () => {
       await updateAgreedPricePerUnit(job.id, null, plotId, projectId)
     })
