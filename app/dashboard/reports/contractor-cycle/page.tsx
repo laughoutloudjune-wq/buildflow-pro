@@ -38,9 +38,10 @@ export default function ContractorCycleReportPage() {
   const [showHtmlModalPreview, setShowHtmlModalPreview] = useState(false)
   const [printedAtLabel, setPrintedAtLabel] = useState('')
 
-  const [payOutConfirm, setPayOutConfirm] = useState<{ contractorId: string; contractorName: string; billIds: string[]; total: number } | null>(null)
+  const [payOutConfirm, setPayOutConfirm] = useState<{ contractorId: string; contractorName: string; bills: any[]; total: number } | null>(null)
   const [payOutDate, setPayOutDate] = useState(todayISO())
   const [payOutLoading, setPayOutLoading] = useState(false)
+  const [whtAppliedMap, setWhtAppliedMap] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     getBillingOptions().then((data) => {
@@ -97,8 +98,10 @@ export default function ContractorCycleReportPage() {
     if (!payOutConfirm) return
     setPayOutLoading(true)
     try {
-      await markBillingsAsPaidOut(payOutConfirm.billIds, payOutDate)
+      const billIds = payOutConfirm.bills.map((b: any) => b.id)
+      await markBillingsAsPaidOut(billIds, payOutDate, whtAppliedMap)
       setPayOutConfirm(null)
+      setWhtAppliedMap({})
       await runReport()
     } catch (e: any) {
       alert(e.message || 'Mark as paid failed')
@@ -837,15 +840,52 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       {/* Pay-out confirmation modal */}
       <Modal
         isOpen={!!payOutConfirm}
-        onClose={() => setPayOutConfirm(null)}
+        onClose={() => { setPayOutConfirm(null); setWhtAppliedMap({}) }}
         title="ยืนยันการจ่ายเงินให้ผู้รับเหมา"
+        panelClassName="max-w-lg"
       >
         {payOutConfirm && (
           <div className="space-y-4">
             <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 space-y-1">
               <p className="text-sm font-semibold text-emerald-900">{payOutConfirm.contractorName}</p>
-              <p className="text-xs text-emerald-700">จำนวน {payOutConfirm.billIds.length} ใบเบิก • รวม ฿{formatCurrency(payOutConfirm.total)}</p>
+              <p className="text-xs text-emerald-700">จำนวน {payOutConfirm.bills.length} ใบเบิก</p>
             </div>
+
+            {/* WHT checkbox per billing */}
+            {payOutConfirm.bills.some((b: any) => (b.wht_percent ?? 0) > 0) && (
+              <div>
+                <p className="text-xs font-semibold text-slate-600 mb-2">การหัก WHT (หักจริงหรือไม่?)</p>
+                <div className="space-y-2 max-h-48 overflow-y-auto border rounded p-2 bg-slate-50">
+                  {payOutConfirm.bills.map((b: any) => {
+                    const whtAmt = (b.total_add_amount ?? 0) * ((b.wht_percent ?? 0) / 100)
+                    const hasWht = (b.wht_percent ?? 0) > 0
+                    return (
+                      <label key={b.id} className={`flex items-start gap-2 text-xs rounded p-2 cursor-pointer select-none ${hasWht ? 'hover:bg-slate-100' : 'opacity-40 cursor-default'}`}>
+                        <input
+                          type="checkbox"
+                          disabled={!hasWht}
+                          checked={!!whtAppliedMap[b.id]}
+                          onChange={(e) => setWhtAppliedMap((prev) => ({ ...prev, [b.id]: e.target.checked }))}
+                          className="mt-0.5 accent-emerald-600"
+                        />
+                        <span className="flex-1">
+                          <span className="font-medium">{b.billing_date ? new Date(b.billing_date).toLocaleDateString('th-TH') : '-'}</span>
+                          {' '}— {b.projects?.name ?? '-'}
+                          {hasWht && (
+                            <span className="ml-1 text-amber-700">
+                              WHT {b.wht_percent}% = ฿{formatCurrency(whtAmt)}
+                            </span>
+                          )}
+                          {!hasWht && <span className="ml-1 text-slate-400">ไม่มี WHT</span>}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">ติ๊กถูกหมายความว่า หัก WHT จริง | ไม่ติ๊ก = ไม่ได้หัก</p>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่โอนเงิน</label>
               <input
@@ -856,7 +896,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               />
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
-              <button onClick={() => setPayOutConfirm(null)} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
+              <button onClick={() => { setPayOutConfirm(null); setWhtAppliedMap({}) }} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
               <button
                 onClick={handleMarkAsPaidOut}
                 disabled={payOutLoading || !payOutDate}
@@ -925,7 +965,10 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     <button
                       onClick={() => {
                         setPayOutDate(todayISO())
-                        setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', billIds, total: group.totals.net_amount })
+                        const initWhtMap: Record<string, boolean> = {}
+                        group.bills.filter((b: any) => !b.paid_out_at).forEach((b: any) => { initWhtMap[b.id] = false })
+                        setWhtAppliedMap(initWhtMap)
+                        setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', bills: group.bills.filter((b: any) => !b.paid_out_at), total: group.totals.net_amount })
                       }}
                       className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                     >
@@ -956,6 +999,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     <th className="px-3 py-2 text-right">เพิ่ม</th>
                     <th className="px-3 py-2 text-right">หัก</th>
                     <th className="px-3 py-2 text-right">สุทธิ</th>
+                    <th className="px-3 py-2 text-right">ยอดโอนจริง</th>
                     <th className="px-3 py-2 text-center no-print">จัดการ</th>
                   </tr>
                 </thead>
@@ -963,6 +1007,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                   {group.bills.map((bill: any) => {
                     const plotLabel = bill.plots?.name || '-'
                     const isExtra = bill.type === 'extra_work'
+                    const whtAmt = bill.wht_applied ? (bill.total_add_amount ?? 0) * ((bill.wht_percent ?? 0) / 100) : 0
+                    const actualTransfer = (bill.net_amount ?? 0) - whtAmt
                     return (
                       <Fragment key={bill.id}>
                         <tr className="border-b align-top">
@@ -991,12 +1037,27 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                           <td className="px-3 py-2 text-right">฿{formatCurrency(bill.total_add_amount)}</td>
                           <td className="px-3 py-2 text-right">฿{formatCurrency(bill.total_deduct_amount)}</td>
                           <td className="px-3 py-2 text-right font-bold text-emerald-700">฿{formatCurrency(bill.net_amount)}</td>
+                          <td className="px-3 py-2 text-right">
+                            {bill.paid_out_at ? (
+                              <div>
+                                <div className="font-bold text-blue-700">฿{formatCurrency(actualTransfer)}</div>
+                                {bill.wht_applied && (
+                                  <div className="text-[10px] text-amber-600">หัก WHT ฿{formatCurrency(whtAmt)}</div>
+                                )}
+                                {!bill.wht_applied && (bill.wht_percent ?? 0) > 0 && (
+                                  <div className="text-[10px] text-slate-400">ไม่หัก WHT</div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-center no-print">
                             <button onClick={() => handleUndoApprove(bill.id)} className="px-2 py-1 rounded border text-xs text-amber-700 hover:bg-amber-50">Undo Approve</button>
                           </td>
                         </tr>
                         <tr className="border-b bg-slate-50/40">
-                          <td colSpan={9} className="px-3 py-2">
+                          <td colSpan={10} className="px-3 py-2">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <div>
                                 <div className="text-xs font-semibold text-slate-600 mb-1">รายการงาน</div>

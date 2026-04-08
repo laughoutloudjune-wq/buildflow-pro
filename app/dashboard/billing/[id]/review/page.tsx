@@ -76,8 +76,8 @@ export default function ReviewBillingPage() {
                 }))
               : []
           )
-          setWhtPercent(billingData.wht_percent || settingsData?.default_wht || 0)
-          setRetentionPercent(billingData.retention_percent || settingsData?.default_retention || 0)
+          setWhtPercent(billingData.wht_percent ?? 0)
+          setRetentionPercent(billingData.retention_percent ?? 0)
           if (billingData.billing_date) {
             setBillingDate(new Date(billingData.billing_date).toISOString().split('T')[0])
           }

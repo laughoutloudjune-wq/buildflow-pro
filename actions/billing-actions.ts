@@ -109,8 +109,8 @@ export async function deleteBilling(id: string) {
   return deleteBillingImpl(id)
 }
 
-export async function markBillingsAsPaidOut(billingIds: string[], paidAt: string) {
-  return markBillingsAsPaidOutImpl(billingIds, paidAt)
+export async function markBillingsAsPaidOut(billingIds: string[], paidAt: string, whtAppliedMap: Record<string, boolean> = {}) {
+  return markBillingsAsPaidOutImpl(billingIds, paidAt, whtAppliedMap)
 }
 
 export async function unmarkBillingsAsPaidOut(billingIds: string[]) {

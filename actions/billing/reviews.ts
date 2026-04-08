@@ -174,7 +174,11 @@ export async function undoApproveBilling(id: string) {
   revalidatePath('/dashboard/reports/contractor-cycle')
 }
 
-export async function markBillingsAsPaidOut(billingIds: string[], paidAt: string) {
+export async function markBillingsAsPaidOut(
+  billingIds: string[],
+  paidAt: string,
+  whtAppliedMap: Record<string, boolean> = {}
+) {
   const supabase = await createClient()
   const user = await getCurrentUser()
   if (!user) throw new Error('User not found')
@@ -183,16 +187,23 @@ export async function markBillingsAsPaidOut(billingIds: string[], paidAt: string
 
   if (!billingIds || billingIds.length === 0) throw new Error('No billing IDs provided')
 
-  const { error } = await supabase
-    .from('billings')
-    .update({
-      paid_out_at: paidAt,
-      paid_out_by: user.id,
-    })
-    .in('id', billingIds)
-    .eq('status', 'approved')
+  // Update each billing individually so wht_applied can differ per billing
+  const updates = billingIds.map((id) =>
+    supabase
+      .from('billings')
+      .update({
+        paid_out_at: paidAt,
+        paid_out_by: user.id,
+        wht_applied: whtAppliedMap[id] ?? false,
+      })
+      .eq('id', id)
+      .eq('status', 'approved')
+  )
 
-  if (error) throw new Error(error.message)
+  const results = await Promise.all(updates)
+  const firstError = results.find((r) => r.error)
+  if (firstError?.error) throw new Error(firstError.error.message)
+
   revalidatePath('/dashboard/reports/contractor-cycle')
 }
 
