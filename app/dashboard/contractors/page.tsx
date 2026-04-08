@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useTransition } from 'react'
-import { Plus, Trash2, Loader2, HardHat, Phone, CreditCard, User, Pencil, Wallet, Eye, Search, ShieldCheck } from 'lucide-react'
+import { Plus, Trash2, Loader2, HardHat, Phone, CreditCard, User, Pencil, Wallet, Search, ShieldCheck } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import { getContractors, createContractor, deleteContractor, updateContractor, getContractorApprovedHistory } from '@/actions/contractor-actions'
@@ -110,8 +110,8 @@ export default function ContractorsPage() {
     setIsRetentionLoading(true)
     try {
       const rows = await getContractorApprovedHistory(contractor.id)
-      // Only bills that have a retention amount
-      setRetentionRows(rows.filter((r: any) => Number(r.retention_percent || 0) > 0 && Number(r.total_work_amount || 0) > 0))
+      // Only bills that were actually paid out with retention applied by accountant
+      setRetentionRows(rows.filter((r: any) => r.paid_out_at && r.retention_applied !== false && Number(r.retention_percent || 0) > 0 && Number(r.total_work_amount || 0) > 0))
     } finally {
       setIsRetentionLoading(false)
     }
@@ -187,13 +187,16 @@ export default function ContractorsPage() {
               </div>
 
               <div className="space-y-2 text-sm text-slate-500 mt-4 pt-4 border-t border-slate-50">
-                <div className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
+                <button
+                  onClick={() => openHistory(c)}
+                  className="w-full flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 hover:bg-emerald-100 transition"
+                >
                   <div className="flex items-center gap-2 text-emerald-700">
                     <Wallet className="h-4 w-4" />
                     <span>ยอดจ่ายสะสม</span>
                   </div>
                   <span className="font-semibold text-emerald-700">฿{formatCurrency(c.total_paid || 0)}</span>
-                </div>
+                </button>
 
                 <button
                   onClick={() => openRetention(c)}
@@ -206,20 +209,22 @@ export default function ContractorsPage() {
                   <span className="font-semibold text-amber-700">฿{formatCurrency(c.total_retention || 0)}</span>
                 </button>
 
-                <button
-                  onClick={() => openHistory(c)}
-                  className="w-full mt-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 px-3 py-2 text-sm font-medium hover:bg-indigo-100 flex items-center justify-center gap-2"
-                >
-                  <Eye className="h-4 w-4" /> ดูงานที่อนุมัติแล้ว
-                </button>
-
                 <div className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-slate-400" />
                   {c.phone || '-'}
                 </div>
-                <div className="flex items-center gap-2">
-                  <CreditCard className="h-4 w-4 text-slate-400" />
-                  {c.bank_account || '-'}
+                <div className="flex items-start gap-2">
+                  <CreditCard className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
+                  <div>
+                    {c.bank_account ? (
+                      c.bank_account.includes(' || ')
+                        ? <>
+                            <div>{c.bank_account.split(' || ')[0]}</div>
+                            <div className="text-xs text-slate-400">{c.bank_account.split(' || ')[1]}</div>
+                          </>
+                        : <div>{c.bank_account}</div>
+                    ) : '-'}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <HardHat className="h-4 w-4 text-slate-400" />
@@ -269,9 +274,15 @@ export default function ContractorsPage() {
             </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">เลขบัญชีธนาคาร</label>
-            <input name="bank_account" className="w-full" placeholder="ธนาคาร - เลขบัญชี" defaultValue={editingContractor?.bank_account} />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">ชื่อธนาคาร</label>
+              <input name="bank_name" className="w-full" placeholder="เช่น กสิกรไทย" defaultValue={editingContractor?.bank_account?.split(' || ')[0] || ''} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">เลขบัญชี</label>
+              <input name="bank_account_number" className="w-full" placeholder="xxx-x-xxxxx-x" defaultValue={editingContractor?.bank_account?.split(' || ')[1] || (editingContractor?.bank_account?.includes(' || ') ? '' : editingContractor?.bank_account || '')} />
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
@@ -296,14 +307,14 @@ export default function ContractorsPage() {
           <div className="text-center text-slate-400 py-10">ไม่พบรายการที่มีเงินประกัน</div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-slate-500">เงินประกันผลงานสะสมจากใบเบิกที่ PM อนุมัติแล้ว</p>
+            <p className="text-xs text-slate-500">เงินประกันผลงานที่หักจริงโดยบัญชี (เฉพาะใบเบิกที่จ่ายแล้วและหักประกัน)</p>
             <div className="overflow-x-auto rounded-lg border">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b">
                   <tr>
                     <th className="px-3 py-2 text-left">เลขที่ใบเบิก</th>
-                    <th className="px-3 py-2 text-left">วันที่</th>
-                    <th className="px-3 py-2 text-left">โครงการ / แปลง</th>
+                    <th className="px-3 py-2 text-left">วันที่จ่าย</th>
+                    <th className="px-3 py-2 text-left">โครงการ / แปลง / รายการงาน</th>
                     <th className="px-3 py-2 text-right">ยอดงานหลัก</th>
                     <th className="px-3 py-2 text-right">ประกัน %</th>
                     <th className="px-3 py-2 text-right">เงินประกัน</th>
@@ -314,13 +325,25 @@ export default function ContractorsPage() {
                     const workAmt = Number(row.total_work_amount || 0)
                     const retPct = Number(row.retention_percent || 0)
                     const retAmt = workAmt * (retPct / 100)
+                    const jobNames = (row.billing_jobs || [])
+                      .map((j: any) => j.job_assignments?.boq_master?.item_name)
+                      .filter(Boolean)
                     return (
-                      <tr key={row.id} className="border-b last:border-b-0 hover:bg-slate-50">
+                      <tr key={row.id} className="border-b last:border-b-0 hover:bg-slate-50 align-top">
                         <td className="px-3 py-2 font-semibold text-indigo-700">#{String(row.doc_no || '-').padStart(4, '0')}</td>
-                        <td className="px-3 py-2 text-slate-500">{row.billing_date ? new Date(row.billing_date).toLocaleDateString('th-TH') : '-'}</td>
+                        <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                          {row.paid_out_at ? new Date(row.paid_out_at).toLocaleDateString('th-TH') : '-'}
+                        </td>
                         <td className="px-3 py-2">
-                          <div>{row.projects?.name || '-'}</div>
-                          <div className="text-xs text-slate-400">{row.plots?.name ? `แปลง ${row.plots.name}` : ''}</div>
+                          <div className="font-medium">{row.projects?.name || '-'}</div>
+                          {row.plots?.name && <div className="text-xs text-slate-400">แปลง {row.plots.name}</div>}
+                          {jobNames.length > 0 && (
+                            <div className="mt-1 space-y-0.5">
+                              {jobNames.map((name: string, i: number) => (
+                                <div key={i} className="text-xs text-slate-500">• {name}</div>
+                              ))}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-right">฿{formatCurrency(workAmt)}</td>
                         <td className="px-3 py-2 text-right text-slate-500">{retPct}%</td>

@@ -20,7 +20,7 @@ export async function getContractors() {
   // Use approved bill net totals as the source of truth for accumulated paid amount.
   const { data: approvedBills, error: approvedBillsError } = await supabase
     .from('billings')
-    .select('contractor_id, type, net_amount, total_work_amount, total_add_amount, total_deduct_amount, wht_percent, retention_percent')
+    .select('contractor_id, type, net_amount, total_work_amount, total_add_amount, total_deduct_amount, wht_percent, retention_percent, paid_out_at, retention_applied')
     .eq('status', 'approved')
     .not('contractor_id', 'is', null)
 
@@ -41,7 +41,10 @@ export async function getContractors() {
       : (work + add - deduct - wht - retention)
     const billNet = Number(bill.net_amount ?? fallbackNet)
     paidByContractor.set(contractorId, (paidByContractor.get(contractorId) || 0) + billNet)
-    retentionByContractor.set(contractorId, (retentionByContractor.get(contractorId) || 0) + retention)
+    // Only accumulate retention that was actually applied at payout
+    if (bill.paid_out_at && bill.retention_applied !== false) {
+      retentionByContractor.set(contractorId, (retentionByContractor.get(contractorId) || 0) + retention)
+    }
   }
 
   // Fallback path from payment records (helps when legacy bills have missing/incorrect net values).
@@ -88,6 +91,8 @@ export async function getContractorApprovedHistory(contractorId: string) {
       net_amount,
       retention_percent,
       wht_percent,
+      paid_out_at,
+      retention_applied,
       reason_for_dc,
       note,
       projects (name),
@@ -127,6 +132,15 @@ export async function getContractorApprovedHistory(contractorId: string) {
   }))
 }
 
+function buildBankAccount(formData: FormData) {
+  const bankName = (formData.get('bank_name') as string || '').trim()
+  const accountNumber = (formData.get('bank_account_number') as string || '').trim()
+  if (bankName && accountNumber) return `${bankName} || ${accountNumber}`
+  if (bankName) return bankName
+  if (accountNumber) return accountNumber
+  return (formData.get('bank_account') as string || '').trim()
+}
+
 // เพิ่มผู้รับเหมาใหม่
 export async function createContractor(formData: FormData) {
   const supabase = await createClient()
@@ -134,7 +148,7 @@ export async function createContractor(formData: FormData) {
   const name = formData.get('name') as string
   const type_id = formData.get('type_id') as string
   const phone = formData.get('phone') as string
-  const bank_account = formData.get('bank_account') as string
+  const bank_account = buildBankAccount(formData)
   const tax_id = formData.get('tax_id') as string
 
   if (!name || !type_id) return
@@ -168,7 +182,7 @@ export async function updateContractor(id: string, formData: FormData) {
   const name = formData.get('name') as string
   const type_id = formData.get('type_id') as string
   const phone = formData.get('phone') as string
-  const bank_account = formData.get('bank_account') as string
+  const bank_account = buildBankAccount(formData)
   const tax_id = formData.get('tax_id') as string
 
   if (!name || !type_id) return
