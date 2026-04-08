@@ -356,10 +356,12 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             acc.net_amount += Number(bill.net_amount || 0)
             acc.gross_amount += pmGrossAmt
             if (bill.paid_out_at) {
-              const whtAmt = bill.wht_applied ? pmGrossAmt * (Number(bill.wht_percent || 0) / 100) : 0
-              const deductAddBack = bill.deduct_applied === false ? deductAmt : 0
-              const retentionAddBack = bill.retention_applied === false ? retAmt : 0
-              acc.actual_transfer += Number(bill.net_amount || 0) + deductAddBack + retentionAddBack - whtAmt
+              // Use same formula as the modal: base - each deduction that was actually applied
+              const baseAmt = workAmt + addAmt
+              const actualDeduct = bill.deduct_applied !== false ? deductAmt : 0
+              const actualRetention = bill.retention_applied !== false ? retAmt : 0
+              const actualWht = bill.wht_applied ? pmGrossAmt * (Number(bill.wht_percent || 0) / 100) : 0
+              acc.actual_transfer += baseAmt - actualDeduct - actualRetention - actualWht
             } else {
               acc.actual_transfer += pmGrossAmt
             }
@@ -1120,14 +1122,15 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     const workAmt = bill.total_work_amount ?? 0
                     const addAmt = bill.total_add_amount ?? 0
                     const deductAmt = bill.total_deduct_amount ?? 0
-                    // net_amount = (work + add - deductAmt) - retAmt (PM approved)
                     const retAmt = workAmt * ((bill.retention_percent ?? 0) / 100)
                     const pmGrossAmt = workAmt + addAmt - deductAmt
+                    const grossAmt = pmGrossAmt
+                    // Same formula as the modal: (work+add) − actualDeduct − actualRetention − actualWHT
+                    const baseAmt = workAmt + addAmt
+                    const actualDeduct = bill.deduct_applied !== false ? deductAmt : 0
+                    const actualRetention = bill.retention_applied !== false ? retAmt : 0
                     const whtAmt = bill.wht_applied ? pmGrossAmt * ((bill.wht_percent ?? 0) / 100) : 0
-                    const deductAddBack = bill.deduct_applied === false ? deductAmt : 0
-                    const retentionAddBack = bill.retention_applied === false ? retAmt : 0
-                    const actualTransfer = (bill.net_amount ?? 0) + deductAddBack + retentionAddBack - whtAmt
-                    const grossAmt = workAmt + addAmt - deductAmt
+                    const actualTransfer = baseAmt - actualDeduct - actualRetention - whtAmt
                     return (
                       <Fragment key={bill.id}>
                         <tr className="border-b align-top">
