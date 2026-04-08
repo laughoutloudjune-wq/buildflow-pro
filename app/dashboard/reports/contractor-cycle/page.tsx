@@ -1084,6 +1084,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     <th className="px-3 py-2 text-right">งานหลัก</th>
                     <th className="px-3 py-2 text-right">เพิ่ม</th>
                     <th className="px-3 py-2 text-right">หัก</th>
+                    <th className="px-3 py-2 text-right">รวมก่อนหัก</th>
                     <th className="px-3 py-2 text-right">สุทธิ</th>
                     <th className="px-3 py-2 text-right">ยอดโอนจริง</th>
                     <th className="px-3 py-2 text-center no-print">จัดการ</th>
@@ -1126,6 +1127,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                           <td className="px-3 py-2 text-right">฿{formatCurrency(bill.total_work_amount)}</td>
                           <td className="px-3 py-2 text-right">฿{formatCurrency(bill.total_add_amount)}</td>
                           <td className="px-3 py-2 text-right">฿{formatCurrency(bill.total_deduct_amount)}</td>
+                          <td className="px-3 py-2 text-right text-slate-600">฿{formatCurrency((bill.total_work_amount ?? 0) + (bill.total_add_amount ?? 0) - (bill.total_deduct_amount ?? 0))}</td>
                           <td className="px-3 py-2 text-right font-bold text-emerald-700">฿{formatCurrency(bill.net_amount)}</td>
                           <td className="px-3 py-2 text-right">
                             {bill.paid_out_at ? (
@@ -1144,7 +1146,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                           </td>
                         </tr>
                         <tr className="border-b bg-slate-50/40">
-                          <td colSpan={10} className="px-3 py-2">
+                          <td colSpan={11} className="px-3 py-2">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <div>
                                 <div className="text-xs font-semibold text-slate-600 mb-1">รายการงาน</div>
