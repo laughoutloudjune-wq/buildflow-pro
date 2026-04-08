@@ -144,17 +144,14 @@ export default function ReviewBillingPage() {
     const totalDeductAmount = adjustments.filter((adj) => adj.type === 'deduction').reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
 
     const retentionAmount = totalWorkAmount * (retentionPercent / 100)
-
-    // WHT applies to totalAddAmount (DC portion) in any billing type
-    // Main job portion has no WHT — only retention
-    const whtAmount = totalAddAmount * (whtPercent / 100)
-
     const grossAmount = totalWorkAmount + totalAddAmount - totalDeductAmount
-    // WHT is NOT baked into net_amount — accounting deducts it at pay-out time for DC billings.
-    const netAmount = (totalWorkAmount - retentionAmount) + totalAddAmount - totalDeductAmount
+    // WHT applies to the whole gross invoice (both main and DC portions)
+    // Not baked into net_amount — accounting decides at pay-out per cycle
+    const whtAmount = grossAmount * (whtPercent / 100)
+    const netAmount = grossAmount - retentionAmount
 
     return { totalWorkAmount, totalAddAmount, totalDeductAmount, grossAmount, netAmount, whtAmount, retentionAmount }
-  }, [jobs, adjustments, whtPercent, retentionPercent, isExtraWork])
+  }, [jobs, adjustments, whtPercent, retentionPercent])
 
   const adjustmentPlotOptions = useMemo(() => {
     const names = Array.from(
@@ -527,17 +524,14 @@ export default function ReviewBillingPage() {
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div><label className="block text-sm font-medium text-gray-700">วันที่เบิกจ่าย</label><input type="date" value={billingDate} onChange={(e) => setBillingDate(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" /></div>
-                {isExtraWork ? (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">หัก ณ ที่จ่าย (WHT) % <span className="text-xs text-amber-600">(DC — บังคับหักทุกครั้ง)</span></label>
-                    <input type="number" value={whtPercent} onChange={(e) => setWhtPercent(parseFloat(e.target.value))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">ประกันผลงาน (Retention) %</label>
-                    <input type="number" value={retentionPercent} onChange={(e) => setRetentionPercent(parseFloat(e.target.value))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">หัก ณ ที่จ่าย (WHT) %</label>
+                  <input type="number" value={whtPercent} onChange={(e) => setWhtPercent(parseFloat(e.target.value) || 0)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">ประกันผลงาน (Retention) %</label>
+                  <input type="number" value={retentionPercent} onChange={(e) => setRetentionPercent(parseFloat(e.target.value) || 0)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                </div>
               </div>
               <div className="mt-4 p-4 bg-white rounded-lg border">
                 <table className="w-full text-sm">
