@@ -228,6 +228,7 @@ body{font-family:"Google Sans","Google Sans Text","Product Sans","Noto Sans Thai
 .line-table{width:100%;border-collapse:collapse;font-size:11px}
 .line-table th,.line-table td{border:1px solid #e2e8f0;padding:4px 5px;vertical-align:top}
 .line-table th{background:#f8fafc;text-align:left}
+.type-cell{color:#475569;font-size:10px;white-space:nowrap}
 .desc{font-weight:600}
 .sub{color:#64748b;font-size:10px}
 .invoice-footer{margin-top:8px;border-top:1px dashed #cbd5e1;padding-top:8px}
@@ -292,6 +293,7 @@ body{font-family:"Google Sans","Google Sans Text","Product Sans","Noto Sans Thai
 .line-table{width:100%;border-collapse:collapse;font-size:11px}
 .line-table th,.line-table td{border:1px solid #e2e8f0;padding:4px 5px;vertical-align:top}
 .line-table th{background:#f8fafc;text-align:left}
+.type-cell{color:#475569;font-size:10px;white-space:nowrap}
 .desc{font-weight:600}
 .sub{color:#64748b;font-size:10px}
 .invoice-footer{margin-top:8px;border-top:1px dashed #cbd5e1;padding-top:8px}
@@ -393,6 +395,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         unitPrice: Number(job.job_assignments?.agreed_price_per_unit ?? boq?.price_per_unit ?? 0),
         totalPrice: Number(job.amount || 0),
         note: job.progress_percent == null ? '' : `${Number(job.progress_percent).toFixed(2)}%`,
+        lineType: 'งานหลัก',
       }
     })
 
@@ -411,6 +414,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         unitPrice: Number(adj.unit_price || 0),
         totalPrice: adj.type === 'deduction' ? -lineTotal : lineTotal,
         note: bill.reason_for_dc || (adj.type === 'deduction' ? 'หัก' : 'DC'),
+        lineType: adj.type === 'deduction' ? 'งานหัก' : 'งานเพิ่ม',
       }
     })
     return [...mainLines, ...dcLines]
@@ -531,6 +535,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           <tr>
             <td>${plotIndex + 1}</td>
             <td>${escapeHtml(line.plotNo)}</td>
+            <td class="type-cell">${escapeHtml(line.lineType || '-')}</td>
             <td>
               <div class="desc">${escapeHtml(line.description)}</div>
               ${line.note ? `<div class="sub">${escapeHtml(line.note)}</div>` : ''}
@@ -555,18 +560,19 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             <table class="line-table">
               <thead>
                 <tr>
-                  <th style="width:36px">#</th>
-                  <th style="width:95px">บ้าน/แปลง</th>
+                  <th style="width:30px">#</th>
+                  <th style="width:80px">บ้าน/แปลง</th>
+                  <th style="width:70px">ประเภท</th>
                   <th>รายละเอียดงาน</th>
-                  <th class="num" style="width:100px">Qty</th>
-                  <th class="num" style="width:120px">ราคา/หน่วย</th>
-                  <th class="num" style="width:130px">จำนวนเงิน</th>
+                  <th class="num" style="width:90px">Qty</th>
+                  <th class="num" style="width:110px">ราคา/หน่วย</th>
+                  <th class="num" style="width:120px">จำนวนเงิน</th>
                 </tr>
               </thead>
               <tbody>${rowsHtml}</tbody>
               <tfoot>
                 <tr>
-                  <td colspan="5" class="num strong">รวมสุทธิแปลงนี้</td>
+                  <td colspan="6" class="num strong">รวมสุทธิแปลงนี้</td>
                   <td class="num strong">฿${formatCurrency(plotGroup.total)}</td>
                 </tr>
               </tfoot>
@@ -721,6 +727,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               .html-preview-modal .line-table{width:100%;border-collapse:collapse;font-size:12.5px}
               .html-preview-modal .line-table th,.html-preview-modal .line-table td{border:1px solid #e2e8f0;padding:7px 8px;vertical-align:top}
               .html-preview-modal .line-table th{background:#f8fafc;text-align:left}
+              .html-preview-modal .type-cell{color:#475569;font-size:11px;white-space:nowrap}
               .html-preview-modal .desc{font-weight:600}
               .html-preview-modal .sub{color:#64748b;font-size:11px}
               .html-preview-modal .invoice-footer{margin-top:14px;border-top:1px dashed #cbd5e1;padding-top:12px}
@@ -1120,17 +1127,10 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                           </td>
                           {/* ยอดรวม = gross before any deductions */}
                           <td className="px-3 py-2 text-right font-semibold">฿{formatCurrency(grossAmt)}</td>
-                          {/* ยอดโอน = gross when unpaid; actual transfer with deductions when paid */}
+                          {/* ยอดโอน = gross when unpaid; actual transfer when paid */}
                           <td className="px-3 py-2 text-right">
                             {bill.paid_out_at ? (
-                              <div>
-                                <div className="font-bold text-blue-700">฿{formatCurrency(actualTransfer)}</div>
-                                {deductAmt > 0 && bill.deduct_applied !== false && <div className="text-[10px] text-red-500">หักงานหัก ฿{formatCurrency(deductAmt)}</div>}
-                                {deductAmt > 0 && bill.deduct_applied === false && <div className="text-[10px] text-orange-400">ไม่หักงานหัก</div>}
-                                {bill.wht_applied && whtAmt > 0 && <div className="text-[10px] text-amber-600">หัก WHT ฿{formatCurrency(whtAmt)}</div>}
-                                {retAmt > 0 && bill.retention_applied !== false && <div className="text-[10px] text-slate-500">หักประกัน ฿{formatCurrency(retAmt)}</div>}
-                                {retAmt > 0 && bill.retention_applied === false && <div className="text-[10px] text-orange-500">ไม่หักประกัน</div>}
-                              </div>
+                              <div className="font-bold text-blue-700">฿{formatCurrency(actualTransfer)}</div>
                             ) : (
                               <div className="text-slate-500 font-semibold">฿{formatCurrency(grossAmt)}</div>
                             )}
