@@ -145,9 +145,9 @@ export default function ReviewBillingPage() {
 
     const retentionAmount = totalWorkAmount * (retentionPercent / 100)
 
-    // DC (extra_work): WHT on total_add_amount, mandatory, billed by accounting at pay-out
-    // Main job: no WHT — only retention is deducted here
-    const whtAmount = isExtraWork ? totalAddAmount * (whtPercent / 100) : 0
+    // WHT applies to totalAddAmount (DC portion) in any billing type
+    // Main job portion has no WHT — only retention
+    const whtAmount = totalAddAmount * (whtPercent / 100)
 
     const grossAmount = totalWorkAmount + totalAddAmount - totalDeductAmount
     // WHT is NOT baked into net_amount — accounting deducts it at pay-out time for DC billings.
@@ -539,63 +539,57 @@ export default function ReviewBillingPage() {
                   </div>
                 )}
               </div>
-              <div className="mt-4 p-4 bg-white rounded-lg border text-right space-y-1">
-                {isExtraWork ? (
-                  <>
-                    {/* DC billing breakdown */}
-                    <p className="text-sm text-gray-600">ยอดงานเพิ่ม (DC):
-                      <span className="font-semibold text-green-600 w-36 inline-block">฿{formatCurrency(totalAddAmount)}</span>
-                    </p>
-                    {totalDeductAmount > 0 && (
-                      <p className="text-sm text-gray-600">ยอดงานหัก:
-                        <span className="font-semibold text-red-600 w-36 inline-block">−฿{formatCurrency(totalDeductAmount)}</span>
-                      </p>
+              <div className="mt-4 p-4 bg-white rounded-lg border">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {totalWorkAmount > 0 && (
+                      <tr>
+                        <td className="py-0.5 text-gray-600">งานหลัก</td>
+                        <td className="py-0.5 text-right font-medium">฿{formatCurrency(totalWorkAmount)}</td>
+                      </tr>
                     )}
-                    <hr className="my-1" />
-                    <p className="font-semibold">ยอดรวม DC:
-                      <span className="w-36 inline-block">฿{formatCurrency(totalAddAmount - totalDeductAmount)}</span>
-                    </p>
-                    <p className="text-sm text-gray-600">หัก ณ ที่จ่าย (WHT {whtPercent}% จากยอดงานเพิ่ม):
-                      <span className="font-semibold text-red-600 w-36 inline-block">−฿{formatCurrency(whtAmount)}</span>
-                    </p>
-                    <hr className="my-1" />
-                    <p className="font-bold text-xl">ยอดสุทธิอนุมัติ (Net):
-                      <span className="text-2xl text-emerald-700 w-36 inline-block">฿{formatCurrency(netAmount)}</span>
-                    </p>
-                    <p className="text-sm font-semibold text-amber-700 mt-1">ยอดโอนจริง (Net − WHT):
-                      <span className="text-lg w-36 inline-block">฿{formatCurrency(netAmount - whtAmount)}</span>
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    {/* Main job billing breakdown */}
-                    <p className="text-sm text-gray-600">ยอดเบิกตามเนื้องาน:
-                      <span className="font-semibold text-gray-800 w-36 inline-block">฿{formatCurrency(totalWorkAmount)}</span>
-                    </p>
                     {totalAddAmount > 0 && (
-                      <p className="text-sm text-gray-600">ยอดงานเพิ่ม:
-                        <span className="font-semibold text-green-600 w-36 inline-block">฿{formatCurrency(totalAddAmount)}</span>
-                      </p>
+                      <tr>
+                        <td className="py-0.5 text-gray-600">งานเพิ่ม DC</td>
+                        <td className="py-0.5 text-right font-medium text-green-700">฿{formatCurrency(totalAddAmount)}</td>
+                      </tr>
                     )}
                     {totalDeductAmount > 0 && (
-                      <p className="text-sm text-gray-600">ยอดงานหัก:
-                        <span className="font-semibold text-red-600 w-36 inline-block">−฿{formatCurrency(totalDeductAmount)}</span>
-                      </p>
+                      <tr>
+                        <td className="py-0.5 text-gray-600">งานหัก</td>
+                        <td className="py-0.5 text-right font-medium text-red-600">−฿{formatCurrency(totalDeductAmount)}</td>
+                      </tr>
                     )}
-                    <hr className="my-1" />
-                    <p className="font-semibold">ยอดรวม:
-                      <span className="w-36 inline-block">฿{formatCurrency(grossAmount)}</span>
-                    </p>
-                    <p className="text-sm text-gray-600">หักประกันผลงาน (Retention {retentionPercent}% จากยอดงานหลัก):
-                      <span className="font-semibold text-red-600 w-36 inline-block">−฿{formatCurrency(retentionAmount)}</span>
-                    </p>
-                    <hr className="my-1" />
-                    <p className="font-bold text-xl">ยอดสุทธิอนุมัติ (Net):
-                      <span className="text-2xl text-emerald-700 w-36 inline-block">฿{formatCurrency(netAmount)}</span>
-                    </p>
-                    <p className="text-xs text-blue-600 mt-1">* ไม่มีการหัก WHT สำหรับงานหลัก — บัญชีโอนเต็มยอด Net</p>
-                  </>
-                )}
+                    <tr><td colSpan={2}><hr className="my-1" /></td></tr>
+                    <tr>
+                      <td className="py-0.5 text-gray-700 font-medium">รวม</td>
+                      <td className="py-0.5 text-right font-medium">฿{formatCurrency(grossAmount)}</td>
+                    </tr>
+                    {retentionAmount > 0 && (
+                      <tr>
+                        <td className="py-0.5 text-gray-600">หักประกัน {retentionPercent}%</td>
+                        <td className="py-0.5 text-right text-red-600">−฿{formatCurrency(retentionAmount)}</td>
+                      </tr>
+                    )}
+                    {whtAmount > 0 && (
+                      <tr>
+                        <td className="py-0.5 text-gray-600">หัก WHT {whtPercent}%</td>
+                        <td className="py-0.5 text-right text-red-600">−฿{formatCurrency(whtAmount)}</td>
+                      </tr>
+                    )}
+                    <tr><td colSpan={2}><hr className="my-1" /></td></tr>
+                    <tr>
+                      <td className="py-1 font-bold text-base">ยอดสุทธิอนุมัติ</td>
+                      <td className="py-1 text-right font-bold text-xl text-emerald-700">฿{formatCurrency(netAmount)}</td>
+                    </tr>
+                    {whtAmount > 0 && (
+                      <tr className="border-t">
+                        <td className="pt-1 text-amber-700 font-semibold">ยอดโอนจริง (หลังหัก WHT)</td>
+                        <td className="pt-1 text-right font-bold text-amber-700">฿{formatCurrency(netAmount - whtAmount)}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
