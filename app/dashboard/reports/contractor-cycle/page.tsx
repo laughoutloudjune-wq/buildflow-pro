@@ -1007,12 +1007,12 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                   {group.bills.map((bill: any) => {
                     const plotLabel = bill.plots?.name || '-'
                     const isExtra = bill.type === 'extra_work'
-                    // net_amount is already stored with WHT deducted.
-                    // If accounting did NOT actually deduct WHT, we add it back.
+                    // net_amount is stored WITHOUT WHT (PM no longer bakes it in).
+                    // Accounting decides at pay-out time whether to deduct WHT.
                     const whtAmt = (bill.total_add_amount ?? 0) * ((bill.wht_percent ?? 0) / 100)
                     const actualTransfer = bill.wht_applied
-                      ? (bill.net_amount ?? 0)            // WHT was deducted → use net_amount as-is
-                      : (bill.net_amount ?? 0) + whtAmt   // WHT not deducted → add back
+                      ? (bill.net_amount ?? 0) - whtAmt   // accounting deducted WHT
+                      : (bill.net_amount ?? 0)             // no WHT deduction
                     return (
                       <Fragment key={bill.id}>
                         <tr className="border-b align-top">

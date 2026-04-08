@@ -147,7 +147,9 @@ export default function ReviewBillingPage() {
     const retentionAmount = totalWorkAmount * (retentionPercent / 100)
 
     const grossAmount = totalWorkAmount + totalAddAmount - totalDeductAmount
-    const netAmount = (totalWorkAmount - retentionAmount) + (totalAddAmount - whtAmount) - totalDeductAmount
+    // WHT is NOT deducted here — accounting decides whether to deduct at pay-out time.
+    // wht_percent on the billing is reference information only.
+    const netAmount = (totalWorkAmount - retentionAmount) + totalAddAmount - totalDeductAmount
 
     return { totalWorkAmount, totalAddAmount, totalDeductAmount, grossAmount, netAmount, whtAmount, retentionAmount }
   }, [jobs, adjustments, whtPercent, retentionPercent])
@@ -531,11 +533,13 @@ export default function ReviewBillingPage() {
                 <p className="text-sm text-gray-600">ยอดงานเพิ่ม: <span className="font-semibold text-green-600 w-32 inline-block">{formatCurrency(totalAddAmount)}</span></p>
                 <p className="text-sm text-gray-600">ยอดงานหัก: <span className="font-semibold text-red-600 w-32 inline-block">-{formatCurrency(totalDeductAmount)}</span></p>
                 <hr className="my-1" />
-                <p className="font-semibold">ยอดรวมก่อนหักภาษี: <span className="w-32 inline-block">{formatCurrency(grossAmount)}</span></p>
-                <p className="text-sm text-gray-600">หัก ณ ที่จ่าย ({whtPercent}% จากยอดงานเพิ่ม): <span className="font-semibold text-red-600 w-32 inline-block">-{formatCurrency(whtAmount)}</span></p>
+                <p className="font-semibold">ยอดรวม: <span className="w-32 inline-block">{formatCurrency(grossAmount)}</span></p>
                 <p className="text-sm text-gray-600">หักประกันผลงาน ({retentionPercent}% จากยอดงานหลัก): <span className="font-semibold text-red-600 w-32 inline-block">-{formatCurrency(retentionAmount)}</span></p>
                 <hr className="my-1" />
-                <p className="font-bold text-xl">ยอดสุทธิที่ต้องจ่าย (Net): <span className="text-2xl text-emerald-700">{formatCurrency(netAmount)}</span></p>
+                <p className="font-bold text-xl">ยอดสุทธิอนุมัติ (Net): <span className="text-2xl text-emerald-700">{formatCurrency(netAmount)}</span></p>
+                {whtPercent > 0 && (
+                  <p className="text-xs text-amber-600 mt-1">* WHT อ้างอิง {whtPercent}% = ฿{formatCurrency(whtAmount)} — บัญชีเป็นผู้ตัดสินใจหักจริงตอนโอน</p>
+                )}
               </div>
             </div>
 
