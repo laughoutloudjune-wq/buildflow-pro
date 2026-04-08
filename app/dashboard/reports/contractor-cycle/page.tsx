@@ -1039,11 +1039,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               </div>
               <div className="flex flex-col items-end gap-2">
                 <div className="text-right text-sm">
-                  <div>งานหลัก: ฿{formatCurrency(group.totals.total_work_amount)}</div>
-                  <div>งานเพิ่ม: ฿{formatCurrency(group.totals.total_add_amount)}</div>
-                  <div>งานหัก: ฿{formatCurrency(group.totals.total_deduct_amount)}</div>
-                  <div className="text-slate-600">รวมก่อนหัก: ฿{formatCurrency(group.totals.gross_amount)}</div>
-                  <div className="font-bold text-emerald-700">สุทธิ: ฿{formatCurrency(group.totals.net_amount)}</div>
+                  <div className="text-slate-600">ยอดรวม: ฿{formatCurrency(group.totals.gross_amount)}</div>
+                  <div className="font-bold text-emerald-700">สุทธิ (หลังหัก): ฿{formatCurrency(group.totals.net_amount)}</div>
                 </div>
                 <div className="flex gap-2 no-print">
                   {!allPaid && (
@@ -1081,12 +1078,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     <th className="px-3 py-2 text-left">วันที่</th>
                     <th className="px-3 py-2 text-left">โครงการ / แปลง</th>
                     <th className="px-3 py-2 text-left">ประเภท</th>
-                    <th className="px-3 py-2 text-right">งานหลัก</th>
-                    <th className="px-3 py-2 text-right">เพิ่ม</th>
-                    <th className="px-3 py-2 text-right">หัก</th>
-                    <th className="px-3 py-2 text-right">รวมก่อนหัก</th>
-                    <th className="px-3 py-2 text-right">สุทธิ</th>
-                    <th className="px-3 py-2 text-right">ยอดโอนจริง</th>
+                    <th className="px-3 py-2 text-right">ยอดรวม</th>
+                    <th className="px-3 py-2 text-right">ยอดโอน</th>
                     <th className="px-3 py-2 text-center no-print">จัดการ</th>
                   </tr>
                 </thead>
@@ -1095,9 +1088,9 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     const plotLabel = bill.plots?.name || '-'
                     const isExtra = bill.type === 'extra_work'
                     const isDC = bill.type === 'extra_work'
+                    const grossAmt = (bill.total_work_amount ?? 0) + (bill.total_add_amount ?? 0) - (bill.total_deduct_amount ?? 0)
                     const whtAmt = isDC ? (bill.total_add_amount ?? 0) * ((bill.wht_percent ?? 0) / 100) : 0
                     const retAmt = (bill.total_work_amount ?? 0) * ((bill.retention_percent ?? 0) / 100)
-                    // net_amount has retention deducted; if retention was NOT applied, add it back
                     const retentionAddBack = (!isDC && bill.retention_applied === false) ? retAmt : 0
                     const actualTransfer = (bill.net_amount ?? 0) - whtAmt + retentionAddBack
                     return (
@@ -1124,11 +1117,9 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                             <div>{isExtra ? 'งานเพิ่ม / DC' : 'งวดงานหลัก'}</div>
                             {bill.reason_for_dc && <div className="text-xs text-slate-500">{bill.reason_for_dc}</div>}
                           </td>
-                          <td className="px-3 py-2 text-right">฿{formatCurrency(bill.total_work_amount)}</td>
-                          <td className="px-3 py-2 text-right">฿{formatCurrency(bill.total_add_amount)}</td>
-                          <td className="px-3 py-2 text-right">฿{formatCurrency(bill.total_deduct_amount)}</td>
-                          <td className="px-3 py-2 text-right text-slate-600">฿{formatCurrency((bill.total_work_amount ?? 0) + (bill.total_add_amount ?? 0) - (bill.total_deduct_amount ?? 0))}</td>
-                          <td className="px-3 py-2 text-right font-bold text-emerald-700">฿{formatCurrency(bill.net_amount)}</td>
+                          {/* ยอดรวม = gross before any deductions */}
+                          <td className="px-3 py-2 text-right font-semibold">฿{formatCurrency(grossAmt)}</td>
+                          {/* ยอดโอน = actual transfer after retention/WHT */}
                           <td className="px-3 py-2 text-right">
                             {bill.paid_out_at ? (
                               <div>
@@ -1142,11 +1133,11 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                             )}
                           </td>
                           <td className="px-3 py-2 text-center no-print">
-                            <button onClick={() => handleUndoApprove(bill.id)} className="px-2 py-1 rounded border text-xs text-amber-700 hover:bg-amber-50">Undo Approve</button>
+                            <button onClick={() => handleUndoApprove(bill.id)} className="px-2 py1 rounded border text-xs text-amber-700 hover:bg-amber-50">Undo Approve</button>
                           </td>
                         </tr>
                         <tr className="border-b bg-slate-50/40">
-                          <td colSpan={11} className="px-3 py-2">
+                          <td colSpan={7} className="px-3 py-2">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <div>
                                 <div className="text-xs font-semibold text-slate-600 mb-1">รายการงาน</div>
