@@ -834,12 +834,17 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-          <div className="rounded border p-3"><div className="text-slate-500">งานหลัก</div><div className="font-bold">฿{formatCurrency(grandTotals.total_work_amount)}</div></div>
-          <div className="rounded border p-3"><div className="text-slate-500">งานเพิ่ม</div><div className="font-bold text-blue-700">฿{formatCurrency(grandTotals.total_add_amount)}</div></div>
-          <div className="rounded border p-3"><div className="text-slate-500">งานหัก</div><div className="font-bold text-red-700">฿{formatCurrency(grandTotals.total_deduct_amount)}</div></div>
-          <div className="rounded border p-3 bg-slate-50"><div className="text-slate-500">รวมก่อนหัก</div><div className="font-bold text-slate-700">฿{formatCurrency(grandTotals.gross_amount)}</div></div>
-          <div className="rounded border p-3 bg-emerald-50"><div className="text-slate-500">สุทธิรวม</div><div className="font-bold text-emerald-700">฿{formatCurrency(grandTotals.net_amount)}</div></div>
+        <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+          <div className="rounded border p-3 bg-slate-50">
+            <div className="text-slate-500 text-xs">ยอดรวมทั้งหมด (ก่อนหัก)</div>
+            <div className="font-bold text-lg text-slate-700">฿{formatCurrency(grandTotals.gross_amount)}</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">งานหลัก ฿{formatCurrency(grandTotals.total_work_amount)} · งานเพิ่ม ฿{formatCurrency(grandTotals.total_add_amount)} · งานหัก −฿{formatCurrency(grandTotals.total_deduct_amount)}</div>
+          </div>
+          <div className="rounded border p-3 bg-emerald-50">
+            <div className="text-slate-500 text-xs">สุทธิอนุมัติ (หลังหัก Retention)</div>
+            <div className="font-bold text-lg text-emerald-700">฿{formatCurrency(grandTotals.net_amount)}</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">{grandTotals.bill_count} ใบเบิก · {grouped.length} ผู้รับเหมา</div>
+          </div>
         </div>
       </Card>
 
