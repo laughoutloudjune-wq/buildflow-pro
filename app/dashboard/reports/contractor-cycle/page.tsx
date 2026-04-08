@@ -848,6 +848,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       >
         {payOutConfirm && (() => {
           // Per-bill calculations
+          // net_amount = (work - retention) + add - deductions  (retention is baked in, WHT is NOT)
+          // grossAmt = net_amount + retAmt  →  the pre-deduction base for the receipt
           const billDetails = payOutConfirm.bills.map((b: any) => {
             const isDC = b.type === 'extra_work'
             const workAmt = b.total_work_amount ?? 0
@@ -860,15 +862,16 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             const applyRetention = !isDC && (retentionAppliedMap[b.id] ?? true)
             const actualRetention = applyRetention ? retAmt : 0
             const actualWht = isDC ? whtAmt : 0
-            const transfer = (b.net_amount ?? 0) - actualWht + (applyRetention ? 0 : retAmt)
-            // net_amount already has retention deducted; if not applying, add it back
-            return { b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, applyRetention, actualRetention, actualWht, transfer }
+            // Add back retAmt to get gross (since net_amount already has it deducted)
+            const grossAmt = (b.net_amount ?? 0) + retAmt
+            const transfer = grossAmt - actualRetention - actualWht
+            return { b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, applyRetention, actualRetention, actualWht, grossAmt, transfer }
           })
 
           const grandTransfer = billDetails.reduce((s, d) => s + d.transfer, 0)
           const grandRetention = billDetails.reduce((s, d) => s + d.actualRetention, 0)
           const grandWht = billDetails.reduce((s, d) => s + d.actualWht, 0)
-          const grandNet = payOutConfirm.bills.reduce((s: number, b: any) => s + (b.net_amount ?? 0), 0)
+          const grandGross = billDetails.reduce((s, d) => s + d.grossAmt, 0)
 
           return (
             <div className="space-y-4">
@@ -949,8 +952,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                 {/* Grand total */}
                 <div className="border-t-2 border-dashed border-slate-400 mt-2 pt-2 space-y-0.5">
                   <div className="flex justify-between text-slate-600">
-                    <span>ยอดสุทธิรวม</span>
-                    <span>฿{formatCurrency(grandNet)}</span>
+                    <span>ยอดรวมทั้งหมด</span>
+                    <span>฿{formatCurrency(grandGross)}</span>
                   </div>
                   {grandRetention > 0 && (
                     <div className="flex justify-between text-slate-600">
