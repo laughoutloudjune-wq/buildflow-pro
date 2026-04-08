@@ -24,6 +24,8 @@ type BillingReportRow = {
   plot_id?: string | null
   submitted_by?: string | null
   approved_by?: string | null
+  paid_out_at?: string | null
+  paid_out_by?: string | null
   billing_jobs?: Array<{
     id: string
     amount?: number | null

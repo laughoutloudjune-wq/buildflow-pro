@@ -173,3 +173,46 @@ export async function undoApproveBilling(id: string) {
   revalidatePath('/dashboard/reports/dc-history')
   revalidatePath('/dashboard/reports/contractor-cycle')
 }
+
+export async function markBillingsAsPaidOut(billingIds: string[], paidAt: string) {
+  const supabase = await createClient()
+  const user = await getCurrentUser()
+  if (!user) throw new Error('User not found')
+  const role = await getCurrentUserRole(supabase, user.id)
+  requireRole(['pm', 'admin'], role, 'Only PM/Admin can mark billings as paid out')
+
+  if (!billingIds || billingIds.length === 0) throw new Error('No billing IDs provided')
+
+  const { error } = await supabase
+    .from('billings')
+    .update({
+      paid_out_at: paidAt,
+      paid_out_by: user.id,
+    })
+    .in('id', billingIds)
+    .eq('status', 'approved')
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/dashboard/reports/contractor-cycle')
+}
+
+export async function unmarkBillingsAsPaidOut(billingIds: string[]) {
+  const supabase = await createClient()
+  const user = await getCurrentUser()
+  if (!user) throw new Error('User not found')
+  const role = await getCurrentUserRole(supabase, user.id)
+  requireRole(['pm', 'admin'], role, 'Only PM/Admin can unmark paid out')
+
+  if (!billingIds || billingIds.length === 0) throw new Error('No billing IDs provided')
+
+  const { error } = await supabase
+    .from('billings')
+    .update({
+      paid_out_at: null,
+      paid_out_by: null,
+    })
+    .in('id', billingIds)
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/dashboard/reports/contractor-cycle')
+}

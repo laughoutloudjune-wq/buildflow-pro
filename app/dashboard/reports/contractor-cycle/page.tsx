@@ -3,8 +3,8 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
-import { getApprovedContractorCycleReport, getBillingOptions, undoApproveBilling } from '@/actions/billing-actions'
-import { Loader2, Printer } from 'lucide-react'
+import { getApprovedContractorCycleReport, getBillingOptions, undoApproveBilling, markBillingsAsPaidOut, unmarkBillingsAsPaidOut } from '@/actions/billing-actions'
+import { BadgeCheck, Loader2, Printer, Undo2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 
 type Project = { id: string; name: string }
@@ -37,6 +37,10 @@ export default function ContractorCycleReportPage() {
   const [showPrintPreview, setShowPrintPreview] = useState(false)
   const [showHtmlModalPreview, setShowHtmlModalPreview] = useState(false)
   const [printedAtLabel, setPrintedAtLabel] = useState('')
+
+  const [payOutConfirm, setPayOutConfirm] = useState<{ contractorId: string; contractorName: string; billIds: string[]; total: number } | null>(null)
+  const [payOutDate, setPayOutDate] = useState(todayISO())
+  const [payOutLoading, setPayOutLoading] = useState(false)
 
   useEffect(() => {
     getBillingOptions().then((data) => {
@@ -86,6 +90,31 @@ export default function ContractorCycleReportPage() {
       await runReport()
     } catch (e: any) {
       alert(e.message || 'Undo approve failed')
+    }
+  }
+
+  const handleMarkAsPaidOut = async () => {
+    if (!payOutConfirm) return
+    setPayOutLoading(true)
+    try {
+      await markBillingsAsPaidOut(payOutConfirm.billIds, payOutDate)
+      setPayOutConfirm(null)
+      await runReport()
+    } catch (e: any) {
+      alert(e.message || 'Mark as paid failed')
+    } finally {
+      setPayOutLoading(false)
+    }
+  }
+
+  const handleUnmarkPaidOut = async (billIds: string[], contractorName: string) => {
+    const ok = window.confirm(`ต้องการยกเลิกสถานะ "จ่ายแล้ว" ของ ${contractorName} ใช่หรือไม่?`)
+    if (!ok) return
+    try {
+      await unmarkBillingsAsPaidOut(billIds)
+      await runReport()
+    } catch (e: any) {
+      alert(e.message || 'Unmark paid out failed')
     }
   }
 
@@ -805,6 +834,42 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         </div>
       </Card>
 
+      {/* Pay-out confirmation modal */}
+      <Modal
+        isOpen={!!payOutConfirm}
+        onClose={() => setPayOutConfirm(null)}
+        title="ยืนยันการจ่ายเงินให้ผู้รับเหมา"
+      >
+        {payOutConfirm && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 space-y-1">
+              <p className="text-sm font-semibold text-emerald-900">{payOutConfirm.contractorName}</p>
+              <p className="text-xs text-emerald-700">จำนวน {payOutConfirm.billIds.length} ใบเบิก • รวม ฿{formatCurrency(payOutConfirm.total)}</p>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่โอนเงิน</label>
+              <input
+                type="date"
+                value={payOutDate}
+                onChange={(e) => setPayOutDate(e.target.value)}
+                className="w-full p-2 border rounded text-sm"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button onClick={() => setPayOutConfirm(null)} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
+              <button
+                onClick={handleMarkAsPaidOut}
+                disabled={payOutLoading || !payOutDate}
+                className="flex items-center gap-2 px-4 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {payOutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
+                ยืนยันจ่ายแล้ว
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {error && <Card className="p-4 text-red-600">{error}</Card>}
 
       {loading ? (
@@ -812,18 +877,70 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       ) : grouped.length === 0 ? (
         <Card className="p-8 text-center text-slate-400">ไม่พบข้อมูลใบเบิกที่อนุมัติในช่วงวันที่เลือก</Card>
       ) : (
-        grouped.map((group) => (
-          <Card key={group.contractorId} className="p-4 print-break-avoid print:shadow-none print:border">
-            <div className="flex items-center justify-between gap-4 mb-3">
-              <div>
-                <h3 className="text-lg font-bold">{group.contractor?.name || 'ไม่ระบุผู้รับเหมา'}</h3>
+        grouped.map((group) => {
+          const billIds = group.bills.map((b: any) => b.id)
+          const paidCount = group.bills.filter((b: any) => !!b.paid_out_at).length
+          const allPaid = paidCount === group.bills.length && group.bills.length > 0
+          const somePaid = paidCount > 0 && !allPaid
+          const latestPaidAt = allPaid
+            ? group.bills.reduce((latest: string, b: any) => {
+                const d = b.paid_out_at || ''
+                return d > latest ? d : latest
+              }, '')
+            : null
+
+          return (
+          <Card key={group.contractorId} className={`p-4 print-break-avoid print:shadow-none print:border ${allPaid ? 'border-emerald-200 bg-emerald-50/30' : ''}`}>
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-lg font-bold">{group.contractor?.name || 'ไม่ระบุผู้รับเหมา'}</h3>
+                  {allPaid && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-300">
+                      <BadgeCheck className="h-3 w-3" /> จ่ายแล้ว {latestPaidAt ? new Date(latestPaidAt).toLocaleDateString('th-TH') : ''}
+                    </span>
+                  )}
+                  {somePaid && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-300">
+                      จ่ายบางส่วน ({paidCount}/{group.bills.length})
+                    </span>
+                  )}
+                  {!allPaid && !somePaid && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+                      รอจ่าย
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-500">จำนวนใบเบิกที่อนุมัติ: {group.bills.length}</p>
               </div>
-              <div className="text-right text-sm">
-                <div>งานหลัก: ฿{formatCurrency(group.totals.total_work_amount)}</div>
-                <div>งานเพิ่ม: ฿{formatCurrency(group.totals.total_add_amount)}</div>
-                <div>งานหัก: ฿{formatCurrency(group.totals.total_deduct_amount)}</div>
-                <div className="font-bold text-emerald-700">สุทธิ: ฿{formatCurrency(group.totals.net_amount)}</div>
+              <div className="flex flex-col items-end gap-2">
+                <div className="text-right text-sm">
+                  <div>งานหลัก: ฿{formatCurrency(group.totals.total_work_amount)}</div>
+                  <div>งานเพิ่ม: ฿{formatCurrency(group.totals.total_add_amount)}</div>
+                  <div>งานหัก: ฿{formatCurrency(group.totals.total_deduct_amount)}</div>
+                  <div className="font-bold text-emerald-700">สุทธิ: ฿{formatCurrency(group.totals.net_amount)}</div>
+                </div>
+                <div className="flex gap-2 no-print">
+                  {!allPaid && (
+                    <button
+                      onClick={() => {
+                        setPayOutDate(todayISO())
+                        setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', billIds, total: group.totals.net_amount })
+                      }}
+                      className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                    >
+                      <BadgeCheck className="h-3.5 w-3.5" /> Mark as Paid
+                    </button>
+                  )}
+                  {(allPaid || somePaid) && (
+                    <button
+                      onClick={() => handleUnmarkPaidOut(group.bills.filter((b: any) => !!b.paid_out_at).map((b: any) => b.id), group.contractor?.name || '-')}
+                      className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+                    >
+                      <Undo2 className="h-3.5 w-3.5" /> Undo
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -849,7 +966,18 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     return (
                       <Fragment key={bill.id}>
                         <tr className="border-b align-top">
-                          <td className="px-3 py-2 font-semibold">#{String(bill.doc_no || '-').padStart(4, '0')}</td>
+                          <td className="px-3 py-2 font-semibold">
+                            <div>#{String(bill.doc_no || '-').padStart(4, '0')}</div>
+                            {bill.paid_out_at ? (
+                              <div className="mt-0.5 inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                <BadgeCheck className="h-2.5 w-2.5" /> จ่ายแล้ว
+                              </div>
+                            ) : (
+                              <div className="mt-0.5 inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
+                                รอจ่าย
+                              </div>
+                            )}
+                          </td>
                           <td className="px-3 py-2">{bill.billing_date ? new Date(bill.billing_date).toLocaleDateString('th-TH') : '-'}</td>
                           <td className="px-3 py-2">
                             <div>{bill.projects?.name || '-'}</div>
@@ -938,7 +1066,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               </table>
             </div>
           </Card>
-        ))
+          )
+        })
       )}
     </div>
   )

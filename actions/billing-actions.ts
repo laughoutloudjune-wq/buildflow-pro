@@ -17,6 +17,8 @@ import {
   approveBilling as approveBillingImpl,
   rejectBilling as rejectBillingImpl,
   undoApproveBilling as undoApproveBillingImpl,
+  markBillingsAsPaidOut as markBillingsAsPaidOutImpl,
+  unmarkBillingsAsPaidOut as unmarkBillingsAsPaidOutImpl,
 } from '@/actions/billing/reviews'
 import {
   getBillingsByCreator as getBillingsByCreatorImpl,
@@ -105,4 +107,12 @@ export async function getBillingById(id: string) {
 
 export async function deleteBilling(id: string) {
   return deleteBillingImpl(id)
+}
+
+export async function markBillingsAsPaidOut(billingIds: string[], paidAt: string) {
+  return markBillingsAsPaidOutImpl(billingIds, paidAt)
+}
+
+export async function unmarkBillingsAsPaidOut(billingIds: string[]) {
+  return unmarkBillingsAsPaidOutImpl(billingIds)
 }

@@ -228,9 +228,11 @@ export default function DCHistoryReportPage() {
         isOpen={!!selectedGroup}
         onClose={() => setSelectedGroupKey(null)}
         title={selectedGroup ? `ประวัติ DC: ${selectedGroup.project} • แปลง ${selectedGroup.plot}` : 'ประวัติ DC'}
+        panelClassName="max-w-4xl h-[85vh]"
+        bodyClassName="p-0 h-[calc(85vh-72px)]"
       >
         {selectedGroup && (
-          <div className="space-y-4 max-h-[70vh] overflow-auto">
+          <div className="space-y-4 h-full overflow-auto p-4">
             <div className="text-sm text-slate-600">
               รวมสุทธิ: <span className="font-bold text-amber-700">฿{formatCurrency(selectedGroup.value)}</span>
             </div>
