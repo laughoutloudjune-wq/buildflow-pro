@@ -41,6 +41,7 @@ export default function ContractorCycleReportPage() {
   const [payOutConfirm, setPayOutConfirm] = useState<{ contractorId: string; contractorName: string; bills: any[]; total: number } | null>(null)
   const [payOutDate, setPayOutDate] = useState(todayISO())
   const [payOutLoading, setPayOutLoading] = useState(false)
+  const [cycleWhtApplied, setCycleWhtApplied] = useState(true)
   const [retentionAppliedMap, setRetentionAppliedMap] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
@@ -99,11 +100,15 @@ export default function ContractorCycleReportPage() {
     setPayOutLoading(true)
     try {
       const billIds = payOutConfirm.bills.map((b: any) => b.id)
+      // WHT decision is cycle-wide: applies to all DC bills equally
       const whtMap: Record<string, boolean> = {}
-      payOutConfirm.bills.forEach((b: any) => { whtMap[b.id] = b.type === 'extra_work' })
+      payOutConfirm.bills.forEach((b: any) => {
+        whtMap[b.id] = b.type === 'extra_work' ? cycleWhtApplied : false
+      })
       await markBillingsAsPaidOut(billIds, payOutDate, whtMap, retentionAppliedMap)
       setPayOutConfirm(null)
       setRetentionAppliedMap({})
+      setCycleWhtApplied(true)
       await runReport()
     } catch (e: any) {
       alert(e.message || 'Mark as paid failed')
@@ -856,9 +861,6 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         panelClassName="max-w-md"
       >
         {payOutConfirm && (() => {
-          // Per-bill calculations
-          // net_amount = (work - retention) + add - deductions  (retention is baked in, WHT is NOT)
-          // grossAmt = net_amount + retAmt  →  the pre-deduction base for the receipt
           const billDetails = payOutConfirm.bills.map((b: any) => {
             const isDC = b.type === 'extra_work'
             const workAmt = b.total_work_amount ?? 0
@@ -869,9 +871,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             const retAmt = workAmt * (retPct / 100)
             const whtAmt = addAmt * (whtPct / 100)
             const applyRetention = !isDC && (retentionAppliedMap[b.id] ?? true)
+            const actualWht = isDC && cycleWhtApplied ? whtAmt : 0
             const actualRetention = applyRetention ? retAmt : 0
-            const actualWht = isDC ? whtAmt : 0
-            // Add back retAmt to get gross (since net_amount already has it deducted)
             const grossAmt = (b.net_amount ?? 0) + retAmt
             const transfer = grossAmt - actualRetention - actualWht
             return { b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, applyRetention, actualRetention, actualWht, grossAmt, transfer }
@@ -881,76 +882,64 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           const grandRetention = billDetails.reduce((s, d) => s + d.actualRetention, 0)
           const grandWht = billDetails.reduce((s, d) => s + d.actualWht, 0)
           const grandGross = billDetails.reduce((s, d) => s + d.grossAmt, 0)
+          const hasDC = billDetails.some(d => d.isDC && d.whtAmt > 0)
 
           return (
             <div className="space-y-4">
-              {/* Date picker */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่โอนเงิน</label>
-                <input type="date" value={payOutDate} onChange={(e) => setPayOutDate(e.target.value)} className="w-full p-2 border rounded text-sm" />
+              {/* Controls row */}
+              <div className="flex gap-4 flex-wrap">
+                <div className="flex-1 min-w-32">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่โอนเงิน</label>
+                  <input type="date" value={payOutDate} onChange={(e) => setPayOutDate(e.target.value)} className="w-full p-2 border rounded text-sm" />
+                </div>
+                {hasDC && (
+                  <div className="flex items-end pb-2">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none border rounded px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={cycleWhtApplied}
+                        onChange={(e) => setCycleWhtApplied(e.target.checked)}
+                        className="accent-amber-600 w-4 h-4"
+                      />
+                      <span className="font-medium text-amber-700">หัก WHT (DC)</span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               {/* POS-style receipt */}
-              <div className="font-mono text-xs bg-white border-2 border-dashed border-slate-300 rounded-lg p-4 space-y-0 max-h-[55vh] overflow-y-auto">
-                {/* Header */}
+              <div className="font-mono text-xs bg-white border-2 border-dashed border-slate-300 rounded-lg p-4 max-h-[50vh] overflow-y-auto">
                 <div className="text-center mb-2">
                   <div className="font-bold text-sm">{payOutConfirm.contractorName}</div>
                   <div className="text-slate-500">{payOutDate ? new Date(payOutDate).toLocaleDateString('th-TH', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'}</div>
                 </div>
                 <div className="border-t border-dashed border-slate-300 my-2" />
 
-                {/* Per-bill breakdown */}
-                {billDetails.map(({ b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, applyRetention, transfer }) => (
+                {billDetails.map(({ b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, applyRetention, actualWht, transfer }) => (
                   <div key={b.id} className="mb-3">
                     <div className="flex justify-between font-semibold text-slate-700">
                       <span>{isDC ? '[DC]' : '[หลัก]'} #{String(b.doc_no || '-').padStart(4, '0')}</span>
                       <span>{b.billing_date ? new Date(b.billing_date).toLocaleDateString('th-TH') : '-'}</span>
                     </div>
                     <div className="text-slate-500 mb-1">{b.projects?.name ?? '-'}</div>
-
-                    {workAmt > 0 && (
-                      <div className="flex justify-between">
-                        <span>งานหลัก</span>
-                        <span>฿{formatCurrency(workAmt)}</span>
-                      </div>
-                    )}
-                    {addAmt > 0 && (
-                      <div className="flex justify-between">
-                        <span>งานเพิ่ม DC</span>
-                        <span>฿{formatCurrency(addAmt)}</span>
-                      </div>
-                    )}
-                    {deductAmt > 0 && (
-                      <div className="flex justify-between text-red-600">
-                        <span>งานหัก</span>
-                        <span>−฿{formatCurrency(deductAmt)}</span>
-                      </div>
-                    )}
-
-                    {/* Retention checkbox — main jobs only */}
+                    {workAmt > 0 && <div className="flex justify-between"><span>งานหลัก</span><span>฿{formatCurrency(workAmt)}</span></div>}
+                    {addAmt > 0 && <div className="flex justify-between"><span>งานเพิ่ม DC</span><span>฿{formatCurrency(addAmt)}</span></div>}
+                    {deductAmt > 0 && <div className="flex justify-between text-red-600"><span>งานหัก</span><span>−฿{formatCurrency(deductAmt)}</span></div>}
                     {!isDC && retAmt > 0 && (
-                      <label className="flex items-center justify-between mt-1 cursor-pointer select-none group">
+                      <label className="flex items-center justify-between mt-0.5 cursor-pointer select-none">
                         <span className="flex items-center gap-1.5 text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={retentionAppliedMap[b.id] ?? true}
-                            onChange={(e) => setRetentionAppliedMap(prev => ({ ...prev, [b.id]: e.target.checked }))}
-                            className="accent-slate-600"
-                          />
+                          <input type="checkbox" checked={retentionAppliedMap[b.id] ?? true} onChange={(e) => setRetentionAppliedMap(prev => ({ ...prev, [b.id]: e.target.checked }))} className="accent-slate-600" />
                           หักประกัน {retPct}%
                         </span>
                         <span className="text-red-600">−฿{formatCurrency(retAmt)}</span>
                       </label>
                     )}
-
-                    {/* WHT — DC always deducted */}
                     {isDC && whtAmt > 0 && (
-                      <div className="flex justify-between text-amber-700">
+                      <div className={`flex justify-between ${cycleWhtApplied ? 'text-amber-700' : 'text-slate-300 line-through'}`}>
                         <span>หัก WHT {whtPct}%</span>
-                        <span>−฿{formatCurrency(whtAmt)}</span>
+                        <span>{cycleWhtApplied ? '−' : ''}฿{formatCurrency(whtAmt)}</span>
                       </div>
                     )}
-
                     <div className="border-t border-dotted border-slate-200 mt-1 pt-1 flex justify-between font-bold">
                       <span>โอน</span>
                       <span className="text-emerald-700">฿{formatCurrency(transfer)}</span>
@@ -958,24 +947,10 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                   </div>
                 ))}
 
-                {/* Grand total */}
                 <div className="border-t-2 border-dashed border-slate-400 mt-2 pt-2 space-y-0.5">
-                  <div className="flex justify-between text-slate-600">
-                    <span>ยอดรวมทั้งหมด</span>
-                    <span>฿{formatCurrency(grandGross)}</span>
-                  </div>
-                  {grandRetention > 0 && (
-                    <div className="flex justify-between text-slate-600">
-                      <span>หักประกันรวม</span>
-                      <span>−฿{formatCurrency(grandRetention)}</span>
-                    </div>
-                  )}
-                  {grandWht > 0 && (
-                    <div className="flex justify-between text-amber-700">
-                      <span>หัก WHT รวม</span>
-                      <span>−฿{formatCurrency(grandWht)}</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between text-slate-600"><span>ยอดรวมทั้งหมด</span><span>฿{formatCurrency(grandGross)}</span></div>
+                  {grandRetention > 0 && <div className="flex justify-between text-slate-600"><span>หักประกันรวม</span><span>−฿{formatCurrency(grandRetention)}</span></div>}
+                  {grandWht > 0 && <div className="flex justify-between text-amber-700"><span>หัก WHT รวม</span><span>−฿{formatCurrency(grandWht)}</span></div>}
                   <div className="flex justify-between font-bold text-base text-emerald-700 border-t border-slate-400 pt-1 mt-1">
                     <span>ยอดโอนจริง</span>
                     <span>฿{formatCurrency(grandTransfer)}</span>
@@ -984,12 +959,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               </div>
 
               <div className="flex justify-end gap-2 pt-1 border-t">
-                <button onClick={() => { setPayOutConfirm(null); setRetentionAppliedMap({}) }} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
-                <button
-                  onClick={handleMarkAsPaidOut}
-                  disabled={payOutLoading || !payOutDate}
-                  className="flex items-center gap-2 px-4 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50"
-                >
+                <button onClick={() => { setPayOutConfirm(null); setRetentionAppliedMap({}); setCycleWhtApplied(true) }} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
+                <button onClick={handleMarkAsPaidOut} disabled={payOutLoading || !payOutDate} className="flex items-center gap-2 px-4 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50">
                   {payOutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
                   ยืนยันจ่าย ฿{formatCurrency(grandTransfer)}
                 </button>
@@ -1052,10 +1023,11 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     <button
                       onClick={() => {
                         setPayOutDate(todayISO())
-                        const unpaidBills = group.bills.filter((b: any) => !b.paid_out_at)
+                                        const unpaidBills = group.bills.filter((b: any) => !b.paid_out_at)
                         const initRetention: Record<string, boolean> = {}
                         unpaidBills.forEach((b: any) => { initRetention[b.id] = true })
                         setRetentionAppliedMap(initRetention)
+                        setCycleWhtApplied(true)
                         setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', bills: unpaidBills, total: group.totals.net_amount })
                       }}
                       className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
