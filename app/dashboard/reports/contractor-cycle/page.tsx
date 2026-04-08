@@ -844,70 +844,118 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         title="ยืนยันการจ่ายเงินให้ผู้รับเหมา"
         panelClassName="max-w-lg"
       >
-        {payOutConfirm && (
-          <div className="space-y-4">
-            <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 space-y-1">
-              <p className="text-sm font-semibold text-emerald-900">{payOutConfirm.contractorName}</p>
-              <p className="text-xs text-emerald-700">จำนวน {payOutConfirm.bills.length} ใบเบิก</p>
-            </div>
+        {payOutConfirm && (() => {
+          const billsWithWht = payOutConfirm.bills.filter((b: any) => (b.wht_percent ?? 0) > 0)
+          const allWhtChecked = billsWithWht.length > 0 && billsWithWht.every((b: any) => !!whtAppliedMap[b.id])
+          const someWhtChecked = billsWithWht.some((b: any) => !!whtAppliedMap[b.id])
 
-            {/* WHT checkbox per billing */}
-            {payOutConfirm.bills.some((b: any) => (b.wht_percent ?? 0) > 0) && (
-              <div>
-                <p className="text-xs font-semibold text-slate-600 mb-2">การหัก WHT (หักจริงหรือไม่?)</p>
-                <div className="space-y-2 max-h-48 overflow-y-auto border rounded p-2 bg-slate-50">
-                  {payOutConfirm.bills.map((b: any) => {
-                    const whtAmt = (b.total_add_amount ?? 0) * ((b.wht_percent ?? 0) / 100)
-                    const hasWht = (b.wht_percent ?? 0) > 0
-                    return (
-                      <label key={b.id} className={`flex items-start gap-2 text-xs rounded p-2 cursor-pointer select-none ${hasWht ? 'hover:bg-slate-100' : 'opacity-40 cursor-default'}`}>
-                        <input
-                          type="checkbox"
-                          disabled={!hasWht}
-                          checked={!!whtAppliedMap[b.id]}
-                          onChange={(e) => setWhtAppliedMap((prev) => ({ ...prev, [b.id]: e.target.checked }))}
-                          className="mt-0.5 accent-emerald-600"
-                        />
-                        <span className="flex-1">
-                          <span className="font-medium">{b.billing_date ? new Date(b.billing_date).toLocaleDateString('th-TH') : '-'}</span>
-                          {' '}— {b.projects?.name ?? '-'}
-                          {hasWht && (
-                            <span className="ml-1 text-amber-700">
-                              WHT {b.wht_percent}% = ฿{formatCurrency(whtAmt)}
-                            </span>
-                          )}
-                          {!hasWht && <span className="ml-1 text-slate-400">ไม่มี WHT</span>}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1">ติ๊กถูกหมายความว่า หัก WHT จริง | ไม่ติ๊ก = ไม่ได้หัก</p>
+          const totalNet = payOutConfirm.bills.reduce((sum: number, b: any) => sum + (b.net_amount ?? 0), 0)
+          const totalWhtDeducted = payOutConfirm.bills.reduce((sum: number, b: any) => {
+            if (!whtAppliedMap[b.id]) return sum
+            return sum + (b.total_add_amount ?? 0) * ((b.wht_percent ?? 0) / 100)
+          }, 0)
+          const totalActualTransfer = totalNet - totalWhtDeducted
+
+          const handleSelectAll = (checked: boolean) => {
+            const next: Record<string, boolean> = { ...whtAppliedMap }
+            billsWithWht.forEach((b: any) => { next[b.id] = checked })
+            setWhtAppliedMap(next)
+          }
+
+          return (
+            <div className="space-y-4">
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 space-y-1">
+                <p className="text-sm font-semibold text-emerald-900">{payOutConfirm.contractorName}</p>
+                <p className="text-xs text-emerald-700">จำนวน {payOutConfirm.bills.length} ใบเบิก</p>
               </div>
-            )}
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่โอนเงิน</label>
-              <input
-                type="date"
-                value={payOutDate}
-                onChange={(e) => setPayOutDate(e.target.value)}
-                className="w-full p-2 border rounded text-sm"
-              />
+              {/* WHT checkbox per billing */}
+              {billsWithWht.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-slate-600">การหัก WHT (หักจริงหรือไม่?)</p>
+                    <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={allWhtChecked}
+                        ref={(el) => { if (el) el.indeterminate = someWhtChecked && !allWhtChecked }}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        className="accent-emerald-600"
+                      />
+                      เลือกทั้งหมด
+                    </label>
+                  </div>
+                  <div className="space-y-1 max-h-44 overflow-y-auto border rounded p-2 bg-slate-50">
+                    {payOutConfirm.bills.map((b: any) => {
+                      const whtAmt = (b.total_add_amount ?? 0) * ((b.wht_percent ?? 0) / 100)
+                      const hasWht = (b.wht_percent ?? 0) > 0
+                      return (
+                        <label key={b.id} className={`flex items-start gap-2 text-xs rounded p-2 cursor-pointer select-none ${hasWht ? 'hover:bg-slate-100' : 'opacity-40 cursor-default'}`}>
+                          <input
+                            type="checkbox"
+                            disabled={!hasWht}
+                            checked={!!whtAppliedMap[b.id]}
+                            onChange={(e) => setWhtAppliedMap((prev) => ({ ...prev, [b.id]: e.target.checked }))}
+                            className="mt-0.5 accent-emerald-600"
+                          />
+                          <span className="flex-1">
+                            <span className="font-medium">{b.billing_date ? new Date(b.billing_date).toLocaleDateString('th-TH') : '-'}</span>
+                            {' '}— {b.projects?.name ?? '-'}
+                            {hasWht
+                              ? <span className="ml-1 text-amber-700">WHT {b.wht_percent}% = ฿{formatCurrency(whtAmt)}</span>
+                              : <span className="ml-1 text-slate-400">ไม่มี WHT</span>
+                            }
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">ติ๊กถูก = หัก WHT จริง | ไม่ติ๊ก = ไม่ได้หัก</p>
+                </div>
+              )}
+
+              {/* Pay-out summary */}
+              <div className="rounded-lg border bg-slate-50 p-3 text-sm space-y-1">
+                <p className="text-xs font-semibold text-slate-500 mb-2">สรุปยอดโอน</p>
+                <div className="flex justify-between text-slate-600">
+                  <span>ยอดสุทธิอนุมัติ</span>
+                  <span className="font-medium">฿{formatCurrency(totalNet)}</span>
+                </div>
+                {totalWhtDeducted > 0 && (
+                  <div className="flex justify-between text-amber-700">
+                    <span>หัก WHT รวม</span>
+                    <span className="font-medium">−฿{formatCurrency(totalWhtDeducted)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-emerald-700 border-t pt-1 mt-1">
+                  <span>ยอดโอนจริง</span>
+                  <span className="text-base">฿{formatCurrency(totalActualTransfer)}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่โอนเงิน</label>
+                <input
+                  type="date"
+                  value={payOutDate}
+                  onChange={(e) => setPayOutDate(e.target.value)}
+                  className="w-full p-2 border rounded text-sm"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <button onClick={() => { setPayOutConfirm(null); setWhtAppliedMap({}) }} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
+                <button
+                  onClick={handleMarkAsPaidOut}
+                  disabled={payOutLoading || !payOutDate}
+                  className="flex items-center gap-2 px-4 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {payOutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
+                  ยืนยันจ่าย ฿{formatCurrency(totalActualTransfer)}
+                </button>
+              </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <button onClick={() => { setPayOutConfirm(null); setWhtAppliedMap({}) }} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
-              <button
-                onClick={handleMarkAsPaidOut}
-                disabled={payOutLoading || !payOutDate}
-                className="flex items-center gap-2 px-4 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {payOutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
-                ยืนยันจ่ายแล้ว
-              </button>
-            </div>
-          </div>
-        )}
+          )
+        })()}
       </Modal>
 
       {error && <Card className="p-4 text-red-600">{error}</Card>}
