@@ -345,15 +345,27 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         })
         const totals = bills.reduce(
           (acc: any, bill: any) => {
-            acc.total_work_amount += Number(bill.total_work_amount || 0)
-            acc.total_add_amount += Number(bill.total_add_amount || 0)
-            acc.total_deduct_amount += Number(bill.total_deduct_amount || 0)
+            const workAmt = Number(bill.total_work_amount || 0)
+            const addAmt = Number(bill.total_add_amount || 0)
+            const deductAmt = Number(bill.total_deduct_amount || 0)
+            const retAmt = workAmt * (Number(bill.retention_percent || 0) / 100)
+            const pmGrossAmt = workAmt + addAmt - deductAmt
+            acc.total_work_amount += workAmt
+            acc.total_add_amount += addAmt
+            acc.total_deduct_amount += deductAmt
             acc.net_amount += Number(bill.net_amount || 0)
-            // gross = work + add - deductions, before retention/WHT
-            acc.gross_amount += Number(bill.total_work_amount || 0) + Number(bill.total_add_amount || 0) - Number(bill.total_deduct_amount || 0)
+            acc.gross_amount += pmGrossAmt
+            if (bill.paid_out_at) {
+              const whtAmt = bill.wht_applied ? pmGrossAmt * (Number(bill.wht_percent || 0) / 100) : 0
+              const deductAddBack = bill.deduct_applied === false ? deductAmt : 0
+              const retentionAddBack = bill.retention_applied === false ? retAmt : 0
+              acc.actual_transfer += Number(bill.net_amount || 0) + deductAddBack + retentionAddBack - whtAmt
+            } else {
+              acc.actual_transfer += pmGrossAmt
+            }
             return acc
           },
-          { total_work_amount: 0, total_add_amount: 0, total_deduct_amount: 0, net_amount: 0, gross_amount: 0 }
+          { total_work_amount: 0, total_add_amount: 0, total_deduct_amount: 0, net_amount: 0, gross_amount: 0, actual_transfer: 0 }
         )
         return { contractorId, contractor: group.contractor, bills, totals }
       })
@@ -368,10 +380,11 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         acc.total_deduct_amount += g.totals.total_deduct_amount
         acc.net_amount += g.totals.net_amount
         acc.gross_amount += g.totals.gross_amount
+        acc.actual_transfer += g.totals.actual_transfer
         acc.bill_count += g.bills.length
         return acc
       },
-      { total_work_amount: 0, total_add_amount: 0, total_deduct_amount: 0, net_amount: 0, gross_amount: 0, bill_count: 0 }
+      { total_work_amount: 0, total_add_amount: 0, total_deduct_amount: 0, net_amount: 0, gross_amount: 0, actual_transfer: 0, bill_count: 0 }
     )
   }, [grouped])
 
@@ -450,7 +463,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       return {
         ...group,
         plots,
-        previewTotal: Number(group.totals.net_amount || 0),
+        previewTotal: Number(group.totals.actual_transfer || 0),
       }
     })
   }, [grouped, collator])
@@ -526,9 +539,20 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
 
   const invoiceTemplateHtml = useMemo(() => {
     return previewGroups.map((group: any) => {
-      const whtTotal = group.bills.reduce((sum: number, b: any) => sum + ((Number(b.total_add_amount || 0) * Number(b.wht_percent || 0)) / 100), 0)
-      const retentionTotal = group.bills.reduce((sum: number, b: any) => sum + ((Number(b.total_work_amount || 0) * Number(b.retention_percent || 0)) / 100), 0)
-      const grossBeforeTax = group.bills.reduce((sum: number, b: any) => sum + Number((b.total_work_amount || 0) + (b.total_add_amount || 0) - (b.total_deduct_amount || 0)), 0)
+      const whtTotal = group.bills.reduce((sum: number, b: any) => {
+        if (!b.paid_out_at || !b.wht_applied) return sum
+        const pmGross = Number(b.total_work_amount || 0) + Number(b.total_add_amount || 0) - Number(b.total_deduct_amount || 0)
+        return sum + pmGross * (Number(b.wht_percent || 0) / 100)
+      }, 0)
+      const retentionTotal = group.bills.reduce((sum: number, b: any) => {
+        if (!b.paid_out_at || b.retention_applied === false) return sum
+        return sum + Number(b.total_work_amount || 0) * (Number(b.retention_percent || 0) / 100)
+      }, 0)
+      const deductTotal = group.bills.reduce((sum: number, b: any) => {
+        if (!b.paid_out_at || b.deduct_applied === false) return sum
+        return sum + Number(b.total_deduct_amount || 0)
+      }, 0)
+      const grossBeforeTax = group.bills.reduce((sum: number, b: any) => sum + Number(b.total_work_amount || 0) + Number(b.total_add_amount || 0), 0)
 
       const plotBlocks = group.plots.map((plotGroup: any, plotIndex: number) => {
         const rowsHtml = plotGroup.lines.map((line: any) => `
@@ -599,12 +623,12 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           </header>
 
           <section class="summary-grid">
-            <div class="sum-card"><label>งานหลัก</label><strong>฿${formatCurrency(group.totals.total_work_amount)}</strong></div>
-            <div class="sum-card"><label>งานเพิ่ม</label><strong>฿${formatCurrency(group.totals.total_add_amount)}</strong></div>
-            <div class="sum-card"><label>งานหัก</label><strong>฿${formatCurrency(group.totals.total_deduct_amount)}</strong></div>
-            <div class="sum-card"><label>หัก ณ ที่จ่าย</label><strong>฿${formatCurrency(whtTotal)}</strong></div>
-            <div class="sum-card"><label>หักประกันผลงาน</label><strong>฿${formatCurrency(retentionTotal)}</strong></div>
-            <div class="sum-card total"><label>สุทธิจ่าย</label><strong>฿${formatCurrency(group.previewTotal)}</strong></div>
+            <div class="sum-card"><label>งานหลัก + งานเพิ่ม</label><strong>฿${formatCurrency(Number(group.totals.total_work_amount) + Number(group.totals.total_add_amount))}</strong></div>
+            <div class="sum-card"><label>งานหัก (หักจริง)</label><strong>−฿${formatCurrency(deductTotal)}</strong></div>
+            <div class="sum-card"><label>หักประกันผลงาน</label><strong>${retentionTotal > 0 ? `−฿${formatCurrency(retentionTotal)}` : '−'}</strong></div>
+            <div class="sum-card"><label>หัก ณ ที่จ่าย</label><strong>${whtTotal > 0 ? `−฿${formatCurrency(whtTotal)}` : '−'}</strong></div>
+            <div class="sum-card"><label>ยอดรวม (ก่อนหัก)</label><strong>฿${formatCurrency(grossBeforeTax)}</strong></div>
+            <div class="sum-card total"><label>ยอดโอนจริง</label><strong>฿${formatCurrency(group.previewTotal)}</strong></div>
           </section>
 
           <section class="invoice-body">
@@ -614,8 +638,11 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           <section class="invoice-footer">
             <div class="remark-box">
               <div class="remark-title">หมายเหตุ</div>
-              <div class="sub">ยอดก่อนหัก (งานหลัก + งานเพิ่ม - งานหัก) : ฿${formatCurrency(grossBeforeTax)}</div>
-              <div class="sub">สุทธิหลังหัก ณ ที่จ่าย และหักประกันผลงาน : ฿${formatCurrency(group.previewTotal)}</div>
+              <div class="sub">ยอดรวมก่อนหัก (งานหลัก + งานเพิ่ม) : ฿${formatCurrency(grossBeforeTax)}</div>
+              ${deductTotal > 0 ? `<div class="sub">งานหักจริง : −฿${formatCurrency(deductTotal)}</div>` : ''}
+              ${retentionTotal > 0 ? `<div class="sub">หักประกันผลงาน : −฿${formatCurrency(retentionTotal)}</div>` : ''}
+              ${whtTotal > 0 ? `<div class="sub">หัก ณ ที่จ่าย : −฿${formatCurrency(whtTotal)}</div>` : ''}
+              <div class="sub strong">ยอดโอนจริง : ฿${formatCurrency(group.previewTotal)}</div>
             </div>
           </section>
         </section>
@@ -852,8 +879,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             <div className="text-[11px] text-slate-400 mt-0.5">งานหลัก ฿{formatCurrency(grandTotals.total_work_amount)} · งานเพิ่ม ฿{formatCurrency(grandTotals.total_add_amount)} · งานหัก −฿{formatCurrency(grandTotals.total_deduct_amount)}</div>
           </div>
           <div className="rounded border p-3 bg-emerald-50">
-            <div className="text-slate-500 text-xs">สุทธิอนุมัติ (หลังหัก Retention)</div>
-            <div className="font-bold text-lg text-emerald-700">฿{formatCurrency(grandTotals.net_amount)}</div>
+            <div className="text-slate-500 text-xs">ยอดโอนจริง (หลังหักทั้งหมด)</div>
+            <div className="font-bold text-lg text-emerald-700">฿{formatCurrency(grandTotals.actual_transfer)}</div>
             <div className="text-[11px] text-slate-400 mt-0.5">{grandTotals.bill_count} ใบเบิก · {grouped.length} ผู้รับเหมา</div>
           </div>
         </div>
@@ -1036,7 +1063,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               <div className="flex flex-col items-end gap-2">
                 <div className="text-right text-sm">
                   <div className="text-slate-600">ยอดรวม: ฿{formatCurrency(group.totals.gross_amount)}</div>
-                  <div className="font-bold text-emerald-700">สุทธิ (หลังหัก): ฿{formatCurrency(group.totals.net_amount)}</div>
+                  <div className="font-bold text-emerald-700">ยอดโอน: ฿{formatCurrency(group.totals.actual_transfer)}</div>
                 </div>
                 <div className="flex gap-2 no-print">
                   {!allPaid && (
