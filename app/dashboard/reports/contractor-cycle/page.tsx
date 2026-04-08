@@ -343,9 +343,11 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             acc.total_add_amount += Number(bill.total_add_amount || 0)
             acc.total_deduct_amount += Number(bill.total_deduct_amount || 0)
             acc.net_amount += Number(bill.net_amount || 0)
+            // gross = work + add - deductions, before retention/WHT
+            acc.gross_amount += Number(bill.total_work_amount || 0) + Number(bill.total_add_amount || 0) - Number(bill.total_deduct_amount || 0)
             return acc
           },
-          { total_work_amount: 0, total_add_amount: 0, total_deduct_amount: 0, net_amount: 0 }
+          { total_work_amount: 0, total_add_amount: 0, total_deduct_amount: 0, net_amount: 0, gross_amount: 0 }
         )
         return { contractorId, contractor: group.contractor, bills, totals }
       })
@@ -359,10 +361,11 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         acc.total_add_amount += g.totals.total_add_amount
         acc.total_deduct_amount += g.totals.total_deduct_amount
         acc.net_amount += g.totals.net_amount
+        acc.gross_amount += g.totals.gross_amount
         acc.bill_count += g.bills.length
         return acc
       },
-      { total_work_amount: 0, total_add_amount: 0, total_deduct_amount: 0, net_amount: 0, bill_count: 0 }
+      { total_work_amount: 0, total_add_amount: 0, total_deduct_amount: 0, net_amount: 0, gross_amount: 0, bill_count: 0 }
     )
   }, [grouped])
 
@@ -835,6 +838,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           <div className="rounded border p-3"><div className="text-slate-500">งานหลัก</div><div className="font-bold">฿{formatCurrency(grandTotals.total_work_amount)}</div></div>
           <div className="rounded border p-3"><div className="text-slate-500">งานเพิ่ม</div><div className="font-bold text-blue-700">฿{formatCurrency(grandTotals.total_add_amount)}</div></div>
           <div className="rounded border p-3"><div className="text-slate-500">งานหัก</div><div className="font-bold text-red-700">฿{formatCurrency(grandTotals.total_deduct_amount)}</div></div>
+          <div className="rounded border p-3 bg-slate-50"><div className="text-slate-500">รวมก่อนหัก</div><div className="font-bold text-slate-700">฿{formatCurrency(grandTotals.gross_amount)}</div></div>
           <div className="rounded border p-3 bg-emerald-50"><div className="text-slate-500">สุทธิรวม</div><div className="font-bold text-emerald-700">฿{formatCurrency(grandTotals.net_amount)}</div></div>
         </div>
       </Card>
@@ -1038,6 +1042,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                   <div>งานหลัก: ฿{formatCurrency(group.totals.total_work_amount)}</div>
                   <div>งานเพิ่ม: ฿{formatCurrency(group.totals.total_add_amount)}</div>
                   <div>งานหัก: ฿{formatCurrency(group.totals.total_deduct_amount)}</div>
+                  <div className="text-slate-600">รวมก่อนหัก: ฿{formatCurrency(group.totals.gross_amount)}</div>
                   <div className="font-bold text-emerald-700">สุทธิ: ฿{formatCurrency(group.totals.net_amount)}</div>
                 </div>
                 <div className="flex gap-2 no-print">
