@@ -178,7 +178,8 @@ export async function markBillingsAsPaidOut(
   billingIds: string[],
   paidAt: string,
   whtAppliedMap: Record<string, boolean> = {},
-  retentionAppliedMap: Record<string, boolean> = {}
+  retentionAppliedMap: Record<string, boolean> = {},
+  deductAppliedMap: Record<string, boolean> = {}
 ) {
   const supabase = await createClient()
   const user = await getCurrentUser()
@@ -196,6 +197,7 @@ export async function markBillingsAsPaidOut(
         paid_out_by: user.id,
         wht_applied: whtAppliedMap[id] ?? false,
         retention_applied: retentionAppliedMap[id] ?? true,
+        deduct_applied: deductAppliedMap[id] ?? true,
       })
       .eq('id', id)
       .eq('status', 'approved')

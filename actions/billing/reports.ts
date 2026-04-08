@@ -28,6 +28,7 @@ type BillingReportRow = {
   paid_out_by?: string | null
   wht_applied?: boolean | null
   retention_applied?: boolean | null
+  deduct_applied?: boolean | null
   billing_jobs?: Array<{
     id: string
     amount?: number | null

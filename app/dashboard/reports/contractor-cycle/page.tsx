@@ -43,6 +43,7 @@ export default function ContractorCycleReportPage() {
   const [payOutLoading, setPayOutLoading] = useState(false)
   const [cycleWhtApplied, setCycleWhtApplied] = useState(true)
   const [retentionAppliedMap, setRetentionAppliedMap] = useState<Record<string, boolean>>({})
+  const [deductAppliedMap, setDeductAppliedMap] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     getBillingOptions().then((data) => {
@@ -100,12 +101,12 @@ export default function ContractorCycleReportPage() {
     setPayOutLoading(true)
     try {
       const billIds = payOutConfirm.bills.map((b: any) => b.id)
-      // WHT is a cycle-wide decision applying to all bills
       const whtMap: Record<string, boolean> = {}
       payOutConfirm.bills.forEach((b: any) => { whtMap[b.id] = cycleWhtApplied })
-      await markBillingsAsPaidOut(billIds, payOutDate, whtMap, retentionAppliedMap)
+      await markBillingsAsPaidOut(billIds, payOutDate, whtMap, retentionAppliedMap, deductAppliedMap)
       setPayOutConfirm(null)
       setRetentionAppliedMap({})
+      setDeductAppliedMap({})
       setCycleWhtApplied(true)
       await runReport()
     } catch (e: any) {
@@ -854,7 +855,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       {/* Pay-out confirmation modal */}
       <Modal
         isOpen={!!payOutConfirm}
-        onClose={() => { setPayOutConfirm(null); setRetentionAppliedMap({}) }}
+        onClose={() => { setPayOutConfirm(null); setRetentionAppliedMap({}); setDeductAppliedMap({}) }}
         title="ยืนยันการจ่ายเงิน"
         panelClassName="max-w-md"
       >
@@ -867,21 +868,24 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             const retPct = b.retention_percent ?? 0
             const whtPct = b.wht_percent ?? 0
             const retAmt = workAmt * (retPct / 100)
-            // WHT applies to the whole gross invoice (work + add - deductions)
-            const grossAmt = workAmt + addAmt - deductAmt
-            const whtAmt = grossAmt * (whtPct / 100)
+            const baseAmt = workAmt + addAmt
+            // WHT base = PM-approved gross (work + add - deductions)
+            const pmGrossAmt = baseAmt - deductAmt
+            const whtAmt = pmGrossAmt * (whtPct / 100)
+            const applyDeduct = deductAppliedMap[b.id] ?? true
+            const actualDeduct = applyDeduct ? deductAmt : 0
             const applyRetention = retentionAppliedMap[b.id] ?? true
             const actualRetention = applyRetention ? retAmt : 0
             const actualWht = cycleWhtApplied ? whtAmt : 0
-            // Start from gross, subtract only the deductions that are actually applied
-            const transfer = grossAmt - actualRetention - actualWht
-            return { b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, grossAmt, applyRetention, actualRetention, actualWht, transfer }
+            const transfer = baseAmt - actualDeduct - actualRetention - actualWht
+            return { b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, baseAmt, pmGrossAmt, applyDeduct, actualDeduct, applyRetention, actualRetention, actualWht, transfer }
           })
 
           const grandTransfer = billDetails.reduce((s, d) => s + d.transfer, 0)
+          const grandDeduct = billDetails.reduce((s, d) => s + d.actualDeduct, 0)
           const grandRetention = billDetails.reduce((s, d) => s + d.actualRetention, 0)
           const grandWht = billDetails.reduce((s, d) => s + d.actualWht, 0)
-          const grandGross = billDetails.reduce((s, d) => s + d.grossAmt, 0)
+          const grandGross = billDetails.reduce((s, d) => s + d.baseAmt, 0)
           const hasWht = billDetails.some(d => d.whtAmt > 0)
 
           return (
@@ -915,7 +919,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                 </div>
                 <div className="border-t border-dashed border-slate-300 my-2" />
 
-                {billDetails.map(({ b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, applyRetention, transfer }) => (
+                {billDetails.map(({ b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, applyDeduct, applyRetention, transfer }) => (
                   <div key={b.id} className="mb-3">
                     <div className="flex justify-between font-semibold text-slate-700">
                       <span>{isDC ? '[DC]' : '[หลัก]'} #{String(b.doc_no || '-').padStart(4, '0')}</span>
@@ -924,14 +928,22 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     <div className="text-slate-500 mb-1">{b.projects?.name ?? '-'}</div>
                     {workAmt > 0 && <div className="flex justify-between"><span>งานหลัก</span><span>฿{formatCurrency(workAmt)}</span></div>}
                     {addAmt > 0 && <div className="flex justify-between"><span>งานเพิ่ม DC</span><span>฿{formatCurrency(addAmt)}</span></div>}
-                    {deductAmt > 0 && <div className="flex justify-between text-red-600"><span>งานหัก</span><span>−฿{formatCurrency(deductAmt)}</span></div>}
+                    {deductAmt > 0 && (
+                      <label className="flex items-center justify-between mt-0.5 cursor-pointer select-none">
+                        <span className={`flex items-center gap-1.5 ${applyDeduct ? 'text-red-600' : 'text-slate-300 line-through'}`}>
+                          <input type="checkbox" checked={applyDeduct} onChange={(e) => setDeductAppliedMap(prev => ({ ...prev, [b.id]: e.target.checked }))} className="accent-red-600" />
+                          งานหัก
+                        </span>
+                        <span className={applyDeduct ? 'text-red-600' : 'text-slate-300 line-through'}>−฿{formatCurrency(deductAmt)}</span>
+                      </label>
+                    )}
                     {retAmt > 0 && (
                       <label className="flex items-center justify-between mt-0.5 cursor-pointer select-none">
-                        <span className="flex items-center gap-1.5 text-slate-600">
-                          <input type="checkbox" checked={retentionAppliedMap[b.id] ?? true} onChange={(e) => setRetentionAppliedMap(prev => ({ ...prev, [b.id]: e.target.checked }))} className="accent-slate-600" />
+                        <span className={`flex items-center gap-1.5 ${applyRetention ? 'text-slate-600' : 'text-slate-300 line-through'}`}>
+                          <input type="checkbox" checked={applyRetention} onChange={(e) => setRetentionAppliedMap(prev => ({ ...prev, [b.id]: e.target.checked }))} className="accent-slate-600" />
                           หักประกัน {retPct}%
                         </span>
-                        <span className="text-red-600">−฿{formatCurrency(retAmt)}</span>
+                        <span className={applyRetention ? 'text-red-600' : 'text-slate-300 line-through'}>−฿{formatCurrency(retAmt)}</span>
                       </label>
                     )}
                     {whtAmt > 0 && (
@@ -949,6 +961,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
 
                 <div className="border-t-2 border-dashed border-slate-400 mt-2 pt-2 space-y-0.5">
                   <div className="flex justify-between text-slate-600"><span>ยอดรวมทั้งหมด</span><span>฿{formatCurrency(grandGross)}</span></div>
+                  {grandDeduct > 0 && <div className="flex justify-between text-red-600"><span>หักงานหักรวม</span><span>−฿{formatCurrency(grandDeduct)}</span></div>}
                   {grandRetention > 0 && <div className="flex justify-between text-slate-600"><span>หักประกันรวม</span><span>−฿{formatCurrency(grandRetention)}</span></div>}
                   {grandWht > 0 && <div className="flex justify-between text-amber-700"><span>หัก WHT รวม</span><span>−฿{formatCurrency(grandWht)}</span></div>}
                   <div className="flex justify-between font-bold text-base text-emerald-700 border-t border-slate-400 pt-1 mt-1">
@@ -959,7 +972,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               </div>
 
               <div className="flex justify-end gap-2 pt-1 border-t">
-                <button onClick={() => { setPayOutConfirm(null); setRetentionAppliedMap({}); setCycleWhtApplied(true) }} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
+                <button onClick={() => { setPayOutConfirm(null); setRetentionAppliedMap({}); setDeductAppliedMap({}); setCycleWhtApplied(true) }} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
                 <button onClick={handleMarkAsPaidOut} disabled={payOutLoading || !payOutDate} className="flex items-center gap-2 px-4 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50">
                   {payOutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
                   ยืนยันจ่าย ฿{formatCurrency(grandTransfer)}
@@ -1023,10 +1036,15 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     <button
                       onClick={() => {
                         setPayOutDate(todayISO())
-                                        const unpaidBills = group.bills.filter((b: any) => !b.paid_out_at)
+                        const unpaidBills = group.bills.filter((b: any) => !b.paid_out_at)
                         const initRetention: Record<string, boolean> = {}
-                        unpaidBills.forEach((b: any) => { initRetention[b.id] = true })
+                        const initDeduct: Record<string, boolean> = {}
+                        unpaidBills.forEach((b: any) => {
+                          initRetention[b.id] = true
+                          initDeduct[b.id] = true
+                        })
                         setRetentionAppliedMap(initRetention)
+                        setDeductAppliedMap(initDeduct)
                         setCycleWhtApplied(true)
                         setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', bills: unpaidBills, total: group.totals.net_amount })
                       }}
@@ -1065,12 +1083,17 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     const plotLabel = bill.plots?.name || '-'
                     const isExtra = bill.type === 'extra_work'
                     const isDC = bill.type === 'extra_work'
-                    const grossAmt = (bill.total_work_amount ?? 0) + (bill.total_add_amount ?? 0) - (bill.total_deduct_amount ?? 0)
-                    const retAmt = (bill.total_work_amount ?? 0) * ((bill.retention_percent ?? 0) / 100)
-                    // WHT applies to whole gross invoice
-                    const whtAmt = bill.wht_applied ? grossAmt * ((bill.wht_percent ?? 0) / 100) : 0
+                    const workAmt = bill.total_work_amount ?? 0
+                    const addAmt = bill.total_add_amount ?? 0
+                    const deductAmt = bill.total_deduct_amount ?? 0
+                    // net_amount = (work + add - deductAmt) - retAmt (PM approved)
+                    const retAmt = workAmt * ((bill.retention_percent ?? 0) / 100)
+                    const pmGrossAmt = workAmt + addAmt - deductAmt
+                    const whtAmt = bill.wht_applied ? pmGrossAmt * ((bill.wht_percent ?? 0) / 100) : 0
+                    const deductAddBack = bill.deduct_applied === false ? deductAmt : 0
                     const retentionAddBack = bill.retention_applied === false ? retAmt : 0
-                    const actualTransfer = (bill.net_amount ?? 0) - whtAmt + retentionAddBack
+                    const actualTransfer = (bill.net_amount ?? 0) + deductAddBack + retentionAddBack - whtAmt
+                    const grossAmt = workAmt + addAmt - deductAmt
                     return (
                       <Fragment key={bill.id}>
                         <tr className="border-b align-top">
@@ -1102,6 +1125,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                             {bill.paid_out_at ? (
                               <div>
                                 <div className="font-bold text-blue-700">฿{formatCurrency(actualTransfer)}</div>
+                                {deductAmt > 0 && bill.deduct_applied !== false && <div className="text-[10px] text-red-500">หักงานหัก ฿{formatCurrency(deductAmt)}</div>}
+                                {deductAmt > 0 && bill.deduct_applied === false && <div className="text-[10px] text-orange-400">ไม่หักงานหัก</div>}
                                 {bill.wht_applied && whtAmt > 0 && <div className="text-[10px] text-amber-600">หัก WHT ฿{formatCurrency(whtAmt)}</div>}
                                 {retAmt > 0 && bill.retention_applied !== false && <div className="text-[10px] text-slate-500">หักประกัน ฿{formatCurrency(retAmt)}</div>}
                                 {retAmt > 0 && bill.retention_applied === false && <div className="text-[10px] text-orange-500">ไม่หักประกัน</div>}
