@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useTransition } from 'react'
-import { Plus, Trash2, Loader2, HardHat, Phone, CreditCard, User, Pencil, Wallet, Eye, Search } from 'lucide-react'
+import { Plus, Trash2, Loader2, HardHat, Phone, CreditCard, User, Pencil, Wallet, Eye, Search, ShieldCheck } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import { getContractors, createContractor, deleteContractor, updateContractor, getContractorApprovedHistory } from '@/actions/contractor-actions'
@@ -16,6 +16,7 @@ type Contractor = {
   bank_account: string
   tax_id: string
   total_paid: number
+  total_retention: number
   contractor_types: { name: string } | null
 }
 
@@ -37,6 +38,9 @@ export default function ContractorsPage() {
   const [historyType, setHistoryType] = useState<'all' | 'progress' | 'extra_work'>('all')
   const [historyDateFrom, setHistoryDateFrom] = useState('')
   const [historyDateTo, setHistoryDateTo] = useState('')
+  const [retentionContractor, setRetentionContractor] = useState<Contractor | null>(null)
+  const [retentionRows, setRetentionRows] = useState<any[]>([])
+  const [isRetentionLoading, setIsRetentionLoading] = useState(false)
   const [isPending, startTransition] = useTransition()
   const collator = useMemo(() => new Intl.Collator('th', { numeric: true, sensitivity: 'base' }), [])
 
@@ -99,6 +103,23 @@ export default function ContractorsPage() {
     setHistoryType('all')
     setHistoryDateFrom('')
     setHistoryDateTo('')
+  }
+
+  const openRetention = async (contractor: Contractor) => {
+    setRetentionContractor(contractor)
+    setIsRetentionLoading(true)
+    try {
+      const rows = await getContractorApprovedHistory(contractor.id)
+      // Only bills that have a retention amount
+      setRetentionRows(rows.filter((r: any) => Number(r.retention_percent || 0) > 0 && Number(r.total_work_amount || 0) > 0))
+    } finally {
+      setIsRetentionLoading(false)
+    }
+  }
+
+  const closeRetention = () => {
+    setRetentionContractor(null)
+    setRetentionRows([])
   }
 
   const historyProjectOptions = useMemo(() => {
@@ -175,6 +196,17 @@ export default function ContractorsPage() {
                 </div>
 
                 <button
+                  onClick={() => openRetention(c)}
+                  className="w-full flex items-center justify-between rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 hover:bg-amber-100 transition"
+                >
+                  <div className="flex items-center gap-2 text-amber-700">
+                    <ShieldCheck className="h-4 w-4" />
+                    <span className="text-sm">เงินประกันสะสม</span>
+                  </div>
+                  <span className="font-semibold text-amber-700">฿{formatCurrency(c.total_retention || 0)}</span>
+                </button>
+
+                <button
                   onClick={() => openHistory(c)}
                   className="w-full mt-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 px-3 py-2 text-sm font-medium hover:bg-indigo-100 flex items-center justify-center gap-2"
                 >
@@ -249,6 +281,66 @@ export default function ContractorsPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Retention detail modal */}
+      <Modal
+        isOpen={!!retentionContractor}
+        onClose={closeRetention}
+        title={retentionContractor ? `เงินประกันผลงาน - ${retentionContractor.name}` : 'เงินประกันผลงาน'}
+        panelClassName="max-w-2xl"
+      >
+        {isRetentionLoading ? (
+          <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
+        ) : retentionRows.length === 0 ? (
+          <div className="text-center text-slate-400 py-10">ไม่พบรายการที่มีเงินประกัน</div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">เงินประกันผลงานสะสมจากใบเบิกที่ PM อนุมัติแล้ว</p>
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b">
+                  <tr>
+                    <th className="px-3 py-2 text-left">เลขที่ใบเบิก</th>
+                    <th className="px-3 py-2 text-left">วันที่</th>
+                    <th className="px-3 py-2 text-left">โครงการ / แปลง</th>
+                    <th className="px-3 py-2 text-right">ยอดงานหลัก</th>
+                    <th className="px-3 py-2 text-right">ประกัน %</th>
+                    <th className="px-3 py-2 text-right">เงินประกัน</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {retentionRows.map((row: any) => {
+                    const workAmt = Number(row.total_work_amount || 0)
+                    const retPct = Number(row.retention_percent || 0)
+                    const retAmt = workAmt * (retPct / 100)
+                    return (
+                      <tr key={row.id} className="border-b last:border-b-0 hover:bg-slate-50">
+                        <td className="px-3 py-2 font-semibold text-indigo-700">#{String(row.doc_no || '-').padStart(4, '0')}</td>
+                        <td className="px-3 py-2 text-slate-500">{row.billing_date ? new Date(row.billing_date).toLocaleDateString('th-TH') : '-'}</td>
+                        <td className="px-3 py-2">
+                          <div>{row.projects?.name || '-'}</div>
+                          <div className="text-xs text-slate-400">{row.plots?.name ? `แปลง ${row.plots.name}` : ''}</div>
+                        </td>
+                        <td className="px-3 py-2 text-right">฿{formatCurrency(workAmt)}</td>
+                        <td className="px-3 py-2 text-right text-slate-500">{retPct}%</td>
+                        <td className="px-3 py-2 text-right font-semibold text-amber-700">฿{formatCurrency(retAmt)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot className="border-t bg-amber-50">
+                  <tr>
+                    <td colSpan={5} className="px-3 py-2 text-right font-bold text-slate-700">รวมเงินประกันสะสม</td>
+                    <td className="px-3 py-2 text-right font-bold text-amber-700">
+                      ฿{formatCurrency(retentionRows.reduce((s: number, r: any) => s + Number(r.total_work_amount || 0) * (Number(r.retention_percent || 0) / 100), 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Modal

@@ -27,6 +27,7 @@ export async function getContractors() {
   if (approvedBillsError) throw new Error(approvedBillsError.message)
 
   const paidByContractor = new Map<string, number>()
+  const retentionByContractor = new Map<string, number>()
   for (const bill of approvedBills || []) {
     const contractorId = bill.contractor_id == null ? null : String(bill.contractor_id)
     if (!contractorId) continue
@@ -39,10 +40,8 @@ export async function getContractors() {
       ? (add - deduct)
       : (work + add - deduct - wht - retention)
     const billNet = Number(bill.net_amount ?? fallbackNet)
-    paidByContractor.set(
-      contractorId,
-      (paidByContractor.get(contractorId) || 0) + billNet
-    )
+    paidByContractor.set(contractorId, (paidByContractor.get(contractorId) || 0) + billNet)
+    retentionByContractor.set(contractorId, (retentionByContractor.get(contractorId) || 0) + retention)
   }
 
   // Fallback path from payment records (helps when legacy bills have missing/incorrect net values).
@@ -69,6 +68,7 @@ export async function getContractors() {
       paidByContractor.get(String(contractor.id)) || 0,
       paidByPayment.get(String(contractor.id)) || 0
     ),
+    total_retention: retentionByContractor.get(String(contractor.id)) || 0,
   }))
 }
 
@@ -86,6 +86,8 @@ export async function getContractorApprovedHistory(contractorId: string) {
       total_add_amount,
       total_deduct_amount,
       net_amount,
+      retention_percent,
+      wht_percent,
       reason_for_dc,
       note,
       projects (name),
