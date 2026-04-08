@@ -1007,8 +1007,12 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                   {group.bills.map((bill: any) => {
                     const plotLabel = bill.plots?.name || '-'
                     const isExtra = bill.type === 'extra_work'
-                    const whtAmt = bill.wht_applied ? (bill.total_add_amount ?? 0) * ((bill.wht_percent ?? 0) / 100) : 0
-                    const actualTransfer = (bill.net_amount ?? 0) - whtAmt
+                    // net_amount is already stored with WHT deducted.
+                    // If accounting did NOT actually deduct WHT, we add it back.
+                    const whtAmt = (bill.total_add_amount ?? 0) * ((bill.wht_percent ?? 0) / 100)
+                    const actualTransfer = bill.wht_applied
+                      ? (bill.net_amount ?? 0)            // WHT was deducted → use net_amount as-is
+                      : (bill.net_amount ?? 0) + whtAmt   // WHT not deducted → add back
                     return (
                       <Fragment key={bill.id}>
                         <tr className="border-b align-top">
@@ -1041,11 +1045,11 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                             {bill.paid_out_at ? (
                               <div>
                                 <div className="font-bold text-blue-700">฿{formatCurrency(actualTransfer)}</div>
-                                {bill.wht_applied && (
+                                {(bill.wht_percent ?? 0) > 0 && bill.wht_applied && (
                                   <div className="text-[10px] text-amber-600">หัก WHT ฿{formatCurrency(whtAmt)}</div>
                                 )}
-                                {!bill.wht_applied && (bill.wht_percent ?? 0) > 0 && (
-                                  <div className="text-[10px] text-slate-400">ไม่หัก WHT</div>
+                                {(bill.wht_percent ?? 0) > 0 && !bill.wht_applied && (
+                                  <div className="text-[10px] text-orange-500">ไม่หัก WHT (+฿{formatCurrency(whtAmt)})</div>
                                 )}
                               </div>
                             ) : (
