@@ -143,16 +143,20 @@ export default function ReviewBillingPage() {
     const totalAddAmount = adjustments.filter((adj) => adj.type === 'addition').reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
     const totalDeductAmount = adjustments.filter((adj) => adj.type === 'deduction').reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
 
-    const whtAmount = totalAddAmount * (whtPercent / 100)
     const retentionAmount = totalWorkAmount * (retentionPercent / 100)
 
+    // WHT base differs by billing type:
+    // - Main job: WHT on total_work_amount (accounting decides whether to apply at pay-out)
+    // - DC (extra_work): WHT always 3% on total_add_amount (mandatory)
+    const whtBase = isExtraWork ? totalAddAmount : totalWorkAmount
+    const whtAmount = whtBase * (whtPercent / 100)
+
     const grossAmount = totalWorkAmount + totalAddAmount - totalDeductAmount
-    // WHT is NOT deducted here — accounting decides whether to deduct at pay-out time.
-    // wht_percent on the billing is reference information only.
+    // WHT is NOT baked into net_amount — accounting applies it at pay-out time.
     const netAmount = (totalWorkAmount - retentionAmount) + totalAddAmount - totalDeductAmount
 
     return { totalWorkAmount, totalAddAmount, totalDeductAmount, grossAmount, netAmount, whtAmount, retentionAmount }
-  }, [jobs, adjustments, whtPercent, retentionPercent])
+  }, [jobs, adjustments, whtPercent, retentionPercent, isExtraWork])
 
   const adjustmentPlotOptions = useMemo(() => {
     const names = Array.from(
@@ -525,7 +529,18 @@ export default function ReviewBillingPage() {
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div><label className="block text-sm font-medium text-gray-700">วันที่เบิกจ่าย</label><input type="date" value={billingDate} onChange={(e) => setBillingDate(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" /></div>
-                <div><label className="block text-sm font-medium text-gray-700">หัก ณ ที่จ่าย (WHT) %</label><input type="number" value={whtPercent} onChange={(e) => setWhtPercent(parseFloat(e.target.value))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" /></div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    หัก ณ ที่จ่าย (WHT) %
+                    {isExtraWork && <span className="ml-1 text-xs text-amber-600">(DC — บังคับหัก)</span>}
+                  </label>
+                  <input
+                    type="number"
+                    value={whtPercent}
+                    onChange={(e) => setWhtPercent(parseFloat(e.target.value))}
+                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
+                  />
+                </div>
                 <div><label className="block text-sm font-medium text-gray-700">ประกันผลงาน (Retention) %</label><input type="number" value={retentionPercent} onChange={(e) => setRetentionPercent(parseFloat(e.target.value))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" /></div>
               </div>
               <div className="mt-4 p-4 bg-white rounded-lg border text-right space-y-1">
@@ -538,7 +553,9 @@ export default function ReviewBillingPage() {
                 <hr className="my-1" />
                 <p className="font-bold text-xl">ยอดสุทธิอนุมัติ (Net): <span className="text-2xl text-emerald-700">{formatCurrency(netAmount)}</span></p>
                 {whtPercent > 0 && (
-                  <p className="text-xs text-amber-600 mt-1">* WHT อ้างอิง {whtPercent}% = ฿{formatCurrency(whtAmount)} — บัญชีเป็นผู้ตัดสินใจหักจริงตอนโอน</p>
+                  isExtraWork
+                    ? <p className="text-xs text-amber-700 mt-1 font-medium">* WHT {whtPercent}% จากยอดงานเพิ่ม = ฿{formatCurrency(whtAmount)} — หักอัตโนมัติทุกครั้ง</p>
+                    : <p className="text-xs text-amber-600 mt-1">* WHT อ้างอิง {whtPercent}% จากยอดงานหลัก = ฿{formatCurrency(whtAmount)} — บัญชีเป็นผู้ตัดสินใจหักจริงตอนโอน</p>
                 )}
               </div>
             </div>

@@ -99,7 +99,12 @@ export default function ContractorCycleReportPage() {
     setPayOutLoading(true)
     try {
       const billIds = payOutConfirm.bills.map((b: any) => b.id)
-      await markBillingsAsPaidOut(billIds, payOutDate, whtAppliedMap)
+      // DC billings always have wht_applied = true regardless of checkbox state
+      const finalWhtMap = { ...whtAppliedMap }
+      payOutConfirm.bills.forEach((b: any) => {
+        if (b.type === 'extra_work') finalWhtMap[b.id] = true
+      })
+      await markBillingsAsPaidOut(billIds, payOutDate, finalWhtMap)
       setPayOutConfirm(null)
       setWhtAppliedMap({})
       await runReport()
@@ -845,20 +850,29 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         panelClassName="max-w-lg"
       >
         {payOutConfirm && (() => {
-          const billsWithWht = payOutConfirm.bills.filter((b: any) => (b.wht_percent ?? 0) > 0)
-          const allWhtChecked = billsWithWht.length > 0 && billsWithWht.every((b: any) => !!whtAppliedMap[b.id])
-          const someWhtChecked = billsWithWht.some((b: any) => !!whtAppliedMap[b.id])
+          const mainBills = payOutConfirm.bills.filter((b: any) => b.type !== 'extra_work')
+          const dcBills = payOutConfirm.bills.filter((b: any) => b.type === 'extra_work')
+          const mainBillsWithWht = mainBills.filter((b: any) => (b.wht_percent ?? 0) > 0)
+
+          const allMainWhtChecked = mainBillsWithWht.length > 0 && mainBillsWithWht.every((b: any) => !!whtAppliedMap[b.id])
+          const someMainWhtChecked = mainBillsWithWht.some((b: any) => !!whtAppliedMap[b.id])
+
+          const getWhtAmt = (b: any) => {
+            const base = b.type === 'extra_work' ? (b.total_add_amount ?? 0) : (b.total_work_amount ?? 0)
+            return base * ((b.wht_percent ?? 0) / 100)
+          }
 
           const totalNet = payOutConfirm.bills.reduce((sum: number, b: any) => sum + (b.net_amount ?? 0), 0)
           const totalWhtDeducted = payOutConfirm.bills.reduce((sum: number, b: any) => {
-            if (!whtAppliedMap[b.id]) return sum
-            return sum + (b.total_add_amount ?? 0) * ((b.wht_percent ?? 0) / 100)
+            const isDC = b.type === 'extra_work'
+            const applyWht = isDC ? true : !!whtAppliedMap[b.id]
+            return sum + (applyWht ? getWhtAmt(b) : 0)
           }, 0)
           const totalActualTransfer = totalNet - totalWhtDeducted
 
-          const handleSelectAll = (checked: boolean) => {
+          const handleSelectAllMain = (checked: boolean) => {
             const next: Record<string, boolean> = { ...whtAppliedMap }
-            billsWithWht.forEach((b: any) => { next[b.id] = checked })
+            mainBillsWithWht.forEach((b: any) => { next[b.id] = checked })
             setWhtAppliedMap(next)
           }
 
@@ -866,31 +880,31 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             <div className="space-y-4">
               <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 space-y-1">
                 <p className="text-sm font-semibold text-emerald-900">{payOutConfirm.contractorName}</p>
-                <p className="text-xs text-emerald-700">จำนวน {payOutConfirm.bills.length} ใบเบิก</p>
+                <p className="text-xs text-emerald-700">จำนวน {payOutConfirm.bills.length} ใบเบิก ({mainBills.length} งานหลัก, {dcBills.length} DC)</p>
               </div>
 
-              {/* WHT checkbox per billing */}
-              {billsWithWht.length > 0 && (
+              {/* Main job billings — optional WHT */}
+              {mainBillsWithWht.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-slate-600">การหัก WHT (หักจริงหรือไม่?)</p>
+                    <p className="text-xs font-semibold text-slate-600">งานหลัก — เลือกหัก WHT หรือไม่?</p>
                     <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
                       <input
                         type="checkbox"
-                        checked={allWhtChecked}
-                        ref={(el) => { if (el) el.indeterminate = someWhtChecked && !allWhtChecked }}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        checked={allMainWhtChecked}
+                        ref={(el) => { if (el) el.indeterminate = someMainWhtChecked && !allMainWhtChecked }}
+                        onChange={(e) => handleSelectAllMain(e.target.checked)}
                         className="accent-emerald-600"
                       />
                       เลือกทั้งหมด
                     </label>
                   </div>
-                  <div className="space-y-1 max-h-44 overflow-y-auto border rounded p-2 bg-slate-50">
-                    {payOutConfirm.bills.map((b: any) => {
-                      const whtAmt = (b.total_add_amount ?? 0) * ((b.wht_percent ?? 0) / 100)
+                  <div className="space-y-1 max-h-36 overflow-y-auto border rounded p-2 bg-slate-50">
+                    {mainBills.map((b: any) => {
+                      const whtAmt = getWhtAmt(b)
                       const hasWht = (b.wht_percent ?? 0) > 0
                       return (
-                        <label key={b.id} className={`flex items-start gap-2 text-xs rounded p-2 cursor-pointer select-none ${hasWht ? 'hover:bg-slate-100' : 'opacity-40 cursor-default'}`}>
+                        <label key={b.id} className={`flex items-start gap-2 text-xs rounded p-2 select-none ${hasWht ? 'hover:bg-slate-100 cursor-pointer' : 'opacity-40 cursor-default'}`}>
                           <input
                             type="checkbox"
                             disabled={!hasWht}
@@ -902,15 +916,36 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                             <span className="font-medium">{b.billing_date ? new Date(b.billing_date).toLocaleDateString('th-TH') : '-'}</span>
                             {' '}— {b.projects?.name ?? '-'}
                             {hasWht
-                              ? <span className="ml-1 text-amber-700">WHT {b.wht_percent}% = ฿{formatCurrency(whtAmt)}</span>
-                              : <span className="ml-1 text-slate-400">ไม่มี WHT</span>
-                            }
+                              ? <span className="ml-1 text-amber-700">WHT {b.wht_percent}% จากยอดงาน = ฿{formatCurrency(whtAmt)}</span>
+                              : <span className="ml-1 text-slate-400">ไม่มี WHT</span>}
                           </span>
                         </label>
                       )
                     })}
                   </div>
                   <p className="text-[11px] text-slate-400 mt-1">ติ๊กถูก = หัก WHT จริง | ไม่ติ๊ก = ไม่ได้หัก</p>
+                </div>
+              )}
+
+              {/* DC billings — WHT always deducted */}
+              {dcBills.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-600 mb-2">งาน DC — หัก WHT อัตโนมัติทุกใบ</p>
+                  <div className="space-y-1 max-h-36 overflow-y-auto border border-amber-200 rounded p-2 bg-amber-50">
+                    {dcBills.map((b: any) => {
+                      const whtAmt = getWhtAmt(b)
+                      return (
+                        <div key={b.id} className="flex items-start gap-2 text-xs rounded p-2">
+                          <span className="mt-0.5 text-amber-600">✓</span>
+                          <span className="flex-1">
+                            <span className="font-medium">{b.billing_date ? new Date(b.billing_date).toLocaleDateString('th-TH') : '-'}</span>
+                            {' '}— {b.projects?.name ?? '-'}
+                            <span className="ml-1 text-amber-700">WHT {b.wht_percent ?? 3}% จากยอด DC = ฿{formatCurrency(whtAmt)}</span>
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -1014,7 +1049,10 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                       onClick={() => {
                         setPayOutDate(todayISO())
                         const initWhtMap: Record<string, boolean> = {}
-                        group.bills.filter((b: any) => !b.paid_out_at).forEach((b: any) => { initWhtMap[b.id] = false })
+                        group.bills.filter((b: any) => !b.paid_out_at).forEach((b: any) => {
+                          // DC (extra_work) billings always deduct WHT; main billings default to false
+                          initWhtMap[b.id] = b.type === 'extra_work'
+                        })
                         setWhtAppliedMap(initWhtMap)
                         setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', bills: group.bills.filter((b: any) => !b.paid_out_at), total: group.totals.net_amount })
                       }}
@@ -1055,12 +1093,16 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                   {group.bills.map((bill: any) => {
                     const plotLabel = bill.plots?.name || '-'
                     const isExtra = bill.type === 'extra_work'
-                    // net_amount is stored WITHOUT WHT (PM no longer bakes it in).
-                    // Accounting decides at pay-out time whether to deduct WHT.
-                    const whtAmt = (bill.total_add_amount ?? 0) * ((bill.wht_percent ?? 0) / 100)
+                    // WHT base differs by type:
+                    // - DC (extra_work): base = total_add_amount, always deducted
+                    // - Main job: base = total_work_amount, only if wht_applied
+                    const whtBase = bill.type === 'extra_work'
+                      ? (bill.total_add_amount ?? 0)
+                      : (bill.total_work_amount ?? 0)
+                    const whtAmt = whtBase * ((bill.wht_percent ?? 0) / 100)
                     const actualTransfer = bill.wht_applied
-                      ? (bill.net_amount ?? 0) - whtAmt   // accounting deducted WHT
-                      : (bill.net_amount ?? 0)             // no WHT deduction
+                      ? (bill.net_amount ?? 0) - whtAmt
+                      : (bill.net_amount ?? 0)
                     return (
                       <Fragment key={bill.id}>
                         <tr className="border-b align-top">
