@@ -540,24 +540,24 @@ export default function ReviewBillingPage() {
                 )}
               </div>
               <div className="mt-4 p-4 bg-white rounded-lg border text-right space-y-1">
-                {isExtraWork ? (
-                  <>
-                    <p className="text-sm text-gray-600">ยอดงานเพิ่ม (DC): <span className="font-semibold text-green-600 w-32 inline-block">{formatCurrency(totalAddAmount)}</span></p>
-                    <p className="text-sm text-gray-600">ยอดงานหัก: <span className="font-semibold text-red-600 w-32 inline-block">-{formatCurrency(totalDeductAmount)}</span></p>
-                    <hr className="my-1" />
-                    <p className="font-bold text-xl">ยอดสุทธิอนุมัติ (Net): <span className="text-2xl text-emerald-700">{formatCurrency(netAmount)}</span></p>
-                    {whtPercent > 0 && (
-                      <p className="text-xs text-amber-700 mt-1 font-medium">* WHT {whtPercent}% = ฿{formatCurrency(whtAmount)} — หักอัตโนมัติตอนโอน (ยอดโอนจริง ฿{formatCurrency(netAmount - whtAmount)})</p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm text-gray-600">ยอดเบิกตามเนื้องาน: <span className="font-semibold text-gray-800 w-32 inline-block">{formatCurrency(totalWorkAmount)}</span></p>
-                    <p className="text-sm text-gray-600">หักประกันผลงาน ({retentionPercent}% จากยอดงานหลัก): <span className="font-semibold text-red-600 w-32 inline-block">-{formatCurrency(retentionAmount)}</span></p>
-                    <hr className="my-1" />
-                    <p className="font-bold text-xl">ยอดสุทธิอนุมัติ (Net): <span className="text-2xl text-emerald-700">{formatCurrency(netAmount)}</span></p>
-                    <p className="text-xs text-blue-600 mt-1">* ไม่มีการหัก WHT สำหรับงานหลัก — บัญชีโอนเต็มยอด Net</p>
-                  </>
+                <p className="text-sm text-gray-600">ยอดเบิกตามเนื้องาน: <span className="font-semibold text-gray-800 w-32 inline-block">{formatCurrency(totalWorkAmount)}</span></p>
+                <p className="text-sm text-gray-600">ยอดงานเพิ่ม: <span className="font-semibold text-green-600 w-32 inline-block">{formatCurrency(totalAddAmount)}</span></p>
+                <p className="text-sm text-gray-600">ยอดงานหัก: <span className="font-semibold text-red-600 w-32 inline-block">-{formatCurrency(totalDeductAmount)}</span></p>
+                <hr className="my-1" />
+                <p className="font-semibold">ยอดรวม: <span className="w-32 inline-block">{formatCurrency(grossAmount)}</span></p>
+                {!isExtraWork && retentionPercent > 0 && (
+                  <p className="text-sm text-gray-600">หักประกันผลงาน ({retentionPercent}% จากยอดงานหลัก): <span className="font-semibold text-red-600 w-32 inline-block">-{formatCurrency(retentionAmount)}</span></p>
+                )}
+                {isExtraWork && whtPercent > 0 && (
+                  <p className="text-sm text-gray-600">หัก ณ ที่จ่าย WHT ({whtPercent}% จากยอดงานเพิ่ม): <span className="font-semibold text-red-600 w-32 inline-block">-{formatCurrency(whtAmount)}</span></p>
+                )}
+                <hr className="my-1" />
+                <p className="font-bold text-xl">ยอดสุทธิอนุมัติ (Net): <span className="text-2xl text-emerald-700">{formatCurrency(netAmount)}</span></p>
+                {isExtraWork && whtPercent > 0 && (
+                  <p className="text-xs text-amber-700 mt-1 font-medium">* ยอดโอนจริง (หลังหัก WHT): ฿{formatCurrency(netAmount - whtAmount)}</p>
+                )}
+                {!isExtraWork && (
+                  <p className="text-xs text-blue-600 mt-1">* ไม่มีการหัก WHT สำหรับงานหลัก — บัญชีโอนเต็มยอด Net</p>
                 )}
               </div>
             </div>
