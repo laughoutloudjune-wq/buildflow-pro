@@ -41,6 +41,7 @@ export default function ContractorCycleReportPage() {
   const [payOutConfirm, setPayOutConfirm] = useState<{ contractorId: string; contractorName: string; bills: any[]; total: number } | null>(null)
   const [payOutDate, setPayOutDate] = useState(todayISO())
   const [payOutLoading, setPayOutLoading] = useState(false)
+  const [retentionAppliedMap, setRetentionAppliedMap] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     getBillingOptions().then((data) => {
@@ -98,11 +99,11 @@ export default function ContractorCycleReportPage() {
     setPayOutLoading(true)
     try {
       const billIds = payOutConfirm.bills.map((b: any) => b.id)
-      // DC (extra_work) billings always have wht_applied = true; main billings never do
       const whtMap: Record<string, boolean> = {}
       payOutConfirm.bills.forEach((b: any) => { whtMap[b.id] = b.type === 'extra_work' })
-      await markBillingsAsPaidOut(billIds, payOutDate, whtMap)
+      await markBillingsAsPaidOut(billIds, payOutDate, whtMap, retentionAppliedMap)
       setPayOutConfirm(null)
+      setRetentionAppliedMap({})
       await runReport()
     } catch (e: any) {
       alert(e.message || 'Mark as paid failed')
@@ -841,117 +842,144 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       {/* Pay-out confirmation modal */}
       <Modal
         isOpen={!!payOutConfirm}
-        onClose={() => setPayOutConfirm(null)}
-        title="ยืนยันการจ่ายเงินให้ผู้รับเหมา"
-        panelClassName="max-w-lg"
+        onClose={() => { setPayOutConfirm(null); setRetentionAppliedMap({}) }}
+        title="ยืนยันการจ่ายเงิน"
+        panelClassName="max-w-md"
       >
         {payOutConfirm && (() => {
-          const mainBills = payOutConfirm.bills.filter((b: any) => b.type !== 'extra_work')
-          const dcBills = payOutConfirm.bills.filter((b: any) => b.type === 'extra_work')
+          // Per-bill calculations
+          const billDetails = payOutConfirm.bills.map((b: any) => {
+            const isDC = b.type === 'extra_work'
+            const workAmt = b.total_work_amount ?? 0
+            const addAmt = b.total_add_amount ?? 0
+            const deductAmt = b.total_deduct_amount ?? 0
+            const retPct = b.retention_percent ?? 0
+            const whtPct = b.wht_percent ?? 0
+            const retAmt = workAmt * (retPct / 100)
+            const whtAmt = addAmt * (whtPct / 100)
+            const applyRetention = !isDC && (retentionAppliedMap[b.id] ?? true)
+            const actualRetention = applyRetention ? retAmt : 0
+            const actualWht = isDC ? whtAmt : 0
+            const transfer = (b.net_amount ?? 0) - actualWht + (applyRetention ? 0 : retAmt)
+            // net_amount already has retention deducted; if not applying, add it back
+            return { b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, applyRetention, actualRetention, actualWht, transfer }
+          })
 
-          const getDcWhtAmt = (b: any) => (b.total_add_amount ?? 0) * ((b.wht_percent ?? 0) / 100)
-
-          const totalMainNet = mainBills.reduce((s: number, b: any) => s + (b.net_amount ?? 0), 0)
-          const totalDcNet = dcBills.reduce((s: number, b: any) => s + (b.net_amount ?? 0), 0)
-          const totalDcWht = dcBills.reduce((s: number, b: any) => s + getDcWhtAmt(b), 0)
-          const totalActualTransfer = totalMainNet + totalDcNet - totalDcWht
+          const grandTransfer = billDetails.reduce((s, d) => s + d.transfer, 0)
+          const grandRetention = billDetails.reduce((s, d) => s + d.actualRetention, 0)
+          const grandWht = billDetails.reduce((s, d) => s + d.actualWht, 0)
+          const grandNet = payOutConfirm.bills.reduce((s: number, b: any) => s + (b.net_amount ?? 0), 0)
 
           return (
             <div className="space-y-4">
-              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 space-y-1">
-                <p className="text-sm font-semibold text-emerald-900">{payOutConfirm.contractorName}</p>
-                <p className="text-xs text-emerald-700">
-                  {mainBills.length > 0 && `${mainBills.length} ใบงานหลัก`}
-                  {mainBills.length > 0 && dcBills.length > 0 && ' · '}
-                  {dcBills.length > 0 && `${dcBills.length} ใบ DC`}
-                </p>
-              </div>
-
-              {/* Main job bills — no WHT, just list them */}
-              {mainBills.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-slate-600 mb-1">งานหลัก (ไม่มี WHT — โอนเต็มยอด Net)</p>
-                  <div className="space-y-1 max-h-36 overflow-y-auto border rounded p-2 bg-slate-50">
-                    {mainBills.map((b: any) => (
-                      <div key={b.id} className="flex justify-between text-xs px-2 py-1.5 rounded hover:bg-slate-100">
-                        <span>
-                          <span className="font-medium">{b.billing_date ? new Date(b.billing_date).toLocaleDateString('th-TH') : '-'}</span>
-                          {' '}— {b.projects?.name ?? '-'}
-                        </span>
-                        <span className="font-semibold text-emerald-700">฿{formatCurrency(b.net_amount)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* DC bills — WHT always deducted */}
-              {dcBills.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-slate-600 mb-1">งาน DC (หัก WHT อัตโนมัติ)</p>
-                  <div className="space-y-1 max-h-36 overflow-y-auto border border-amber-200 rounded p-2 bg-amber-50">
-                    {dcBills.map((b: any) => {
-                      const whtAmt = getDcWhtAmt(b)
-                      return (
-                        <div key={b.id} className="flex justify-between text-xs px-2 py-1.5 rounded">
-                          <span>
-                            <span className="font-medium">{b.billing_date ? new Date(b.billing_date).toLocaleDateString('th-TH') : '-'}</span>
-                            {' '}— {b.projects?.name ?? '-'}
-                            <span className="ml-1 text-amber-700">WHT {b.wht_percent ?? 3}% = −฿{formatCurrency(whtAmt)}</span>
-                          </span>
-                          <span className="font-semibold text-emerald-700">฿{formatCurrency((b.net_amount ?? 0) - whtAmt)}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Pay-out summary */}
-              <div className="rounded-lg border bg-slate-50 p-3 text-sm space-y-1">
-                <p className="text-xs font-semibold text-slate-500 mb-2">สรุปยอดโอน</p>
-                {mainBills.length > 0 && (
-                  <div className="flex justify-between text-slate-600">
-                    <span>งานหลัก (Net)</span>
-                    <span>฿{formatCurrency(totalMainNet)}</span>
-                  </div>
-                )}
-                {dcBills.length > 0 && (
-                  <>
-                    <div className="flex justify-between text-slate-600">
-                      <span>งาน DC (Net)</span>
-                      <span>฿{formatCurrency(totalDcNet)}</span>
-                    </div>
-                    <div className="flex justify-between text-amber-700">
-                      <span>หัก WHT DC รวม</span>
-                      <span>−฿{formatCurrency(totalDcWht)}</span>
-                    </div>
-                  </>
-                )}
-                <div className="flex justify-between font-bold text-emerald-700 border-t pt-1 mt-1">
-                  <span>ยอดโอนจริง</span>
-                  <span className="text-base">฿{formatCurrency(totalActualTransfer)}</span>
-                </div>
-              </div>
-
+              {/* Date picker */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่โอนเงิน</label>
-                <input
-                  type="date"
-                  value={payOutDate}
-                  onChange={(e) => setPayOutDate(e.target.value)}
-                  className="w-full p-2 border rounded text-sm"
-                />
+                <input type="date" value={payOutDate} onChange={(e) => setPayOutDate(e.target.value)} className="w-full p-2 border rounded text-sm" />
               </div>
-              <div className="flex justify-end gap-2 pt-2 border-t">
-                <button onClick={() => setPayOutConfirm(null)} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
+
+              {/* POS-style receipt */}
+              <div className="font-mono text-xs bg-white border-2 border-dashed border-slate-300 rounded-lg p-4 space-y-0 max-h-[55vh] overflow-y-auto">
+                {/* Header */}
+                <div className="text-center mb-2">
+                  <div className="font-bold text-sm">{payOutConfirm.contractorName}</div>
+                  <div className="text-slate-500">{payOutDate ? new Date(payOutDate).toLocaleDateString('th-TH', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'}</div>
+                </div>
+                <div className="border-t border-dashed border-slate-300 my-2" />
+
+                {/* Per-bill breakdown */}
+                {billDetails.map(({ b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, applyRetention, transfer }) => (
+                  <div key={b.id} className="mb-3">
+                    <div className="flex justify-between font-semibold text-slate-700">
+                      <span>{isDC ? '[DC]' : '[หลัก]'} #{String(b.doc_no || '-').padStart(4, '0')}</span>
+                      <span>{b.billing_date ? new Date(b.billing_date).toLocaleDateString('th-TH') : '-'}</span>
+                    </div>
+                    <div className="text-slate-500 mb-1">{b.projects?.name ?? '-'}</div>
+
+                    {workAmt > 0 && (
+                      <div className="flex justify-between">
+                        <span>งานหลัก</span>
+                        <span>฿{formatCurrency(workAmt)}</span>
+                      </div>
+                    )}
+                    {addAmt > 0 && (
+                      <div className="flex justify-between">
+                        <span>งานเพิ่ม DC</span>
+                        <span>฿{formatCurrency(addAmt)}</span>
+                      </div>
+                    )}
+                    {deductAmt > 0 && (
+                      <div className="flex justify-between text-red-600">
+                        <span>งานหัก</span>
+                        <span>−฿{formatCurrency(deductAmt)}</span>
+                      </div>
+                    )}
+
+                    {/* Retention checkbox — main jobs only */}
+                    {!isDC && retAmt > 0 && (
+                      <label className="flex items-center justify-between mt-1 cursor-pointer select-none group">
+                        <span className="flex items-center gap-1.5 text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={retentionAppliedMap[b.id] ?? true}
+                            onChange={(e) => setRetentionAppliedMap(prev => ({ ...prev, [b.id]: e.target.checked }))}
+                            className="accent-slate-600"
+                          />
+                          หักประกัน {retPct}%
+                        </span>
+                        <span className="text-red-600">−฿{formatCurrency(retAmt)}</span>
+                      </label>
+                    )}
+
+                    {/* WHT — DC always deducted */}
+                    {isDC && whtAmt > 0 && (
+                      <div className="flex justify-between text-amber-700">
+                        <span>หัก WHT {whtPct}%</span>
+                        <span>−฿{formatCurrency(whtAmt)}</span>
+                      </div>
+                    )}
+
+                    <div className="border-t border-dotted border-slate-200 mt-1 pt-1 flex justify-between font-bold">
+                      <span>โอน</span>
+                      <span className="text-emerald-700">฿{formatCurrency(transfer)}</span>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Grand total */}
+                <div className="border-t-2 border-dashed border-slate-400 mt-2 pt-2 space-y-0.5">
+                  <div className="flex justify-between text-slate-600">
+                    <span>ยอดสุทธิรวม</span>
+                    <span>฿{formatCurrency(grandNet)}</span>
+                  </div>
+                  {grandRetention > 0 && (
+                    <div className="flex justify-between text-slate-600">
+                      <span>หักประกันรวม</span>
+                      <span>−฿{formatCurrency(grandRetention)}</span>
+                    </div>
+                  )}
+                  {grandWht > 0 && (
+                    <div className="flex justify-between text-amber-700">
+                      <span>หัก WHT รวม</span>
+                      <span>−฿{formatCurrency(grandWht)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-base text-emerald-700 border-t border-slate-400 pt-1 mt-1">
+                    <span>ยอดโอนจริง</span>
+                    <span>฿{formatCurrency(grandTransfer)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1 border-t">
+                <button onClick={() => { setPayOutConfirm(null); setRetentionAppliedMap({}) }} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
                 <button
                   onClick={handleMarkAsPaidOut}
                   disabled={payOutLoading || !payOutDate}
                   className="flex items-center gap-2 px-4 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50"
                 >
                   {payOutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
-                  ยืนยันจ่าย ฿{formatCurrency(totalActualTransfer)}
+                  ยืนยันจ่าย ฿{formatCurrency(grandTransfer)}
                 </button>
               </div>
             </div>
@@ -1014,7 +1042,11 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     <button
                       onClick={() => {
                         setPayOutDate(todayISO())
-                        setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', bills: group.bills.filter((b: any) => !b.paid_out_at), total: group.totals.net_amount })
+                        const unpaidBills = group.bills.filter((b: any) => !b.paid_out_at)
+                        const initRetention: Record<string, boolean> = {}
+                        unpaidBills.forEach((b: any) => { initRetention[b.id] = true })
+                        setRetentionAppliedMap(initRetention)
+                        setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', bills: unpaidBills, total: group.totals.net_amount })
                       }}
                       className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                     >
@@ -1053,11 +1085,12 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                   {group.bills.map((bill: any) => {
                     const plotLabel = bill.plots?.name || '-'
                     const isExtra = bill.type === 'extra_work'
-                    // Main job: no WHT — actual transfer = net_amount (retention already deducted in net)
-                    // DC (extra_work): WHT always deducted on total_add_amount
                     const isDC = bill.type === 'extra_work'
                     const whtAmt = isDC ? (bill.total_add_amount ?? 0) * ((bill.wht_percent ?? 0) / 100) : 0
-                    const actualTransfer = (bill.net_amount ?? 0) - whtAmt
+                    const retAmt = (bill.total_work_amount ?? 0) * ((bill.retention_percent ?? 0) / 100)
+                    // net_amount has retention deducted; if retention was NOT applied, add it back
+                    const retentionAddBack = (!isDC && bill.retention_applied === false) ? retAmt : 0
+                    const actualTransfer = (bill.net_amount ?? 0) - whtAmt + retentionAddBack
                     return (
                       <Fragment key={bill.id}>
                         <tr className="border-b align-top">
@@ -1090,9 +1123,9 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                             {bill.paid_out_at ? (
                               <div>
                                 <div className="font-bold text-blue-700">฿{formatCurrency(actualTransfer)}</div>
-                                {isDC && whtAmt > 0 && (
-                                  <div className="text-[10px] text-amber-600">หัก WHT ฿{formatCurrency(whtAmt)}</div>
-                                )}
+                                {isDC && whtAmt > 0 && <div className="text-[10px] text-amber-600">หัก WHT ฿{formatCurrency(whtAmt)}</div>}
+                                {!isDC && retAmt > 0 && bill.retention_applied !== false && <div className="text-[10px] text-slate-500">หักประกัน ฿{formatCurrency(retAmt)}</div>}
+                                {!isDC && retAmt > 0 && bill.retention_applied === false && <div className="text-[10px] text-orange-500">ไม่หักประกัน</div>}
                               </div>
                             ) : (
                               <span className="text-slate-300">—</span>
