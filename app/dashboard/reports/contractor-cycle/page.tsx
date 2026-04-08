@@ -1120,7 +1120,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                           </td>
                           {/* ยอดรวม = gross before any deductions */}
                           <td className="px-3 py-2 text-right font-semibold">฿{formatCurrency(grossAmt)}</td>
-                          {/* ยอดโอน = actual transfer after retention/WHT */}
+                          {/* ยอดโอน = gross when unpaid; actual transfer with deductions when paid */}
                           <td className="px-3 py-2 text-right">
                             {bill.paid_out_at ? (
                               <div>
@@ -1132,7 +1132,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                                 {retAmt > 0 && bill.retention_applied === false && <div className="text-[10px] text-orange-500">ไม่หักประกัน</div>}
                               </div>
                             ) : (
-                              <span className="text-slate-300">—</span>
+                              <div className="text-slate-500 font-semibold">฿{formatCurrency(grossAmt)}</div>
                             )}
                           </td>
                           <td className="px-3 py-2 text-center no-print">
