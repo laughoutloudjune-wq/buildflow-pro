@@ -873,9 +873,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             const applyRetention = retentionAppliedMap[b.id] ?? true
             const actualRetention = applyRetention ? retAmt : 0
             const actualWht = cycleWhtApplied ? whtAmt : 0
-            // net_amount = gross - retention (stored without WHT)
-            // actual transfer = net_amount - WHT = gross - retention - WHT
-            const transfer = (b.net_amount ?? 0) - actualWht
+            // Start from gross, subtract only the deductions that are actually applied
+            const transfer = grossAmt - actualRetention - actualWht
             return { b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, grossAmt, applyRetention, actualRetention, actualWht, transfer }
           })
 
