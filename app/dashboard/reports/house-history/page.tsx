@@ -138,7 +138,7 @@ export default function HouseHistoryReportPage() {
           qty: 0,
           unit: '',
           unitPrice: 0,
-          total: Number(bill.net_amount || 0),
+          total: Number(bill.total_work_amount || 0) + Number(bill.total_add_amount || 0) - Number(bill.total_deduct_amount || 0),
         })
       }
 
@@ -167,7 +167,7 @@ export default function HouseHistoryReportPage() {
     if (projectId) {
       return plots.map((plot) => {
         const recs = expandedRecords.filter((r) => r.plotId === String(plot.id) || (!r.plotId && r.plotName === plot.name))
-        const total = recs.reduce((sum, r) => sum + Number(r.bill.net_amount || 0), 0)
+        const total = recs.reduce((sum, r) => sum + Number(r.bill.total_work_amount || 0) + Number(r.bill.total_add_amount || 0) - Number(r.bill.total_deduct_amount || 0), 0)
         return {
           key: `id:${plot.id}`,
           label: plot.name,
@@ -194,7 +194,7 @@ export default function HouseHistoryReportPage() {
       }
       const bucket = map.get(key)
       bucket.records.push(r)
-      bucket.total += Number(r.bill.net_amount || 0)
+      bucket.total += Number(r.bill.total_work_amount || 0) + Number(r.bill.total_add_amount || 0) - Number(r.bill.total_deduct_amount || 0)
     }
 
     return Array.from(map.values()).sort((a, b) => {
@@ -302,7 +302,7 @@ export default function HouseHistoryReportPage() {
                       </div>
                       <div className="text-right">
                         <div className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">{typeLabel}</div>
-                        <div className="mt-2 text-lg font-bold text-emerald-700">฿{formatCurrency(bill.net_amount || 0)}</div>
+                        <div className="mt-2 text-lg font-bold text-emerald-700">฿{formatCurrency(Number(bill.total_work_amount || 0) + Number(bill.total_add_amount || 0) - Number(bill.total_deduct_amount || 0))}</div>
                       </div>
                     </div>
 

@@ -249,8 +249,8 @@ export default function DCHistoryReportPage() {
                       <div className="text-xs text-slate-500">{row.reason_for_dc || '-'}</div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs text-slate-500">สุทธิ</div>
-                      <div className="font-bold text-amber-700">฿{formatCurrency(row.net_amount)}</div>
+                      <div className="text-xs text-slate-500">รวมก่อนหัก</div>
+                      <div className="font-bold text-amber-700">฿{formatCurrency(row._dc_net_amount)}</div>
                     </div>
                   </div>
                   <div className="mt-3 overflow-x-auto">
