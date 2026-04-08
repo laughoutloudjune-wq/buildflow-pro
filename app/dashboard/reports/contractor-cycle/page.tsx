@@ -1162,7 +1162,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                               </div>
                               <div>
                                 <div className="text-xs font-semibold text-slate-600 mb-1">รายการปรับปรุง (เพิ่ม/หัก)</div>
-                                {(Array.isArray(bill.billing_adjustments) && bill.billing_adjustments.length > 0) || Number(bill.wht_percent || 0) > 0 || Number(bill.retention_percent || 0) > 0 ? (
+                                {(Array.isArray(bill.billing_adjustments) && bill.billing_adjustments.length > 0) || (bill.paid_out_at && (bill.wht_applied || (retAmt > 0 && bill.retention_applied !== false))) ? (
                                   <table className="w-full text-xs border">
                                     <thead className="bg-white"><tr className="border-b"><th className="px-2 py-1 text-left">ประเภท</th><th className="px-2 py-1 text-left">รายการ</th><th className="px-2 py-1 text-right">จำนวน</th><th className="px-2 py-1 text-right">ราคา/หน่วย</th><th className="px-2 py-1 text-right">รวม</th></tr></thead>
                                     <tbody>
@@ -1178,22 +1178,22 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                                           </tr>
                                         )
                                       })}
-                                      {Number(bill.wht_percent || 0) > 0 && Number(bill.total_add_amount || 0) > 0 && (
-                                        <tr className="border-b last:border-b-0 text-red-700">
+                                      {bill.paid_out_at && bill.wht_applied && whtAmt > 0 && (
+                                        <tr className="border-b last:border-b-0 text-amber-700">
                                           <td className="px-2 py-1">หัก</td>
-                                          <td className="px-2 py-1">หัก ณ ที่จ่าย</td>
+                                          <td className="px-2 py-1">หัก ณ ที่จ่าย {bill.wht_percent}%</td>
                                           <td className="px-2 py-1 text-right">1 รายการ</td>
-                                          <td className="px-2 py-1 text-right">฿{formatCurrency((Number(bill.total_add_amount || 0) * Number(bill.wht_percent || 0)) / 100)}</td>
-                                          <td className="px-2 py-1 text-right">-฿{formatCurrency((Number(bill.total_add_amount || 0) * Number(bill.wht_percent || 0)) / 100)}</td>
+                                          <td className="px-2 py-1 text-right">฿{formatCurrency(whtAmt)}</td>
+                                          <td className="px-2 py-1 text-right">−฿{formatCurrency(whtAmt)}</td>
                                         </tr>
                                       )}
-                                      {Number(bill.retention_percent || 0) > 0 && Number(bill.total_work_amount || 0) > 0 && (
-                                        <tr className="border-b last:border-b-0 text-red-700">
+                                      {bill.paid_out_at && retAmt > 0 && bill.retention_applied !== false && (
+                                        <tr className="border-b last:border-b-0 text-slate-600">
                                           <td className="px-2 py-1">หัก</td>
-                                          <td className="px-2 py-1">หักประกันผลงาน</td>
+                                          <td className="px-2 py-1">หักประกันผลงาน {bill.retention_percent}%</td>
                                           <td className="px-2 py-1 text-right">1 รายการ</td>
-                                          <td className="px-2 py-1 text-right">฿{formatCurrency((Number(bill.total_work_amount || 0) * Number(bill.retention_percent || 0)) / 100)}</td>
-                                          <td className="px-2 py-1 text-right">-฿{formatCurrency((Number(bill.total_work_amount || 0) * Number(bill.retention_percent || 0)) / 100)}</td>
+                                          <td className="px-2 py-1 text-right">฿{formatCurrency(retAmt)}</td>
+                                          <td className="px-2 py-1 text-right">−฿{formatCurrency(retAmt)}</td>
                                         </tr>
                                       )}
                                     </tbody>
