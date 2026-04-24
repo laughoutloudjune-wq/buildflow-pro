@@ -50,6 +50,45 @@ function toNumber(value: unknown) {
   return Number.isFinite(n) ? n : 0
 }
 
+function clampPercent(value: unknown) {
+  const n = toNumber(value)
+  if (n < 0) return 0
+  if (n > 100) return 100
+  return n
+}
+
+/**
+ * Compute canonical billing totals from the line items. Monetary totals are
+ * ALWAYS derived server-side — any totals sent by the client are ignored.
+ */
+export function computeBillingTotals(
+  type: BillingRequestType,
+  selected_jobs: BillingJobInput[],
+  adjustments: BillingAdjustmentInput[]
+) {
+  const total_add_amount = adjustments
+    .filter((adj) => adj.type === 'addition')
+    .reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
+
+  const total_deduct_amount = adjustments
+    .filter((adj) => adj.type === 'deduction')
+    .reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
+
+  const total_work_amount =
+    type === 'extra_work'
+      ? 0
+      : selected_jobs.reduce((sum, job) => sum + job.request_amount, 0)
+
+  const net_amount = total_work_amount + total_add_amount - total_deduct_amount
+
+  return {
+    total_work_amount: toNumber(total_work_amount),
+    total_add_amount: toNumber(total_add_amount),
+    total_deduct_amount: toNumber(total_deduct_amount),
+    net_amount: toNumber(net_amount),
+  }
+}
+
 export function validateBillingPayload(payload: BillingPayload): ValidatedBillingPayload {
   const project_id = String(payload.project_id || '').trim()
   const contractor_id = String(payload.contractor_id || '').trim()
@@ -60,7 +99,7 @@ export function validateBillingPayload(payload: BillingPayload): ValidatedBillin
   if (!contractor_id) throw new Error('Contractor is required')
   if (!billing_date) throw new Error('Billing date is required')
 
-  const selected_jobs = Array.isArray(payload.selected_jobs)
+  const selected_jobs: BillingJobInput[] = Array.isArray(payload.selected_jobs)
     ? payload.selected_jobs
         .map((job) => ({
           id: String(job.id || '').trim(),
@@ -70,8 +109,8 @@ export function validateBillingPayload(payload: BillingPayload): ValidatedBillin
         .filter((job) => job.id)
     : []
 
-  const adjustments = Array.isArray(payload.adjustments)
-    ? payload.adjustments.map((adj): BillingAdjustmentInput => ({
+  const adjustments: BillingAdjustmentInput[] = Array.isArray(payload.adjustments)
+    ? payload.adjustments.map((adj) => ({
         type: adj.type === 'deduction' ? 'deduction' : 'addition',
         description: String(adj.description || '').trim(),
         plot_name: String(adj.plot_name || '').trim(),
@@ -89,25 +128,8 @@ export function validateBillingPayload(payload: BillingPayload): ValidatedBillin
     throw new Error('Extra work request must include at least one adjustment')
   }
 
-  const total_add_amount =
-    payload.total_add_amount ??
-    adjustments
-      .filter((adj) => adj.type === 'addition')
-      .reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
-
-  const total_deduct_amount =
-    payload.total_deduct_amount ??
-    adjustments
-      .filter((adj) => adj.type === 'deduction')
-      .reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
-
-  const total_work_amount =
-    type === 'extra_work'
-      ? 0
-      : payload.total_work_amount ?? selected_jobs.reduce((sum, job) => sum + job.request_amount, 0)
-
-  const net_amount =
-    payload.net_amount ?? total_work_amount + total_add_amount - total_deduct_amount
+  // SECURITY: always recompute totals server-side; ignore client-sent values.
+  const totals = computeBillingTotals(type, selected_jobs, adjustments)
 
   return {
     ...payload,
@@ -117,9 +139,9 @@ export function validateBillingPayload(payload: BillingPayload): ValidatedBillin
     type,
     selected_jobs,
     adjustments,
-    total_work_amount: toNumber(total_work_amount),
-    total_add_amount: toNumber(total_add_amount),
-    total_deduct_amount: toNumber(total_deduct_amount),
-    net_amount: toNumber(net_amount),
+    wht_percent: payload.wht_percent == null ? undefined : clampPercent(payload.wht_percent),
+    retention_percent:
+      payload.retention_percent == null ? undefined : clampPercent(payload.retention_percent),
+    ...totals,
   }
 }

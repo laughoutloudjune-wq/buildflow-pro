@@ -25,6 +25,9 @@ type ContractorType = {
   name: string
 }
 
+/** Same footprint for paid-out history and retention detail modals */
+const contractorLedgerModalPanelClass = 'max-w-[96vw] w-full h-[88vh] max-h-[90dvh]'
+
 export default function ContractorsPage() {
   const [contractors, setContractors] = useState<Contractor[]>([])
   const [types, setTypes] = useState<ContractorType[]>([])
@@ -299,7 +302,7 @@ export default function ContractorsPage() {
         isOpen={!!retentionContractor}
         onClose={closeRetention}
         title={retentionContractor ? `เงินประกันผลงาน - ${retentionContractor.name}` : 'เงินประกันผลงาน'}
-        panelClassName="max-w-2xl"
+        panelClassName={contractorLedgerModalPanelClass}
       >
         {isRetentionLoading ? (
           <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
@@ -370,12 +373,12 @@ export default function ContractorsPage() {
         isOpen={!!historyContractor}
         onClose={closeHistory}
         title={historyContractor ? `ประวัติงานที่อนุมัติแล้ว - ${historyContractor.name}` : 'ประวัติงาน'}
-        panelClassName="max-w-[96vw] h-[88vh]"
-        bodyClassName="p-0 h-[calc(88vh-72px)]"
+        panelClassName={contractorLedgerModalPanelClass}
+        bodyClassName="p-0"
       >
-        <div className="h-full overflow-auto p-4 bg-slate-50/40">
+        <div className="p-4 bg-slate-50/40">
           {isHistoryLoading ? (
-            <div className="h-full flex items-center justify-center text-slate-400">
+            <div className="flex min-h-[40vh] items-center justify-center text-slate-400">
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>
           ) : historyRows.length === 0 ? (

@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { DEFAULT_ROLE_PERMISSIONS, normalizeRolePermissions, type RolePermissions } from '@/lib/permissions'
+import { requireAuthRole } from '@/actions/_shared/user-role'
 
 type SettingsQueryClient = {
   auth: {
@@ -110,8 +111,9 @@ export async function getRolePermissions(): Promise<RolePermissions> {
  * Updates organization settings, including handling a logo upload.
  */
 export async function updateOrganizationSettings(formData: FormData) {
+  await requireAuthRole(['admin'])
   const supabase = await createClient()
-  
+
   const settingsData = {
     company_name: formData.get('company_name') as string,
     address: formData.get('address') as string,

@@ -22,7 +22,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         {success ? <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{success}</div> : null}
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700">อีเมล</label>
+          <label htmlFor="email" className="text-sm font-medium text-slate-700">
+            อีเมล
+          </label>
           <input
             id="email"
             name="email"
@@ -34,7 +36,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700">รหัสผ่าน</label>
+          <label htmlFor="password" className="text-sm font-medium text-slate-700">
+            รหัสผ่าน
+          </label>
           <input
             id="password"
             name="password"

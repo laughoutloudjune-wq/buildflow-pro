@@ -282,10 +282,10 @@ export default function HouseHistoryReportPage() {
           setSelectedHouseRecords([])
         }}
         title={selectedHouseTitle || 'ประวัติงาน'}
-        panelClassName="max-w-[96vw] h-[88vh]"
-        bodyClassName="p-0 h-[calc(88vh-72px)]"
+        panelClassName="max-w-[96vw] h-[88vh] max-h-[90dvh]"
+        bodyClassName="p-0"
       >
-        <div className="h-full overflow-auto p-4 bg-slate-50/40">
+        <div className="p-4 bg-slate-50/40">
           <div className="space-y-3">
             {selectedHouseRecords
               .sort((a, b) => new Date(b.bill.billing_date || b.bill.created_at || 0).getTime() - new Date(a.bill.billing_date || a.bill.created_at || 0).getTime())

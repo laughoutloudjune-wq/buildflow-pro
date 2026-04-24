@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import { Fragment, useState, useEffect, useMemo } from 'react'
+import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling, getJobProgressHistory } from '@/actions/billing-actions'
@@ -12,7 +13,7 @@ import { formatCurrency } from '@/lib/currency'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Modal from '@/components/ui/Modal'
 import NoticeBanner from '@/components/ui/NoticeBanner'
-import ClientRoleGate from '@/components/auth/ClientRoleGate'
+import PageLoading from '@/components/ui/PageLoading'
 import type { BillingAdjustmentForm, ProgressHistoryItem } from '@/lib/types/billing'
 
 const PDFViewer = dynamic(
@@ -289,14 +290,42 @@ export default function ReviewBillingPage() {
     [billing, jobs, adjustments, billingDate, whtPercent, retentionPercent, totalWorkAmount, totalAddAmount, totalDeductAmount, netAmount]
   )
 
-  if (isLoading) return <p className="text-center p-8">กำลังโหลด...</p>
-  if (error && !billing) return <p className="text-red-500 text-center p-8">{error}</p>
-  if (!billing) return <p className="text-center p-8">ไม่พบข้อมูลใบเบิก</p>
+  if (isLoading) {
+    return (
+      <div className="container mx-auto p-4">
+        <PageLoading label="กำลังโหลดใบเบิก..." />
+      </div>
+    )
+  }
+
+  if (error && !billing) {
+    return (
+      <div className="container mx-auto max-w-lg space-y-4 p-4">
+        <NoticeBanner tone="error" message={error} onClose={() => setError(null)} />
+        <div className="text-center">
+          <Link href="/dashboard/billing" className="text-sm font-medium text-indigo-600 hover:text-indigo-800">
+            ← กลับไปรายการเบิกจ่าย
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (!billing) {
+    return (
+      <div className="container mx-auto max-w-lg space-y-4 p-4">
+        <p className="text-center text-slate-600">ไม่พบข้อมูลใบเบิก</p>
+        <div className="text-center">
+          <Link href="/dashboard/billing" className="text-sm font-medium text-indigo-600 hover:text-indigo-800">
+            ← กลับไปรายการเบิกจ่าย
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="container mx-auto p-4 space-y-4">
-      <ClientRoleGate moduleKey="billing" />
-
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold mb-0">ตรวจสอบใบขอเบิก #{billing.doc_no}</h1>
         <div className="flex items-center gap-3">

@@ -1,15 +1,15 @@
 ﻿'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Loader2, Eye, Edit } from 'lucide-react'
+import { Plus, Eye, Edit } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { getBillings } from '@/actions/billing-actions'
 import BillingModal from '@/components/billings/BillingModal'
 import { formatCurrency } from '@/lib/currency'
 import NoticeBanner, { type NoticeTone } from '@/components/ui/NoticeBanner'
-import ClientRoleGate from '@/components/auth/ClientRoleGate'
+import PageLoading from '@/components/ui/PageLoading'
 
 type BillingListItem = Awaited<ReturnType<typeof getBillings>>[number]
 type BillingJobLine = NonNullable<BillingListItem['billing_jobs']>[number]
@@ -34,6 +34,7 @@ const getStatusChip = (status?: string | null) => {
 export default function BillingListPage() {
   const [billings, setBillings] = useState<BillingListItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [listError, setListError] = useState<string | null>(null)
   const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null)
   const [flash, setFlash] = useState<{ tone: 'success' | 'error' | 'info' | 'warning'; message: string } | null>(null)
   const router = useRouter()
@@ -86,26 +87,22 @@ export default function BillingListPage() {
     return tags.join(' / ') || '-'
   }
 
-  const loadBillings = () => {
+  const loadBillings = useCallback(async () => {
     setLoading(true)
-    getBillings().then((data) => {
+    setListError(null)
+    try {
+      const data = await getBillings()
       setBillings(data)
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : 'โหลดรายการไม่สำเร็จ')
+    } finally {
       setLoading(false)
-    })
-  }
-
-  useEffect(() => {
-    let mounted = true
-    getBillings().then((data) => {
-      if (!mounted) return
-      setBillings(data)
-      setLoading(false)
-    })
-
-    return () => {
-      mounted = false
     }
   }, [])
+
+  useEffect(() => {
+    void loadBillings()
+  }, [loadBillings])
 
   const handleRowClick = (bill: BillingListItem) => {
     if (bill.status === 'pending_review') {
@@ -117,8 +114,6 @@ export default function BillingListPage() {
 
   return (
     <div className="space-y-6">
-      <ClientRoleGate moduleKey="billing" />
-
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">รายการเบิกจ่ายงวดงาน</h1>
@@ -144,9 +139,28 @@ export default function BillingListPage() {
         <NoticeBanner tone={flash.tone} message={flash.message} onClose={() => setFlash(null)} />
       ) : null}
 
+      {listError ? (
+        <NoticeBanner
+          tone="error"
+          message={listError}
+          onClose={billings.length > 0 ? () => setListError(null) : undefined}
+        />
+      ) : null}
+
       <Card className="p-4 bg-slate-50/60 border-slate-200">
         {loading ? (
-          <div className="p-8 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto"/></div>
+          <PageLoading label="กำลังโหลดรายการเบิกจ่าย..." />
+        ) : billings.length === 0 && listError ? (
+          <div className="flex flex-col items-center gap-3 py-12">
+            <p className="text-sm text-slate-600">ไม่สามารถโหลดรายการได้</p>
+            <button
+              type="button"
+              onClick={() => void loadBillings()}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            >
+              ลองโหลดใหม่
+            </button>
+          </div>
         ) : billings.length === 0 ? (
           <div className="p-12 text-center text-slate-400">ยังไม่มีเอกสารเบิกจ่าย</div>
         ) : (

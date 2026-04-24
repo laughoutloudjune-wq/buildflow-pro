@@ -725,8 +725,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         isOpen={showHtmlModalPreview}
         onClose={() => setShowHtmlModalPreview(false)}
         title="Print Preview"
-        panelClassName="max-w-[98vw] h-[92vh]"
-        bodyClassName="p-2 h-[calc(92vh-72px)]"
+        panelClassName="max-w-[98vw] h-[92vh] max-h-[95dvh]"
+        bodyClassName="p-2"
       >
         <div className="space-y-3 html-preview-modal-host">
           <div className="flex justify-end gap-2 no-print-in-modal">
@@ -734,7 +734,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               Print
             </button>
           </div>
-          <div className="h-[calc(92vh-150px)] overflow-auto rounded border bg-slate-50 p-3">
+          <div className="max-h-[calc(90dvh-140px)] overflow-auto rounded border bg-slate-50 p-3">
             <style>{`
               .html-preview-modal{font-family:"Google Sans","Google Sans Text","Product Sans","Noto Sans Thai","Segoe UI",system-ui,-apple-system,sans-serif;color:#0f172a;font-size:14px;line-height:1.45}
               .html-preview-modal .invoice-sheet{background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:18px;margin-bottom:18px;box-shadow:0 1px 2px rgba(15,23,42,.04)}

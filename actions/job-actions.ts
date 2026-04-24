@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requireAuthRole } from '@/actions/_shared/user-role'
 
 // ดึงข้อมูลแปลง (Plot Info)
 export async function getPlotById(id: string) {
@@ -42,8 +43,9 @@ export async function getJobAssignments(plotId: string) {
 
 // อัปเดตผู้รับเหมา (Assign Contractor)
 export async function assignContractor(jobId: string, contractorId: string, plotId: string, projectId: string) {
+  await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
-  
+
   const cid = contractorId === "" ? null : contractorId
 
   const { error } = await supabase
@@ -61,6 +63,7 @@ export async function assignContractor(jobId: string, contractorId: string, plot
 
 // อัปเดตสถานะงาน (Update Status)
 export async function updateJobStatus(jobId: string, status: string, plotId: string, projectId: string) {
+  await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
   const { error } = await supabase
     .from('job_assignments')
@@ -77,6 +80,7 @@ export async function updateAgreedPricePerUnit(
   plotId: string,
   projectId: string
 ) {
+  await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
 
   if (agreedPricePerUnit != null && (!Number.isFinite(agreedPricePerUnit) || agreedPricePerUnit < 0)) {
@@ -94,6 +98,7 @@ export async function updateAgreedPricePerUnit(
 
 // ฟังก์ชัน Sync (Log ละเอียด)
 export async function syncPlotJobs(plotId: string, houseModelId: string, projectId: string) {
+  await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
 
   console.log(`[SYNC START] Plot: ${plotId}, Model: ${houseModelId}`)

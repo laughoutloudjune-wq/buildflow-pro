@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requireAuthRole } from '@/actions/_shared/user-role'
 
 // ดึงประเภทช่างทั้งหมด
 export async function getContractorTypes() {
@@ -13,8 +14,9 @@ export async function getContractorTypes() {
 
 // เพิ่มประเภทช่างใหม่
 export async function createContractorType(formData: FormData) {
+  await requireAuthRole(['admin'])
   const supabase = await createClient()
-  
+
   const name = formData.get('name') as string
 
   if (!name) return
@@ -29,6 +31,7 @@ export async function createContractorType(formData: FormData) {
 
 // อัปเดตประเภทช่าง
 export async function updateContractorType(id: number, formData: FormData) {
+    await requireAuthRole(['admin'])
     const supabase = await createClient()
     const name = formData.get('name') as string
 
@@ -49,6 +52,7 @@ export async function updateContractorType(id: number, formData: FormData) {
 
 // ลบประเภทช่าง
 export async function deleteContractorType(id: number) {
+  await requireAuthRole(['admin'])
   const supabase = await createClient()
   const { error } = await supabase.from('contractor_types').delete().match({ id })
   if (error) throw new Error(error.message)

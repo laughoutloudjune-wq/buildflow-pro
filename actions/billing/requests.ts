@@ -1,54 +1,72 @@
-'use server'
+﻿'use server'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { BillingJobInput, BillingPayload } from '@/lib/billing'
 import { validateBillingPayload } from '@/lib/billing'
 import { encodeAdjustmentDescription } from '@/actions/_shared/billing-adjustments'
-import { getCurrentUser, getCurrentUserProfile, getCurrentUserRole, requireRole } from '@/actions/_shared/user-role'
-import type { BillingAdjustmentRecord } from '@/lib/types/billing'
+import {
+  getCurrentUser,
+  getCurrentUserProfile,
+  getCurrentUserRole,
+  requireRole,
+} from '@/actions/_shared/user-role'
+import { buildBillingPaymentNote } from '@/actions/_shared/payment-notes'
+import type {
+  BillingActionSignature,
+  BillingAdjustmentRecord,
+} from '@/lib/types/billing'
 
-type BillingDocRow = {
+// All multi-step DB writes for a billing (request / update / approve / undo /
+// delete) live in PL/pgSQL RPCs added in migration 202604240001_billing_rpcs.
+// TS still handles input validation, totals recomputation, and encoding the
+// adjustment description (which captures author signature + plot name). The
+// RPC accepts already-encoded descriptions and just does the atomic writes.
+
+type JobsForRpc = Array<{
   id: string
-  doc_no?: string | number | null
-  status?: string
-  created_by?: string | null
-  submitted_by?: string | null
+  request_amount: number
+  progress_percent: number | null
+}>
+
+type AdjustmentsForRpc = Array<{
+  type: 'addition' | 'deduction'
+  description: string
+  unit: string
+  quantity: number
+  unit_price: number
+}>
+
+function toJobsForRpc(selectedJobs: BillingJobInput[]): JobsForRpc {
+  return selectedJobs
+    .filter((job) => job.id)
+    .map((job) => ({
+      id: job.id,
+      request_amount: Number(job.request_amount) || 0,
+      progress_percent: job.progress_percent ?? null,
+    }))
 }
 
-function mapBillingJobs(selectedJobs: BillingJobInput[], billingId: string) {
-  return selectedJobs.map((job) => ({
-    billing_id: billingId,
-    job_assignment_id: job.id,
-    amount: job.request_amount,
-    progress_percent: job.progress_percent ?? null,
-  }))
-}
-
-function mapPayments(selectedJobs: BillingJobInput[], billingDate: string, docNo?: string | number | null) {
-  return selectedJobs.map((job) => ({
-    job_assignment_id: job.id,
-    amount: job.request_amount,
-    payment_date: billingDate,
-    note: `เน€เธเธดเธเธ•เธฒเธกเนเธเธงเธฒเธเธเธดเธฅ #${docNo || '-'}`,
-  }))
-}
-
-function mapAdjustments(
+function toAdjustmentsForRpc(
   adjustments: BillingAdjustmentRecord[],
-  billingId: string,
-  signature?: Parameters<typeof encodeAdjustmentDescription>[2]
-) {
+  signature?: BillingActionSignature
+): AdjustmentsForRpc {
   return adjustments.map((adjustment) => ({
-    billing_id: billingId,
     type: adjustment.type,
-    description: encodeAdjustmentDescription(adjustment.description, adjustment.plot_name, signature),
+    description: encodeAdjustmentDescription(
+      adjustment.description,
+      adjustment.plot_name,
+      signature
+    ),
     unit: adjustment.unit,
-    quantity: Number(adjustment.quantity),
-    unit_price: Number(adjustment.unit_price),
+    quantity: Number(adjustment.quantity) || 0,
+    unit_price: Number(adjustment.unit_price) || 0,
   }))
 }
 
+// Legacy direct-approve create path. No UI currently calls this, but we keep
+// the export in case an external script does. It is NOT RPC-wrapped; if it is
+// revived for real use, move it over to `billing_approve` plus an insert RPC.
 export async function createBilling(data: BillingPayload) {
   const supabase = await createClient()
   const user = await getCurrentUser()
@@ -80,12 +98,40 @@ export async function createBilling(data: BillingPayload) {
   const billingId = bill.id
 
   if (payload.selected_jobs.length > 0) {
-    await supabase.from('billing_jobs').insert(mapBillingJobs(payload.selected_jobs, billingId))
-    await supabase.from('payments').insert(mapPayments(payload.selected_jobs, payload.billing_date, bill.doc_no))
+    const note = buildBillingPaymentNote(bill.doc_no)
+    await supabase.from('billing_jobs').insert(
+      payload.selected_jobs.map((job) => ({
+        billing_id: billingId,
+        job_assignment_id: job.id,
+        amount: job.request_amount,
+        progress_percent: job.progress_percent ?? null,
+      }))
+    )
+    await supabase.from('payments').insert(
+      payload.selected_jobs.map((job) => ({
+        billing_id: billingId,
+        job_assignment_id: job.id,
+        amount: job.request_amount,
+        payment_date: payload.billing_date,
+        note,
+      }))
+    )
   }
 
   if (payload.adjustments.length > 0) {
-    await supabase.from('billing_adjustments').insert(mapAdjustments(payload.adjustments, billingId))
+    await supabase.from('billing_adjustments').insert(
+      payload.adjustments.map((adjustment) => ({
+        billing_id: billingId,
+        type: adjustment.type,
+        description: encodeAdjustmentDescription(
+          adjustment.description,
+          adjustment.plot_name
+        ),
+        unit: adjustment.unit,
+        quantity: Number(adjustment.quantity),
+        unit_price: Number(adjustment.unit_price),
+      }))
+    )
   }
 
   revalidatePath('/dashboard/billing')
@@ -101,59 +147,41 @@ export async function createBillingRequest(data: BillingPayload) {
   requireRole(['foreman', 'pm', 'admin'], role, 'No permission to create billing request')
   const profile = await getCurrentUserProfile(supabase, user.id)
 
-  const requestType = payload.type
-  const isExtraWork = requestType === 'extra_work'
-  const totalWorkAmount = isExtraWork ? 0 : payload.total_work_amount
-
-  const { data: bill, error: billError } = await supabase
-    .from('billings')
-    .insert([
-      {
-        project_id: payload.project_id,
-        contractor_id: payload.contractor_id,
-        plot_id: payload.plot_id || null,
-        billing_date: payload.billing_date,
-        note: payload.note,
-        total_work_amount: totalWorkAmount,
-        total_add_amount: payload.total_add_amount,
-        total_deduct_amount: payload.total_deduct_amount,
-        net_amount: payload.net_amount,
-        status: 'pending_review',
-        type: requestType,
-        attachment_urls: payload.attachment_urls || null,
-        reason_for_dc: payload.reason_for_dc || null,
-        created_by: user.id,
-        submitted_at: new Date().toISOString(),
-        submitted_by: user.id,
-      },
-    ])
-    .select()
-    .single()
-
-  if (billError) throw new Error(billError.message)
-
-  const billingId = bill.id
-
-  if (!isExtraWork && payload.selected_jobs.length > 0) {
-    await supabase.from('billing_jobs').insert(mapBillingJobs(payload.selected_jobs, billingId))
+  const signature: BillingActionSignature = {
+    user_id: user.id,
+    full_name: profile?.full_name || '',
+    role: profile?.role || 'foreman',
+    action: 'create',
+    at: new Date().toISOString(),
   }
 
-  if (payload.adjustments.length > 0) {
-    await supabase.from('billing_adjustments').insert(
-      mapAdjustments(payload.adjustments, billingId, {
-        user_id: user.id,
-        full_name: profile?.full_name || '',
-        role: profile?.role || 'foreman',
-        action: 'create',
-        at: new Date().toISOString(),
-      })
-    )
-  }
+  const { data: result, error } = await supabase.rpc('billing_create_request', {
+    p_payload: {
+      project_id: payload.project_id,
+      contractor_id: payload.contractor_id,
+      plot_id: payload.plot_id ?? null,
+      billing_date: payload.billing_date,
+      note: payload.note ?? null,
+      type: payload.type,
+      total_work_amount: payload.total_work_amount,
+      total_add_amount: payload.total_add_amount,
+      total_deduct_amount: payload.total_deduct_amount,
+      net_amount: payload.net_amount,
+      attachment_urls: payload.attachment_urls ?? null,
+      reason_for_dc: payload.reason_for_dc ?? null,
+      selected_jobs: toJobsForRpc(payload.selected_jobs),
+      adjustments: toAdjustmentsForRpc(payload.adjustments, signature),
+    },
+  })
 
+  if (error) throw new Error(error.message)
+
+  const row = (result ?? {}) as { id: string; doc_no?: string | number | null }
+  const doc_no = row.doc_no == null ? undefined : row.doc_no
   revalidatePath('/dashboard/billing')
-  revalidatePath(`/dashboard/billing/${billingId}/review`)
+  if (row.id) revalidatePath(`/dashboard/billing/${row.id}/review`)
 
-  return bill
+  return { id: row.id, doc_no }
 }
 
 export async function updateBillingRequest(id: string, data: BillingPayload) {
@@ -164,107 +192,48 @@ export async function updateBillingRequest(id: string, data: BillingPayload) {
   if (!user) throw new Error('User not found')
   const profile = await getCurrentUserProfile(supabase, user.id)
   const role = profile?.role || 'foreman'
-  const isPrivileged = role === 'pm' || role === 'admin'
 
-  const { data: current, error: currentError } = await supabase
-    .from('billings')
-    .select('id, doc_no, status, created_by, submitted_by')
-    .eq('id', id)
-    .single()
-
-  const currentBilling = current as BillingDocRow | null
-  if (currentError) throw new Error(currentError.message)
-  if (!currentBilling) throw new Error('Billing not found')
-  if (currentBilling.status !== 'pending_review') throw new Error('Can edit pending review only')
-
-  if (!isPrivileged) {
-    if (currentBilling.created_by && currentBilling.created_by !== user.id) throw new Error('No permission to edit this request')
-    if (!currentBilling.created_by && currentBilling.submitted_by !== user.id) throw new Error('No permission to edit this request')
+  const signature: BillingActionSignature = {
+    user_id: user.id,
+    full_name: profile?.full_name || '',
+    role,
+    action: 'edit',
+    at: new Date().toISOString(),
   }
 
-  const requestType = payload.type
-  const isExtraWork = requestType === 'extra_work'
-  const totalWorkAmount = isExtraWork ? 0 : payload.total_work_amount
-
-  const { error: updateError } = await supabase
-    .from('billings')
-    .update({
+  const { data: result, error } = await supabase.rpc('billing_update_request', {
+    p_id: id,
+    p_payload: {
       project_id: payload.project_id,
       contractor_id: payload.contractor_id,
-      plot_id: payload.plot_id || null,
+      plot_id: payload.plot_id ?? null,
       billing_date: payload.billing_date,
-      note: payload.note,
-      total_work_amount: totalWorkAmount,
+      note: payload.note ?? null,
+      type: payload.type,
+      total_work_amount: payload.total_work_amount,
       total_add_amount: payload.total_add_amount,
       total_deduct_amount: payload.total_deduct_amount,
       net_amount: payload.net_amount,
-      type: requestType,
-      attachment_urls: payload.attachment_urls || null,
-      reason_for_dc: payload.reason_for_dc || null,
-      submitted_at: new Date().toISOString(),
-    })
-    .eq('id', id)
+      attachment_urls: payload.attachment_urls ?? null,
+      reason_for_dc: payload.reason_for_dc ?? null,
+      selected_jobs: toJobsForRpc(payload.selected_jobs),
+      adjustments: toAdjustmentsForRpc(payload.adjustments, signature),
+    },
+  })
 
-  if (updateError) throw new Error(updateError.message)
+  if (error) throw new Error(error.message)
 
-  await supabase.from('billing_jobs').delete().eq('billing_id', id)
-  await supabase.from('billing_adjustments').delete().eq('billing_id', id)
-
-  if (!isExtraWork && payload.selected_jobs.length > 0) {
-    await supabase.from('billing_jobs').insert(mapBillingJobs(payload.selected_jobs, id))
-  }
-
-  if (payload.adjustments.length > 0) {
-    await supabase.from('billing_adjustments').insert(
-      mapAdjustments(payload.adjustments, id, {
-        user_id: user.id,
-        full_name: profile?.full_name || '',
-        role,
-        action: 'edit',
-        at: new Date().toISOString(),
-      })
-    )
-  }
-
+  const row = (result ?? {}) as { id?: string; doc_no?: string | number | null }
+  const doc_no = row.doc_no == null ? undefined : row.doc_no
   revalidatePath('/dashboard/foreman/history')
   revalidatePath(`/dashboard/billing/${id}/review`)
 
-  return { id, doc_no: currentBilling.doc_no }
+  return { id, doc_no }
 }
 
 export async function deleteBilling(id: string) {
   const supabase = await createClient()
-  const user = await getCurrentUser()
-  if (!user) throw new Error('User not found')
-  const role = await getCurrentUserRole(supabase, user.id)
-
-  const { data: bill, error: billError } = await supabase
-    .from('billings')
-    .select('id, doc_no, status, created_by, submitted_by')
-    .eq('id', id)
-    .single()
-
-  const billing = bill as BillingDocRow | null
-  if (billError) throw new Error(billError.message)
-  if (!billing) throw new Error('Billing not found.')
-
-  const isOwner = billing.created_by === user.id || billing.submitted_by === user.id
-  if (billing.status === 'approved' && !(role === 'pm' || role === 'admin')) {
-    throw new Error('Only PM/Admin can delete approved billing')
-  }
-  if (billing.status !== 'approved' && !(isOwner || role === 'pm' || role === 'admin')) {
-    throw new Error('No permission to delete this billing')
-  }
-
-  if (billing.status === 'approved') {
-    const note = `เน€เธเธดเธเธ•เธฒเธกเนเธเธงเธฒเธเธเธดเธฅ #${billing.doc_no || '-'}`
-    await supabase.from('payments').delete().match({ note })
-  }
-
-  await supabase.from('billing_jobs').delete().match({ billing_id: id })
-  await supabase.from('billing_adjustments').delete().match({ billing_id: id })
-
-  const { error } = await supabase.from('billings').delete().match({ id })
+  const { error } = await supabase.rpc('billing_delete', { p_id: id })
   if (error) throw new Error(error.message)
 
   revalidatePath('/dashboard/billing')

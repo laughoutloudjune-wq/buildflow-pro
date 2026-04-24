@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { normalizeAdjustmentsWithPlot } from '@/actions/_shared/billing-adjustments'
+import { requireAuthRole } from '@/actions/_shared/user-role'
 
 // ดึงรายชื่อผู้รับเหมาทั้งหมด (พร้อมชื่อประเภทช่าง)
 export async function getContractors() {
@@ -143,8 +144,9 @@ function buildBankAccount(formData: FormData) {
 
 // เพิ่มผู้รับเหมาใหม่
 export async function createContractor(formData: FormData) {
+  await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
-  
+
   const name = formData.get('name') as string
   const type_id = formData.get('type_id') as string
   const phone = formData.get('phone') as string
@@ -169,6 +171,7 @@ export async function createContractor(formData: FormData) {
 
 // ลบผู้รับเหมา
 export async function deleteContractor(id: string) {
+  await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
   const { error } = await supabase.from('contractors').delete().match({ id })
   if (error) throw new Error(error.message)
@@ -177,6 +180,7 @@ export async function deleteContractor(id: string) {
 
 // อัปเดตผู้รับเหมา
 export async function updateContractor(id: string, formData: FormData) {
+  await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
 
   const name = formData.get('name') as string

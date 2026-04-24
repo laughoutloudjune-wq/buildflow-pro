@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requireAuthRole } from '@/actions/_shared/user-role'
 
 // ดึงแปลงทั้งหมดในโครงการ
 export async function getPlotsByProjectId(projectId: string) {
@@ -21,6 +22,7 @@ export async function getPlotsByProjectId(projectId: string) {
 
 // สร้างแปลงใหม่ + Auto Generate Jobs
 export async function createPlot(formData: FormData) {
+  await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
   const project_id = formData.get('project_id') as string
   const house_model_id = formData.get('house_model_id') as string
@@ -97,6 +99,7 @@ export async function createPlot(formData: FormData) {
 }
 
 export async function deletePlot(id: string, projectId: string) {
+  await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
   const { error } = await supabase.from('plots').delete().match({ id })
   if (error) throw new Error(error.message)
@@ -104,6 +107,7 @@ export async function deletePlot(id: string, projectId: string) {
 }
 
 export async function updatePlot(id: string, projectId: string, formData: FormData) {
+    await requireAuthRole(['admin', 'pm'])
     const supabase = await createClient()
     const name = formData.get('name') as string
     const house_model_id = formData.get('house_model_id') as string
