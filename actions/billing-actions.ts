@@ -12,10 +12,7 @@ import {
   createBillingRequest as createBillingRequestImpl,
   updateBillingRequest as updateBillingRequestImpl,
   deleteBilling as deleteBillingImpl,
-  type BillingRequestResult,
 } from '@/actions/billing/requests'
-
-export type { BillingRequestResult }
 import {
   approveBilling as approveBillingImpl,
   rejectBilling as rejectBillingImpl,
