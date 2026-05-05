@@ -20,6 +20,7 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<any>(null)
   const [plots, setPlots] = useState<any[]>([])
   const [houseModels, setHouseModels] = useState<any[]>([])
+  const [actionError, setActionError] = useState<string | null>(null)
   
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -104,13 +105,18 @@ export default function ProjectDetailPage() {
     const handleSubmit = async (formData: FormData) => {
   
       setIsModalOpen(false)
+      setActionError(null)
   
       startTransition(async () => {
   
         formData.append('project_id', projectId)
-  
-        await createPlot(formData)
-  
+
+        const res = await createPlot(formData)
+        if (!res.success) {
+          setActionError(res.error)
+          return
+        }
+
         await loadData()
   
       })
@@ -130,11 +136,16 @@ export default function ProjectDetailPage() {
     const handleDelete = async (plotId: string) => {
   
       if (!confirm('ยืนยันลบแปลงนี้? ข้อมูลงานที่มอบหมายจะหายไปด้วย')) return
+      setActionError(null)
   
       startTransition(async () => {
   
-        await deletePlot(plotId, projectId)
-  
+        const res = await deletePlot(plotId, projectId)
+        if (!res.success) {
+          setActionError(res.error)
+          return
+        }
+
         await loadData()
   
       })
@@ -220,6 +231,11 @@ export default function ProjectDetailPage() {
     return (
   
       <div className="space-y-6">
+        {actionError ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {actionError}
+          </div>
+        ) : null}
   
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
   
