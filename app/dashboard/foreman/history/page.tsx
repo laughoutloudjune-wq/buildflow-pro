@@ -25,12 +25,19 @@ export default function ForemanHistoryPage() {
   const router = useRouter()
   const [billings, setBillings] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
-    const data = await getBillingsByCreator()
-    setBillings(data)
-    setLoading(false)
+    setLoadError(null)
+    try {
+      const data = await getBillingsByCreator()
+      setBillings(data)
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'โหลดรายการไม่สำเร็จ')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -109,6 +116,17 @@ export default function ForemanHistoryPage() {
       <Card className="p-4 bg-slate-50/60 border-slate-200">
         {loading ? (
           <div className="p-8 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto"/></div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center gap-3 py-12">
+            <p className="text-sm text-red-600">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              ลองโหลดใหม่
+            </button>
+          </div>
         ) : billings.length === 0 ? (
           <div className="p-8 text-center text-slate-400">ยังไม่มีคำขอ</div>
         ) : (

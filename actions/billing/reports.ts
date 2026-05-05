@@ -241,7 +241,7 @@ export async function getPlotHistoryReport(
 
 export async function getBillings() {
   const supabase = await createClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('billings')
     .select(`
       *,
@@ -257,6 +257,7 @@ export async function getBillings() {
       billing_adjustments (id, type, description)
     `)
     .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
   const rows = (data || []) as BillingReportRow[]
   const plotMap = await getPlotNameMap(supabase, getPlotIds(rows))
   return withPlotNames(rows, plotMap)
