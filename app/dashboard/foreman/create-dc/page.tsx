@@ -174,7 +174,11 @@ export default function CreateExtraWorkPage() {
         ? await updateBillingRequest(editId, payload)
         : await createBillingRequest(payload)
 
-      setDocNo(result?.doc_no || '-')
+      if (!result.success) {
+        setError(result.error)
+        return
+      }
+      setDocNo(result.doc_no || '-')
       setShowSuccessModal(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save DC request')

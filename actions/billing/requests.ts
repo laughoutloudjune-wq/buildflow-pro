@@ -137,98 +137,112 @@ export async function createBilling(data: BillingPayload) {
   revalidatePath('/dashboard/billing')
 }
 
-export async function createBillingRequest(data: BillingPayload) {
-  const supabase = await createClient()
-  const user = await getCurrentUser()
-  const payload = validateBillingPayload(data)
+export type BillingRequestResult =
+  | { success: true; id: string; doc_no?: string | number }
+  | { success: false; error: string }
 
-  if (!user) throw new Error('User not found')
-  const role = await getCurrentUserRole(supabase, user.id)
-  requireRole(['foreman', 'pm', 'admin'], role, 'No permission to create billing request')
-  const profile = await getCurrentUserProfile(supabase, user.id)
+export async function createBillingRequest(data: BillingPayload): Promise<BillingRequestResult> {
+  try {
+    const supabase = await createClient()
+    const user = await getCurrentUser()
+    const payload = validateBillingPayload(data)
 
-  const signature: BillingActionSignature = {
-    user_id: user.id,
-    full_name: profile?.full_name || '',
-    role: profile?.role || 'foreman',
-    action: 'create',
-    at: new Date().toISOString(),
+    if (!user) return { success: false, error: 'User not found' }
+    const role = await getCurrentUserRole(supabase, user.id)
+    if (!['foreman', 'pm', 'admin'].includes(role)) {
+      return { success: false, error: 'No permission to create billing request' }
+    }
+    const profile = await getCurrentUserProfile(supabase, user.id)
+
+    const signature: BillingActionSignature = {
+      user_id: user.id,
+      full_name: profile?.full_name || '',
+      role: profile?.role || 'foreman',
+      action: 'create',
+      at: new Date().toISOString(),
+    }
+
+    const { data: result, error } = await supabase.rpc('billing_create_request', {
+      p_payload: {
+        project_id: payload.project_id,
+        contractor_id: payload.contractor_id,
+        plot_id: payload.plot_id ?? null,
+        billing_date: payload.billing_date,
+        note: payload.note ?? null,
+        type: payload.type,
+        total_work_amount: payload.total_work_amount,
+        total_add_amount: payload.total_add_amount,
+        total_deduct_amount: payload.total_deduct_amount,
+        net_amount: payload.net_amount,
+        attachment_urls: payload.attachment_urls ?? null,
+        reason_for_dc: payload.reason_for_dc ?? null,
+        selected_jobs: toJobsForRpc(payload.selected_jobs),
+        adjustments: toAdjustmentsForRpc(payload.adjustments, signature),
+      },
+    })
+
+    if (error) return { success: false, error: error.message }
+
+    const row = (result ?? {}) as { id: string; doc_no?: string | number | null }
+    const doc_no = row.doc_no == null ? undefined : row.doc_no
+    revalidatePath('/dashboard/billing')
+    if (row.id) revalidatePath(`/dashboard/billing/${row.id}/review`)
+
+    return { success: true, id: row.id, doc_no }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to create billing request' }
   }
-
-  const { data: result, error } = await supabase.rpc('billing_create_request', {
-    p_payload: {
-      project_id: payload.project_id,
-      contractor_id: payload.contractor_id,
-      plot_id: payload.plot_id ?? null,
-      billing_date: payload.billing_date,
-      note: payload.note ?? null,
-      type: payload.type,
-      total_work_amount: payload.total_work_amount,
-      total_add_amount: payload.total_add_amount,
-      total_deduct_amount: payload.total_deduct_amount,
-      net_amount: payload.net_amount,
-      attachment_urls: payload.attachment_urls ?? null,
-      reason_for_dc: payload.reason_for_dc ?? null,
-      selected_jobs: toJobsForRpc(payload.selected_jobs),
-      adjustments: toAdjustmentsForRpc(payload.adjustments, signature),
-    },
-  })
-
-  if (error) throw new Error(error.message)
-
-  const row = (result ?? {}) as { id: string; doc_no?: string | number | null }
-  const doc_no = row.doc_no == null ? undefined : row.doc_no
-  revalidatePath('/dashboard/billing')
-  if (row.id) revalidatePath(`/dashboard/billing/${row.id}/review`)
-
-  return { id: row.id, doc_no }
 }
 
-export async function updateBillingRequest(id: string, data: BillingPayload) {
-  const supabase = await createClient()
-  const user = await getCurrentUser()
-  const payload = validateBillingPayload(data)
+export async function updateBillingRequest(id: string, data: BillingPayload): Promise<BillingRequestResult> {
+  try {
+    const supabase = await createClient()
+    const user = await getCurrentUser()
+    const payload = validateBillingPayload(data)
 
-  if (!user) throw new Error('User not found')
-  const profile = await getCurrentUserProfile(supabase, user.id)
-  const role = profile?.role || 'foreman'
+    if (!user) return { success: false, error: 'User not found' }
+    const profile = await getCurrentUserProfile(supabase, user.id)
+    const role = profile?.role || 'foreman'
 
-  const signature: BillingActionSignature = {
-    user_id: user.id,
-    full_name: profile?.full_name || '',
-    role,
-    action: 'edit',
-    at: new Date().toISOString(),
+    const signature: BillingActionSignature = {
+      user_id: user.id,
+      full_name: profile?.full_name || '',
+      role,
+      action: 'edit',
+      at: new Date().toISOString(),
+    }
+
+    const { data: result, error } = await supabase.rpc('billing_update_request', {
+      p_id: id,
+      p_payload: {
+        project_id: payload.project_id,
+        contractor_id: payload.contractor_id,
+        plot_id: payload.plot_id ?? null,
+        billing_date: payload.billing_date,
+        note: payload.note ?? null,
+        type: payload.type,
+        total_work_amount: payload.total_work_amount,
+        total_add_amount: payload.total_add_amount,
+        total_deduct_amount: payload.total_deduct_amount,
+        net_amount: payload.net_amount,
+        attachment_urls: payload.attachment_urls ?? null,
+        reason_for_dc: payload.reason_for_dc ?? null,
+        selected_jobs: toJobsForRpc(payload.selected_jobs),
+        adjustments: toAdjustmentsForRpc(payload.adjustments, signature),
+      },
+    })
+
+    if (error) return { success: false, error: error.message }
+
+    const row = (result ?? {}) as { id?: string; doc_no?: string | number | null }
+    const doc_no = row.doc_no == null ? undefined : row.doc_no
+    revalidatePath('/dashboard/foreman/history')
+    revalidatePath(`/dashboard/billing/${id}/review`)
+
+    return { success: true, id, doc_no }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to update billing request' }
   }
-
-  const { data: result, error } = await supabase.rpc('billing_update_request', {
-    p_id: id,
-    p_payload: {
-      project_id: payload.project_id,
-      contractor_id: payload.contractor_id,
-      plot_id: payload.plot_id ?? null,
-      billing_date: payload.billing_date,
-      note: payload.note ?? null,
-      type: payload.type,
-      total_work_amount: payload.total_work_amount,
-      total_add_amount: payload.total_add_amount,
-      total_deduct_amount: payload.total_deduct_amount,
-      net_amount: payload.net_amount,
-      attachment_urls: payload.attachment_urls ?? null,
-      reason_for_dc: payload.reason_for_dc ?? null,
-      selected_jobs: toJobsForRpc(payload.selected_jobs),
-      adjustments: toAdjustmentsForRpc(payload.adjustments, signature),
-    },
-  })
-
-  if (error) throw new Error(error.message)
-
-  const row = (result ?? {}) as { id?: string; doc_no?: string | number | null }
-  const doc_no = row.doc_no == null ? undefined : row.doc_no
-  revalidatePath('/dashboard/foreman/history')
-  revalidatePath(`/dashboard/billing/${id}/review`)
-
-  return { id, doc_no }
 }
 
 export async function deleteBilling(id: string) {

@@ -254,6 +254,10 @@ export default function CreateBillingRequestPage() {
       const result = editId
         ? await updateBillingRequest(editId, { ...dataToSubmit, type: 'progress' })
         : await createBillingRequest(dataToSubmit)
+      if (!result.success) {
+        setError(result.error)
+        return
+      }
       setSubmittedData({ ...dataToSubmit, doc_no: result.doc_no, net_amount: netAmount })
       setShowSuccessModal(true)
     } catch (err) {
