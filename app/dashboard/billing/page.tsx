@@ -104,6 +104,15 @@ export default function BillingListPage() {
     void loadBillings()
   }, [loadBillings])
 
+  // Refetch when returning to the tab so PMs see new foreman submissions without a full reload.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void loadBillings()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [loadBillings])
+
   const handleRowClick = (bill: BillingListItem) => {
     if (bill.status === 'pending_review') {
       router.push(`/dashboard/billing/${bill.id}/review`)

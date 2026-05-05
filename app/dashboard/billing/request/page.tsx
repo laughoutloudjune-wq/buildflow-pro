@@ -31,6 +31,7 @@ export default function CreateBillingRequestPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [successNextPath, setSuccessNextPath] = useState('/dashboard/foreman/history')
   const [submittedData, setSubmittedData] = useState<{ project_id: string; contractor_id: string; net_amount: number; doc_no?: string | number } | null>(null)
   const [editingBilling, setEditingBilling] = useState<BillingDetail>(null)
   const [didPrefillJobs, setDidPrefillJobs] = useState(false)
@@ -258,6 +259,7 @@ export default function CreateBillingRequestPage() {
         setError(result.error)
         return
       }
+      setSuccessNextPath(result.nextPath)
       setSubmittedData({ ...dataToSubmit, doc_no: result.doc_no, net_amount: netAmount })
       setShowSuccessModal(true)
     } catch (err) {
@@ -269,7 +271,8 @@ export default function CreateBillingRequestPage() {
 
   const handleModalClose = () => {
     setShowSuccessModal(false)
-    router.push('/dashboard/billing')
+    router.refresh()
+    router.push(successNextPath)
   }
 
   return (

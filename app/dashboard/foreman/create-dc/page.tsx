@@ -45,6 +45,7 @@ export default function CreateExtraWorkPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [successNextPath, setSuccessNextPath] = useState('/dashboard/foreman/history')
   const [docNo, setDocNo] = useState<string | number>('')
   const [existingAttachmentUrls, setExistingAttachmentUrls] = useState<string[]>([])
 
@@ -178,6 +179,7 @@ export default function CreateExtraWorkPage() {
         setError(result.error)
         return
       }
+      setSuccessNextPath(result.nextPath)
       setDocNo(result.doc_no || '-')
       setShowSuccessModal(true)
     } catch (err) {
@@ -190,13 +192,25 @@ export default function CreateExtraWorkPage() {
   return (
     <div className="container mx-auto p-4">
       {showSuccessModal && (
-        <Modal isOpen={showSuccessModal} onClose={() => router.push('/dashboard/foreman/history')}>
+        <Modal
+          isOpen={showSuccessModal}
+          onClose={() => {
+            router.refresh()
+            router.push(successNextPath)
+          }}
+        >
           <div className="p-4 text-center">
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-2">ส่งคำขอสำเร็จ</h2>
             <p className="text-gray-600 mb-4">ใบขอเบิกเลขที่ #{docNo} ถูกส่งเพื่อตรวจสอบแล้ว</p>
-            <button onClick={() => router.push('/dashboard/foreman/history')} className="w-full bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700">
-              ไปที่หน้าประวัติคำขอ
+            <button
+              onClick={() => {
+                router.refresh()
+                router.push(successNextPath)
+              }}
+              className="w-full bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700"
+            >
+              ไปที่หน้าถัดไป
             </button>
           </div>
         </Modal>

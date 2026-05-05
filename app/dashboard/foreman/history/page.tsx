@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBillingsByCreator, deleteBilling } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
@@ -27,7 +27,7 @@ export default function ForemanHistoryPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setLoadError(null)
     try {
@@ -38,11 +38,19 @@ export default function ForemanHistoryPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    load()
-  }, [])
+    void load()
+  }, [load])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [load])
 
   const getPlotLabel = (bill: any) => {
     const baseProject = bill.projects?.name || '-'

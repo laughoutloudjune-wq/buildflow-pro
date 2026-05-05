@@ -9,13 +9,18 @@ import {
   getCurrentUser,
   getCurrentUserProfile,
   getCurrentUserRole,
-  requireRole,
 } from '@/actions/_shared/user-role'
 import { buildBillingPaymentNote } from '@/actions/_shared/payment-notes'
 import type {
   BillingActionSignature,
   BillingAdjustmentRecord,
+  UserRole,
 } from '@/lib/types/billing'
+
+/** Where to send the user after creating/updating a billing request (role-aware). */
+function nextPathAfterBillingSubmit(role: UserRole): string {
+  return role === 'foreman' ? '/dashboard/foreman/history' : '/dashboard/billing'
+}
 
 // All multi-step DB writes for a billing (request / update / approve / undo /
 // delete) live in PL/pgSQL RPCs added in migration 202604240001_billing_rpcs.
@@ -138,7 +143,7 @@ export async function createBilling(data: BillingPayload) {
 }
 
 export type BillingRequestResult =
-  | { success: true; id: string; doc_no?: string | number }
+  | { success: true; id: string; doc_no?: string | number; nextPath: string }
   | { success: false; error: string }
 
 export async function createBillingRequest(data: BillingPayload): Promise<BillingRequestResult> {
@@ -185,10 +190,12 @@ export async function createBillingRequest(data: BillingPayload): Promise<Billin
 
     const row = (result ?? {}) as { id: string; doc_no?: string | number | null }
     const doc_no = row.doc_no == null ? undefined : row.doc_no
+    const nextPath = nextPathAfterBillingSubmit(role)
     revalidatePath('/dashboard/billing')
+    revalidatePath('/dashboard/foreman/history')
     if (row.id) revalidatePath(`/dashboard/billing/${row.id}/review`)
 
-    return { success: true, id: row.id, doc_no }
+    return { success: true, id: row.id, doc_no, nextPath }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Failed to create billing request' }
   }
@@ -202,12 +209,12 @@ export async function updateBillingRequest(id: string, data: BillingPayload): Pr
 
     if (!user) return { success: false, error: 'User not found' }
     const profile = await getCurrentUserProfile(supabase, user.id)
-    const role = profile?.role || 'foreman'
+    const role = await getCurrentUserRole(supabase, user.id)
 
     const signature: BillingActionSignature = {
       user_id: user.id,
       full_name: profile?.full_name || '',
-      role,
+      role: profile?.role || role,
       action: 'edit',
       at: new Date().toISOString(),
     }
@@ -236,10 +243,12 @@ export async function updateBillingRequest(id: string, data: BillingPayload): Pr
 
     const row = (result ?? {}) as { id?: string; doc_no?: string | number | null }
     const doc_no = row.doc_no == null ? undefined : row.doc_no
+    const nextPath = nextPathAfterBillingSubmit(role)
+    revalidatePath('/dashboard/billing')
     revalidatePath('/dashboard/foreman/history')
     revalidatePath(`/dashboard/billing/${id}/review`)
 
-    return { success: true, id, doc_no }
+    return { success: true, id, doc_no, nextPath }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Failed to update billing request' }
   }
@@ -251,4 +260,5 @@ export async function deleteBilling(id: string) {
   if (error) throw new Error(error.message)
 
   revalidatePath('/dashboard/billing')
+  revalidatePath('/dashboard/foreman/history')
 }
