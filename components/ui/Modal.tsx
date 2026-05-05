@@ -59,7 +59,7 @@ export default function Modal({ isOpen, onClose, title, children, panelClassName
       {/* Backdrop (non-clickable — avoids losing form input; use X or Esc) */}
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" aria-hidden />
 
-      <div className="relative flex min-h-full justify-center p-4 sm:p-6">
+      <div className="relative flex min-h-full items-center justify-center p-4 sm:p-6">
         <div className={panelClasses}>
           {title ? (
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-4 sm:py-4">
