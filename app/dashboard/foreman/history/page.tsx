@@ -94,7 +94,7 @@ export default function ForemanHistoryPage() {
   const handleEdit = (bill: any) => {
     const target = bill.type === 'extra_work'
       ? `/dashboard/foreman/create-dc?editId=${bill.id}`
-      : `/dashboard/billing/request?editId=${bill.id}`
+      : `/dashboard/foreman/request?editId=${bill.id}`
     router.push(target)
   }
 

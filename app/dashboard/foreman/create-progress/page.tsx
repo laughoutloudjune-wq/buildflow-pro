@@ -11,7 +11,7 @@ export default async function CreateProgressPage({
   const editId = params?.editId
 
   if (editId) {
-    redirect(`/dashboard/billing/request?editId=${editId}`)
+    redirect(`/dashboard/foreman/request?editId=${editId}`)
   }
 
   return (
@@ -21,7 +21,7 @@ export default async function CreateProgressPage({
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <Link
-          href="/dashboard/billing/request"
+          href="/dashboard/foreman/request"
           className="rounded-xl border border-blue-200 bg-blue-50 p-5 transition hover:border-blue-300 hover:bg-blue-100/70"
         >
           <div className="text-lg font-bold text-blue-900">เบิกงวดงานหลัก</div>

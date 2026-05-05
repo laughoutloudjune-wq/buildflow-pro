@@ -5,6 +5,7 @@
 const PREFIX_TITLES: [string, string][] = [
   ['/dashboard/billing/request', 'สร้างใบขอเบิก'],
   ['/dashboard/billing/create', 'สร้างเบิกจ่าย'],
+  ['/dashboard/foreman/request', 'สร้างใบขอเบิก'],
   ['/dashboard/foreman/create-progress', 'ตรวจหน้างาน (งวด)'],
   ['/dashboard/foreman/create-dc', 'สร้างใบเบิก DC'],
   ['/dashboard/foreman/history', 'ประวัติ Foreman'],
