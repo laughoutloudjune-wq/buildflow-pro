@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { requireAuthRole } from '@/actions/_shared/user-role'
+import { requireModuleAccess } from '@/lib/auth/route-access'
 
 // --- HOUSE MODELS (แบบบ้าน) ---
 
@@ -37,7 +37,7 @@ export async function getHouseModelById(id: string) {
 }
 
 export async function createHouseModel(formData: FormData) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('boq')
   const supabase = await createClient()
   const name = formData.get('name') as string
   const code = formData.get('code') as string
@@ -58,7 +58,7 @@ export async function createHouseModel(formData: FormData) {
 }
 
 export async function deleteHouseModel(id: string) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('boq')
   const supabase = await createClient()
   const { error } = await supabase.from('house_models').delete().match({ id })
   if (error) throw new Error(error.message)
@@ -66,7 +66,7 @@ export async function deleteHouseModel(id: string) {
 }
 
 export async function updateHouseModel(id: string, formData: FormData) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('boq')
   const supabase = await createClient()
   const name = formData.get('name') as string
   const code = formData.get('code') as string
@@ -106,7 +106,7 @@ export async function getBOQItems(modelId: string) {
 }
 
 export async function createBOQItem(formData: FormData) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('boq')
   const supabase = await createClient()
   const house_model_id = formData.get('house_model_id') as string
   const formProjectId = formData.get('project_id') as string
@@ -146,7 +146,7 @@ export async function createBOQItem(formData: FormData) {
 }
 
 export async function deleteBOQItem(id: string, modelId: string) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('boq')
   const supabase = await createClient()
   const { error } = await supabase.from('boq_master').delete().match({ id })
   if (error) throw new Error(error.message)
@@ -154,7 +154,7 @@ export async function deleteBOQItem(id: string, modelId: string) {
 }
 
 export async function updateBOQItem(id: string, formData: FormData) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('boq')
   const supabase = await createClient()
   const house_model_id = formData.get('house_model_id') as string
   const formProjectId = formData.get('project_id') as string
@@ -206,7 +206,7 @@ type ImportBOQPayload = {
 }
 
 export async function importBOQItems(payload: ImportBOQPayload) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('boq')
   const supabase = await createClient()
 
   if (!payload?.target_model_id || !payload?.source_model_id) {

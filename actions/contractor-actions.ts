@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { normalizeAdjustmentsWithPlot } from '@/actions/_shared/billing-adjustments'
-import { requireAuthRole } from '@/actions/_shared/user-role'
+import { requireModuleAccess } from '@/lib/auth/route-access'
 
 // ดึงรายชื่อผู้รับเหมาทั้งหมด (พร้อมชื่อประเภทช่าง)
 export async function getContractors() {
@@ -144,7 +144,7 @@ function buildBankAccount(formData: FormData) {
 
 // เพิ่มผู้รับเหมาใหม่
 export async function createContractor(formData: FormData) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('contractors')
   const supabase = await createClient()
 
   const name = formData.get('name') as string
@@ -171,7 +171,7 @@ export async function createContractor(formData: FormData) {
 
 // ลบผู้รับเหมา
 export async function deleteContractor(id: string) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('contractors')
   const supabase = await createClient()
   const { error } = await supabase.from('contractors').delete().match({ id })
   if (error) throw new Error(error.message)
@@ -180,7 +180,7 @@ export async function deleteContractor(id: string) {
 
 // อัปเดตผู้รับเหมา
 export async function updateContractor(id: string, formData: FormData) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('contractors')
   const supabase = await createClient()
 
   const name = formData.get('name') as string

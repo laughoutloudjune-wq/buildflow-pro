@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { requireAuthRole } from '@/actions/_shared/user-role'
+import { requireModuleAccess } from '@/lib/auth/route-access'
 
 // ดึงโครงการทั้งหมด
 export async function getProjects() {
@@ -42,7 +42,7 @@ export async function getProjectById(id: string) {
 
 // สร้างโครงการ
 export async function createProject(formData: FormData) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('projects')
   const supabase = await createClient()
   const name = formData.get('name') as string
   const location = formData.get('location') as string
@@ -62,7 +62,7 @@ export async function createProject(formData: FormData) {
 
 // ลบโครงการ
 export async function deleteProject(id: string) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('projects')
   const supabase = await createClient()
   const { error } = await supabase.from('projects').delete().match({ id })
 
@@ -74,7 +74,7 @@ export async function deleteProject(id: string) {
 
 // อัปเดตโครงการ
 export async function updateProject(id: string, formData: FormData) {
-  await requireAuthRole(['admin', 'pm'])
+  await requireModuleAccess('projects')
   const supabase = await createClient()
   const name = formData.get('name') as string
   const location = formData.get('location') as string
