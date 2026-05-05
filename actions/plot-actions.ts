@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { requireAuthRole } from '@/actions/_shared/user-role'
+import { requireModuleAccess } from '@/lib/auth/route-access'
 
 export type PlotActionResult =
   | { success: true }
@@ -27,7 +27,7 @@ export async function getPlotsByProjectId(projectId: string) {
 // สร้างแปลงใหม่ + Auto Generate Jobs
 export async function createPlot(formData: FormData): Promise<PlotActionResult> {
   try {
-    await requireAuthRole(['admin', 'pm'])
+    await requireModuleAccess('projects')
     const supabase = await createClient()
     const project_id = String(formData.get('project_id') || '')
     const house_model_id = String(formData.get('house_model_id') || '')
@@ -115,7 +115,7 @@ export async function createPlot(formData: FormData): Promise<PlotActionResult> 
 
 export async function deletePlot(id: string, projectId: string) {
   try {
-    await requireAuthRole(['admin', 'pm'])
+    await requireModuleAccess('projects')
     const supabase = await createClient()
     const { error } = await supabase.from('plots').delete().match({ id })
     if (error) return { success: false, error: error.message } satisfies PlotActionResult
@@ -131,7 +131,7 @@ export async function deletePlot(id: string, projectId: string) {
 
 export async function updatePlot(id: string, projectId: string, formData: FormData) {
   try {
-    await requireAuthRole(['admin', 'pm'])
+    await requireModuleAccess('projects')
     const supabase = await createClient()
     const name = String(formData.get('name') || '')
     const house_model_id = String(formData.get('house_model_id') || '')
