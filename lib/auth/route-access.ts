@@ -13,16 +13,9 @@ export async function requireDashboardRole(allowedRoles: UserRole[]) {
     redirect('/login')
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .maybeSingle()
-
+  const { data: roleFromRpc } = await supabase.rpc('_billing_current_role')
   const role: UserRole =
-    profile?.role === 'admin' || profile?.role === 'pm' || profile?.role === 'foreman'
-      ? profile.role
-      : 'foreman'
+    roleFromRpc === 'admin' || roleFromRpc === 'pm' || roleFromRpc === 'foreman' ? roleFromRpc : 'foreman'
 
   if (!allowedRoles.includes(role)) {
     redirect('/dashboard')
@@ -41,15 +34,13 @@ export async function requireModuleAccess(moduleKey: PermissionModule) {
     redirect('/login')
   }
 
-  const [{ data: profile }, { data: settings }] = await Promise.all([
-    supabase.from('profiles').select('role').eq('id', user.id).maybeSingle(),
+  const [{ data: roleFromRpc }, { data: settings }] = await Promise.all([
+    supabase.rpc('_billing_current_role'),
     supabase.from('organization_settings').select('role_permissions').limit(1).maybeSingle(),
   ])
 
   const role: UserRole =
-    profile?.role === 'admin' || profile?.role === 'pm' || profile?.role === 'foreman'
-      ? profile.role
-      : 'foreman'
+    roleFromRpc === 'admin' || roleFromRpc === 'pm' || roleFromRpc === 'foreman' ? roleFromRpc : 'foreman'
 
   const permissions = normalizeRolePermissions(settings?.role_permissions)
   if (!canRoleAccessModule(role, moduleKey, permissions)) {

@@ -1,6 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import type { BillingUserSummary, UserRole } from '@/lib/types/billing'
 
+type RpcRoleClient = {
+  rpc: (fn: string, args?: Record<string, unknown>) => PromiseLike<{ data: unknown; error?: { message: string } | null }>
+}
+
 export async function getCurrentUser() {
   const supabase = await createClient()
   const {
@@ -40,12 +44,24 @@ type RoleQueryClient = {
   }
 }
 
+function normalizeUserRole(value: unknown): UserRole {
+  return value === 'admin' || value === 'pm' || value === 'foreman' ? value : 'foreman'
+}
+
 export async function getCurrentUserRole(supabase: unknown, userId: string): Promise<UserRole> {
+  // Prefer the security-definer RPC helper so role reads still work even if
+  // `profiles` has RLS enabled in the target environment.
+  const rpcClient = supabase as RpcRoleClient
+  try {
+    const { data, error } = await rpcClient.rpc('_billing_current_role')
+    if (!error) return normalizeUserRole(data)
+  } catch {
+    // fall back to direct table read below
+  }
+
   const client = supabase as RoleQueryClient
   const { data } = await client.from('profiles').select('role').eq('id', userId).maybeSingle()
-  const role = data?.role
-  if (role === 'admin' || role === 'pm' || role === 'foreman') return role
-  return 'foreman'
+  return normalizeUserRole(data?.role)
 }
 
 export function requireRole(allowed: UserRole[], role: UserRole, message: string) {

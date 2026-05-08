@@ -12,13 +12,8 @@ export async function getCurrentViewerRole(): Promise<UserRole | null> {
 
   if (!user) return null
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .maybeSingle()
-
-  const role = profile?.role
+  const { data: roleFromRpc } = await supabase.rpc('_billing_current_role')
+  const role = roleFromRpc
   if (role === 'admin' || role === 'pm' || role === 'foreman') return role
   return 'foreman'
 }
@@ -31,15 +26,14 @@ export async function getCurrentViewerPermissions(): Promise<Record<PermissionMo
 
   if (!user) return null
 
-  const [{ data: profile }, { data: settings }] = await Promise.all([
-    supabase.from('profiles').select('role').eq('id', user.id).maybeSingle(),
+  const [{ data: roleFromRpc }, { data: settings }] = await Promise.all([
+    supabase.rpc('_billing_current_role'),
     supabase.from('organization_settings').select('role_permissions').limit(1).maybeSingle(),
   ])
 
-  const role: UserRole =
-    profile?.role === 'admin' || profile?.role === 'pm' || profile?.role === 'foreman'
-      ? profile.role
-      : 'foreman'
+  const role: UserRole = roleFromRpc === 'admin' || roleFromRpc === 'pm' || roleFromRpc === 'foreman'
+    ? roleFromRpc
+    : 'foreman'
 
   return getPermissionsForRole(role, normalizeRolePermissions(settings?.role_permissions))
 }
