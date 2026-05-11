@@ -36,6 +36,7 @@ export default function CreateExtraWorkPage() {
   const [selectedPlot, setSelectedPlot] = useState('')
 
   const [reason, setReason] = useState(DC_REASONS[0])
+  const [note, setNote] = useState('')
   const [adjustments, setAdjustments] = useState<Adjustment[]>([])
   const [newFiles, setNewFiles] = useState<File[]>([])
   const [billingDate, setBillingDate] = useState(new Date().toISOString())
@@ -67,6 +68,7 @@ export default function CreateExtraWorkPage() {
         setSelectedContractor(billing.contractor_id || '')
         setSelectedPlot(billing.plot_id || '')
         setReason(billing.reason_for_dc || DC_REASONS[0])
+        setNote(billing.note || '')
         setBillingDate(billing.billing_date || billingDate)
         setExistingAttachmentUrls(Array.isArray(billing.attachment_urls) ? billing.attachment_urls : [])
         setAdjustments(
@@ -183,6 +185,7 @@ export default function CreateExtraWorkPage() {
         plot_id: selectedPlot,
         billing_date: billingDate,
         type: 'extra_work' as const,
+        note,
         reason_for_dc: reason,
         attachment_urls,
         selected_jobs: [],
@@ -382,18 +385,31 @@ export default function CreateExtraWorkPage() {
         </div>
 
         <div className="mt-6 bg-white p-4 rounded-lg border">
-          <div className="space-y-2 text-right mb-4">
-            <p className="text-gray-500">
-              ยอดงานเพิ่ม: <span className="font-semibold text-green-600">{formatCurrency(totalAddAmount)}</span>
-            </p>
-            <p className="text-gray-500">
-              ยอดงานหัก: <span className="font-semibold text-red-600">-{formatCurrency(totalDeductAmount)}</span>
-            </p>
-            <p className="text-lg font-bold">
-              ยอดสุทธิ: <span className="text-2xl text-amber-800">{formatCurrency(netAmount)}</span> บาท
-            </p>
+          <h2 className="text-xl font-semibold mb-2">สรุปยอด</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">หมายเหตุ (ถึง PM)</label>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={3}
+                className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
+                placeholder="ใส่ข้อความเพิ่มเติมถึงผู้ตรวจสอบ..."
+              />
+            </div>
+            <div className="space-y-2 text-right md:pt-6">
+              <p className="text-gray-500">
+                ยอดงานเพิ่ม: <span className="font-semibold text-green-600">{formatCurrency(totalAddAmount)}</span>
+              </p>
+              <p className="text-gray-500">
+                ยอดงานหัก: <span className="font-semibold text-red-600">-{formatCurrency(totalDeductAmount)}</span>
+              </p>
+              <p className="text-lg font-bold">
+                ยอดสุทธิ: <span className="text-2xl text-amber-800">{formatCurrency(netAmount)}</span> บาท
+              </p>
+            </div>
           </div>
-          <div className="flex items-center justify-end">
+          <div className="mt-6 flex justify-end">
             <button onClick={handleSubmit} disabled={isSubmitting} className="px-6 py-3 bg-amber-600 text-white font-bold rounded-md hover:bg-amber-700 disabled:bg-gray-400">
               {isSubmitting ? 'กำลังส่ง...' : 'ส่งคำขอเพื่อพิจารณา'}
             </button>
