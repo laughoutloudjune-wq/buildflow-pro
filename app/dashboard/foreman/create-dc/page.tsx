@@ -10,17 +10,15 @@ import { Plus, Trash2, Camera, CheckCircle } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { formatCurrency } from '@/lib/currency'
 import type { BillingAdjustmentInput, BillingPayload } from '@/lib/billing'
-import type { ContractorOption, PlotOption, ProjectOption } from '@/lib/types/billing'
+import type {
+  BillingAdjustmentForm,
+  BillingAdjustmentRecord,
+  ContractorOption,
+  PlotOption,
+  ProjectOption,
+} from '@/lib/types/billing'
 
-type DCItem = {
-  description: string
-  unit: string
-  quantity: number
-  unit_price: number
-}
-
-type BillingDetail = Awaited<ReturnType<typeof getBillingById>>
-type BillingAdjustmentLine = NonNullable<NonNullable<BillingDetail>['billing_adjustments']>[number]
+type Adjustment = BillingAdjustmentForm
 
 const DC_REASONS = ['Owner Request', 'Site Condition', 'Design Error', 'Scope Change', 'Other']
 
@@ -38,7 +36,7 @@ export default function CreateExtraWorkPage() {
   const [selectedPlot, setSelectedPlot] = useState('')
 
   const [reason, setReason] = useState(DC_REASONS[0])
-  const [items, setItems] = useState<DCItem[]>([])
+  const [adjustments, setAdjustments] = useState<Adjustment[]>([])
   const [newFiles, setNewFiles] = useState<File[]>([])
   const [billingDate, setBillingDate] = useState(new Date().toISOString())
 
@@ -71,15 +69,15 @@ export default function CreateExtraWorkPage() {
         setReason(billing.reason_for_dc || DC_REASONS[0])
         setBillingDate(billing.billing_date || billingDate)
         setExistingAttachmentUrls(Array.isArray(billing.attachment_urls) ? billing.attachment_urls : [])
-        setItems(
-          (billing.billing_adjustments || [])
-            .filter((adj: BillingAdjustmentLine) => adj.type === 'addition')
-            .map((adj: BillingAdjustmentLine) => ({
-              description: adj.description || '',
-              unit: adj.unit || 'หน่วย',
-              quantity: Number(adj.quantity || 0),
-              unit_price: Number(adj.unit_price || 0),
-            }))
+        setAdjustments(
+          (billing.billing_adjustments || []).map((adj: BillingAdjustmentRecord) => ({
+            type: adj.type,
+            description: adj.description || '',
+            plot_name: adj.plot_name || '',
+            unit: adj.unit || '',
+            quantity: Number(adj.quantity || 0),
+            unit_price: Number(adj.unit_price || 0),
+          }))
         )
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load DC request')
@@ -98,17 +96,39 @@ export default function CreateExtraWorkPage() {
     getPlotsByProjectId(selectedProject).then((data) => setPlots(data || []))
   }, [selectedProject])
 
-  const addItem = () => setItems([...items, { description: '', unit: 'หน่วย', quantity: 1, unit_price: 0 }])
-  const removeItem = (index: number) => setItems(items.filter((_, i) => i !== index))
-  const updateItem = (index: number, field: keyof DCItem, value: DCItem[keyof DCItem]) => {
-    const next = [...items]
+  const handleAdjustmentChange = (index: number, field: keyof Adjustment, value: Adjustment[keyof Adjustment]) => {
+    const next = [...adjustments]
     next[index] = { ...next[index], [field]: value }
-    setItems(next)
+    setAdjustments(next)
   }
 
-  const totalAddAmount = useMemo(() => {
-    return items.reduce((sum, item) => sum + (item.quantity || 0) * (item.unit_price || 0), 0)
-  }, [items])
+  const addAdjustment = (type: 'addition' | 'deduction') => {
+    setAdjustments([
+      ...adjustments,
+      { type, description: '', plot_name: '', unit: 'หน่วย', quantity: 1, unit_price: 0 },
+    ])
+  }
+
+  const removeAdjustment = (index: number) => {
+    setAdjustments(adjustments.filter((_: Adjustment, i: number) => i !== index))
+  }
+
+  const adjustmentPlotOptions = useMemo(() => {
+    const names = Array.from(new Set((plots || []).map((p) => p.name).filter(Boolean))) as string[]
+    names.sort((a, b) => a.localeCompare(b, 'th', { numeric: true, sensitivity: 'base' }))
+    return names
+  }, [plots])
+
+  const { totalAddAmount, totalDeductAmount, netAmount } = useMemo(() => {
+    const totalAddAmount = adjustments
+      .filter((adj) => adj.type === 'addition')
+      .reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
+    const totalDeductAmount = adjustments
+      .filter((adj) => adj.type === 'deduction')
+      .reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
+    const netAmount = totalAddAmount - totalDeductAmount
+    return { totalAddAmount, totalDeductAmount, netAmount }
+  }, [adjustments])
 
   const uploadFiles = async () => {
     if (newFiles.length === 0) return [] as string[]
@@ -140,20 +160,21 @@ export default function CreateExtraWorkPage() {
       setError('กรุณาเลือกเหตุผลของงานเพิ่ม')
       return
     }
-    if (items.length === 0) {
-      setError('กรุณาเพิ่มรายการงานอย่างน้อย 1 รายการ')
+    if (adjustments.length === 0) {
+      setError('กรุณาเพิ่มรายการงานเพิ่มหรืองานหักอย่างน้อย 1 รายการ')
       return
     }
 
     setIsSubmitting(true)
     try {
       const attachment_urls = [...existingAttachmentUrls, ...(await uploadFiles())]
-      const adjustments: BillingAdjustmentInput[] = items.map((item) => ({
-        type: 'addition',
-        description: item.description,
-        unit: item.unit,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
+      const adjustmentsPayload: BillingAdjustmentInput[] = adjustments.map((adj) => ({
+        type: adj.type,
+        description: adj.description,
+        plot_name: adj.plot_name,
+        unit: adj.unit,
+        quantity: adj.quantity,
+        unit_price: adj.unit_price,
       }))
 
       const payload: BillingPayload = {
@@ -165,10 +186,11 @@ export default function CreateExtraWorkPage() {
         reason_for_dc: reason,
         attachment_urls,
         selected_jobs: [],
-        adjustments,
+        adjustments: adjustmentsPayload,
         total_work_amount: 0,
         total_add_amount: totalAddAmount,
-        total_deduct_amount: 0,
+        total_deduct_amount: totalDeductAmount,
+        net_amount: netAmount,
       }
 
       const result = editId
@@ -261,25 +283,117 @@ export default function CreateExtraWorkPage() {
         </div>
 
         <div className="mt-6">
-          <h2 className="text-xl font-semibold mb-2">รายการงานเพิ่ม</h2>
-          {items.map((item, index) => (
+          <h2 className="text-xl font-semibold mb-2">รายการเพิ่มเติม (งานเพิ่ม/งานหัก)</h2>
+          {adjustments.map((adj, index) => (
             <div key={index} className="grid grid-cols-12 gap-2 mb-2 items-center">
-              <div className="col-span-5"><input type="text" placeholder="รายละเอียด" value={item.description} onChange={(e) => updateItem(index, 'description', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
-              <div className="col-span-2"><input type="number" placeholder="จำนวน" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" /></div>
-              <div className="col-span-2"><input type="text" placeholder="หน่วย" value={item.unit} onChange={(e) => updateItem(index, 'unit', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
-              <div className="col-span-2"><input type="number" placeholder="ราคาประมาณ" value={item.unit_price} onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" /></div>
-              <div className="col-span-1"><button onClick={() => removeItem(index)} className="p-2 text-red-500 hover:text-red-700"><Trash2 className="h-5 w-5"/></button></div>
+              <div className="col-span-2">
+                <select
+                  value={adj.type}
+                  onChange={(e) => handleAdjustmentChange(index, 'type', e.target.value as Adjustment['type'])}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                >
+                  <option value="addition">งานเพิ่ม</option>
+                  <option value="deduction">งานหัก</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                {adjustmentPlotOptions.length > 0 ? (
+                  <select
+                    value={adj.plot_name || ''}
+                    onChange={(e) => handleAdjustmentChange(index, 'plot_name', e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="">แปลง (ถ้ามี)</option>
+                    {adjustmentPlotOptions.map((plot) => (
+                      <option key={plot} value={plot}>
+                        {plot}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="แปลง"
+                    value={adj.plot_name || ''}
+                    onChange={(e) => handleAdjustmentChange(index, 'plot_name', e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                  />
+                )}
+              </div>
+              <div className="col-span-3">
+                <input
+                  type="text"
+                  placeholder="รายละเอียดงาน"
+                  value={adj.description}
+                  onChange={(e) => handleAdjustmentChange(index, 'description', e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div className="col-span-1">
+                <input
+                  type="text"
+                  placeholder="หน่วย"
+                  value={adj.unit}
+                  onChange={(e) => handleAdjustmentChange(index, 'unit', e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div className="col-span-1">
+                <input
+                  type="number"
+                  placeholder="จำนวน"
+                  value={adj.quantity}
+                  onChange={(e) => handleAdjustmentChange(index, 'quantity', parseFloat(e.target.value))}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div className="col-span-2">
+                <input
+                  type="number"
+                  placeholder="ราคาต่อหน่วย"
+                  value={adj.unit_price}
+                  onChange={(e) => handleAdjustmentChange(index, 'unit_price', parseFloat(e.target.value))}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div className="col-span-1">
+                <button type="button" onClick={() => removeAdjustment(index)} className="p-2 text-red-500 hover:text-red-700">
+                  <Trash2 className="h-5 w-5" />
+                </button>
+              </div>
             </div>
           ))}
-          <button onClick={addItem} className="flex items-center gap-1 text-sm text-amber-700 hover:text-amber-900 mt-2"><Plus className="h-4 w-4"/>เพิ่มรายการ</button>
+          <button
+            type="button"
+            onClick={() => addAdjustment('addition')}
+            className="flex items-center gap-1 text-sm text-green-600 hover:text-green-800 mt-2"
+          >
+            <Plus className="h-4 w-4" />
+            เพิ่มรายการงานเพิ่ม
+          </button>
+          <button
+            type="button"
+            onClick={() => addAdjustment('deduction')}
+            className="flex items-center gap-1 text-sm text-red-600 hover:text-red-800 mt-1"
+          >
+            <Plus className="h-4 w-4" />
+            เพิ่มรายการงานหัก
+          </button>
         </div>
 
         <div className="mt-6 bg-white p-4 rounded-lg border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-500">ยอดรวมงานเพิ่ม</p>
-              <p className="text-2xl font-bold text-amber-700">{formatCurrency(totalAddAmount)} บาท</p>
-            </div>
+          <div className="space-y-2 text-right mb-4">
+            <p className="text-gray-500">
+              ยอดงานเพิ่ม: <span className="font-semibold text-green-600">{formatCurrency(totalAddAmount)}</span>
+            </p>
+            <p className="text-gray-500">
+              ยอดงานหัก: <span className="font-semibold text-red-600">-{formatCurrency(totalDeductAmount)}</span>
+            </p>
+            <p className="text-lg font-bold">
+              ยอดสุทธิ: <span className="text-2xl text-amber-800">{formatCurrency(netAmount)}</span> บาท
+            </p>
+          </div>
+          <div className="flex items-center justify-end">
             <button onClick={handleSubmit} disabled={isSubmitting} className="px-6 py-3 bg-amber-600 text-white font-bold rounded-md hover:bg-amber-700 disabled:bg-gray-400">
               {isSubmitting ? 'กำลังส่ง...' : 'ส่งคำขอเพื่อพิจารณา'}
             </button>
