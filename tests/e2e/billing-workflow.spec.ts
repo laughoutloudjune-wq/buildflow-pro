@@ -9,10 +9,10 @@ test.describe('Billing workflow', () => {
 
     await page.goto('/dashboard/foreman/create-progress')
     await expect(page).toHaveURL(/\/dashboard\/foreman\/create-progress/)
-    await expect(page.getByText('เบิกงวดงานหลัก')).toBeVisible()
-    await expect(page.getByText('งานเพิ่ม / DC')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'เบิกงวดงานหลัก', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'งานเพิ่ม / DC', exact: true })).toBeVisible()
 
-    await page.getByText('งานเพิ่ม / DC').click()
+    await page.getByRole('link', { name: 'งานเพิ่ม / DC', exact: true }).click()
     await expect(page).toHaveURL(/\/dashboard\/foreman\/create-dc/)
   })
 
@@ -33,6 +33,6 @@ test.describe('Billing workflow', () => {
     await loginAsPm(page)
     await page.goto(`/dashboard/billing/${process.env.E2E_APPROVED_BILLING_ID}/review`)
     await page.getByText('Undo Approve').click()
-    await expect(page.getByText('ย้อนสถานะอนุมัติ')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'ย้อนสถานะอนุมัติ' })).toBeVisible()
   })
 })
