@@ -44,3 +44,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# supabase CLI local link state (machine-specific, not project source)
+supabase/.temp
+
+# Claude Code local tool config (machine-specific)
+.claude

@@ -24,6 +24,7 @@ const moduleLabels: Record<PermissionModule, { title: string; description: strin
   billing: { title: 'เบิกจ่าย (คิว PM)', description: 'เข้าคิวตรวจสอบและอนุมัติใบเบิก' },
   reports: { title: 'รายงาน', description: 'DC, ประวัติบ้าน, รอบจ่ายผู้รับเหมา' },
   settings: { title: 'ตั้งค่าระบบ', description: 'หน้าตั้งค่าและสิทธิ์' },
+  materials: { title: 'วัสดุ (Material Log)', description: 'บันทึกและดูการใช้วัสดุเทียบกับ BOQ' },
 }
 
 const permissionModules = Object.keys(moduleLabels) as PermissionModule[]

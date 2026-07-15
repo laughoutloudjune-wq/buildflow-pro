@@ -19,7 +19,7 @@ export default async function CreateProgressPage({
       <h1 className="text-2xl font-bold text-slate-800">สร้างคำขอเบิก</h1>
       <p className="mt-2 text-sm text-slate-500">เลือกประเภทคำขอที่ต้องการสร้างได้เหมือนเดิม ระหว่างงวดงานหลักและงานเพิ่ม / DC</p>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
+      <div className="mt-6 grid gap-4 md:grid-cols-3">
         <Link
           href="/dashboard/foreman/request"
           className="rounded-xl border border-blue-200 bg-blue-50 p-5 transition hover:border-blue-300 hover:bg-blue-100/70"
@@ -34,6 +34,14 @@ export default async function CreateProgressPage({
         >
           <div className="text-lg font-bold text-amber-900">งานเพิ่ม / DC</div>
           <p className="mt-2 text-sm text-amber-800">ใช้สำหรับส่งคำขอ DC อย่างเดียวได้ แม้ไม่มีคำของานหลักในรอบนั้น</p>
+        </Link>
+
+        <Link
+          href="/dashboard/foreman/materials"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 transition hover:border-emerald-300 hover:bg-emerald-100/70"
+        >
+          <div className="text-lg font-bold text-emerald-900">บันทึกวัสดุ</div>
+          <p className="mt-2 text-sm text-emerald-800">บันทึกการใช้วัสดุจริงเทียบกับงบ BOQ ของแต่ละงาน</p>
         </Link>
       </div>
     </Card>

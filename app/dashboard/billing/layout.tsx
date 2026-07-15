@@ -1,4 +1,4 @@
-import { requireModuleAccess } from '@/lib/auth/require-access'
+import { requireModuleAccess } from '@/lib/auth/route-access'
 
 export default async function BillingLayout({
   children,

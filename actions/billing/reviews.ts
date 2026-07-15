@@ -128,6 +128,11 @@ export async function rejectBilling(id: string, note?: string) {
 
 export async function undoApproveBilling(id: string) {
   const supabase = await createClient()
+  const user = await getCurrentUser()
+  if (!user) throw new Error('User not found')
+  const role = await getCurrentUserRole(supabase, user.id)
+  requireRole(['pm', 'admin'], role, 'Only PM/Admin can undo approve')
+
   const { error } = await supabase.rpc('billing_undo_approve', { p_id: id })
   if (error) throw new Error(error.message)
 

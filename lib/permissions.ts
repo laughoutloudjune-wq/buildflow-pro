@@ -1,6 +1,6 @@
 import type { UserRole } from '@/lib/types/billing'
 
-export type PermissionModule = 'projects' | 'boq' | 'contractors' | 'foreman' | 'billing' | 'reports' | 'settings'
+export type PermissionModule = 'projects' | 'boq' | 'contractors' | 'foreman' | 'billing' | 'reports' | 'settings' | 'materials'
 
 export type RolePermissions = Record<UserRole, Record<PermissionModule, boolean>>
 
@@ -13,6 +13,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     billing: true,
     reports: true,
     settings: true,
+    materials: true,
   },
   pm: {
     projects: true,
@@ -22,6 +23,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     billing: true,
     reports: true,
     settings: false,
+    materials: true,
   },
   foreman: {
     projects: true,
@@ -31,6 +33,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     billing: false,
     reports: false,
     settings: false,
+    materials: true,
   },
 }
 

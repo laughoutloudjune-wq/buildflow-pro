@@ -5,7 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { getBillingOptions, getBillableJobs, createBillingRequest, getBillingById, updateBillingRequest, getJobProgressHistory } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
-import { Plus, Trash2, CheckCircle } from 'lucide-react'
+import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
+import JobMaterialLogModal from '@/components/materials/JobMaterialLogModal'
+import { CheckCircle, Boxes } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import type { BillingAdjustmentForm, BillableJob, BillingAdjustmentRecord, ContractorOption, ProgressHistoryItem, ProjectOption, SelectedBillingJobState } from '@/lib/types/billing'
 
@@ -35,6 +37,7 @@ export default function CreateBillingRequestPage() {
   const [submittedData, setSubmittedData] = useState<{ project_id: string; contractor_id: string; net_amount: number; doc_no?: string | number } | null>(null)
   const [editingBilling, setEditingBilling] = useState<BillingDetail>(null)
   const [didPrefillJobs, setDidPrefillJobs] = useState(false)
+  const [materialsJob, setMaterialsJob] = useState<{ id: string; label: string } | null>(null)
 
   useEffect(() => {
     async function fetchOptions() {
@@ -337,6 +340,7 @@ export default function CreateBillingRequestPage() {
                     <th className="px-4 py-3 text-right">คืบหน้าปัจจุบัน %</th>
                     <th className="px-4 py-3 text-right">ยอดขอเบิก</th>
                     <th className="px-4 py-3 text-right">คงเหลือหลังเบิก</th>
+                    <th className="px-4 py-3 text-center">วัสดุ</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -372,11 +376,23 @@ export default function CreateBillingRequestPage() {
                           </td>
                           <td className="px-4 py-3 text-right">{formatCurrency(requested)}</td>
                           <td className="px-4 py-3 text-right font-semibold text-emerald-700">{formatCurrency(remainingAfter)}</td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setMaterialsJob({ id: job.id, label: job.boq_master?.item_name || 'งาน' })
+                              }
+                              className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                              title="บันทึกวัสดุ"
+                            >
+                              <Boxes className="h-4 w-4" />
+                            </button>
+                          </td>
                         </tr>
 
                         {selectedJobs.has(job.id) && (
                           <tr>
-                            <td colSpan={9} className="px-4 pb-4 pt-1">
+                            <td colSpan={10} className="px-4 pb-4 pt-1">
                               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                 <div className="text-xs font-semibold text-slate-700 mb-2">ประวัติความคืบหน้า (แสดงเฉพาะงานที่เลือก)</div>
                                 <div className="overflow-x-auto">
@@ -440,7 +456,7 @@ export default function CreateBillingRequestPage() {
 
                   {filteredBillableJobs.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="px-6 py-4 text-center text-slate-400">ไม่พบงานตามตัวกรอง</td>
+                      <td colSpan={10} className="px-6 py-4 text-center text-slate-400">ไม่พบงานตามตัวกรอง</td>
                     </tr>
                   )}
                 </tbody>
@@ -451,65 +467,18 @@ export default function CreateBillingRequestPage() {
 
         <div className="mt-6">
           <h2 className="text-xl font-semibold mb-2">รายการเพิ่มเติม (งานเพิ่ม/งานหัก)</h2>
-
-          {/* Header row */}
-          {adjustments.length > 0 && (
-            <div className="grid grid-cols-12 gap-2 mb-1 items-center text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              <div className="col-span-2">ประเภท</div>
-              <div className="col-span-2">แปลง</div>
-              <div className="col-span-2">รายละเอียด</div>
-              <div className="col-span-1">หน่วย</div>
-              <div className="col-span-1 text-right">จำนวน</div>
-              <div className="col-span-2 text-right">ราคา/หน่วย</div>
-              <div className="col-span-1 text-right">ยอด</div>
-              <div className="col-span-1"></div>
-            </div>
-          )}
-
-          {adjustments.map((adj, index) => {
-            const rowTotal = (adj.quantity || 0) * (adj.unit_price || 0)
-            const isAdd = adj.type === 'addition'
-            return (
-              <div key={index} className={`grid grid-cols-12 gap-2 mb-2 items-center rounded-lg p-2 ${isAdd ? 'bg-green-50/60 border border-green-100' : 'bg-red-50/60 border border-red-100'}`}>
-                <div className="col-span-2">
-                  <select value={adj.type} onChange={(e) => handleAdjustmentChange(index, 'type', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md text-sm">
-                    <option value="addition">งานเพิ่ม</option>
-                    <option value="deduction">งานหัก</option>
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  {adjustmentPlotOptions.length > 0 ? (
-                    <select value={adj.plot_name || ''} onChange={(e) => handleAdjustmentChange(index, 'plot_name', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md text-sm">
-                      <option value="">แปลง (ถ้ามี)</option>
-                      {adjustmentPlotOptions.map((plot) => <option key={plot} value={plot}>{plot}</option>)}
-                    </select>
-                  ) : (
-                    <input type="text" placeholder="แปลง" value={adj.plot_name || ''} onChange={(e) => handleAdjustmentChange(index, 'plot_name', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md text-sm" />
-                  )}
-                </div>
-                <div className="col-span-2"><input type="text" placeholder="รายละเอียดงาน" value={adj.description} onChange={(e) => handleAdjustmentChange(index, 'description', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md text-sm" /></div>
-                <div className="col-span-1"><input type="text" placeholder="หน่วย" value={adj.unit} onChange={(e) => handleAdjustmentChange(index, 'unit', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md text-sm" /></div>
-                <div className="col-span-1"><input type="number" placeholder="จำนวน" value={adj.quantity} onChange={(e) => handleAdjustmentChange(index, 'quantity', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md text-sm text-right" /></div>
-                <div className="col-span-2"><input type="number" placeholder="ราคาต่อหน่วย" value={adj.unit_price} onChange={(e) => handleAdjustmentChange(index, 'unit_price', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md text-sm text-right" /></div>
-                <div className={`col-span-1 text-right font-semibold text-sm ${isAdd ? 'text-green-700' : 'text-red-600'}`}>
-                  {isAdd ? '+' : '-'}{formatCurrency(rowTotal)}
-                </div>
-                <div className="col-span-1"><button onClick={() => removeAdjustment(index)} className="p-2 text-red-500 hover:text-red-700"><Trash2 className="h-5 w-5" /></button></div>
-              </div>
-            )
-          })}
-
-          {/* Running total bar */}
-          {adjustments.length > 0 && (
-            <div className="mt-3 flex items-center justify-end gap-6 rounded-lg bg-slate-100 px-4 py-2 text-sm">
-              <span className="text-slate-500">งานเพิ่มรวม: <span className="font-bold text-green-700">+{formatCurrency(totalAddAmount)}</span></span>
-              <span className="text-slate-500">งานหักรวม: <span className="font-bold text-red-600">-{formatCurrency(totalDeductAmount)}</span></span>
-              <span className="font-bold text-slate-800">ยอดสุทธิ DC: <span className={netAmount >= 0 ? 'text-green-700' : 'text-red-600'}>{formatCurrency(totalAddAmount - totalDeductAmount)}</span></span>
-            </div>
-          )}
-
-          <button onClick={() => addAdjustment('addition')} className="flex items-center gap-1 text-sm text-green-600 hover:text-green-800 mt-3"><Plus className="h-4 w-4" />เพิ่มรายการงานเพิ่ม</button>
-          <button onClick={() => addAdjustment('deduction')} className="flex items-center gap-1 text-sm text-red-600 hover:text-red-800 mt-1"><Plus className="h-4 w-4" />เพิ่มรายการงานหัก</button>
+          <AdjustmentLineItems
+            adjustments={adjustments}
+            plotOptions={adjustmentPlotOptions}
+            onChange={handleAdjustmentChange}
+            onAdd={addAdjustment}
+            onRemove={removeAdjustment}
+            totalAddAmount={totalAddAmount}
+            totalDeductAmount={totalDeductAmount}
+            netLabel="ยอดสุทธิ DC"
+            netValue={totalAddAmount - totalDeductAmount}
+            theme="slate"
+          />
         </div>
 
         <div className="mt-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
@@ -555,6 +524,15 @@ export default function CreateBillingRequestPage() {
           </button>
         </div>
       </Card>
+
+      {materialsJob && (
+        <JobMaterialLogModal
+          isOpen={Boolean(materialsJob)}
+          onClose={() => setMaterialsJob(null)}
+          jobAssignmentId={materialsJob.id}
+          jobLabel={materialsJob.label}
+        />
+      )}
     </div>
   )
 }

@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
+import SearchableSelect from '@/components/ui/SearchableSelect'
+import BoqMaterialItemsModal from '@/components/materials/BoqMaterialItemsModal'
 import { getHouseModelById, getBOQItems, createBOQItem, deleteBOQItem, updateBOQItem, getHouseModels, importBOQItems } from '@/actions/boq-actions'
 import { getContractorTypes } from '@/actions/contractor-type-actions';
 import { formatCurrency } from '@/lib/currency'
@@ -30,6 +32,7 @@ export default function BOQDetailPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<any | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [materialsBoqItem, setMaterialsBoqItem] = useState<{ id: string; item_name: string } | null>(null)
 
   // โหลดข้อมูลเมื่อเข้าหน้าเว็บ
   useEffect(() => {
@@ -262,7 +265,7 @@ export default function BOQDetailPage() {
                 <th className="px-4 py-3 font-semibold text-right">หน่วย</th>
                 <th className="px-4 py-3 font-semibold text-right">ราคา/หน่วย</th>
                 <th className="px-4 py-3 font-semibold text-right">รวมเป็นเงิน</th>
-                <th className="px-4 py-3 font-semibold text-center w-[90px]">จัดการ</th>
+                <th className="px-4 py-3 font-semibold text-center w-[120px]">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -290,6 +293,14 @@ export default function BOQDetailPage() {
                       ฿{formatCurrency(item.total_price || 0)}
                     </td>
                     <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => setMaterialsBoqItem({ id: item.id, item_name: item.item_name })}
+                        disabled={isPending}
+                        className="rounded p-1 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition"
+                        title="วัสดุที่ใช้ในงานนี้"
+                      >
+                        <Boxes className="h-4 w-4" />
+                      </button>
                       <button
                         onClick={() => openEditModal(item)}
                         disabled={isPending}
@@ -392,22 +403,21 @@ export default function BOQDetailPage() {
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         title="นำเข้า BOQ จากแบบบ้านอื่น"
+        panelClassName="max-w-2xl"
       >
         <div className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">เลือกแบบบ้านต้นทาง</label>
-            <select
-              className="w-full"
+            <SearchableSelect
               value={sourceModelId}
-              onChange={(e) => handleSourceModelChange(e.target.value)}
-            >
-              <option value="">-- เลือกแบบบ้าน --</option>
-              {allModels.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name} {m.code ? `(${m.code})` : ''}
-                </option>
-              ))}
-            </select>
+              onChange={handleSourceModelChange}
+              placeholder="-- เลือกแบบบ้าน --"
+              options={allModels.map((m) => ({
+                value: m.id,
+                label: `${m.name}${m.code ? ` (${m.code})` : ''}`,
+                sublabel: m.projects?.name || 'ไม่ระบุโครงการ',
+              }))}
+            />
           </div>
 
           {sourceItems.length > 0 && (
@@ -469,6 +479,15 @@ export default function BOQDetailPage() {
           </div>
         </div>
       </Modal>
+
+      {materialsBoqItem && (
+        <BoqMaterialItemsModal
+          isOpen={Boolean(materialsBoqItem)}
+          onClose={() => setMaterialsBoqItem(null)}
+          boqId={materialsBoqItem.id}
+          boqItemName={materialsBoqItem.item_name}
+        />
+      )}
     </div>
   )
 }

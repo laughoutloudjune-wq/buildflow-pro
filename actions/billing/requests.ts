@@ -10,7 +10,6 @@ import {
   getCurrentUserProfile,
   getCurrentUserRole,
 } from '@/actions/_shared/user-role'
-import { buildBillingPaymentNote } from '@/actions/_shared/payment-notes'
 import type {
   BillingActionSignature,
   BillingAdjustmentRecord,
@@ -67,79 +66,6 @@ function toAdjustmentsForRpc(
     quantity: Number(adjustment.quantity) || 0,
     unit_price: Number(adjustment.unit_price) || 0,
   }))
-}
-
-// Legacy direct-approve create path. No UI currently calls this, but we keep
-// the export in case an external script does. It is NOT RPC-wrapped; if it is
-// revived for real use, move it over to `billing_approve` plus an insert RPC.
-export async function createBilling(data: BillingPayload) {
-  const supabase = await createClient()
-  const user = await getCurrentUser()
-  const payload = validateBillingPayload(data)
-
-  const { data: bill, error: billError } = await supabase
-    .from('billings')
-    .insert([
-      {
-        project_id: payload.project_id,
-        contractor_id: payload.contractor_id,
-        billing_date: payload.billing_date,
-        total_work_amount: payload.total_work_amount,
-        total_add_amount: payload.total_add_amount,
-        total_deduct_amount: payload.total_deduct_amount,
-        wht_percent: payload.wht_percent,
-        retention_percent: payload.retention_percent,
-        net_amount: payload.net_amount,
-        status: 'approved',
-        submitted_by: user?.id,
-        approved_by: user?.id,
-      },
-    ])
-    .select()
-    .single()
-
-  if (billError) throw new Error(billError.message)
-
-  const billingId = bill.id
-
-  if (payload.selected_jobs.length > 0) {
-    const note = buildBillingPaymentNote(bill.doc_no)
-    await supabase.from('billing_jobs').insert(
-      payload.selected_jobs.map((job) => ({
-        billing_id: billingId,
-        job_assignment_id: job.id,
-        amount: job.request_amount,
-        progress_percent: job.progress_percent ?? null,
-      }))
-    )
-    await supabase.from('payments').insert(
-      payload.selected_jobs.map((job) => ({
-        billing_id: billingId,
-        job_assignment_id: job.id,
-        amount: job.request_amount,
-        payment_date: payload.billing_date,
-        note,
-      }))
-    )
-  }
-
-  if (payload.adjustments.length > 0) {
-    await supabase.from('billing_adjustments').insert(
-      payload.adjustments.map((adjustment) => ({
-        billing_id: billingId,
-        type: adjustment.type,
-        description: encodeAdjustmentDescription(
-          adjustment.description,
-          adjustment.plot_name
-        ),
-        unit: adjustment.unit,
-        quantity: Number(adjustment.quantity),
-        unit_price: Number(adjustment.unit_price),
-      }))
-    )
-  }
-
-  revalidatePath('/dashboard/billing')
 }
 
 export type BillingRequestResult =

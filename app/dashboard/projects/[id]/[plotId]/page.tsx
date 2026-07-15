@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Hammer, Pencil, RefreshCw, User } from 'lucide-react'
+import { ArrowLeft, Boxes, Hammer, Pencil, RefreshCw, User } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
+import JobMaterialLogModal from '@/components/materials/JobMaterialLogModal'
 import {
   assignContractor,
   getJobAssignments,
@@ -58,6 +59,7 @@ export default function PlotDetailPage() {
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [materialsJob, setMaterialsJob] = useState<{ id: string; label: string } | null>(null)
 
   const getHouseModelLabel = (model: HouseModel) => {
     const projectName = model?.projects?.name
@@ -231,6 +233,7 @@ export default function PlotDetailPage() {
                 <th className="px-4 py-3 font-semibold text-right">จ่ายแล้ว</th>
                 <th className="px-4 py-3 font-semibold w-[200px]">ผู้รับเหมา</th>
                 <th className="px-4 py-3 font-semibold w-[120px]">สถานะ</th>
+                <th className="px-4 py-3 font-semibold w-[80px] text-center">วัสดุ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -328,6 +331,18 @@ export default function PlotDetailPage() {
                       </select>
                     </td>
 
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMaterialsJob({ id: job.id, label: job.boq_master?.item_name || 'งาน' })
+                        }
+                        className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition"
+                        title="บันทึกวัสดุ"
+                      >
+                        <Boxes className="h-4 w-4" />
+                      </button>
+                    </td>
                   </tr>
                 )
               })}
@@ -366,6 +381,14 @@ export default function PlotDetailPage() {
         </form>
       </Modal>
 
+      {materialsJob && (
+        <JobMaterialLogModal
+          isOpen={Boolean(materialsJob)}
+          onClose={() => setMaterialsJob(null)}
+          jobAssignmentId={materialsJob.id}
+          jobLabel={materialsJob.label}
+        />
+      )}
     </div>
   )
 }

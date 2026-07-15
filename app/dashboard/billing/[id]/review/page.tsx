@@ -8,7 +8,8 @@ import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoAppro
 import { getOrganizationSettings } from '@/actions/settings-actions'
 import { Card } from '@/components/ui/Card'
 import { BillingPdf } from '@/components/pdf/BillingPdf'
-import { Plus, Trash2, Edit, Loader2 } from 'lucide-react'
+import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
+import { Trash2, Edit, Loader2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Modal from '@/components/ui/Modal'
@@ -512,42 +513,16 @@ export default function ReviewBillingPage() {
 
           <Card className="p-4">
             <h2 className="text-xl font-semibold mb-2">รายการปรับปรุง (งานเพิ่ม/งานหัก)</h2>
-            {adjustments.map((adj, index) => (
-              <div key={index} className="grid grid-cols-12 gap-2 mb-2 items-center">
-                <div className="col-span-2">
-                  <select value={adj.type} onChange={(e) => handleAdjustmentChange(index, 'type', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md">
-                    <option value="addition">งานเพิ่ม</option>
-                    <option value="deduction">งานหัก</option>
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  {adjustmentPlotOptions.length > 0 ? (
-                    <select value={adj.plot_name || ''} onChange={(e) => handleAdjustmentChange(index, 'plot_name', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md">
-                      <option value="">แปลง (ถ้ามี)</option>
-                      {adjustmentPlotOptions.map((plot) => <option key={plot} value={plot}>{plot}</option>)}
-                    </select>
-                  ) : (
-                    <input type="text" placeholder="แปลง" value={adj.plot_name || ''} onChange={(e) => handleAdjustmentChange(index, 'plot_name', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
-                  )}
-                </div>
-                <div className="col-span-3">
-                  <input type="text" placeholder="รายละเอียด" value={adj.description} onChange={(e) => handleAdjustmentChange(index, 'description', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
-                  {adj.signature?.user_id ? (
-                    <div className="mt-1 text-[11px] text-slate-500">
-                      ลงชื่อโดย {adj.signature?.full_name || 'ไม่ระบุผู้แก้ไข'}
-                      {adj.signature?.role ? ` (${adj.signature.role})` : ''}
-                      {adj.signature?.at ? ` • ${new Date(adj.signature.at).toLocaleString('th-TH')}` : ''}
-                    </div>
-                  ) : null}
-                </div>
-                <div className="col-span-1"><input type="text" placeholder="หน่วย" value={adj.unit} onChange={(e) => handleAdjustmentChange(index, 'unit', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
-                <div className="col-span-1"><input type="number" placeholder="จำนวน" value={adj.quantity} onChange={(e) => handleAdjustmentChange(index, 'quantity', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" /></div>
-                <div className="col-span-2"><input type="number" placeholder="ราคาต่อหน่วย" value={adj.unit_price} onChange={(e) => handleAdjustmentChange(index, 'unit_price', parseFloat(e.target.value))} className="w-full p-2 border border-gray-300 rounded-md" /></div>
-                <div className="col-span-1"><button onClick={() => removeAdjustment(index)} className="p-2 text-red-500 hover:text-red-700"><Trash2 className="h-5 w-5" /></button></div>
-              </div>
-            ))}
-            <button onClick={() => addAdjustment('addition')} className="flex items-center gap-1 text-sm text-green-600 hover:text-green-800 mt-2"><Plus className="h-4 w-4" />เพิ่มรายการงานเพิ่ม</button>
-            <button onClick={() => addAdjustment('deduction')} className="flex items-center gap-1 text-sm text-red-600 hover:text-red-800 mt-1"><Plus className="h-4 w-4" />เพิ่มรายการงานหัก</button>
+            <AdjustmentLineItems
+              adjustments={adjustments}
+              plotOptions={adjustmentPlotOptions}
+              onChange={handleAdjustmentChange}
+              onAdd={addAdjustment}
+              onRemove={removeAdjustment}
+              totalAddAmount={totalAddAmount}
+              totalDeductAmount={totalDeductAmount}
+              showSignature
+            />
 
             <h2 className="text-xl font-semibold mt-6 mb-2">สรุปและคำนวณยอดสุดท้าย</h2>
             <div className="bg-gray-50 rounded-lg p-4">

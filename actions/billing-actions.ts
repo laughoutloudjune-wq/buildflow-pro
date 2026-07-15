@@ -8,7 +8,6 @@ import {
   getBillableJobs as getBillableJobsImpl,
 } from '@/actions/billing/lookups'
 import {
-  createBilling as createBillingImpl,
   createBillingRequest as createBillingRequestImpl,
   updateBillingRequest as updateBillingRequestImpl,
   deleteBilling as deleteBillingImpl,
@@ -39,10 +38,6 @@ export async function getBillingOptions() {
 
 export async function getBillableJobs(projectId: string, contractorId: string, plotId?: string) {
   return getBillableJobsImpl(projectId, contractorId, plotId)
-}
-
-export async function createBilling(data: BillingPayload) {
-  return createBillingImpl(data)
 }
 
 export async function createBillingRequest(data: BillingPayload) {

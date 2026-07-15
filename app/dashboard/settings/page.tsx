@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   ChevronRight,
   ImageIcon,
+  Boxes,
 } from 'lucide-react'
 
 type Settings = Awaited<ReturnType<typeof getOrganizationSettings>>
@@ -181,6 +182,21 @@ export default function SettingsPage() {
             </div>
           </div>
           <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:text-indigo-600" aria-hidden />
+        </Link>
+        <Link
+          href="/dashboard/settings/materials"
+          className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50/50"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+              <Boxes className="h-5 w-5" aria-hidden />
+            </div>
+            <div>
+              <div className="font-semibold text-slate-900">รายการวัสดุ</div>
+              <div className="text-xs text-slate-500">จัดการชื่อ หน่วย และราคาวัสดุที่ใช้อ้างอิง</div>
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:text-emerald-600" aria-hidden />
         </Link>
       </div>
 
