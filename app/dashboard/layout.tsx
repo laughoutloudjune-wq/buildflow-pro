@@ -1,40 +1,20 @@
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
-import { getPermissionsForRole, normalizeRolePermissions } from '@/lib/permissions'
+import { getDashboardSession, permissionsForRole } from '@/lib/auth/route-access'
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  // สำคัญ: ต้องใส่ await ตรงนี้ด้วย เพราะ createClient เป็น async แล้ว
-  const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, role, permissions: rolePermissions } = await getDashboardSession()
 
   if (!user) {
     redirect('/')
   }
 
-  const [{ data: profile }, { data: settings }] = await Promise.all([
-    supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .maybeSingle(),
-    supabase
-      .from('organization_settings')
-      .select('role_permissions')
-      .limit(1)
-      .maybeSingle(),
-  ])
-
-  const role = profile?.role === 'admin' || profile?.role === 'pm' || profile?.role === 'foreman'
-    ? profile.role
-    : 'foreman'
-  const permissions = getPermissionsForRole(role, normalizeRolePermissions(settings?.role_permissions))
+  const permissions = permissionsForRole(role, rolePermissions)
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">

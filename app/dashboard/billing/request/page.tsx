@@ -274,7 +274,6 @@ export default function CreateBillingRequestPage() {
 
   const handleModalClose = () => {
     setShowSuccessModal(false)
-    router.refresh()
     router.push(successNextPath)
   }
 

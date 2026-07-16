@@ -93,22 +93,28 @@ export default function ProjectDetailPage() {
         console.error("Error loading data:", error)
   
       } finally {
-  
+
         setIsLoading(false) // โหลดเสร็จแล้ว (ไม่ว่าจะเจอหรือไม่เจอ)
-  
+
       }
-  
+
     }
-  
-  
-  
+
+    // Re-fetches just the plot list in place, without toggling `isLoading`
+    // (which would blank the whole grid behind a spinner just to add/remove
+    // one plot card).
+    const refreshPlots = async () => {
+      const pl = await getPlotsByProjectId(projectId)
+      setPlots(pl || [])
+    }
+
     const handleSubmit = async (formData: FormData) => {
-  
+
       setIsModalOpen(false)
       setActionError(null)
-  
+
       startTransition(async () => {
-  
+
         formData.append('project_id', projectId)
 
         const res = await createPlot(formData)
@@ -117,10 +123,10 @@ export default function ProjectDetailPage() {
           return
         }
 
-        await loadData()
-  
+        await refreshPlots()
+
       })
-  
+
     }
 
     const handleUpdateProject = async (formData: FormData) => {
@@ -146,8 +152,8 @@ export default function ProjectDetailPage() {
           return
         }
 
-        await loadData()
-  
+        await refreshPlots()
+
       })
   
     }

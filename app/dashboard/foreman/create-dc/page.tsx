@@ -221,7 +221,6 @@ export default function CreateExtraWorkPage() {
         <Modal
           isOpen={showSuccessModal}
           onClose={() => {
-            router.refresh()
             router.push(successNextPath)
           }}
         >
@@ -231,7 +230,6 @@ export default function CreateExtraWorkPage() {
             <p className="text-gray-600 mb-4">ใบขอเบิกเลขที่ #{docNo} ถูกส่งเพื่อตรวจสอบแล้ว</p>
             <button
               onClick={() => {
-                router.refresh()
                 router.push(successNextPath)
               }}
               className="w-full bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700"

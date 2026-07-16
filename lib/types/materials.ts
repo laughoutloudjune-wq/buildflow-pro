@@ -28,7 +28,17 @@ export type MaterialUsageLogEntry = {
   photo_url: string | null
   logged_by: string | null
   created_at: string
+  group_id: string | null
   material_types?: MaterialType | null
+  /** Other plot names this same purchase was also logged against (grouped entries only). */
+  shared_plot_names?: string[]
+}
+
+/** A job_assignment for the same BOQ job on a sibling plot - eligible to be
+ * included when logging one material purchase across a group of plots. */
+export type SiblingJobOption = {
+  job_assignment_id: string
+  plot_name: string
 }
 
 /** Planned-vs-actual rollup for one material on one job assignment. */

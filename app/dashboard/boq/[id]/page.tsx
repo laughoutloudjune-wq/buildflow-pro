@@ -42,7 +42,6 @@ export default function BOQDetailPage() {
   const loadData = async () => {
     try {
       setIsLoading(true)
-      console.log("Fetching BOQ data for ID:", id) // Debug Log
 
       const [m, i, t, hm] = await Promise.all([
         getHouseModelById(id),
@@ -51,8 +50,6 @@ export default function BOQDetailPage() {
         getHouseModels(),
       ])
 
-      console.log("Model Data:", m) // Debug Log
-      
       if (m) setModel(m)
       if (i) setItems(i)
       if (t) setTypes(t)
@@ -63,6 +60,14 @@ export default function BOQDetailPage() {
     } finally {
       setIsLoading(false) // ✅ บังคับหยุดโหลดเสมอ
     }
+  }
+
+  // Re-fetches just the BOQ item list in place, without toggling `isLoading`
+  // (which would blank the whole page behind a spinner for a single-row
+  // add/edit/delete). Used after every item mutation instead of `loadData()`.
+  const refreshItems = async () => {
+    const i = await getBOQItems(id)
+    if (i) setItems(i)
   }
 
   const handleSubmit = async (formData: FormData) => {
@@ -76,7 +81,7 @@ export default function BOQDetailPage() {
           await createBOQItem(formData)
         }
         setEditingItem(null)
-        await loadData()
+        await refreshItems()
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to save BOQ item'
         alert(message)
@@ -166,7 +171,7 @@ export default function BOQDetailPage() {
           items: itemsToImport,
         })
         setIsImportModalOpen(false)
-        await loadData()
+        await refreshItems()
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to import BOQ items'
         alert(message)
@@ -178,7 +183,7 @@ export default function BOQDetailPage() {
     if (!confirm('ยืนยันลบรายการนี้?')) return
     startTransition(async () => {
       await deleteBOQItem(itemId, id)
-      await loadData()
+      await refreshItems()
     })
   }
 

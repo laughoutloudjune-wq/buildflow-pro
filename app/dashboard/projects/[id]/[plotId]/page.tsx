@@ -104,6 +104,23 @@ export default function PlotDetailPage() {
     }
   }
 
+  // Re-fetches just the job list in place (e.g. after syncing new BOQ jobs
+  // onto this plot), without toggling `isLoading` - which would otherwise
+  // blank the whole table behind a spinner just to add a couple of rows.
+  const refreshJobs = async () => {
+    const jData = await getJobAssignments(plotId)
+    setJobs(jData || [])
+    setPriceDrafts((prev) => {
+      const next = { ...prev }
+      for (const job of jData || []) {
+        if (!(job.id in next)) {
+          next[job.id] = job.agreed_price_per_unit == null ? '' : String(job.agreed_price_per_unit)
+        }
+      }
+      return next
+    })
+  }
+
   const handleAssign = (jobId: string, contractorId: string) => {
     setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, contractor_id: contractorId || null } : j)))
     startTransition(async () => {
@@ -123,7 +140,7 @@ export default function PlotDetailPage() {
     if (!confirm('ต้องการดึงรายการ BOQ ล่าสุดมาเพิ่มใช่ไหม?')) return
     startTransition(async () => {
       await syncPlotJobs(plotId, plot.house_model_id, projectId)
-      await loadData()
+      await refreshJobs()
     })
   }
 

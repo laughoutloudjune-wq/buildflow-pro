@@ -51,6 +51,14 @@ export default function HouseModelsPage() {
     }
   }
 
+  // Re-fetches just the house model list in place, without toggling
+  // `isLoading` (which would blank the whole grid behind a spinner for a
+  // single add/edit/delete). Used after every mutation instead of `loadData()`.
+  const refreshModels = async () => {
+    const m = await getHouseModels()
+    if (m) setModels(m)
+  }
+
   const openModal = (model: HouseModel | null = null) => {
     setEditingModel(model)
     setIsModalOpen(true)
@@ -69,7 +77,7 @@ export default function HouseModelsPage() {
       } else {
         await createHouseModel(formData)
       }
-      await loadData()
+      await refreshModels()
     })
   }
 
@@ -77,7 +85,7 @@ export default function HouseModelsPage() {
     if(!confirm('ยืนยันลบแบบบ้านนี้?')) return
     startTransition(async () => {
       await deleteHouseModel(id)
-      await loadData()
+      await refreshModels()
     })
   }
 
