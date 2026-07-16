@@ -148,28 +148,53 @@ export async function deleteBoqMaterialItem(id: string, boqId: string) {
 // Actual usage log (the "actual" side, foreman logs against their own jobs)
 // ---------------------------------------------------------------------------
 
-/** Other job_assignments for the exact same BOQ job (same house-type item)
- * across sibling plots in the same project - eligible to share one logged
- * material purchase with, since contractors commonly draw materials for a
- * batch of plots at once rather than one at a time. */
+/** Other job_assignments for the same kind of BOQ work across sibling plots
+ * in the same project - eligible to share one logged material purchase
+ * with, since contractors commonly draw materials for a batch of plots at
+ * once rather than one at a time.
+ *
+ * Matches by the BOQ item's *name* rather than requiring the identical
+ * boq_master row: house types that are conceptually "the same" are often
+ * duplicated into separate house_models/boq_master records per phase (e.g.
+ * plots 98-102 here span two different house_model_id groups), so matching
+ * on the literal foreign key would silently find zero siblings even though
+ * the work item is textually identical.
+ *
+ * The project is derived via plot_id -> plots.project_id, NOT
+ * job_assignments.project_id - that column exists but is never populated
+ * (confirmed 0 of 545 rows have it set across this database), so relying on
+ * it would silently return zero siblings every time. */
 export async function getSiblingJobsForGrouping(jobAssignmentId: string): Promise<SiblingJobOption[]> {
   await requireModuleAccess('materials')
   const supabase = await createClient()
 
   const { data: job, error: jobError } = await supabase
     .from('job_assignments')
-    .select('boq_item_id, project_id')
+    .select('plots (project_id), boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name)')
     .eq('id', jobAssignmentId)
     .maybeSingle()
 
   if (jobError) throw new Error(jobError.message)
-  if (!job?.boq_item_id || !job.project_id) return []
+  const boqMaster = Array.isArray(job?.boq_master) ? job.boq_master[0] : job?.boq_master
+  const plot = Array.isArray(job?.plots) ? job.plots[0] : job?.plots
+  const itemName = boqMaster?.item_name?.trim()
+  const projectId = plot?.project_id
+  if (!projectId || !itemName) return []
+
+  const { data: matchingBoqItems, error: boqError } = await supabase
+    .from('boq_master')
+    .select('id')
+    .eq('item_name', itemName)
+
+  if (boqError) throw new Error(boqError.message)
+  const boqItemIds = (matchingBoqItems || []).map((row) => row.id)
+  if (boqItemIds.length === 0) return []
 
   const { data, error } = await supabase
     .from('job_assignments')
-    .select('id, plots (name)')
-    .eq('boq_item_id', job.boq_item_id)
-    .eq('project_id', job.project_id)
+    .select('id, plots!inner (name, project_id)')
+    .in('boq_item_id', boqItemIds)
+    .eq('plots.project_id', projectId)
     .neq('id', jobAssignmentId)
 
   if (error) throw new Error(error.message)

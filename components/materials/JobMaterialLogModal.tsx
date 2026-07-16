@@ -83,6 +83,18 @@ export default function JobMaterialLogModal({ isOpen, onClose, jobAssignmentId, 
     [materialTypes, selectedMaterialId]
   )
 
+  // The BOQ budget is defined per plot (e.g. 3 primer per house) - when
+  // logging one purchase across a batch of plots, the quota to compare
+  // against should scale with how many plots are in that batch, not stay
+  // pinned at a single plot's number.
+  const batchPlotCount = 1 + selectedSiblingIds.size
+  const perPlotPlannedQuantity = useMemo(
+    () => variance.find((v) => v.material_type_id === Number(selectedMaterialId))?.planned_quantity ?? 0,
+    [variance, selectedMaterialId]
+  )
+  const batchQuota = perPlotPlannedQuantity * batchPlotCount
+  const isOverBatchQuota = batchQuota > 0 && parseFloat(quantityUsed) > batchQuota
+
   function handleMaterialSelect(id: string) {
     setSelectedMaterialId(id)
     const mt = materialTypes.find((m) => String(m.id) === id)
@@ -148,10 +160,36 @@ export default function JobMaterialLogModal({ isOpen, onClose, jobAssignmentId, 
     }
   }
 
-  const totals = variance.reduce(
+  // Live preview: while a draft entry is being filled in, the row for the
+  // material being logged shows the batch-scaled budget and what the
+  // totals would become if saved right now - instead of only a small hint
+  // below the quantity field, disconnected from the actual comparison table.
+  const draftQty = parseFloat(quantityUsed) || 0
+  const draftPrice = parseFloat(unitPrice) || 0
+  const draftMaterialTypeId = selectedMaterialId ? Number(selectedMaterialId) : null
+
+  const displayRows = variance.map((row) => {
+    const isDraftRow = row.material_type_id === draftMaterialTypeId
+    const plannedQuantity = isDraftRow ? row.planned_quantity * batchPlotCount : row.planned_quantity
+    const plannedCost = isDraftRow ? row.planned_cost * batchPlotCount : row.planned_cost
+    const previewUsedQuantity = isDraftRow && draftQty > 0 ? row.used_quantity + draftQty : row.used_quantity
+    const previewActualCost = isDraftRow && draftQty > 0 ? row.actual_cost + draftQty * draftPrice : row.actual_cost
+    return {
+      ...row,
+      isDraftRow,
+      plannedQuantity,
+      plannedCost,
+      previewUsedQuantity,
+      previewActualCost,
+      previewDifference: previewActualCost - plannedCost,
+      hasPreview: isDraftRow && draftQty > 0,
+    }
+  })
+
+  const totals = displayRows.reduce(
     (acc, row) => ({
-      planned: acc.planned + row.planned_cost,
-      actual: acc.actual + row.actual_cost,
+      planned: acc.planned + row.plannedCost,
+      actual: acc.actual + row.previewActualCost,
     }),
     { planned: 0, actual: 0 }
   )
@@ -169,30 +207,33 @@ export default function JobMaterialLogModal({ isOpen, onClose, jobAssignmentId, 
           <div>
             <p className="mb-2 text-sm font-semibold text-slate-700">งบประมาณเทียบกับที่ใช้จริง</p>
             <div className="overflow-hidden rounded-lg border border-slate-200">
-              <table className="w-full text-sm">
+              <table className="w-full table-fixed text-sm">
                 <thead className="bg-slate-50 text-slate-600">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">วัสดุ</th>
-                    <th className="px-3 py-2 text-right font-semibold">งบ (ปริมาณ)</th>
-                    <th className="px-3 py-2 text-right font-semibold">ใช้จริง (ปริมาณ)</th>
-                    <th className="px-3 py-2 text-right font-semibold">งบประมาณ</th>
-                    <th className="px-3 py-2 text-right font-semibold">ใช้จริง</th>
-                    <th className="px-3 py-2 text-right font-semibold">ผลต่าง</th>
+                    <th className="w-36 px-3 py-2 text-right font-semibold">งบ (ปริมาณ)</th>
+                    <th className="w-36 px-3 py-2 text-right font-semibold">ใช้จริง (ปริมาณ)</th>
+                    <th className="w-28 px-3 py-2 text-right font-semibold">งบประมาณ</th>
+                    <th className="w-28 px-3 py-2 text-right font-semibold">ใช้จริง</th>
+                    <th className="w-28 px-3 py-2 text-right font-semibold">ผลต่าง</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {variance.length === 0 ? (
+                  {displayRows.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
                         งานนี้ยังไม่มีรายการวัสดุที่ตั้งงบไว้
                       </td>
                     </tr>
                   ) : (
-                    variance.map((row) => {
-                      const isOverBudget = row.difference > 0
+                    displayRows.map((row) => {
+                      const isOverBudget = row.previewDifference > 0
                       const isUnplanned = row.planned_quantity === 0 && row.used_quantity > 0
                       return (
-                        <tr key={row.material_type_id} className={isUnplanned ? 'bg-amber-50/60' : ''}>
+                        <tr
+                          key={row.material_type_id}
+                          className={row.hasPreview ? 'bg-indigo-50/60' : isUnplanned ? 'bg-amber-50/60' : ''}
+                        >
                           <td className="px-3 py-2 font-medium text-slate-800">
                             {row.material_name}
                             {isUnplanned && (
@@ -202,22 +243,44 @@ export default function JobMaterialLogModal({ isOpen, onClose, jobAssignmentId, 
                             )}
                           </td>
                           <td className="px-3 py-2 text-right text-slate-600">
-                            {row.planned_quantity} {row.unit}
+                            {row.isDraftRow && batchPlotCount > 1 ? (
+                              <>
+                                {row.planned_quantity} × {batchPlotCount} ={' '}
+                                <span className="font-semibold text-indigo-700">{row.plannedQuantity}</span> {row.unit}
+                              </>
+                            ) : (
+                              <>
+                                {row.plannedQuantity} {row.unit}
+                              </>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-right text-slate-600">
-                            {row.used_quantity} {row.unit}
+                            {row.hasPreview ? (
+                              <>
+                                {row.used_quantity} + {draftQty} ={' '}
+                                <span className="font-semibold text-indigo-700">{row.previewUsedQuantity}</span> {row.unit}
+                              </>
+                            ) : (
+                              <>
+                                {row.used_quantity} {row.unit}
+                              </>
+                            )}
                           </td>
-                          <td className="px-3 py-2 text-right">฿{formatCurrency(row.planned_cost)}</td>
-                          <td className="px-3 py-2 text-right">฿{formatCurrency(row.actual_cost)}</td>
+                          <td className="px-3 py-2 text-right">
+                            ฿{formatCurrency(row.plannedCost)}
+                          </td>
+                          <td className={`px-3 py-2 text-right ${row.hasPreview ? 'font-semibold text-indigo-700' : ''}`}>
+                            ฿{formatCurrency(row.previewActualCost)}
+                          </td>
                           <td className={`px-3 py-2 text-right font-semibold ${isOverBudget ? 'text-red-600' : 'text-emerald-600'}`}>
-                            {isOverBudget ? '+' : ''}฿{formatCurrency(row.difference)}
+                            {isOverBudget ? '+' : ''}฿{formatCurrency(row.previewDifference)}
                           </td>
                         </tr>
                       )
                     })
                   )}
                 </tbody>
-                {variance.length > 0 && (
+                {displayRows.length > 0 && (
                   <tfoot className="bg-slate-50 font-bold text-slate-800">
                     <tr>
                       <td colSpan={3} className="px-3 py-2 text-right">รวม</td>
@@ -259,7 +322,9 @@ export default function JobMaterialLogModal({ isOpen, onClose, jobAssignmentId, 
                   onChange={(e) => setQuantityUsed(e.target.value)}
                   className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
                 />
-                <p className="mt-0.5 h-4 text-[11px] text-slate-400">&nbsp;</p>
+                <p className={`mt-0.5 h-4 truncate text-[11px] ${isOverBatchQuota ? 'font-semibold text-red-600' : 'text-slate-400'}`}>
+                  {isOverBatchQuota ? `เกินงบ (${batchQuota}) ดูตารางด้านบน` : <>&nbsp;</>}
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">ราคา/หน่วย</label>
@@ -335,7 +400,7 @@ export default function JobMaterialLogModal({ isOpen, onClose, jobAssignmentId, 
                 </div>
                 {selectedSiblingIds.size > 0 && (
                   <p className="mt-1.5 text-[11px] text-indigo-700">
-                    จะบันทึกยอดเต็มจำนวนนี้ให้ทุกแปลงที่เลือก ({1 + selectedSiblingIds.size} แปลง) พร้อมกัน
+                    จะบันทึกยอดเต็มจำนวนนี้ให้ทุกแปลงที่เลือก ({batchPlotCount} แปลง) พร้อมกัน - งบเทียบจะคูณตามจำนวนแปลงด้วย
                   </p>
                 )}
               </div>
@@ -373,10 +438,23 @@ export default function JobMaterialLogModal({ isOpen, onClose, jobAssignmentId, 
                         <td className="px-3 py-2 font-medium text-slate-800">
                           {entry.material_types?.name || '-'}
                           {entry.shared_plot_names && entry.shared_plot_names.length > 0 && (
-                            <div className="mt-0.5 flex items-center gap-1 text-[11px] font-normal text-indigo-600">
-                              <Users className="h-3 w-3" />
-                              ใช้ร่วมกับแปลง {entry.shared_plot_names.join(', ')}
-                            </div>
+                            <>
+                              <div className="mt-0.5 flex items-center gap-1 text-[11px] font-normal text-indigo-600">
+                                <Users className="h-3 w-3" />
+                                ใช้ร่วมกับแปลง {entry.shared_plot_names.join(', ')}
+                              </div>
+                              {(() => {
+                                const perPlot = variance.find((v) => v.material_type_id === entry.material_type_id)
+                                  ?.planned_quantity
+                                if (perPlot == null) return null
+                                const count = 1 + entry.shared_plot_names.length
+                                return (
+                                  <div className="text-[11px] font-normal text-slate-400">
+                                    งบรวม {count} แปลง: {perPlot} × {count} = {perPlot * count}
+                                  </div>
+                                )
+                              })()}
+                            </>
                           )}
                         </td>
                         <td className="px-3 py-2 text-right">
