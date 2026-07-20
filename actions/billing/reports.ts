@@ -24,6 +24,7 @@ type BillingReportRow = {
   plot_id?: string | null
   submitted_by?: string | null
   approved_by?: string | null
+  approved_at?: string | null
   paid_out_at?: string | null
   paid_out_by?: string | null
   wht_applied?: boolean | null
@@ -131,6 +132,7 @@ export async function getExtraWorkReport(
   const plotMap = await getPlotNameMap(supabase, getPlotIds(rows))
   return rows.map((billing) => ({
     ...billing,
+    billing_adjustments: normalizeAdjustmentsWithPlot(billing.billing_adjustments),
     plots: billing.plot_id ? { name: plotMap.get(billing.plot_id) || null } : null,
   }))
 }
@@ -169,8 +171,17 @@ export async function getApprovedContractorCycleReport(
 
   if (filters.contractorId) query = query.eq('contractor_id', filters.contractorId)
   if (filters.projectId) query = query.eq('project_id', filters.projectId)
-  if (filters.dateFrom) query = query.gte('billing_date', filters.dateFrom)
-  if (filters.dateTo) query = query.lte('billing_date', filters.dateTo)
+
+  // Unpaid approved bills must never fall out of view just because their
+  // billing_date sits outside the selected cycle window — otherwise a job
+  // approved today with an older billing_date silently disappears from the
+  // payout list. The date range only restricts bills that are already paid.
+  const dateConditions: string[] = []
+  if (filters.dateFrom) dateConditions.push(`billing_date.gte.${filters.dateFrom}`)
+  if (filters.dateTo) dateConditions.push(`billing_date.lte.${filters.dateTo}`)
+  if (dateConditions.length > 0) {
+    query = query.or(`and(${dateConditions.join(',')}),paid_out_at.is.null`)
+  }
 
   const { data, error } = await query
   if (error) throw new Error(error.message)

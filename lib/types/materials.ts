@@ -17,6 +17,26 @@ export type BoqMaterialItem = {
   material_types?: MaterialType | null
 }
 
+/** A named batch of plots built/supplied together (e.g. "98-102"). Material
+ * purchases can be scoped to a whole group instead of one plot. */
+export type PlotGroup = {
+  id: string
+  project_id: string
+  name: string
+  created_at: string
+  member_plot_ids: string[]
+  member_plot_names: string[]
+}
+
+/** The group the current job's plot belongs to, if any - used by the
+ * logging UI to offer "log for the whole group" and to compute shares. */
+export type PlotGroupContext = {
+  group_id: string
+  name: string
+  member_count: number
+  member_plot_names: string[]
+}
+
 export type MaterialUsageLogEntry = {
   id: string
   job_assignment_id: string
@@ -28,20 +48,18 @@ export type MaterialUsageLogEntry = {
   photo_url: string | null
   logged_by: string | null
   created_at: string
-  group_id: string | null
+  /** Set when this purchase covers the plot's whole group; null = this plot only. */
+  plot_group_id: string | null
   material_types?: MaterialType | null
-  /** Other plot names this same purchase was also logged against (grouped entries only). */
-  shared_plot_names?: string[]
+  /** Group display info, attached when plot_group_id is set. */
+  plot_group?: { name: string; member_count: number } | null
+  /** This plot's derived share of a group purchase (quantity / member count). */
+  share_quantity?: number
 }
 
-/** A job_assignment for the same BOQ job on a sibling plot - eligible to be
- * included when logging one material purchase across a group of plots. */
-export type SiblingJobOption = {
-  job_assignment_id: string
-  plot_name: string
-}
-
-/** Planned-vs-actual rollup for one material on one job assignment. */
+/** Planned-vs-actual rollup for one material on one job assignment.
+ * Quantities/costs are the per-plot view: solo purchases exact, plus this
+ * plot's share of any group purchases (group total / member count). */
 export type MaterialVariance = {
   material_type_id: number
   material_name: string
@@ -51,4 +69,12 @@ export type MaterialVariance = {
   planned_cost: number
   actual_cost: number
   difference: number
+  /** Group-level totals, present when any usage came from group purchases. */
+  group?: {
+    member_count: number
+    total_quantity: number
+    total_cost: number
+    planned_quantity: number
+    planned_cost: number
+  }
 }

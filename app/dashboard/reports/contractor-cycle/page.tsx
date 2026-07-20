@@ -6,6 +6,7 @@ import Modal from '@/components/ui/Modal'
 import { getApprovedContractorCycleReport, getBillingOptions, undoApproveBilling, markBillingsAsPaidOut, unmarkBillingsAsPaidOut } from '@/actions/billing-actions'
 import { BadgeCheck, Loader2, Printer, Undo2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
+import { computeActualPayout } from '@/lib/billing'
 
 type Project = { id: string; name: string }
 type Contractor = { id: string; name: string }
@@ -25,6 +26,15 @@ function monthStartISO() {
   const d = new Date()
   d.setDate(1)
   return d.toISOString().split('T')[0]
+}
+
+const RECENTLY_APPROVED_MS = 48 * 60 * 60 * 1000
+
+function isRecentlyApproved(approvedAt?: string | null) {
+  if (!approvedAt) return false
+  const t = new Date(approvedAt).getTime()
+  if (!Number.isFinite(t)) return false
+  return Date.now() - t < RECENTLY_APPROVED_MS
 }
 
 export default function ContractorCycleReportPage() {
@@ -348,7 +358,6 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             const workAmt = Number(bill.total_work_amount || 0)
             const addAmt = Number(bill.total_add_amount || 0)
             const deductAmt = Number(bill.total_deduct_amount || 0)
-            const retAmt = workAmt * (Number(bill.retention_percent || 0) / 100)
             const pmGrossAmt = workAmt + addAmt - deductAmt
             acc.total_work_amount += workAmt
             acc.total_add_amount += addAmt
@@ -356,12 +365,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             acc.net_amount += Number(bill.net_amount || 0)
             acc.gross_amount += pmGrossAmt
             if (bill.paid_out_at) {
-              // Use same formula as the modal: base - each deduction that was actually applied
-              const baseAmt = workAmt + addAmt
-              const actualDeduct = bill.deduct_applied !== false ? deductAmt : 0
-              const actualRetention = bill.retention_applied !== false ? retAmt : 0
-              const actualWht = bill.wht_applied ? pmGrossAmt * (Number(bill.wht_percent || 0) / 100) : 0
-              acc.actual_transfer += baseAmt - actualDeduct - actualRetention - actualWht
+              acc.actual_transfer += computeActualPayout(bill)
             } else {
               acc.actual_transfer += pmGrossAmt
             }
@@ -1031,6 +1035,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           const paidCount = group.bills.filter((b: any) => !!b.paid_out_at).length
           const allPaid = paidCount === group.bills.length && group.bills.length > 0
           const somePaid = paidCount > 0 && !allPaid
+          const hasRecentlyApproved = group.bills.some((b: any) => !b.paid_out_at && isRecentlyApproved(b.approved_at))
           const latestPaidAt = allPaid
             ? group.bills.reduce((latest: string, b: any) => {
                 const d = b.paid_out_at || ''
@@ -1057,6 +1062,11 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                   {!allPaid && !somePaid && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
                       รอจ่าย
+                    </span>
+                  )}
+                  {hasRecentlyApproved && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-300">
+                      มีรายการอนุมัติใหม่
                     </span>
                   )}
                 </div>
@@ -1125,12 +1135,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     const retAmt = workAmt * ((bill.retention_percent ?? 0) / 100)
                     const pmGrossAmt = workAmt + addAmt - deductAmt
                     const grossAmt = pmGrossAmt
-                    // Same formula as the modal: (work+add) − actualDeduct − actualRetention − actualWHT
-                    const baseAmt = workAmt + addAmt
-                    const actualDeduct = bill.deduct_applied !== false ? deductAmt : 0
-                    const actualRetention = bill.retention_applied !== false ? retAmt : 0
                     const whtAmt = bill.wht_applied ? pmGrossAmt * ((bill.wht_percent ?? 0) / 100) : 0
-                    const actualTransfer = baseAmt - actualDeduct - actualRetention - whtAmt
+                    const actualTransfer = computeActualPayout(bill)
                     return (
                       <Fragment key={bill.id}>
                         <tr className="border-b align-top">
@@ -1141,8 +1147,15 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                                 <BadgeCheck className="h-2.5 w-2.5" /> จ่ายแล้ว
                               </div>
                             ) : (
-                              <div className="mt-0.5 inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
-                                รอจ่าย
+                              <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                                <div className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
+                                  รอจ่าย
+                                </div>
+                                {isRecentlyApproved(bill.approved_at) && (
+                                  <div className="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 ring-1 ring-blue-300">
+                                    ใหม่
+                                  </div>
+                                )}
                               </div>
                             )}
                           </td>

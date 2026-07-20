@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Activity, AlertTriangle, Building2, CheckCircle2, Clock3, Home, ShieldAlert, TrendingUp, Wallet } from 'lucide-react'
+import { Activity, AlertTriangle, Building2, CheckCircle2, Clock3, Home, ShieldAlert, Sparkles, TrendingUp, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { getDashboardStats } from '@/actions/dashboard-actions'
 import { formatCurrency } from '@/lib/currency'
@@ -54,6 +54,14 @@ export default async function DashboardPage() {
       href: '/dashboard/reports/contractor-cycle',
     },
     {
+      title: 'Recently Approved',
+      value: stats.recentlyApproved?.count || 0,
+      hint: `THB ${formatCurrency(stats.recentlyApproved?.amount || 0)} • last 7 days${stats.recentlyApproved?.unpaidCount ? ` • ${stats.recentlyApproved.unpaidCount} awaiting payout` : ''}`,
+      icon: <Sparkles className="h-5 w-5 text-sky-600" />,
+      bg: 'bg-sky-50',
+      href: '/dashboard/reports/contractor-cycle',
+    },
+    {
       title: 'Quality Alerts',
       value: stats.foremanQuality?.summary?.stale_requests || 0,
       hint: 'Requests waiting > 3 days',
@@ -80,7 +88,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         {kpis.map((kpi) => (
           <Link key={kpi.title} href={kpi.href} className="group block">
             <Card className="p-4 transition-shadow group-hover:shadow-md group-hover:border-slate-300">

@@ -9,8 +9,16 @@ import type {
   MaterialType,
   MaterialUsageLogEntry,
   MaterialVariance,
-  SiblingJobOption,
+  PlotGroup,
+  PlotGroupContext,
 } from '@/lib/types/materials'
+
+function asSingle<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null
+  return value ?? null
+}
+
+const thaiCollator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
 
 // ---------------------------------------------------------------------------
 // Material catalog (PM/admin manage; anyone with `materials` access can read)
@@ -145,151 +153,297 @@ export async function deleteBoqMaterialItem(id: string, boqId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Actual usage log (the "actual" side, foreman logs against their own jobs)
+// Plot groups (batches of plots built/supplied together, e.g. "98-102").
+// Managed from plot management on the project page; material purchases can
+// then be scoped to a whole group instead of one plot.
 // ---------------------------------------------------------------------------
 
-/** Other job_assignments for the same kind of BOQ work across sibling plots
- * in the same project - eligible to share one logged material purchase
- * with, since contractors commonly draw materials for a batch of plots at
- * once rather than one at a time.
- *
- * Matches by the BOQ item's *name* rather than requiring the identical
- * boq_master row: house types that are conceptually "the same" are often
- * duplicated into separate house_models/boq_master records per phase (e.g.
- * plots 98-102 here span two different house_model_id groups), so matching
- * on the literal foreign key would silently find zero siblings even though
- * the work item is textually identical.
- *
- * The project is derived via plot_id -> plots.project_id, NOT
- * job_assignments.project_id - that column exists but is never populated
- * (confirmed 0 of 545 rows have it set across this database), so relying on
- * it would silently return zero siblings every time. */
-export async function getSiblingJobsForGrouping(jobAssignmentId: string): Promise<SiblingJobOption[]> {
-  await requireModuleAccess('materials')
+export async function getPlotGroups(projectId: string): Promise<PlotGroup[]> {
+  await requireModuleAccess('projects')
   const supabase = await createClient()
-
-  const { data: job, error: jobError } = await supabase
-    .from('job_assignments')
-    .select('plots (project_id), boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name)')
-    .eq('id', jobAssignmentId)
-    .maybeSingle()
-
-  if (jobError) throw new Error(jobError.message)
-  const boqMaster = Array.isArray(job?.boq_master) ? job.boq_master[0] : job?.boq_master
-  const plot = Array.isArray(job?.plots) ? job.plots[0] : job?.plots
-  const itemName = boqMaster?.item_name?.trim()
-  const projectId = plot?.project_id
-  if (!projectId || !itemName) return []
-
-  const { data: matchingBoqItems, error: boqError } = await supabase
-    .from('boq_master')
-    .select('id')
-    .eq('item_name', itemName)
-
-  if (boqError) throw new Error(boqError.message)
-  const boqItemIds = (matchingBoqItems || []).map((row) => row.id)
-  if (boqItemIds.length === 0) return []
-
   const { data, error } = await supabase
-    .from('job_assignments')
-    .select('id, plots!inner (name, project_id)')
-    .in('boq_item_id', boqItemIds)
-    .eq('plots.project_id', projectId)
-    .neq('id', jobAssignmentId)
+    .from('plot_groups')
+    .select('id, project_id, name, created_at, plot_group_members (plot_id, plots (name))')
+    .eq('project_id', projectId)
+    .order('name')
 
   if (error) throw new Error(error.message)
 
-  return (data || [])
-    .map((row) => {
-      const plot = Array.isArray(row.plots) ? row.plots[0] : row.plots
-      return { job_assignment_id: row.id, plot_name: plot?.name || 'ไม่ระบุแปลง' }
-    })
-    .sort((a, b) => a.plot_name.localeCompare(b.plot_name, 'th', { numeric: true }))
+  return (data || []).map((group) => {
+    const members = (group.plot_group_members || []).map((member) => ({
+      plot_id: member.plot_id,
+      name: asSingle(member.plots)?.name || '',
+    }))
+    members.sort((a, b) => thaiCollator.compare(a.name, b.name))
+    return {
+      id: group.id,
+      project_id: group.project_id,
+      name: group.name,
+      created_at: group.created_at,
+      member_plot_ids: members.map((m) => m.plot_id),
+      member_plot_names: members.map((m) => m.name),
+    }
+  })
+}
+
+export async function createPlotGroup(projectId: string, name: string, plotIds: string[]) {
+  await requireModuleAccess('projects')
+  const supabase = await createClient()
+
+  const trimmedName = name.trim()
+  if (!trimmedName) throw new Error('กรุณาตั้งชื่อกลุ่ม')
+  const uniquePlotIds = Array.from(new Set(plotIds.filter(Boolean)))
+  if (uniquePlotIds.length < 2) throw new Error('กลุ่มต้องมีอย่างน้อย 2 แปลง')
+
+  const { data: group, error } = await supabase
+    .from('plot_groups')
+    .insert([{ project_id: projectId, name: trimmedName }])
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  const { error: membersError } = await supabase
+    .from('plot_group_members')
+    .insert(uniquePlotIds.map((plotId) => ({ group_id: group.id, plot_id: plotId })))
+
+  if (membersError) {
+    // Roll back the empty group so a failed member insert (e.g. a plot that
+    // is already in another group) doesn't leave a hollow group behind.
+    await supabase.from('plot_groups').delete().eq('id', group.id)
+    if (membersError.message.includes('plot_group_members_plot_unique')) {
+      throw new Error('มีแปลงที่อยู่ในกลุ่มอื่นแล้ว - แปลงหนึ่งอยู่ได้เพียงกลุ่มเดียว')
+    }
+    throw new Error(membersError.message)
+  }
+
+  revalidatePath(`/dashboard/projects/${projectId}`)
+}
+
+export async function updatePlotGroup(groupId: string, projectId: string, name: string, plotIds: string[]) {
+  await requireModuleAccess('projects')
+  const supabase = await createClient()
+
+  const trimmedName = name.trim()
+  if (!trimmedName) throw new Error('กรุณาตั้งชื่อกลุ่ม')
+  const uniquePlotIds = Array.from(new Set(plotIds.filter(Boolean)))
+  if (uniquePlotIds.length < 2) throw new Error('กลุ่มต้องมีอย่างน้อย 2 แปลง')
+
+  const { error: nameError } = await supabase.from('plot_groups').update({ name: trimmedName }).eq('id', groupId)
+  if (nameError) throw new Error(nameError.message)
+
+  const { error: clearError } = await supabase.from('plot_group_members').delete().eq('group_id', groupId)
+  if (clearError) throw new Error(clearError.message)
+
+  const { error: membersError } = await supabase
+    .from('plot_group_members')
+    .insert(uniquePlotIds.map((plotId) => ({ group_id: groupId, plot_id: plotId })))
+
+  if (membersError) {
+    if (membersError.message.includes('plot_group_members_plot_unique')) {
+      throw new Error('มีแปลงที่อยู่ในกลุ่มอื่นแล้ว - แปลงหนึ่งอยู่ได้เพียงกลุ่มเดียว')
+    }
+    throw new Error(membersError.message)
+  }
+
+  revalidatePath(`/dashboard/projects/${projectId}`)
+}
+
+export async function deletePlotGroup(groupId: string, projectId: string) {
+  await requireModuleAccess('projects')
+  const supabase = await createClient()
+
+  // Past purchases scoped to this group would silently become single-plot
+  // entries if the group vanished (FK is ON DELETE SET NULL), rewriting
+  // spend history - so refuse while any exist.
+  const { count, error: countError } = await supabase
+    .from('material_usage_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('plot_group_id', groupId)
+
+  if (countError) throw new Error(countError.message)
+  if ((count ?? 0) > 0) {
+    throw new Error('ลบไม่ได้: มีบันทึกการใช้วัสดุที่อ้างถึงกลุ่มนี้อยู่ กรุณาลบบันทึกเหล่านั้นก่อน')
+  }
+
+  const { error } = await supabase.from('plot_groups').delete().eq('id', groupId)
+  if (error) throw new Error(error.message)
+  revalidatePath(`/dashboard/projects/${projectId}`)
+}
+
+// ---------------------------------------------------------------------------
+// Actual usage log (the "actual" side, foreman logs against their own jobs)
+// ---------------------------------------------------------------------------
+
+type JobContext = {
+  plotId: string | null
+  itemName: string | null
+  boqItemId: string | null
+  group: PlotGroupContext | null
+}
+
+async function fetchJobContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  jobAssignmentId: string
+): Promise<JobContext> {
+  const { data: job, error } = await supabase
+    .from('job_assignments')
+    .select('plot_id, boq_item_id, boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name)')
+    .eq('id', jobAssignmentId)
+    .maybeSingle()
+
+  if (error) throw new Error(error.message)
+  const itemName = asSingle(job?.boq_master)?.item_name?.trim() || null
+  const plotId = job?.plot_id || null
+  const boqItemId = job?.boq_item_id || null
+  if (!plotId) return { plotId, itemName, boqItemId, group: null }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from('plot_group_members')
+    .select('group_id, plot_groups (name)')
+    .eq('plot_id', plotId)
+    .maybeSingle()
+
+  if (membershipError) throw new Error(membershipError.message)
+  if (!membership?.group_id) return { plotId, itemName, boqItemId, group: null }
+
+  const { data: members, error: membersError } = await supabase
+    .from('plot_group_members')
+    .select('plot_id, plots (name)')
+    .eq('group_id', membership.group_id)
+
+  if (membersError) throw new Error(membersError.message)
+  const memberNames = (members || [])
+    .map((m) => asSingle(m.plots)?.name || '')
+    .filter(Boolean)
+    .sort((a, b) => thaiCollator.compare(a, b))
+
+  return {
+    plotId,
+    itemName,
+    boqItemId,
+    group: {
+      group_id: membership.group_id,
+      name: asSingle(membership.plot_groups)?.name || '',
+      member_count: (members || []).length,
+      member_plot_names: memberNames,
+    },
+  }
+}
+
+/** The plot group the job's plot belongs to (or null) - the logging UI uses
+ * this to offer "log for the whole group". */
+export async function getPlotGroupContextForJob(jobAssignmentId: string): Promise<PlotGroupContext | null> {
+  await requireModuleAccess('materials')
+  const supabase = await createClient()
+  const context = await fetchJobContext(supabase, jobAssignmentId)
+  return context.group
+}
+
+/** Group-scoped purchases relevant to a job: entries logged for the plot's
+ * group whose anchor job is the same kind of BOQ work (matched by item
+ * name - "identical" house types are duplicated into separate boq_master
+ * records per phase, so the FK alone can't connect them). */
+async function fetchGroupEntriesForJob(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  context: JobContext
+) {
+  if (!context.group || !context.itemName) return []
+
+  const { data, error } = await supabase
+    .from('material_usage_log')
+    .select(
+      '*, material_types (*), job_assignments!inner (boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name))'
+    )
+    .eq('plot_group_id', context.group.group_id)
+
+  if (error) throw new Error(error.message)
+
+  return (data || []).filter((entry) => {
+    const anchorItemName = asSingle(asSingle(entry.job_assignments)?.boq_master)?.item_name?.trim()
+    return anchorItemName === context.itemName
+  })
 }
 
 export async function getMaterialUsageForJob(jobAssignmentId: string): Promise<MaterialUsageLogEntry[]> {
   await requireModuleAccess('materials')
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('material_usage_log')
-    .select('*, material_types (*)')
-    .eq('job_assignment_id', jobAssignmentId)
-    .order('purchase_date', { ascending: false })
+  const context = await fetchJobContext(supabase, jobAssignmentId)
 
-  if (error) throw new Error(error.message)
-  const entries = data || []
+  const [{ data: soloEntries, error: soloError }, groupEntries] = await Promise.all([
+    supabase
+      .from('material_usage_log')
+      .select('*, material_types (*)')
+      .eq('job_assignment_id', jobAssignmentId)
+      .is('plot_group_id', null),
+    fetchGroupEntriesForJob(supabase, context),
+  ])
 
-  const groupIds = Array.from(new Set(entries.map((e) => e.group_id).filter((g): g is string => Boolean(g))))
-  if (groupIds.length === 0) return entries
+  if (soloError) throw new Error(soloError.message)
 
-  // For each grouped entry, look up the sibling rows sharing the same
-  // group_id (i.e. other plots this same purchase was also logged for).
-  const { data: siblingRows, error: siblingError } = await supabase
-    .from('material_usage_log')
-    .select('group_id, job_assignment_id, job_assignments (plots (name))')
-    .in('group_id', groupIds)
-    .neq('job_assignment_id', jobAssignmentId)
+  const memberCount = context.group?.member_count || 1
+  const decoratedGroupEntries: MaterialUsageLogEntry[] = groupEntries.map((entry) => {
+    // Strip the join used only for item-name matching before returning.
+    const rest = { ...entry } as Record<string, unknown>
+    delete rest.job_assignments
+    return {
+      ...(rest as unknown as MaterialUsageLogEntry),
+      plot_group: context.group ? { name: context.group.name, member_count: memberCount } : null,
+      share_quantity: Number(entry.quantity_used || 0) / memberCount,
+    }
+  })
 
-  if (siblingError) throw new Error(siblingError.message)
-
-  const plotNamesByGroup = new Map<string, string[]>()
-  for (const row of siblingRows || []) {
-    if (!row.group_id) continue
-    const jobAssignment = Array.isArray(row.job_assignments) ? row.job_assignments[0] : row.job_assignments
-    const plot = Array.isArray(jobAssignment?.plots) ? jobAssignment.plots[0] : jobAssignment?.plots
-    const name = plot?.name
-    if (!name) continue
-    const existing = plotNamesByGroup.get(row.group_id) || []
-    existing.push(name)
-    plotNamesByGroup.set(row.group_id, existing)
-  }
-
-  return entries.map((entry) => ({
-    ...entry,
-    shared_plot_names: entry.group_id ? plotNamesByGroup.get(entry.group_id) || [] : undefined,
-  }))
+  return [...(soloEntries || []), ...decoratedGroupEntries].sort((a, b) => {
+    const dateCompare = String(b.purchase_date).localeCompare(String(a.purchase_date))
+    if (dateCompare !== 0) return dateCompare
+    return String(b.created_at).localeCompare(String(a.created_at))
+  })
 }
 
 export async function logMaterialUsage(input: {
-  job_assignment_ids: string[]
+  job_assignment_id: string
   material_type_id: number
   quantity_used: number
   unit_price_at_use: number
   purchase_date: string
   note?: string
   photo_url?: string
+  /** true = this purchase covers the plot's whole group, stored ONCE at
+   * group scope (per-plot numbers are derived as total / member count). */
+  for_group?: boolean
 }) {
   await requireModuleAccess('materials')
   const supabase = await createClient()
   const user = await getCurrentUser()
   if (!user) throw new Error('User not found')
 
-  const jobAssignmentIds = Array.from(new Set((input.job_assignment_ids || []).filter(Boolean)))
-  if (jobAssignmentIds.length === 0) throw new Error('Job is required')
+  if (!input.job_assignment_id) throw new Error('Job is required')
   if (!input.material_type_id) throw new Error('Material is required')
   if (!(Number(input.quantity_used) > 0)) throw new Error('Quantity must be greater than 0')
 
-  // Only tag with a group_id when this purchase actually spans more than one
-  // plot - a solo entry stays ungrouped so it doesn't show a "shared" badge.
-  const groupId = jobAssignmentIds.length > 1 ? crypto.randomUUID() : null
-
-  const baseRow = {
-    material_type_id: input.material_type_id,
-    quantity_used: Number(input.quantity_used),
-    // Snapshot the price at the moment of logging - never re-derive this
-    // from material_types.current_price later, or past spend would drift
-    // whenever purchasing updates the catalog price.
-    unit_price_at_use: Math.max(0, Number(input.unit_price_at_use) || 0),
-    purchase_date: input.purchase_date || new Date().toISOString().split('T')[0],
-    note: input.note?.trim() || null,
-    photo_url: input.photo_url || null,
-    logged_by: user.id,
-    group_id: groupId,
+  let plotGroupId: string | null = null
+  if (input.for_group) {
+    const context = await fetchJobContext(supabase, input.job_assignment_id)
+    if (!context.group) throw new Error('แปลงนี้ยังไม่ได้อยู่ในกลุ่มแปลง - ตั้งกลุ่มได้ที่หน้าจัดการแปลงของโครงการ')
+    plotGroupId = context.group.group_id
   }
 
-  const { error } = await supabase
-    .from('material_usage_log')
-    .insert(jobAssignmentIds.map((jobAssignmentId) => ({ ...baseRow, job_assignment_id: jobAssignmentId })))
+  const { error } = await supabase.from('material_usage_log').insert([
+    {
+      job_assignment_id: input.job_assignment_id,
+      material_type_id: input.material_type_id,
+      quantity_used: Number(input.quantity_used),
+      // Snapshot the price at the moment of logging - never re-derive this
+      // from material_types.current_price later, or past spend would drift
+      // whenever purchasing updates the catalog price.
+      unit_price_at_use: Math.max(0, Number(input.unit_price_at_use) || 0),
+      purchase_date: input.purchase_date || new Date().toISOString().split('T')[0],
+      note: input.note?.trim() || null,
+      photo_url: input.photo_url || null,
+      logged_by: user.id,
+      plot_group_id: plotGroupId,
+    },
+  ])
 
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/foreman')
@@ -306,7 +460,7 @@ export async function updateMaterialUsageEntry(
 
   const { data: entry, error: fetchError } = await supabase
     .from('material_usage_log')
-    .select('logged_by, group_id')
+    .select('logged_by')
     .eq('id', id)
     .maybeSingle()
 
@@ -319,18 +473,17 @@ export async function updateMaterialUsageEntry(
 
   if (!(Number(input.quantity_used) > 0)) throw new Error('Quantity must be greater than 0')
 
-  const updatePayload = {
-    quantity_used: Number(input.quantity_used),
-    unit_price_at_use: Math.max(0, Number(input.unit_price_at_use) || 0),
-    purchase_date: input.purchase_date,
-    note: input.note?.trim() || null,
-  }
-
-  // A grouped entry is one logical purchase shared across several plots -
-  // editing it (quantity/price/date/note) should keep every plot's copy in
-  // sync rather than letting them silently diverge.
-  const query = supabase.from('material_usage_log').update(updatePayload)
-  const { error } = entry.group_id ? await query.eq('group_id', entry.group_id) : await query.eq('id', id)
+  // A purchase is stored once regardless of scope (solo or whole group), so
+  // an edit is a plain single-row update - no cross-plot sync needed.
+  const { error } = await supabase
+    .from('material_usage_log')
+    .update({
+      quantity_used: Number(input.quantity_used),
+      unit_price_at_use: Math.max(0, Number(input.unit_price_at_use) || 0),
+      purchase_date: input.purchase_date,
+      note: input.note?.trim() || null,
+    })
+    .eq('id', id)
 
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/foreman')
@@ -344,7 +497,7 @@ export async function deleteMaterialUsageEntry(id: string) {
 
   const { data: entry, error: fetchError } = await supabase
     .from('material_usage_log')
-    .select('logged_by, group_id')
+    .select('logged_by')
     .eq('id', id)
     .maybeSingle()
 
@@ -355,10 +508,9 @@ export async function deleteMaterialUsageEntry(id: string) {
   const isPrivileged = role === 'pm' || role === 'admin'
   if (!isOwner && !isPrivileged) throw new Error('No permission to delete this entry')
 
-  // A grouped entry is one purchase shared across several plots - deleting
-  // it should remove it from all of them, not leave orphaned copies behind.
-  const query = supabase.from('material_usage_log').delete()
-  const { error } = entry.group_id ? await query.eq('group_id', entry.group_id) : await query.eq('id', id)
+  // One row per purchase regardless of scope - deleting a group-scoped
+  // entry removes it for every member plot automatically.
+  const { error } = await supabase.from('material_usage_log').delete().eq('id', id)
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/foreman')
 }
@@ -367,39 +519,54 @@ export async function deleteMaterialUsageEntry(id: string) {
 // Planned-vs-actual rollup for one job assignment (a BOQ job on one plot)
 // ---------------------------------------------------------------------------
 
+/** Per-plot budget vs actual for one job. The budget side is always the
+ * plot's own BOQ quantities. The actual side combines:
+ *   - solo purchases (exact), and
+ *   - this plot's share of group-scoped purchases (group total / member
+ *     count - the true per-house split of a batch purchase is unknowable,
+ *     so an even share, labeled as such, is the honest per-plot number).
+ * Group totals ride along in `group` so the UI can show the real batch
+ * numbers (e.g. "whole group: 25 used / 15 budgeted") next to the share. */
 export async function getMaterialVarianceForJob(jobAssignmentId: string): Promise<MaterialVariance[]> {
   await requireModuleAccess('materials')
   const supabase = await createClient()
 
-  const { data: jobAssignment, error: jobError } = await supabase
-    .from('job_assignments')
-    .select('boq_item_id')
-    .eq('id', jobAssignmentId)
-    .maybeSingle()
+  const context = await fetchJobContext(supabase, jobAssignmentId)
+  if (!context.boqItemId) return []
 
-  if (jobError) throw new Error(jobError.message)
-  if (!jobAssignment?.boq_item_id) return []
-
-  const [{ data: planned, error: plannedError }, { data: actual, error: actualError }] = await Promise.all([
-    supabase
-      .from('boq_material_items')
-      .select('material_type_id, planned_quantity, material_types (id, name, unit, current_price)')
-      .eq('boq_id', jobAssignment.boq_item_id),
-    supabase
-      .from('material_usage_log')
-      .select('material_type_id, quantity_used, unit_price_at_use')
-      .eq('job_assignment_id', jobAssignmentId),
-  ])
+  const [{ data: planned, error: plannedError }, { data: solo, error: soloError }, groupEntries] =
+    await Promise.all([
+      supabase
+        .from('boq_material_items')
+        .select('material_type_id, planned_quantity, material_types (id, name, unit, current_price)')
+        .eq('boq_id', context.boqItemId),
+      supabase
+        .from('material_usage_log')
+        .select('material_type_id, quantity_used, unit_price_at_use')
+        .eq('job_assignment_id', jobAssignmentId)
+        .is('plot_group_id', null),
+      fetchGroupEntriesForJob(supabase, context),
+    ])
 
   if (plannedError) throw new Error(plannedError.message)
-  if (actualError) throw new Error(actualError.message)
+  if (soloError) throw new Error(soloError.message)
 
-  const actualByMaterial = new Map<number, { quantity: number; cost: number }>()
-  for (const row of actual || []) {
-    const existing = actualByMaterial.get(row.material_type_id) || { quantity: 0, cost: 0 }
+  const memberCount = context.group?.member_count || 1
+
+  const soloByMaterial = new Map<number, { quantity: number; cost: number }>()
+  for (const row of solo || []) {
+    const existing = soloByMaterial.get(row.material_type_id) || { quantity: 0, cost: 0 }
     existing.quantity += Number(row.quantity_used || 0)
     existing.cost += Number(row.quantity_used || 0) * Number(row.unit_price_at_use || 0)
-    actualByMaterial.set(row.material_type_id, existing)
+    soloByMaterial.set(row.material_type_id, existing)
+  }
+
+  const groupByMaterial = new Map<number, { quantity: number; cost: number }>()
+  for (const row of groupEntries) {
+    const existing = groupByMaterial.get(row.material_type_id) || { quantity: 0, cost: 0 }
+    existing.quantity += Number(row.quantity_used || 0)
+    existing.cost += Number(row.quantity_used || 0) * Number(row.unit_price_at_use || 0)
+    groupByMaterial.set(row.material_type_id, existing)
   }
 
   const plannedByMaterial = new Map<
@@ -407,17 +574,20 @@ export async function getMaterialVarianceForJob(jobAssignmentId: string): Promis
     { planned_quantity: number; material_type: { id: number; name: string; unit: string; current_price: number } | null }
   >()
   for (const row of planned || []) {
-    const materialType = Array.isArray(row.material_types) ? row.material_types[0] : row.material_types
     plannedByMaterial.set(row.material_type_id, {
       planned_quantity: Number(row.planned_quantity || 0),
-      material_type: materialType ?? null,
+      material_type: asSingle(row.material_types),
     })
   }
 
   // Union of planned + actual material ids - a material logged without being
   // pre-planned (e.g. something unexpected was bought) must still show up
   // here, not silently disappear from the comparison.
-  const allMaterialIds = new Set<number>([...plannedByMaterial.keys(), ...actualByMaterial.keys()])
+  const allMaterialIds = new Set<number>([
+    ...plannedByMaterial.keys(),
+    ...soloByMaterial.keys(),
+    ...groupByMaterial.keys(),
+  ])
 
   // Materials that only appear in `actual` have no joined material_types row
   // from the `planned` query, so look those up separately.
@@ -437,17 +607,31 @@ export async function getMaterialVarianceForJob(jobAssignmentId: string): Promis
     const materialType = plannedEntry?.material_type ?? unplannedTypeById.get(materialTypeId) ?? null
     const plannedQuantity = plannedEntry?.planned_quantity ?? 0
     const plannedCost = plannedQuantity * Number(materialType?.current_price || 0)
-    const usedEntry = actualByMaterial.get(materialTypeId) || { quantity: 0, cost: 0 }
+    const soloUsed = soloByMaterial.get(materialTypeId) || { quantity: 0, cost: 0 }
+    const groupUsed = groupByMaterial.get(materialTypeId) || { quantity: 0, cost: 0 }
+
+    const usedQuantity = soloUsed.quantity + groupUsed.quantity / memberCount
+    const actualCost = soloUsed.cost + groupUsed.cost / memberCount
 
     return {
       material_type_id: materialTypeId,
       material_name: materialType?.name || 'ไม่ระบุ',
       unit: materialType?.unit || 'unit',
       planned_quantity: plannedQuantity,
-      used_quantity: usedEntry.quantity,
+      used_quantity: usedQuantity,
       planned_cost: plannedCost,
-      actual_cost: usedEntry.cost,
-      difference: usedEntry.cost - plannedCost,
+      actual_cost: actualCost,
+      difference: actualCost - plannedCost,
+      group:
+        groupUsed.quantity > 0 && context.group
+          ? {
+              member_count: memberCount,
+              total_quantity: groupUsed.quantity,
+              total_cost: groupUsed.cost,
+              planned_quantity: plannedQuantity * memberCount,
+              planned_cost: plannedCost * memberCount,
+            }
+          : undefined,
     }
   })
 }

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { normalizeAdjustmentsWithPlot } from '@/actions/_shared/billing-adjustments'
 import { requireModuleAccess } from '@/lib/auth/route-access'
+import { computeActualPayout } from '@/lib/billing'
 
 // ดึงรายชื่อผู้รับเหมาทั้งหมด (พร้อมชื่อประเภทช่าง)
 export async function getContractors() {
@@ -18,12 +19,16 @@ export async function getContractors() {
   
   if (error) throw new Error(error.message)
 
-  // Use approved bill net totals as the source of truth for accumulated paid amount.
+  // Source of truth for "accumulated paid" is what the accountant actually
+  // marked as paid out (paid_out_at), computed with the WHT/retention/deduct
+  // flags they chose at payout time — NOT the amount a PM approved. Bills
+  // still awaiting payout must not count toward total_paid.
   const { data: approvedBills, error: approvedBillsError } = await supabase
     .from('billings')
-    .select('contractor_id, type, net_amount, total_work_amount, total_add_amount, total_deduct_amount, wht_percent, retention_percent, paid_out_at, retention_applied')
+    .select('contractor_id, type, total_work_amount, total_add_amount, total_deduct_amount, wht_percent, retention_percent, paid_out_at, wht_applied, retention_applied, deduct_applied')
     .eq('status', 'approved')
     .not('contractor_id', 'is', null)
+    .not('paid_out_at', 'is', null)
 
   if (approvedBillsError) throw new Error(approvedBillsError.message)
 
@@ -32,46 +37,16 @@ export async function getContractors() {
   for (const bill of approvedBills || []) {
     const contractorId = bill.contractor_id == null ? null : String(bill.contractor_id)
     if (!contractorId) continue
-    const work = Number(bill.total_work_amount || 0)
-    const add = Number(bill.total_add_amount || 0)
-    const deduct = Number(bill.total_deduct_amount || 0)
-    const wht = add * (Number(bill.wht_percent || 0) / 100)
-    const retention = work * (Number(bill.retention_percent || 0) / 100)
-    const fallbackNet = bill.type === 'extra_work'
-      ? (add - deduct)
-      : (work + add - deduct - wht - retention)
-    const billNet = Number(bill.net_amount ?? fallbackNet)
-    paidByContractor.set(contractorId, (paidByContractor.get(contractorId) || 0) + billNet)
-    // Only accumulate retention that was actually applied at payout
-    if (bill.paid_out_at && bill.retention_applied !== false) {
+    paidByContractor.set(contractorId, (paidByContractor.get(contractorId) || 0) + computeActualPayout(bill))
+    if (bill.retention_applied !== false) {
+      const retention = Number(bill.total_work_amount || 0) * (Number(bill.retention_percent || 0) / 100)
       retentionByContractor.set(contractorId, (retentionByContractor.get(contractorId) || 0) + retention)
     }
   }
 
-  // Fallback path from payment records (helps when legacy bills have missing/incorrect net values).
-  const { data: assignmentPayments, error: assignmentPaymentsError } = await supabase
-    .from('job_assignments')
-    .select('contractor_id, payments (amount)')
-    .not('contractor_id', 'is', null)
-  if (assignmentPaymentsError) throw new Error(assignmentPaymentsError.message)
-
-  const paidByPayment = new Map<string, number>()
-  for (const row of assignmentPayments || []) {
-    const contractorId = row.contractor_id == null ? null : String(row.contractor_id)
-    if (!contractorId) continue
-    const sum = (row.payments || []).reduce(
-      (acc: number, p: { amount: number | null }) => acc + Number(p.amount || 0),
-      0
-    )
-    paidByPayment.set(contractorId, (paidByPayment.get(contractorId) || 0) + sum)
-  }
-
   return (data || []).map((contractor) => ({
     ...contractor,
-    total_paid: Math.max(
-      paidByContractor.get(String(contractor.id)) || 0,
-      paidByPayment.get(String(contractor.id)) || 0
-    ),
+    total_paid: paidByContractor.get(String(contractor.id)) || 0,
     total_retention: retentionByContractor.get(String(contractor.id)) || 0,
   }))
 }
@@ -93,7 +68,9 @@ export async function getContractorApprovedHistory(contractorId: string) {
       retention_percent,
       wht_percent,
       paid_out_at,
+      wht_applied,
       retention_applied,
+      deduct_applied,
       reason_for_dc,
       note,
       projects (name),
@@ -130,6 +107,7 @@ export async function getContractorApprovedHistory(contractorId: string) {
     ...bill,
     billing_adjustments: normalizeAdjustmentsWithPlot(bill.billing_adjustments),
     plots: bill.plot_id ? { name: plotMap.get(String(bill.plot_id)) || null } : null,
+    actual_payout: bill.paid_out_at ? computeActualPayout(bill) : null,
   }))
 }
 

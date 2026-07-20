@@ -2,13 +2,16 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, Loader2, MapPin, AlertCircle, Pencil } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, Loader2, MapPin, AlertCircle, Pencil, Users } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
+import PlotGroupManager from '@/components/plots/PlotGroupManager'
 import { getProjectById, updateProject } from '@/actions/project-actions'
 import { getPlotsByProjectId, createPlot, deletePlot } from '@/actions/plot-actions'
 import { getHouseModels } from '@/actions/boq-actions'
+import { getPlotGroups } from '@/actions/material-actions'
+import type { PlotGroup } from '@/lib/types/materials'
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -24,7 +27,9 @@ export default function ProjectDetailPage() {
   
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  
+  const [isGroupManagerOpen, setIsGroupManagerOpen] = useState(false)
+  const [plotGroups, setPlotGroups] = useState<PlotGroup[]>([])
+
   const [selectedHouseModelId, setSelectedHouseModelId] = useState('')
   
   const [isPending, startTransition] = useTransition()
@@ -54,15 +59,17 @@ export default function ProjectDetailPage() {
       try {
   
         setIsLoading(true) // เริ่มโหลด
-  
-        const [p, pl, hm] = await Promise.all([
-  
+
+        const [p, pl, hm, groups] = await Promise.all([
+
           getProjectById(projectId),
-  
+
           getPlotsByProjectId(projectId),
-  
-          getHouseModels()
-  
+
+          getHouseModels(),
+
+          getPlotGroups(projectId).catch(() => [] as PlotGroup[]),
+
         ])
   
   
@@ -76,8 +83,10 @@ export default function ProjectDetailPage() {
   
   
         setProject(p)
-  
+
         setPlots(pl || [])
+
+        setPlotGroups(groups)
   
         
   
@@ -106,6 +115,15 @@ export default function ProjectDetailPage() {
     const refreshPlots = async () => {
       const pl = await getPlotsByProjectId(projectId)
       setPlots(pl || [])
+    }
+
+    const refreshGroups = async () => {
+      setPlotGroups(await getPlotGroups(projectId).catch(() => [] as PlotGroup[]))
+    }
+
+    const groupNameByPlotId = new Map<string, string>()
+    for (const group of plotGroups) {
+      for (const plotId of group.member_plot_ids) groupNameByPlotId.set(plotId, group.name)
     }
 
     const handleSubmit = async (formData: FormData) => {
@@ -275,26 +293,44 @@ export default function ProjectDetailPage() {
   
           </div>
   
-          <button
-  
-            onClick={() => {
-  
-              setSelectedHouseModelId('')
-  
-              setIsModalOpen(true)
-  
-            }}
-  
-            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 shadow-sm"
-  
-          >
-  
-            <Plus className="h-4 w-4" />
-  
-            เพิ่มแปลงที่ดิน
-  
-          </button>
-  
+          <div className="flex items-center gap-2">
+
+            <button
+
+              onClick={() => setIsGroupManagerOpen(true)}
+
+              className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 shadow-sm"
+
+            >
+
+              <Users className="h-4 w-4" />
+
+              จัดกลุ่มแปลง
+
+            </button>
+
+            <button
+
+              onClick={() => {
+
+                setSelectedHouseModelId('')
+
+                setIsModalOpen(true)
+
+              }}
+
+              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 shadow-sm"
+
+            >
+
+              <Plus className="h-4 w-4" />
+
+              เพิ่มแปลงที่ดิน
+
+            </button>
+
+          </div>
+
         </div>
   
   
@@ -323,14 +359,26 @@ export default function ProjectDetailPage() {
   
                   </div>
   
-                  <div className="w-full pt-3 border-t border-slate-50">
-  
+                  <div className="w-full pt-3 border-t border-slate-50 flex flex-wrap items-center justify-center gap-1.5">
+
                       <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">
-  
+
                           กำลังก่อสร้าง
-  
+
                       </span>
-  
+
+                      {groupNameByPlotId.has(plot.id) && (
+
+                        <span className="inline-flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">
+
+                          <Users className="h-3 w-3" />
+
+                          {groupNameByPlotId.get(plot.id)}
+
+                        </span>
+
+                      )}
+
                   </div>
   
                 </div>
@@ -487,11 +535,19 @@ export default function ProjectDetailPage() {
             </div>
   
           </form>
-  
+
         </Modal>
-  
+
+        <PlotGroupManager
+          isOpen={isGroupManagerOpen}
+          onClose={() => setIsGroupManagerOpen(false)}
+          projectId={projectId}
+          plots={sortedPlots.map((plot) => ({ id: plot.id, name: plot.name }))}
+          onChanged={refreshGroups}
+        />
+
       </div>
-  
+
     )
-  
+
   }

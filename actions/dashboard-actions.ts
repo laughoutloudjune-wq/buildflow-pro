@@ -37,8 +37,10 @@ export async function getDashboardStats() {
       submitted_by,
       approved_by,
       submitted_at,
+      approved_at,
       billing_date,
-      created_at
+      created_at,
+      paid_out_at
     `).order('created_at', { ascending: false }).limit(500),
     supabase.from('contractors').select('id, name'),
     supabase.from('profiles').select('id, full_name, email, role'),
@@ -85,6 +87,17 @@ export async function getDashboardStats() {
       return ref >= monthStart && ref < monthEnd
     })
     .reduce((sum: number, b: any) => sum + getBillingNetAmount(b), 0)
+
+  const recentApprovalLimit = new Date(now.getTime() - 7 * dayMs)
+  const recentlyApprovedBills = billings.filter((b: any) => {
+    if (b.status !== 'approved' || !b.approved_at) return false
+    return new Date(b.approved_at) >= recentApprovalLimit
+  })
+  const recentlyApproved = {
+    count: recentlyApprovedBills.length,
+    amount: recentlyApprovedBills.reduce((sum: number, b: any) => sum + getBillingNetAmount(b), 0),
+    unpaidCount: recentlyApprovedBills.filter((b: any) => !b.paid_out_at).length,
+  }
 
   const jobsByProject = new Map<string, any[]>()
   for (const job of jobs) {
@@ -303,6 +316,7 @@ export async function getDashboardStats() {
     activeJobs,
     pendingApprovals,
     approvedThisMonth,
+    recentlyApproved,
     recentPayments,
     projectHealth,
     foremanQuality: {

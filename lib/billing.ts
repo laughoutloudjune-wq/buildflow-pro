@@ -89,6 +89,41 @@ export function computeBillingTotals(
   }
 }
 
+export type BillingPayoutFields = {
+  type?: string | null
+  total_work_amount?: number | null
+  total_add_amount?: number | null
+  total_deduct_amount?: number | null
+  wht_percent?: number | null
+  retention_percent?: number | null
+  wht_applied?: boolean | null
+  retention_applied?: boolean | null
+  deduct_applied?: boolean | null
+}
+
+/**
+ * The actual amount transferred to a contractor, as recorded by the
+ * accountant at payout time (`markBillingsAsPaidOut`) — NOT the amount a PM
+ * approved. The accountant can choose per-bill whether WHT/retention/deduct
+ * actually applied, so this must mirror those flags rather than assuming
+ * the PM's approval-time percentages always apply.
+ */
+export function computeActualPayout(bill: BillingPayoutFields) {
+  const work = toNumber(bill.total_work_amount)
+  const add = toNumber(bill.total_add_amount)
+  const deduct = toNumber(bill.total_deduct_amount)
+  const retentionPercent = toNumber(bill.retention_percent)
+  const whtPercent = toNumber(bill.wht_percent)
+
+  const base = work + add
+  const grossBeforeWht = base - deduct
+  const actualDeduct = bill.deduct_applied !== false ? deduct : 0
+  const actualRetention = bill.retention_applied !== false ? work * (retentionPercent / 100) : 0
+  const actualWht = bill.wht_applied ? grossBeforeWht * (whtPercent / 100) : 0
+
+  return toNumber(base - actualDeduct - actualRetention - actualWht)
+}
+
 export function validateBillingPayload(payload: BillingPayload): ValidatedBillingPayload {
   const project_id = String(payload.project_id || '').trim()
   const contractor_id = String(payload.contractor_id || '').trim()

@@ -148,6 +148,21 @@ export default function ContractorsPage() {
     })
   }, [historyRows, historySearch, historyProject, historyType, historyDateFrom, historyDateTo])
 
+  const historySummary = useMemo(() => {
+    return filteredHistoryRows.reduce(
+      (acc: { paid: number; pending: number; pendingCount: number }, row: any) => {
+        if (row.paid_out_at) {
+          acc.paid += Number(row.actual_payout ?? row.net_amount ?? 0)
+        } else {
+          acc.pending += Number(row.net_amount || 0)
+          acc.pendingCount += 1
+        }
+        return acc
+      },
+      { paid: 0, pending: 0, pendingCount: 0 }
+    )
+  }, [filteredHistoryRows])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -196,7 +211,10 @@ export default function ContractorsPage() {
                 >
                   <div className="flex items-center gap-2 text-emerald-700">
                     <Wallet className="h-4 w-4" />
-                    <span>ยอดจ่ายสะสม</span>
+                    <div className="text-left">
+                      <div>ยอดจ่ายสะสม</div>
+                      <div className="text-[10px] font-normal text-emerald-600/80">ยืนยันจ่ายโดยบัญชีแล้วเท่านั้น</div>
+                    </div>
                   </div>
                   <span className="font-semibold text-emerald-700">฿{formatCurrency(c.total_paid || 0)}</span>
                 </button>
@@ -385,6 +403,16 @@ export default function ContractorsPage() {
             <div className="text-center text-slate-400 py-12">ไม่พบงานที่อนุมัติแล้ว</div>
           ) : (
             <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                  <div className="text-xs text-emerald-700">จ่ายแล้ว (ยืนยันโดยบัญชี)</div>
+                  <div className="text-lg font-bold text-emerald-700">฿{formatCurrency(historySummary.paid)}</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="text-xs text-slate-500">รออนุมัติจ่าย ({historySummary.pendingCount} รายการ)</div>
+                  <div className="text-lg font-bold text-slate-500">฿{formatCurrency(historySummary.pending)}</div>
+                </div>
+              </div>
               <Card className="p-3 border-slate-200">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
                   <div className="md:col-span-2 relative">
@@ -432,6 +460,16 @@ export default function ContractorsPage() {
                     .filter(Boolean)
                   const lines = [...mainJobs, ...adjs]
 
+                  const isPaid = !!row.paid_out_at
+                  const displayAmount = isPaid ? Number(row.actual_payout ?? row.net_amount ?? 0) : Number(row.net_amount || 0)
+                  const retentionAmt = Number(row.total_work_amount || 0) * (Number(row.retention_percent || 0) / 100)
+                  const whtAmt = isPaid && row.wht_applied
+                    ? (Number(row.total_work_amount || 0) + Number(row.total_add_amount || 0) - Number(row.total_deduct_amount || 0)) * (Number(row.wht_percent || 0) / 100)
+                    : 0
+                  const showRetentionBadge = isPaid && row.retention_applied !== false && retentionAmt > 0
+                  const showWhtBadge = isPaid && whtAmt > 0
+                  const showDeductBadge = isPaid && row.deduct_applied !== false && Number(row.total_deduct_amount || 0) > 0
+
                   return (
                     <Card key={row.id} className="p-4 border-slate-200">
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -443,10 +481,43 @@ export default function ContractorsPage() {
                           <div className="text-sm font-medium text-slate-800">{row.projects?.name || '-'} • {plot}</div>
                         </div>
                         <div className="text-right">
-                          <div className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${row.type === 'extra_work' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-sky-200 bg-sky-50 text-sky-700'}`}>
-                            {typeLabel}
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                            <div className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${row.type === 'extra_work' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-sky-200 bg-sky-50 text-sky-700'}`}>
+                              {typeLabel}
+                            </div>
+                            {isPaid ? (
+                              <div className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-300">
+                                จ่ายแล้ว {new Date(row.paid_out_at).toLocaleDateString('th-TH')}
+                              </div>
+                            ) : (
+                              <div className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 ring-1 ring-slate-200">
+                                รออนุมัติจ่าย
+                              </div>
+                            )}
                           </div>
-                          <div className="mt-2 text-lg font-bold text-emerald-700">฿{formatCurrency(row.net_amount || 0)}</div>
+                          <div className={`mt-2 text-lg font-bold ${isPaid ? 'text-emerald-700' : 'text-slate-400'}`}>
+                            ฿{formatCurrency(displayAmount)}
+                          </div>
+                          {!isPaid && <div className="text-[11px] text-slate-400">ยอดที่ PM อนุมัติ ยังไม่หัก WHT/ประกัน</div>}
+                          {isPaid && (showWhtBadge || showRetentionBadge || showDeductBadge) && (
+                            <div className="mt-1 flex items-center justify-end gap-1 flex-wrap">
+                              {showWhtBadge && (
+                                <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200">
+                                  WHT {row.wht_percent}% (−฿{formatCurrency(whtAmt)})
+                                </span>
+                              )}
+                              {showRetentionBadge && (
+                                <span className="rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 ring-1 ring-orange-200">
+                                  ประกัน {row.retention_percent}% (−฿{formatCurrency(retentionAmt)})
+                                </span>
+                              )}
+                              {showDeductBadge && (
+                                <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700 ring-1 ring-red-200">
+                                  หักงาน (−฿{formatCurrency(Number(row.total_deduct_amount || 0))})
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 
