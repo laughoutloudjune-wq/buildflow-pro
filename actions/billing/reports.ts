@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { normalizeAdjustmentsWithPlot } from '@/actions/_shared/billing-adjustments'
-import { getPlotDetailMap, getPlotNameMap } from '@/actions/_shared/plot-maps'
+import { derivePlotLabelFromJobs, getPlotDetailMap, getPlotNameMap } from '@/actions/_shared/plot-maps'
 import { getCurrentUser } from '@/actions/_shared/user-role'
 import type { BillingAdjustmentRecord, BillingUserSummary } from '@/lib/types/billing'
 
@@ -144,6 +144,11 @@ export async function getApprovedContractorCycleReport(
     dateFrom?: string
     dateTo?: string
     includeUnpaidOutsideRange?: boolean
+    // 'unpaid': everything still owed, regardless of billing_date — this is
+    // a to-do list, not a dated cycle. 'paid': settled bills, date range
+    // applies to paid_out_at (when it was actually paid) instead of
+    // billing_date, since accountants reconcile payouts by batch/pay-date.
+    paymentState?: 'all' | 'unpaid' | 'paid'
   } = {}
 ) {
   const supabase = await createClient()
@@ -173,13 +178,20 @@ export async function getApprovedContractorCycleReport(
   if (filters.contractorId) query = query.eq('contractor_id', filters.contractorId)
   if (filters.projectId) query = query.eq('project_id', filters.projectId)
 
-  // By default the date range is strict, matching what the user picked. When
-  // includeUnpaidOutsideRange is set, unpaid approved bills are shown even
-  // outside the window (e.g. to catch up on everything still owed) — an
-  // opt-in surfaced as a checkbox in the UI rather than always-on, since
-  // silently ignoring the selected range surprised users reconciling a
-  // specific cycle.
-  if (filters.includeUnpaidOutsideRange && (filters.dateFrom || filters.dateTo)) {
+  if (filters.paymentState === 'unpaid') {
+    // A to-do list of everything still owed. No date range is applied by
+    // default (nothing should silently disappear), but the caller can still
+    // narrow it down by billing_date if they explicitly ask for that.
+    query = query.is('paid_out_at', null)
+    if (filters.dateFrom) query = query.gte('billing_date', filters.dateFrom)
+    if (filters.dateTo) query = query.lte('billing_date', filters.dateTo)
+  } else if (filters.paymentState === 'paid') {
+    // A settled-payments ledger — scoped by when it was actually paid.
+    query = query.not('paid_out_at', 'is', null)
+    if (filters.dateFrom) query = query.gte('paid_out_at', filters.dateFrom)
+    if (filters.dateTo) query = query.lte('paid_out_at', `${filters.dateTo}T23:59:59.999`)
+  } else if (filters.includeUnpaidOutsideRange && (filters.dateFrom || filters.dateTo)) {
+    // Legacy combined view: unpaid bills bypass the billing_date range.
     const dateConditions: string[] = []
     if (filters.dateFrom) dateConditions.push(`billing_date.gte.${filters.dateFrom}`)
     if (filters.dateTo) dateConditions.push(`billing_date.lte.${filters.dateTo}`)
@@ -197,7 +209,12 @@ export async function getApprovedContractorCycleReport(
   return rows.map((billing) => ({
     ...billing,
     billing_adjustments: normalizeAdjustmentsWithPlot(billing.billing_adjustments),
-    plots: billing.plot_id ? plotMap.get(billing.plot_id) || null : null,
+    plots: billing.plot_id
+      ? plotMap.get(billing.plot_id) || null
+      : (() => {
+          const name = derivePlotLabelFromJobs(billing.billing_jobs as any)
+          return name ? { name, house_models: null } : null
+        })(),
   }))
 }
 

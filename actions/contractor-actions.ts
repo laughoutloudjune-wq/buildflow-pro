@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { normalizeAdjustmentsWithPlot } from '@/actions/_shared/billing-adjustments'
+import { derivePlotLabelFromJobs } from '@/actions/_shared/plot-maps'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { computeActualPayout } from '@/lib/billing'
 
@@ -25,7 +26,7 @@ export async function getContractors() {
   // still awaiting payout must not count toward total_paid.
   const { data: approvedBills, error: approvedBillsError } = await supabase
     .from('billings')
-    .select('contractor_id, type, total_work_amount, total_add_amount, total_deduct_amount, wht_percent, retention_percent, paid_out_at, wht_applied, retention_applied, deduct_applied')
+    .select('contractor_id, type, total_work_amount, total_add_amount, total_deduct_amount, wht_percent, retention_percent, paid_out_at, wht_applied, retention_applied, deduct_applied, retention_amount, wht_amount')
     .eq('status', 'approved')
     .not('contractor_id', 'is', null)
     .not('paid_out_at', 'is', null)
@@ -39,7 +40,9 @@ export async function getContractors() {
     if (!contractorId) continue
     paidByContractor.set(contractorId, (paidByContractor.get(contractorId) || 0) + computeActualPayout(bill))
     if (bill.retention_applied !== false) {
-      const retention = Number(bill.total_work_amount || 0) * (Number(bill.retention_percent || 0) / 100)
+      const retention = bill.retention_amount != null
+        ? Number(bill.retention_amount)
+        : Number(bill.total_work_amount || 0) * (Number(bill.retention_percent || 0) / 100)
       retentionByContractor.set(contractorId, (retentionByContractor.get(contractorId) || 0) + retention)
     }
   }
@@ -59,6 +62,7 @@ export async function getContractorApprovedHistory(contractorId: string) {
       id,
       doc_no,
       billing_date,
+      created_at,
       plot_id,
       type,
       total_work_amount,
@@ -71,11 +75,14 @@ export async function getContractorApprovedHistory(contractorId: string) {
       wht_applied,
       retention_applied,
       deduct_applied,
+      retention_amount,
+      wht_amount,
       reason_for_dc,
       note,
       projects (name),
       billing_jobs (
         id,
+        job_assignment_id,
         amount,
         progress_percent,
         job_assignments (
@@ -103,10 +110,52 @@ export async function getContractorApprovedHistory(contractorId: string) {
     for (const p of plots || []) plotMap.set(String(p.id), p.name)
   }
 
+  // Each billing_jobs row only stores the cumulative progress % *as of that
+  // billing* — there's no stored "previous %" to show a from-to range. Since
+  // one job_assignment belongs to a single contractor, this contractor's own
+  // approved-history rows already contain its full progress trail: sort all
+  // billing_jobs entries per job_assignment chronologically and take the
+  // prior entry's progress_percent as the "from" value (0 if it's the first).
+  const jobEntries: Array<{ billId: string; jobId: string; jobAssignmentId: string | null; at: number; progress: number | null }> = []
+  for (const bill of rows as any[]) {
+    const at = new Date(bill.billing_date || bill.created_at || 0).getTime()
+    for (const job of bill.billing_jobs || []) {
+      jobEntries.push({
+        billId: bill.id,
+        jobId: job.id,
+        jobAssignmentId: job.job_assignment_id ? String(job.job_assignment_id) : null,
+        at,
+        progress: job.progress_percent == null ? null : Number(job.progress_percent),
+      })
+    }
+  }
+  const entriesByAssignment = new Map<string, typeof jobEntries>()
+  for (const entry of jobEntries) {
+    if (!entry.jobAssignmentId) continue
+    const arr = entriesByAssignment.get(entry.jobAssignmentId) || []
+    arr.push(entry)
+    entriesByAssignment.set(entry.jobAssignmentId, arr)
+  }
+  const previousProgressByJobId = new Map<string, number>()
+  for (const entries of entriesByAssignment.values()) {
+    entries.sort((a, b) => a.at - b.at)
+    let previous = 0
+    for (const entry of entries) {
+      previousProgressByJobId.set(entry.jobId, previous)
+      if (entry.progress != null) previous = entry.progress
+    }
+  }
+
   return rows.map((bill: any) => ({
     ...bill,
     billing_adjustments: normalizeAdjustmentsWithPlot(bill.billing_adjustments),
-    plots: bill.plot_id ? { name: plotMap.get(String(bill.plot_id)) || null } : null,
+    plots: bill.plot_id
+      ? { name: plotMap.get(String(bill.plot_id)) || null }
+      : { name: derivePlotLabelFromJobs(bill.billing_jobs) },
+    billing_jobs: (bill.billing_jobs || []).map((job: any) => ({
+      ...job,
+      previous_progress_percent: previousProgressByJobId.get(job.id) ?? 0,
+    })),
     actual_payout: bill.paid_out_at ? computeActualPayout(bill) : null,
   }))
 }

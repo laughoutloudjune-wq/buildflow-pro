@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { createClient } from '@/lib/supabase/client'
 import { getBillingOptions, createBillingRequest, getBillingById, updateBillingRequest } from '@/actions/billing-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
@@ -228,20 +230,20 @@ export default function CreateExtraWorkPage() {
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-2">ส่งคำขอสำเร็จ</h2>
             <p className="text-gray-600 mb-4">ใบขอเบิกเลขที่ #{docNo} ถูกส่งเพื่อตรวจสอบแล้ว</p>
-            <button
+            <Button
               onClick={() => {
                 router.push(successNextPath)
               }}
-              className="w-full bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700"
+              className="w-full"
             >
               ไปที่หน้าถัดไป
-            </button>
+            </Button>
           </div>
         </Modal>
       )}
 
-      <h1 className="text-2xl font-bold mb-4 text-amber-800">สร้างใบงานเพิ่ม (Extra Work / DC)</h1>
-      <Card className="p-4 border-amber-200 bg-amber-50/40">
+      <PageHeader title="สร้างใบงานเพิ่ม (Extra Work / DC)" className="mb-4" />
+      <Card className="p-5 border-amber-200 bg-amber-50/40">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">โครงการ</label>
@@ -335,9 +337,9 @@ export default function CreateExtraWorkPage() {
             </div>
           </div>
           <div className="mt-6 flex justify-end">
-            <button onClick={handleSubmit} disabled={isSubmitting} className="px-6 py-3 bg-amber-600 text-white font-bold rounded-md hover:bg-amber-700 disabled:bg-gray-400">
+            <Button onClick={handleSubmit} disabled={isSubmitting}>
               {isSubmitting ? 'กำลังส่ง...' : 'ส่งคำขอเพื่อพิจารณา'}
-            </button>
+            </Button>
           </div>
           {error && <p className="mt-2 text-red-500">{error}</p>}
         </div>

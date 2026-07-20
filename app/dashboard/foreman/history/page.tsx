@@ -4,22 +4,23 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBillingsByCreator, deleteBilling } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
+import { Badge, statusTone } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Loader2, Trash2, Pencil } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 
-const getStatusChip = (status: string) => {
-  const base = "inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-4"
-  switch (status) {
-    case 'approved':
-      return <span className={`${base} bg-green-100 text-green-800`}>อนุมัติแล้ว</span>
-    case 'pending_review':
-      return <span className={`${base} bg-yellow-100 text-yellow-800`}>รอตรวจสอบ</span>
-    case 'rejected':
-      return <span className={`${base} bg-red-100 text-red-800`}>ปฏิเสธ</span>
-    default:
-      return <span className={`${base} bg-gray-100 text-gray-800`}>{status}</span>
-  }
+const statusLabels: Record<string, string> = {
+  approved: 'อนุมัติแล้ว',
+  pending_review: 'รอตรวจสอบ',
+  rejected: 'ปฏิเสธ',
 }
+
+const getStatusChip = (status: string) => (
+  <Badge tone={statusTone(status)} className="px-2 py-0.5 text-[11px] font-medium leading-4">
+    {statusLabels[status] || status}
+  </Badge>
+)
 
 export default function ForemanHistoryPage() {
   const router = useRouter()
@@ -106,20 +107,20 @@ export default function ForemanHistoryPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">ประวัติคำขอ</h1>
-          <p className="text-sm text-slate-500">รวมทุกคำขอที่คุณสร้างไว้</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => router.push('/dashboard/foreman/create-progress')} className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
-            สร้างใบขอเบิกงวด
-          </button>
-          <button onClick={() => router.push('/dashboard/foreman/create-dc')} className="px-4 py-2 rounded-md bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700">
-            สร้างงานเพิ่ม (DC)
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="ประวัติคำขอ"
+        subtitle="รวมทุกคำขอที่คุณสร้างไว้"
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => router.push('/dashboard/foreman/create-progress')}>
+              สร้างใบขอเบิกงวด
+            </Button>
+            <Button onClick={() => router.push('/dashboard/foreman/create-dc')}>
+              สร้างงานเพิ่ม (DC)
+            </Button>
+          </>
+        }
+      />
 
       <Card className="p-4 bg-slate-50/60 border-slate-200">
         {loading ? (
@@ -127,13 +128,9 @@ export default function ForemanHistoryPage() {
         ) : loadError ? (
           <div className="flex flex-col items-center gap-3 py-12">
             <p className="text-sm text-red-600">{loadError}</p>
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
+            <Button type="button" onClick={() => void load()}>
               ลองโหลดใหม่
-            </button>
+            </Button>
           </div>
         ) : billings.length === 0 ? (
           <div className="p-8 text-center text-slate-400">ยังไม่มีคำขอ</div>
@@ -162,8 +159,8 @@ export default function ForemanHistoryPage() {
                   <div className="flex lg:justify-center">
                     {bill.status === 'pending_review' ? (
                       <div className="flex items-center gap-2">
-                        <button onClick={() => handleEdit(bill)} className="p-2 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"><Pencil className="h-4 w-4"/></button>
-                        <button onClick={() => handleDelete(bill.id)} className="p-2 text-red-600 hover:bg-red-50 rounded border border-red-100"><Trash2 className="h-4 w-4"/></button>
+                        <button onClick={() => handleEdit(bill)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-100"><Pencil className="h-4 w-4"/></button>
+                        <button onClick={() => handleDelete(bill.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-100"><Trash2 className="h-4 w-4"/></button>
                       </div>
                     ) : <span className="text-xs text-slate-400">-</span>}
                   </div>

@@ -1,32 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, FileText, Loader2, Trash2 } from 'lucide-react'
-import dynamic from 'next/dynamic'
+import { X, FileText, Loader2, Trash2, Plus, Minus } from 'lucide-react'
 import { deleteBilling, getBillingById } from '@/actions/billing-actions'
-import { getOrganizationSettings } from '@/actions/settings-actions'
-import { BillingPdf } from '@/components/pdf/BillingPdf'
 import { formatCurrency } from '@/lib/currency'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import NoticeBanner from '@/components/ui/NoticeBanner'
-
-const PDFViewer = dynamic(
-  () => import('@react-pdf/renderer').then((mod) => mod.PDFViewer),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-[400px] items-center justify-center text-slate-400">
-        <Loader2 className="h-8 w-8 animate-spin" />
-        <span className="ml-2">Generating PDF...</span>
-      </div>
-    ),
-  }
-)
+import { Badge, statusTone } from '@/components/ui/Badge'
 
 type BillingDetail = Awaited<ReturnType<typeof getBillingById>>
 type BillingJobLine = NonNullable<NonNullable<BillingDetail>['billing_jobs']>[number]
 type BillingAdjustmentLine = NonNullable<NonNullable<BillingDetail>['billing_adjustments']>[number]
-type SettingsDetail = Awaited<ReturnType<typeof getOrganizationSettings>>
 
 interface BillingModalProps {
   billingId: string | null
@@ -37,9 +21,7 @@ interface BillingModalProps {
 
 export default function BillingModal({ billingId, onClose, onDeleted, onStatus }: BillingModalProps) {
   const [billing, setBilling] = useState<BillingDetail>(null)
-  const [settings, setSettings] = useState<SettingsDetail>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'details' | 'pdf'>('details')
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -47,17 +29,15 @@ export default function BillingModal({ billingId, onClose, onDeleted, onStatus }
   useEffect(() => {
     if (!billingId) {
       setBilling(null)
-      setSettings(null)
       setLocalError(null)
       return
     }
 
     setLoading(true)
     setLocalError(null)
-    Promise.all([getBillingById(billingId), getOrganizationSettings()])
-      .then(([billingData, settingsData]) => {
+    getBillingById(billingId)
+      .then((billingData) => {
         setBilling(billingData)
-        setSettings(settingsData)
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : 'Failed to load billing'
@@ -66,15 +46,6 @@ export default function BillingModal({ billingId, onClose, onDeleted, onStatus }
       .finally(() => setLoading(false))
   }, [billingId])
 
-  const calculateDetails = (data: BillingDetail) => {
-    if (!data) return { wht: 0, retention: 0, totalBase: 0 }
-    const totalBase = (data.total_work_amount || 0) + (data.total_add_amount || 0)
-    const wht = (totalBase * (data.wht_percent || 0)) / 100
-    const retention = (totalBase * (data.retention_percent || 0)) / 100
-    return { wht, retention, totalBase }
-  }
-
-  const { wht, retention, totalBase } = calculateDetails(billing)
   const plotLabel =
     billing?.plots?.name ||
     (billing?.billing_jobs || [])
@@ -109,45 +80,38 @@ export default function BillingModal({ billingId, onClose, onDeleted, onStatus }
         billingId ? 'opacity-100' : 'pointer-events-none opacity-0'
       }`}
     >
-      <div className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b bg-slate-50 p-4">
-          <div>
-            <h2 className="flex items-center gap-2 text-lg font-bold text-slate-800">
+      <div className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_32px_64px_-24px_rgba(0,0,0,0.25)]">
+        <div className="flex items-center justify-between border-b border-slate-200/70 bg-white/80 p-5 backdrop-blur-xl">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-indigo-50">
               <FileText className="h-5 w-5 text-indigo-600" />
-              รายละเอียดใบวางบิล #{billing?.doc_no ? String(billing.doc_no).padStart(4, '0') : '...'}
-            </h2>
-            <p className="text-xs text-slate-500">
-              โครงการ: {billing?.projects?.name}
-              {plotLabel ? ` • แปลง ${plotLabel}` : ''}
-            </p>
+            </div>
+            <div>
+              <h2 className="text-[17px] font-semibold tracking-tight text-slate-900">
+                รายละเอียดใบวางบิล #{billing?.doc_no ? String(billing.doc_no).padStart(4, '0') : '...'}
+              </h2>
+              <p className="text-xs text-slate-500">
+                โครงการ: {billing?.projects?.name}
+                {plotLabel ? ` • แปลง ${plotLabel}` : ''}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setShowDeleteConfirm(true)}
               disabled={isDeleting || !billing}
-              className="rounded-full p-2 transition hover:bg-red-50 disabled:opacity-50"
+              className="rounded-full p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
               title="ลบประวัติ"
             >
-              <Trash2 className="h-5 w-5 text-red-500" />
+              <Trash2 className="h-[18px] w-[18px]" />
             </button>
-            <button onClick={onClose} className="rounded-full p-2 transition hover:bg-slate-200">
-              <X className="h-5 w-5 text-slate-500" />
+            <button onClick={onClose} className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-900/5 hover:text-slate-700">
+              <X className="h-[18px] w-[18px]" />
             </button>
           </div>
         </div>
 
-        <div className="flex border-b">
-          <button
-            onClick={() => setActiveTab('details')}
-            className={`flex-1 py-3 text-sm font-bold transition ${
-              activeTab === 'details' ? 'border-b-2 border-indigo-600 bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            รายละเอียด
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-auto bg-slate-100 p-6">
+        <div className="flex-1 overflow-auto bg-[#f5f5f7] p-6">
           {loading ? (
             <div className="flex h-full items-center justify-center text-slate-400">
               <Loader2 className="h-8 w-8 animate-spin" />
@@ -160,39 +124,35 @@ export default function BillingModal({ billingId, onClose, onDeleted, onStatus }
                 </div>
               ) : null}
 
-              {activeTab === 'details' && billing ? (
-                <div className="mx-auto max-w-3xl space-y-6">
-                  <div className="space-y-4 rounded-lg border bg-white p-6 shadow-sm">
+              {billing ? (
+                <div className="mx-auto max-w-3xl space-y-4">
+                  <div className="space-y-4 rounded-2xl border border-slate-200/70 bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)]">
                     <div className="flex justify-between">
                       <div>
-                        <label className="text-xs text-slate-500">ผู้รับเหมา</label>
-                        <div className="font-bold text-slate-800">{billing.contractors?.name}</div>
+                        <label className="text-xs font-medium text-slate-500">ผู้รับเหมา</label>
+                        <div className="text-[15px] font-semibold text-slate-900">{billing.contractors?.name}</div>
                         <div className="text-sm text-slate-500">{billing.contractors?.phone || '-'}</div>
                         <div className="mt-1 text-xs text-slate-500">แปลง: {plotLabel || '-'}</div>
                       </div>
                       <div className="text-right">
-                        <label className="text-xs text-slate-500">วันที่เอกสาร</label>
-                        <div className="font-bold text-slate-800">{new Date(billing.billing_date).toLocaleDateString('th-TH')}</div>
-                        <div
-                          className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-bold ${
-                            billing.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100'
-                          }`}
-                        >
+                        <label className="text-xs font-medium text-slate-500">วันที่เอกสาร</label>
+                        <div className="text-[15px] font-semibold text-slate-900">{new Date(billing.billing_date).toLocaleDateString('th-TH')}</div>
+                        <Badge tone={statusTone(billing.status || '')} className="mt-1">
                           {billing.status}
-                        </div>
+                        </Badge>
                       </div>
                     </div>
                   </div>
 
-                  <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+                  <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)]">
                     <table className="w-full text-left text-sm">
-                      <thead className="border-b bg-slate-50 text-slate-600">
+                      <thead className="border-b border-slate-100 bg-slate-50/80 text-slate-500">
                         <tr>
-                          <th className="p-3">รายการ</th>
-                          <th className="p-3 text-right">จำนวนเงิน</th>
+                          <th className="p-3 font-medium">รายการ</th>
+                          <th className="p-3 text-right font-medium">จำนวนเงิน</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y">
+                      <tbody className="divide-y divide-slate-100">
                         {billing.billing_jobs?.map((job: BillingJobLine) => (
                           <tr key={`job-${job.id}`}>
                             <td className="p-3">
@@ -205,59 +165,38 @@ export default function BillingModal({ billingId, onClose, onDeleted, onStatus }
 
                         {billing.billing_adjustments?.map((adj: BillingAdjustmentLine) => {
                           const totalAmount = (adj.quantity || 0) * (adj.unit_price || 0)
+                          const isAddition = adj.type === 'addition'
                           return (
-                            <tr
-                              key={`adj-${adj.id}`}
-                              className={adj.type === 'deduction' ? 'bg-red-50/30 text-red-600' : 'bg-blue-50/30 text-blue-600'}
-                            >
+                            <tr key={`adj-${adj.id}`} className={isAddition ? 'bg-emerald-50/40' : 'bg-red-50/40'}>
                               <td className="p-3">
-                                {adj.type === 'addition' ? '[+]' : '[-]'} {adj.description} ({adj.quantity} {adj.unit})
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                                      isAddition ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
+                                    }`}
+                                  >
+                                    {isAddition ? <Plus className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                                  </span>
+                                  <span className={isAddition ? 'text-emerald-700' : 'text-red-700'}>
+                                    {adj.description} <span className="text-slate-400">({adj.quantity} {adj.unit})</span>
+                                  </span>
+                                </div>
                               </td>
-                              <td className="p-3 text-right">
-                                {adj.type === 'deduction' ? '-' : ''}฿{formatCurrency(totalAmount)}
+                              <td className={`p-3 text-right font-medium ${isAddition ? 'text-emerald-700' : 'text-red-700'}`}>
+                                {isAddition ? '' : '-'}฿{formatCurrency(totalAmount)}
                               </td>
                             </tr>
                           )
                         })}
                       </tbody>
-                      <tfoot className="bg-slate-50 text-slate-700">
+                      <tfoot className="border-t border-slate-100 bg-emerald-50/80 text-emerald-700">
                         <tr>
-                          <td className="p-3 text-right font-bold">รวมค่างาน (Subtotal)</td>
-                          <td className="p-3 text-right font-bold">฿{formatCurrency(totalBase)}</td>
-                        </tr>
-                        {billing.total_deduct_amount > 0 ? (
-                          <tr>
-                            <td className="p-3 text-right text-red-600">รายการหัก (Deduction)</td>
-                            <td className="p-3 text-right text-red-600">-฿{formatCurrency(billing.total_deduct_amount)}</td>
-                          </tr>
-                        ) : null}
-                        {wht > 0 ? (
-                          <tr>
-                            <td className="p-3 text-right text-slate-500">หัก ณ ที่จ่าย ({billing.wht_percent}%)</td>
-                            <td className="p-3 text-right text-slate-500">-฿{formatCurrency(wht)}</td>
-                          </tr>
-                        ) : null}
-                        {retention > 0 ? (
-                          <tr>
-                            <td className="p-3 text-right text-slate-500">หักประกันผลงาน ({billing.retention_percent}%)</td>
-                            <td className="p-3 text-right text-slate-500">-฿{formatCurrency(retention)}</td>
-                          </tr>
-                        ) : null}
-                        <tr className="bg-emerald-50 text-emerald-700">
-                          <td className="p-3 text-right text-lg font-bold">ยอดสุทธิ (Net Amount)</td>
-                          <td className="p-3 text-right text-lg font-bold">฿{formatCurrency(billing.net_amount)}</td>
+                          <td className="p-3 text-right text-base font-bold">ยอดสุทธิ (Net Amount)</td>
+                          <td className="p-3 text-right text-base font-bold">฿{formatCurrency(billing.net_amount)}</td>
                         </tr>
                       </tfoot>
                     </table>
                   </div>
-                </div>
-              ) : null}
-
-              {activeTab === 'pdf' && billing ? (
-                <div className="flex h-full w-full flex-col overflow-hidden rounded-lg bg-slate-500 shadow-inner">
-                  <PDFViewer className="h-full w-full border-none">
-                    <BillingPdf data={billing} settings={settings} />
-                  </PDFViewer>
                 </div>
               ) : null}
             </>

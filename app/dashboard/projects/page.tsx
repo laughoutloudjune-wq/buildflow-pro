@@ -4,6 +4,9 @@ import { useState, useEffect, useTransition } from 'react'
 import { Plus, MapPin, Trash2, Loader2, Building2, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { Badge, statusTone } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import { getProjects, createProject, deleteProject } from '@/actions/project-actions'
 
@@ -73,19 +76,16 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">จัดการโครงการ</h1>
-          <p className="text-sm text-slate-500">รายชื่อโครงการก่อสร้างทั้งหมด</p>
-        </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 shadow-sm"
-        >
-          <Plus className="h-4 w-4" />
-          เพิ่มโครงการ
-        </button>
-      </div>
+      <PageHeader
+        title="จัดการโครงการ"
+        subtitle="รายชื่อโครงการก่อสร้างทั้งหมด"
+        actions={
+          <Button onClick={() => setIsModalOpen(true)}>
+            <Plus className="h-4 w-4" />
+            เพิ่มโครงการ
+          </Button>
+        }
+      />
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {projects
@@ -103,11 +103,9 @@ export default function ProjectsPage() {
                   <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
                     <Building2 className="h-6 w-6" />
                   </div>
-                  <span className={`px-2 py-1 text-xs rounded-full font-medium ${
-                    project.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
-                  }`}>
+                  <Badge tone={statusTone(project.status)}>
                     {project.status === 'active' ? 'กำลังดำเนินการ' : project.status}
-                  </span>
+                  </Badge>
                 </div>
                 
                 <h3 className="text-lg font-bold text-slate-800 mb-1 group-hover:text-indigo-600 transition-colors">
@@ -169,8 +167,8 @@ export default function ProjectsPage() {
             <input name="location" placeholder="เช่น อ.เมือง จ.เชียงใหม่" className="w-full" />
           </div>
           <div className="pt-2 flex justify-end gap-3">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">ยกเลิก</button>
-            <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition">บันทึก</button>
+            <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>ยกเลิก</Button>
+            <Button type="submit">บันทึก</Button>
           </div>
         </form>
       </Modal>

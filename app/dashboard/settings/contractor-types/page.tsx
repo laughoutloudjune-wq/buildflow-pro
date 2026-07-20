@@ -3,6 +3,8 @@
 import { useState, useEffect, useTransition } from 'react'
 import { Plus, Trash2, Pencil, Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import { getContractorTypes, createContractorType, updateContractorType, deleteContractorType } from '@/actions/contractor-type-actions'
 
@@ -70,16 +72,15 @@ export default function ContractorTypesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">จัดการประเภทช่าง</h1>
-        <button
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 shadow-sm"
-        >
-          <Plus className="h-4 w-4" />
-          เพิ่มประเภทใหม่
-        </button>
-      </div>
+      <PageHeader
+        title="จัดการประเภทช่าง"
+        actions={
+          <Button onClick={() => handleOpenModal()}>
+            <Plus className="h-4 w-4" />
+            เพิ่มประเภทใหม่
+          </Button>
+        }
+      />
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -130,10 +131,10 @@ export default function ContractorTypesPage() {
             />
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t">
-            <button type="button" onClick={handleCloseModal} className="btn-secondary">ยกเลิก</button>
-            <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 shadow transition" disabled={isPending}>
+            <Button type="button" variant="secondary" onClick={handleCloseModal}>ยกเลิก</Button>
+            <Button type="submit" disabled={isPending}>
               {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'บันทึก'}
-            </button>
+            </Button>
           </div>
         </form>
       </Modal>

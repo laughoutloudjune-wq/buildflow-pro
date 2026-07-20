@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Building2, FileText, Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import { getBillingOptions, getPlotHistoryReport } from '@/actions/billing-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
@@ -211,10 +213,10 @@ export default function HouseHistoryReportPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">ประวัติงานตามบ้านเลขที่</h1>
-        <p className="text-sm text-slate-500">ใช้การ์ดบ้านเหมือนหน้าแปลงที่ดิน แล้วกดเพื่อดูประวัติงานครบทั้งหมด</p>
-      </div>
+      <PageHeader
+        title="ประวัติงานตามบ้านเลขที่"
+        subtitle="ใช้การ์ดบ้านเหมือนหน้าแปลงที่ดิน แล้วกดเพื่อดูประวัติงานครบทั้งหมด"
+      />
 
       <Card className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -234,7 +236,7 @@ export default function HouseHistoryReportPage() {
             <input type="date" className="mt-1 w-full" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           </div>
           <div className="md:col-span-2 flex items-end">
-            <button onClick={runReport} className="w-full rounded-lg bg-slate-900 px-4 py-2 text-white">ค้นหา</button>
+            <Button onClick={runReport} className="w-full">ค้นหา</Button>
           </div>
         </div>
       </Card>

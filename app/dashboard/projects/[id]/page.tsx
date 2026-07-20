@@ -5,6 +5,9 @@ import { useParams, useRouter } from 'next/navigation'
 import { Plus, Trash2, ArrowLeft, Loader2, MapPin, AlertCircle, Pencil, Users } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import PlotGroupManager from '@/components/plots/PlotGroupManager'
 import { getProjectById, updateProject } from '@/actions/project-actions'
@@ -261,76 +264,46 @@ export default function ProjectDetailPage() {
           </div>
         ) : null}
   
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-  
-          <div>
-  
-            <button 
-  
-              onClick={() => router.push('/dashboard/projects')}
-  
-              className="mb-2 flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition"
-  
-            >
-  
-              <ArrowLeft className="h-4 w-4" /> กลับหน้ารวม
-  
-            </button>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-slate-800">{project.name}</h1>
-              <button onClick={() => setIsEditModalOpen(true)} className="text-slate-400 hover:text-indigo-600">
+        <div>
+          <button
+            onClick={() => router.push('/dashboard/projects')}
+            className="mb-2 flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition"
+          >
+            <ArrowLeft className="h-4 w-4" /> กลับหน้ารวม
+          </button>
+          <PageHeader
+            title={
+              <span className="flex items-center gap-3">
+                {project.name}
+                <button onClick={() => setIsEditModalOpen(true)} className="text-slate-400 hover:text-indigo-600">
                   <Pencil className="h-4 w-4" />
-              </button>
-            </div>
-  
-            <div className="flex items-center gap-2 text-sm text-slate-500 mt-1">
-  
-              <MapPin className="h-4 w-4" />
-  
-              {project.location || 'ไม่ระบุทำเล'}
-  
-            </div>
-  
-          </div>
-  
-          <div className="flex items-center gap-2">
-
-            <button
-
-              onClick={() => setIsGroupManagerOpen(true)}
-
-              className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 shadow-sm"
-
-            >
-
-              <Users className="h-4 w-4" />
-
-              จัดกลุ่มแปลง
-
-            </button>
-
-            <button
-
-              onClick={() => {
-
-                setSelectedHouseModelId('')
-
-                setIsModalOpen(true)
-
-              }}
-
-              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 shadow-sm"
-
-            >
-
-              <Plus className="h-4 w-4" />
-
-              เพิ่มแปลงที่ดิน
-
-            </button>
-
-          </div>
-
+                </button>
+              </span>
+            }
+            subtitle={
+              <span className="flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                {project.location || 'ไม่ระบุทำเล'}
+              </span>
+            }
+            actions={
+              <>
+                <Button variant="secondary" onClick={() => setIsGroupManagerOpen(true)}>
+                  <Users className="h-4 w-4" />
+                  จัดกลุ่มแปลง
+                </Button>
+                <Button
+                  onClick={() => {
+                    setSelectedHouseModelId('')
+                    setIsModalOpen(true)
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                  เพิ่มแปลงที่ดิน
+                </Button>
+              </>
+            }
+          />
         </div>
   
   
@@ -361,11 +334,9 @@ export default function ProjectDetailPage() {
   
                   <div className="w-full pt-3 border-t border-slate-50 flex flex-wrap items-center justify-center gap-1.5">
 
-                      <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">
-
+                      <Badge tone="success">
                           กำลังก่อสร้าง
-
-                      </span>
+                      </Badge>
 
                       {groupNameByPlotId.has(plot.id) && (
 
@@ -440,8 +411,8 @@ export default function ProjectDetailPage() {
               <input name="location" className="w-full" defaultValue={project.location} />
             </div>
             <div className="flex justify-end gap-3 pt-4 border-t">
-              <button type="button" onClick={() => setIsEditModalOpen(false)} className="btn-secondary">ยกเลิก</button>
-              <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 shadow transition">บันทึก</button>
+              <Button type="button" variant="secondary" onClick={() => setIsEditModalOpen(false)}>ยกเลิก</Button>
+              <Button type="submit">บันทึก</Button>
             </div>
           </form>
         </Modal>
@@ -527,11 +498,8 @@ export default function ProjectDetailPage() {
   
   
             <div className="flex justify-end gap-3 pt-4 border-t">
-  
-              <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">ยกเลิก</button>
-  
-              <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 shadow transition">บันทึก</button>
-  
+              <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>ยกเลิก</Button>
+              <Button type="submit">บันทึก</Button>
             </div>
   
           </form>

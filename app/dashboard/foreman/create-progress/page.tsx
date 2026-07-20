@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
+import { PageHeader } from '@/components/ui/PageHeader'
 
 export default async function CreateProgressPage({
   searchParams,
@@ -15,9 +16,11 @@ export default async function CreateProgressPage({
   }
 
   return (
-    <Card className="p-6">
-      <h1 className="text-2xl font-bold text-slate-800">สร้างคำขอเบิก</h1>
-      <p className="mt-2 text-sm text-slate-500">เลือกประเภทคำขอที่ต้องการสร้างได้เหมือนเดิม ระหว่างงวดงานหลักและงานเพิ่ม / DC</p>
+    <Card className="p-5">
+      <PageHeader
+        title="สร้างคำขอเบิก"
+        subtitle="เลือกประเภทคำขอที่ต้องการสร้างได้เหมือนเดิม ระหว่างงวดงานหลักและงานเพิ่ม / DC"
+      />
 
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         <Link

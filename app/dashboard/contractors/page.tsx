@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo, useTransition } from 'react'
 import { Plus, Trash2, Loader2, HardHat, Phone, CreditCard, User, Pencil, Wallet, Search, ShieldCheck } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import { getContractors, createContractor, deleteContractor, updateContractor, getContractorApprovedHistory } from '@/actions/contractor-actions'
 import { getContractorTypes } from '@/actions/contractor-type-actions'
@@ -113,8 +115,15 @@ export default function ContractorsPage() {
     setIsRetentionLoading(true)
     try {
       const rows = await getContractorApprovedHistory(contractor.id)
-      // Only bills that were actually paid out with retention applied by accountant
-      setRetentionRows(rows.filter((r: any) => r.paid_out_at && r.retention_applied !== false && Number(r.retention_percent || 0) > 0 && Number(r.total_work_amount || 0) > 0))
+      // Only bills that were actually paid out with retention applied by accountant.
+      // Includes bills with a manually-entered retention_amount (e.g. a DC job that
+      // has no work-amount base for the % formula but was still paid with a real
+      // retention withholding) as well as the normal %-of-work-amount case.
+      setRetentionRows(rows.filter((r: any) => {
+        if (!r.paid_out_at || r.retention_applied === false) return false
+        if (r.retention_amount != null) return Number(r.retention_amount) > 0
+        return Number(r.retention_percent || 0) > 0 && Number(r.total_work_amount || 0) > 0
+      }))
     } finally {
       setIsRetentionLoading(false)
     }
@@ -165,18 +174,15 @@ export default function ContractorsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">ผู้รับเหมา</h1>
-          <p className="text-sm text-slate-500">จัดการรายชื่อช่างและทีมงาน</p>
-        </div>
-        <button
-          onClick={() => openModal()}
-          className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition shadow-sm"
-        >
-          <Plus className="h-4 w-4" /> เพิ่มผู้รับเหมา
-        </button>
-      </div>
+      <PageHeader
+        title="ผู้รับเหมา"
+        subtitle="จัดการรายชื่อช่างและทีมงาน"
+        actions={
+          <Button onClick={() => openModal()}>
+            <Plus className="h-4 w-4" /> เพิ่มผู้รับเหมา
+          </Button>
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {contractors.map((c) => (
@@ -307,10 +313,10 @@ export default function ContractorsPage() {
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={closeModal} className="btn-secondary">ยกเลิก</button>
-            <button type="submit" disabled={isPending} className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700">
+            <Button type="button" variant="secondary" onClick={closeModal}>ยกเลิก</Button>
+            <Button type="submit" disabled={isPending}>
               {isPending ? 'กำลังบันทึก...' : 'บันทึก'}
-            </button>
+            </Button>
           </div>
         </form>
       </Modal>
@@ -345,7 +351,8 @@ export default function ContractorsPage() {
                   {retentionRows.map((row: any) => {
                     const workAmt = Number(row.total_work_amount || 0)
                     const retPct = Number(row.retention_percent || 0)
-                    const retAmt = workAmt * (retPct / 100)
+                    const isManual = row.retention_amount != null
+                    const retAmt = isManual ? Number(row.retention_amount) : workAmt * (retPct / 100)
                     const jobNames = (row.billing_jobs || [])
                       .map((j: any) => j.job_assignments?.boq_master?.item_name)
                       .filter(Boolean)
@@ -367,7 +374,7 @@ export default function ContractorsPage() {
                           )}
                         </td>
                         <td className="px-3 py-2 text-right">฿{formatCurrency(workAmt)}</td>
-                        <td className="px-3 py-2 text-right text-slate-500">{retPct}%</td>
+                        <td className="px-3 py-2 text-right text-slate-500">{isManual ? 'ระบุเอง' : `${retPct}%`}</td>
                         <td className="px-3 py-2 text-right font-semibold text-amber-700">฿{formatCurrency(retAmt)}</td>
                       </tr>
                     )
@@ -377,7 +384,7 @@ export default function ContractorsPage() {
                   <tr>
                     <td colSpan={5} className="px-3 py-2 text-right font-bold text-slate-700">รวมเงินประกันสะสม</td>
                     <td className="px-3 py-2 text-right font-bold text-amber-700">
-                      ฿{formatCurrency(retentionRows.reduce((s: number, r: any) => s + Number(r.total_work_amount || 0) * (Number(r.retention_percent || 0) / 100), 0))}
+                      ฿{formatCurrency(retentionRows.reduce((s: number, r: any) => s + (r.retention_amount != null ? Number(r.retention_amount) : Number(r.total_work_amount || 0) * (Number(r.retention_percent || 0) / 100)), 0))}
                     </td>
                   </tr>
                 </tfoot>
@@ -453,7 +460,14 @@ export default function ContractorsPage() {
                   const plot = row.plots?.name ? `แปลง ${row.plots.name}` : 'ไม่ระบุแปลง'
                   const typeLabel = row.type === 'extra_work' ? 'DC' : 'Progress'
                   const mainJobs = (row.billing_jobs || [])
-                    .map((j: any) => j.job_assignments?.boq_master?.item_name)
+                    .map((j: any) => {
+                      const name = j.job_assignments?.boq_master?.item_name
+                      if (!name) return null
+                      if (j.progress_percent == null) return name
+                      const from = Number(j.previous_progress_percent ?? 0)
+                      const to = Number(j.progress_percent)
+                      return `${name} (${from.toFixed(0)}% → ${to.toFixed(0)}%)`
+                    })
                     .filter(Boolean)
                   const adjs = (row.billing_adjustments || [])
                     .map((a: any) => `${a.type === 'deduction' ? 'หัก' : 'เพิ่ม'}: ${a.description}`)
@@ -462,9 +476,13 @@ export default function ContractorsPage() {
 
                   const isPaid = !!row.paid_out_at
                   const displayAmount = isPaid ? Number(row.actual_payout ?? row.net_amount ?? 0) : Number(row.net_amount || 0)
-                  const retentionAmt = Number(row.total_work_amount || 0) * (Number(row.retention_percent || 0) / 100)
+                  const retentionAmt = row.retention_amount != null
+                    ? Number(row.retention_amount)
+                    : Number(row.total_work_amount || 0) * (Number(row.retention_percent || 0) / 100)
                   const whtAmt = isPaid && row.wht_applied
-                    ? (Number(row.total_work_amount || 0) + Number(row.total_add_amount || 0) - Number(row.total_deduct_amount || 0)) * (Number(row.wht_percent || 0) / 100)
+                    ? (row.wht_amount != null
+                        ? Number(row.wht_amount)
+                        : (Number(row.total_work_amount || 0) + Number(row.total_add_amount || 0) - Number(row.total_deduct_amount || 0)) * (Number(row.wht_percent || 0) / 100))
                     : 0
                   const showRetentionBadge = isPaid && row.retention_applied !== false && retentionAmt > 0
                   const showWhtBadge = isPaid && whtAmt > 0

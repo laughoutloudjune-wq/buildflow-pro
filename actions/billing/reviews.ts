@@ -148,7 +148,14 @@ export async function markBillingsAsPaidOut(
   paidAt: string,
   whtAppliedMap: Record<string, boolean> = {},
   retentionAppliedMap: Record<string, boolean> = {},
-  deductAppliedMap: Record<string, boolean> = {}
+  deductAppliedMap: Record<string, boolean> = {},
+  // Actual withheld amounts confirmed at payout time. When omitted for a
+  // bill, the column is cleared (null) so display code falls back to the
+  // percentage formula — set explicitly to override it (e.g. a DC bill that
+  // was actually paid with a real retention withholding, which the percent
+  // formula can never produce since it's based on total_work_amount).
+  retentionAmountMap: Record<string, number> = {},
+  whtAmountMap: Record<string, number> = {}
 ) {
   const supabase = await createClient()
   const user = await getCurrentUser()
@@ -167,6 +174,8 @@ export async function markBillingsAsPaidOut(
         wht_applied: whtAppliedMap[id] ?? false,
         retention_applied: retentionAppliedMap[id] ?? true,
         deduct_applied: deductAppliedMap[id] ?? true,
+        retention_amount: retentionAmountMap[id] ?? null,
+        wht_amount: whtAmountMap[id] ?? null,
       })
       .eq('id', id)
       .eq('status', 'approved')

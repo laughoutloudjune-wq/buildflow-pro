@@ -80,6 +80,7 @@ export async function getApprovedContractorCycleReport(filters: {
   dateFrom?: string
   dateTo?: string
   includeUnpaidOutsideRange?: boolean
+  paymentState?: 'all' | 'unpaid' | 'paid'
 } = {}) {
   return getApprovedContractorCycleReportImpl(filters)
 }
@@ -105,8 +106,16 @@ export async function deleteBilling(id: string) {
   return deleteBillingImpl(id)
 }
 
-export async function markBillingsAsPaidOut(billingIds: string[], paidAt: string, whtAppliedMap: Record<string, boolean> = {}, retentionAppliedMap: Record<string, boolean> = {}, deductAppliedMap: Record<string, boolean> = {}) {
-  return markBillingsAsPaidOutImpl(billingIds, paidAt, whtAppliedMap, retentionAppliedMap, deductAppliedMap)
+export async function markBillingsAsPaidOut(
+  billingIds: string[],
+  paidAt: string,
+  whtAppliedMap: Record<string, boolean> = {},
+  retentionAppliedMap: Record<string, boolean> = {},
+  deductAppliedMap: Record<string, boolean> = {},
+  retentionAmountMap: Record<string, number> = {},
+  whtAmountMap: Record<string, number> = {}
+) {
+  return markBillingsAsPaidOutImpl(billingIds, paidAt, whtAppliedMap, retentionAppliedMap, deductAppliedMap, retentionAmountMap, whtAmountMap)
 }
 
 export async function unmarkBillingsAsPaidOut(billingIds: string[]) {

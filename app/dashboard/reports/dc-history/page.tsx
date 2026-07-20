@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import { getExtraWorkReport, getBillingOptions } from '@/actions/billing-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
@@ -130,42 +132,42 @@ export default function DCHistoryReportPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">รายงานประวัติงานเพิ่ม (DC)</h1>
-        <p className="text-sm text-slate-500">สรุปงานเพิ่ม (Extra Work) ตามแปลงและเงื่อนไขที่เลือก</p>
-      </div>
+      <PageHeader
+        title="รายงานประวัติงานเพิ่ม (DC)"
+        subtitle="สรุปงานเพิ่ม (Extra Work) ตามแปลงและเงื่อนไขที่เลือก"
+      />
 
       <Card className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs font-semibold text-slate-600">โครงการ</label>
-            <select className="mt-1 w-full p-2 border rounded" value={filters.projectId || ''} onChange={(e) => setFilters((prev) => ({ ...prev, projectId: e.target.value || undefined }))}>
+            <select className="mt-1 w-full" value={filters.projectId || ''} onChange={(e) => setFilters((prev) => ({ ...prev, projectId: e.target.value || undefined }))}>
               <option value="">ทั้งหมด</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600">แปลง</label>
-            <select className="mt-1 w-full p-2 border rounded" value={filters.plotId || ''} onChange={(e) => setFilters((prev) => ({ ...prev, plotId: e.target.value || undefined }))}>
+            <select className="mt-1 w-full" value={filters.plotId || ''} onChange={(e) => setFilters((prev) => ({ ...prev, plotId: e.target.value || undefined }))}>
               <option value="">ทั้งหมด</option>
               {plots.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600">เหตุผล</label>
-            <input className="mt-1 w-full p-2 border rounded" placeholder="เช่น Owner Request" value={filters.reason || ''} onChange={(e) => setFilters((prev) => ({ ...prev, reason: e.target.value || undefined }))} />
+            <input className="mt-1 w-full" placeholder="เช่น Owner Request" value={filters.reason || ''} onChange={(e) => setFilters((prev) => ({ ...prev, reason: e.target.value || undefined }))} />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600">ตั้งแต่</label>
-            <input type="date" className="mt-1 w-full p-2 border rounded" value={filters.dateFrom || ''} onChange={(e) => setFilters((prev) => ({ ...prev, dateFrom: e.target.value || undefined }))} />
+            <input type="date" className="mt-1 w-full" value={filters.dateFrom || ''} onChange={(e) => setFilters((prev) => ({ ...prev, dateFrom: e.target.value || undefined }))} />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600">ถึง</label>
-            <input type="date" className="mt-1 w-full p-2 border rounded" value={filters.dateTo || ''} onChange={(e) => setFilters((prev) => ({ ...prev, dateTo: e.target.value || undefined }))} />
+            <input type="date" className="mt-1 w-full" value={filters.dateTo || ''} onChange={(e) => setFilters((prev) => ({ ...prev, dateTo: e.target.value || undefined }))} />
           </div>
         </div>
         <div className="mt-3 flex justify-end">
-          <button onClick={runReport} className="px-4 py-2 bg-slate-900 text-white rounded">ค้นหา</button>
+          <Button onClick={runReport}>ค้นหา</Button>
         </div>
       </Card>
 
@@ -176,14 +178,14 @@ export default function DCHistoryReportPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {totalsByPlot.map((entry) => (
-              <button key={entry.key} className="p-3 border rounded text-left hover:border-amber-300 hover:bg-amber-50/40 transition" onClick={() => setSelectedGroupKey(entry.key)}>
+              <button key={entry.key} className="p-3 border rounded-lg text-left hover:border-amber-300 hover:bg-amber-50/40 transition" onClick={() => setSelectedGroupKey(entry.key)}>
                 <p className="text-xs text-slate-500">{entry.project}</p>
                 <p className="font-semibold text-slate-800">{entry.plot}</p>
                 <p className="text-lg font-bold text-amber-700">฿{formatCurrency(entry.value)}</p>
                 <p className="text-xs text-slate-500 mt-1">ดูประวัติ {entry.rows.length} รายการ</p>
               </button>
             ))}
-            <div className="p-3 border rounded bg-amber-50">
+            <div className="p-3 border rounded-lg bg-amber-50">
               <p className="text-xs text-slate-500">รวมทั้งหมด</p>
               <p className="text-lg font-bold text-amber-800">฿{formatCurrency(totalAll)}</p>
             </div>
@@ -253,8 +255,8 @@ export default function DCHistoryReportPage() {
                       <div className="font-bold text-amber-700">฿{formatCurrency(row._dc_net_amount)}</div>
                     </div>
                   </div>
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="w-full text-xs border">
+                  <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="w-full text-xs">
                       <thead className="bg-slate-50">
                         <tr>
                           <th className="px-2 py-1 text-left">ประเภท</th>

@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useState, useEffect, useTransition, useCallback } from 'react'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import PageLoading from '@/components/ui/PageLoading'
 import NoticeBanner from '@/components/ui/NoticeBanner'
 import {
@@ -128,25 +130,19 @@ export default function SettingsPage() {
     return (
       <div className="mx-auto max-w-lg space-y-4 px-2 sm:px-0">
         <NoticeBanner tone="error" message={loadError} />
-        <button
-          type="button"
-          onClick={() => void loadData()}
-          className="w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
-        >
+        <Button type="button" onClick={() => void loadData()} className="w-full">
           ลองโหลดใหม่
-        </button>
+        </Button>
       </div>
     )
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">ตั้งค่าระบบ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ข้อมูลบริษัท ค่าเริ่มต้นทางบัญชี การจัดการผู้ใช้ และลิงก์ไปยังตั้งค่าเพิ่มเติม
-        </p>
-      </div>
+      <PageHeader
+        title="ตั้งค่าระบบ"
+        subtitle="ข้อมูลบริษัท ค่าเริ่มต้นทางบัญชี การจัดการผู้ใช้ และลิงก์ไปยังตั้งค่าเพิ่มเติม"
+      />
 
       {notice ? (
         <NoticeBanner tone={notice.tone} message={notice.message} onClose={() => setNotice(null)} />
@@ -312,13 +308,9 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="mt-8 flex justify-end border-t border-slate-100 pt-6">
-              <button
-                type="submit"
-                disabled={isPending}
-                className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
-              >
+              <Button type="submit" disabled={isPending}>
                 {isPending ? 'กำลังบันทึก...' : 'บันทึกข้อมูลบริษัท'}
-              </button>
+              </Button>
             </div>
           </Card>
         )}
@@ -374,13 +366,9 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="mt-8 flex justify-end border-t border-slate-100 pt-6">
-              <button
-                type="submit"
-                disabled={isPending}
-                className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
-              >
+              <Button type="submit" disabled={isPending}>
                 {isPending ? 'กำลังบันทึก...' : 'บันทึกค่าเริ่มต้น'}
-              </button>
+              </Button>
             </div>
           </Card>
         )}

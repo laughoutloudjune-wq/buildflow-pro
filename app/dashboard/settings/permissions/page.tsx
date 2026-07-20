@@ -1,9 +1,9 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { ArrowLeft, Info, Save, ShieldCheck } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { Button, ButtonLink } from '@/components/ui/Button'
 import PageLoading from '@/components/ui/PageLoading'
 import NoticeBanner from '@/components/ui/NoticeBanner'
 import { getRolePermissions, updateRolePermissions } from '@/actions/settings-actions'
@@ -105,22 +105,14 @@ export default function PermissionSettingsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/dashboard/settings"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-          >
+          <ButtonLink href="/dashboard/settings" variant="secondary">
             <ArrowLeft className="h-4 w-4" aria-hidden />
             กลับไปตั้งค่า
-          </Link>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isPending}
-            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
-          >
+          </ButtonLink>
+          <Button type="button" onClick={handleSave} disabled={isPending}>
             <Save className="h-4 w-4" aria-hidden />
             {isPending ? 'กำลังบันทึก...' : 'บันทึกสิทธิ์'}
-          </button>
+          </Button>
         </div>
       </div>
 

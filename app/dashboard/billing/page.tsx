@@ -1,10 +1,12 @@
 ﻿'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, Eye, Edit } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { Badge, statusTone } from '@/components/ui/Badge'
+import { Button, ButtonLink } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { getBillings } from '@/actions/billing-actions'
 import BillingModal from '@/components/billings/BillingModal'
 import { formatCurrency } from '@/lib/currency'
@@ -15,21 +17,18 @@ type BillingListItem = Awaited<ReturnType<typeof getBillings>>[number]
 type BillingJobLine = NonNullable<BillingListItem['billing_jobs']>[number]
 type BillingAdjustmentLine = NonNullable<BillingListItem['billing_adjustments']>[number]
 
-const getStatusChip = (status?: string | null) => {
-  const base = "inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-4"
-  switch (status) {
-    case 'approved':
-      return <span className={`${base} bg-green-100 text-green-800`}>อนุมัติแล้ว</span>
-    case 'pending_review':
-      return <span className={`${base} bg-yellow-100 text-yellow-800`}>รอตรวจสอบ</span>
-    case 'rejected':
-      return <span className={`${base} bg-red-100 text-red-800`}>ไม่อนุมัติ</span>
-    case 'draft':
-      return <span className={`${base} bg-gray-100 text-gray-800`}>ฉบับร่าง</span>
-    default:
-      return <span className={`${base} bg-gray-100 text-gray-800`}>{status}</span>
-  }
+const statusLabels: Record<string, string> = {
+  approved: 'อนุมัติแล้ว',
+  pending_review: 'รอตรวจสอบ',
+  rejected: 'ไม่อนุมัติ',
+  draft: 'ฉบับร่าง',
 }
+
+const getStatusChip = (status?: string | null) => (
+  <Badge tone={statusTone(status || '')} className="px-2 py-0.5 text-[11px] font-medium leading-4">
+    {statusLabels[status || ''] || status}
+  </Badge>
+)
 
 export default function BillingListPage() {
   const [billings, setBillings] = useState<BillingListItem[]>([])
@@ -123,24 +122,20 @@ export default function BillingListPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">รายการเบิกจ่ายงวดงาน</h1>
-          <p className="text-sm text-slate-500">จัดการใบเบิกงวดงานหลักและงานเพิ่ม (DC) พร้อมติดตามสถานะอนุมัติ</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard/foreman/create-progress">
-            <button className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shadow-sm transition">
+      <PageHeader
+        title="รายการเบิกจ่ายงวดงาน"
+        subtitle="จัดการใบเบิกงวดงานหลักและงานเพิ่ม (DC) พร้อมติดตามสถานะอนุมัติ"
+        actions={
+          <>
+            <ButtonLink href="/dashboard/foreman/create-progress" variant="secondary">
               <Plus className="h-4 w-4" /> สร้างใบเบิกงวดงาน
-            </button>
-          </Link>
-          <Link href="/dashboard/foreman/create-dc">
-            <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm transition">
+            </ButtonLink>
+            <ButtonLink href="/dashboard/foreman/create-dc">
               <Plus className="h-4 w-4" /> สร้างใบเบิกงานเพิ่ม (DC)
-            </button>
-          </Link>
-        </div>
-      </div>
+            </ButtonLink>
+          </>
+        }
+      />
 
       {queryFlash ? (
         <NoticeBanner tone={queryFlash.tone} message={queryFlash.message} onClose={() => router.replace('/dashboard/billing')} />
@@ -162,13 +157,9 @@ export default function BillingListPage() {
         ) : billings.length === 0 && listError ? (
           <div className="flex flex-col items-center gap-3 py-12">
             <p className="text-sm text-slate-600">ไม่สามารถโหลดรายการได้</p>
-            <button
-              type="button"
-              onClick={() => void loadBillings()}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-            >
+            <Button type="button" size="sm" onClick={() => void loadBillings()}>
               ลองโหลดใหม่
-            </button>
+            </Button>
           </div>
         ) : billings.length === 0 ? (
           <div className="p-12 text-center text-slate-400">ยังไม่มีเอกสารเบิกจ่าย</div>

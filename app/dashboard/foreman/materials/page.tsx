@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Boxes } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { PageHeader } from '@/components/ui/PageHeader'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import JobMaterialLogModal from '@/components/materials/JobMaterialLogModal'
 import { getBillingOptions } from '@/actions/billing-actions'
@@ -70,14 +71,12 @@ export default function ForemanMaterialsPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">บันทึกวัสดุ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          เลือกโครงการและแปลง แล้วกดบันทึกวัสดุที่งานที่ต้องการเทียบกับงบ BOQ
-        </p>
-      </div>
+      <PageHeader
+        title="บันทึกวัสดุ"
+        subtitle="เลือกโครงการและแปลง แล้วกดบันทึกวัสดุที่งานที่ต้องการเทียบกับงบ BOQ"
+      />
 
-      <Card className="p-4">
+      <Card className="p-5">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">โครงการ</label>

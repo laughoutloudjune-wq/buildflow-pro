@@ -4,6 +4,8 @@ import { useEffect, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import NoticeBanner from '@/components/ui/NoticeBanner'
 import { formatCurrency } from '@/lib/currency'
@@ -127,21 +129,16 @@ export default function MaterialTypesPage() {
         >
           <ArrowLeft className="h-4 w-4" /> กลับไปตั้งค่า
         </Link>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">รายการวัสดุ (Material Catalog)</h1>
-            <p className="text-sm text-slate-500">
-              จัดการชื่อวัสดุ หน่วย และราคาล่าสุดที่ใช้อ้างอิงเวลาบันทึกการใช้วัสดุในแต่ละงาน
-            </p>
-          </div>
-          <button
-            onClick={openCreateModal}
-            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
-          >
-            <Plus className="h-4 w-4" />
-            เพิ่มวัสดุใหม่
-          </button>
-        </div>
+        <PageHeader
+          title="รายการวัสดุ (Material Catalog)"
+          subtitle="จัดการชื่อวัสดุ หน่วย และราคาล่าสุดที่ใช้อ้างอิงเวลาบันทึกการใช้วัสดุในแต่ละงาน"
+          actions={
+            <Button onClick={openCreateModal}>
+              <Plus className="h-4 w-4" />
+              เพิ่มวัสดุใหม่
+            </Button>
+          }
+        />
       </div>
 
       {notice ? <NoticeBanner tone={notice.tone} message={notice.message} onClose={() => setNotice(null)} /> : null}
@@ -248,17 +245,12 @@ export default function MaterialTypesPage() {
             </p>
           )}
           <div className="flex justify-end gap-3 border-t pt-4">
-            <button type="button" onClick={closeModal} className="btn-secondary">
+            <Button type="button" variant="secondary" onClick={closeModal}>
               ยกเลิก
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={isPending}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-white shadow transition hover:bg-indigo-700 disabled:opacity-60"
-            >
+            </Button>
+            <Button type="button" onClick={handleSubmit} disabled={isPending}>
               {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'บันทึก'}
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>

@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import {
   LayoutDashboard,
@@ -10,6 +10,8 @@ import {
   Users,
   ClipboardList,
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -64,8 +66,12 @@ const menuSections: SidebarSection[] = [
 
 export default function Sidebar({
   permissions,
+  collapsed,
+  onToggleCollapsed,
 }: {
   permissions: CurrentPermissions
+  collapsed: boolean
+  onToggleCollapsed: () => void
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -84,24 +90,39 @@ export default function Sidebar({
   }
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r bg-slate-900 text-white transition-transform">
-      <div className="flex h-16 items-center border-b border-slate-700 px-6">
-        <div className="flex items-center gap-2 font-bold text-xl">
-          <div className="flex h-8 w-8 items-center justify-center rounded bg-indigo-500">
-            <Building2 className="h-5 w-5 text-white" />
+    <aside
+      className={`fixed left-0 top-0 z-40 h-screen border-r border-slate-200/70 bg-white/80 backdrop-blur-xl transition-[width] duration-200 ${
+        collapsed ? 'w-20' : 'w-64'
+      }`}
+    >
+      <button
+        onClick={onToggleCollapsed}
+        aria-label={collapsed ? 'ขยายเมนู' : 'ย่อเมนู'}
+        title={collapsed ? 'ขยายเมนู' : 'ย่อเมนู'}
+        className="absolute -right-3 top-20 z-50 flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-[0_1px_3px_rgba(0,0,0,0.1)] transition-colors hover:text-indigo-600"
+      >
+        {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+      </button>
+
+      <div className={`flex h-16 items-center border-b border-slate-200/70 ${collapsed ? 'justify-center px-2' : 'px-6'}`}>
+        <div className="flex items-center gap-2.5 overflow-hidden text-[17px] font-semibold tracking-tight text-slate-900">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-indigo-600 shadow-[0_2px_6px_-1px_rgba(79,70,229,0.5)]">
+            <Building2 className="h-4.5 w-4.5 text-white" />
           </div>
-          BuildFlow
+          {!collapsed && <span className="whitespace-nowrap">BuildFlow</span>}
         </div>
       </div>
 
-      <nav className="h-[calc(100vh-8.5rem)] overflow-y-auto p-4">
+      <nav className="scrollbar-modern h-[calc(100vh-8.5rem)] overflow-y-auto overflow-x-hidden p-3">
         <div className="space-y-5">
           {visibleSections.map((section) => (
             <div key={section.title}>
-              <div className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                {section.title}
-              </div>
-              <div className="space-y-1">
+              {!collapsed && (
+                <div className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  {section.title}
+                </div>
+              )}
+              <div className="space-y-0.5">
                 {section.items.map((item) => {
                   const isActive = pathname.startsWith(item.href) && item.href !== '/dashboard'
                     ? true
@@ -111,14 +132,17 @@ export default function Sidebar({
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`flex items-center gap-3 rounded-lg px-4 py-3 text-[15px] font-medium transition-colors ${
+                      title={collapsed ? item.label : undefined}
+                      className={`flex items-center gap-3 rounded-[10px] py-2.5 text-[14px] font-medium transition-colors ${
+                        collapsed ? 'justify-center px-0' : 'px-3'
+                      } ${
                         isActive
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                          ? 'bg-indigo-50 text-indigo-700'
+                          : 'text-slate-600 hover:bg-slate-900/[0.04] hover:text-slate-900'
                       }`}
                     >
-                      <item.icon className="h-5 w-5" />
-                      {item.label}
+                      <item.icon className={`h-[18px] w-[18px] shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
+                      {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
                     </Link>
                   )
                 })}
@@ -128,13 +152,16 @@ export default function Sidebar({
         </div>
       </nav>
 
-      <div className="absolute bottom-4 left-0 w-full px-4">
+      <div className="absolute bottom-4 left-0 w-full px-3">
         <button
           onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-[15px] font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-red-400"
+          title={collapsed ? 'ออกจากระบบ' : undefined}
+          className={`flex w-full items-center gap-3 rounded-[10px] py-2.5 text-[14px] font-medium text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 ${
+            collapsed ? 'justify-center px-0' : 'px-3'
+          }`}
         >
-          <LogOut className="h-5 w-5" />
-          ออกจากระบบ
+          <LogOut className="h-[18px] w-[18px] shrink-0" />
+          {!collapsed && <span className="whitespace-nowrap">ออกจากระบบ</span>}
         </button>
       </div>
     </aside>

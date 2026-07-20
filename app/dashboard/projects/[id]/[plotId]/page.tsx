@@ -4,6 +4,8 @@ import { useEffect, useState, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Boxes, Hammer, Pencil, RefreshCw, User } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import JobMaterialLogModal from '@/components/materials/JobMaterialLogModal'
 import {
@@ -211,32 +213,29 @@ export default function PlotDetailPage() {
           <ArrowLeft className="h-4 w-4" /> กลับหน้ารายการ
         </button>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+        <PageHeader
+          title={
+            <span className="flex items-center gap-3">
+              <span className="flex items-center gap-2">
                 <Hammer className="text-indigo-600" /> แปลง {plot.name}
-              </h1>
+              </span>
               <button onClick={() => setIsEditModalOpen(true)} className="text-slate-400 hover:text-indigo-600">
                 <Pencil className="h-4 w-4" />
               </button>
-            </div>
-            <p className="text-sm text-slate-500">แบบบ้าน: {plot.house_models?.name}</p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleSync}
-              disabled={isPending}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition"
-            >
-              <RefreshCw className={`h-3 w-3 ${isPending ? 'animate-spin' : ''}`} /> ดึง BOQ
-            </button>
-            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-sm font-bold border border-slate-200">
-              งานทั้งหมด {jobs.length} รายการ
             </span>
-          </div>
-        </div>
+          }
+          subtitle={`แบบบ้าน: ${plot.house_models?.name || ''}`}
+          actions={
+            <>
+              <Button variant="secondary" size="sm" onClick={handleSync} disabled={isPending}>
+                <RefreshCw className={`h-3 w-3 ${isPending ? 'animate-spin' : ''}`} /> ดึง BOQ
+              </Button>
+              <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-sm font-bold border border-slate-200">
+                งานทั้งหมด {jobs.length} รายการ
+              </span>
+            </>
+          }
+        />
       </div>
 
       <Card className="overflow-hidden">
@@ -283,7 +282,7 @@ export default function PlotDetailPage() {
                             type="button"
                             onClick={() => handleSaveVariablePrice(job)}
                             disabled={isPending}
-                            className="rounded bg-indigo-600 px-2 py-1 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                            className="rounded-lg bg-indigo-600 px-2 py-1 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
                           >
                             Save
                           </button>
@@ -291,7 +290,7 @@ export default function PlotDetailPage() {
                             type="button"
                             onClick={() => handleResetVariablePrice(job)}
                             disabled={isPending}
-                            className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-60"
+                            className="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-60"
                           >
                             Reset
                           </button>
@@ -388,12 +387,12 @@ export default function PlotDetailPage() {
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t">
-            <button type="button" onClick={() => setIsEditModalOpen(false)} className="btn-secondary">
+            <Button type="button" variant="secondary" onClick={() => setIsEditModalOpen(false)}>
               ยกเลิก
-            </button>
-            <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 shadow transition">
+            </Button>
+            <Button type="submit">
               บันทึก
-            </button>
+            </Button>
           </div>
         </form>
       </Modal>

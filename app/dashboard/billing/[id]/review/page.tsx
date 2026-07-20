@@ -7,6 +7,8 @@ import dynamic from 'next/dynamic'
 import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling, getJobProgressHistory } from '@/actions/billing-actions'
 import { getOrganizationSettings } from '@/actions/settings-actions'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { BillingPdf } from '@/components/pdf/BillingPdf'
 import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
 import { Trash2, Edit, Loader2 } from 'lucide-react'
@@ -327,19 +329,21 @@ export default function ReviewBillingPage() {
 
   return (
     <div className="container mx-auto p-4 space-y-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold mb-0">ตรวจสอบใบขอเบิก #{billing.doc_no}</h1>
-        <div className="flex items-center gap-3">
-          {billing.status === 'approved' && (
-            <button onClick={() => setConfirmAction('undoApprove')} disabled={isSubmitting} className="flex items-center gap-2 text-sm text-amber-700 hover:text-amber-900 disabled:opacity-50">
-              <Edit className="h-4 w-4" /> Undo Approve
-            </button>
-          )}
-          <button onClick={() => setConfirmAction('delete')} className="flex items-center gap-2 text-sm text-red-600 hover:text-red-800">
-            <Trash2 className="h-4 w-4" /> ลบใบคำขอ
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={`ตรวจสอบใบขอเบิก #${billing.doc_no}`}
+        actions={
+          <>
+            {billing.status === 'approved' && (
+              <Button variant="ghost" size="sm" onClick={() => setConfirmAction('undoApprove')} disabled={isSubmitting}>
+                <Edit className="h-4 w-4" /> Undo Approve
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setConfirmAction('delete')}>
+              <Trash2 className="h-4 w-4" /> ลบใบคำขอ
+            </Button>
+          </>
+        }
+      />
 
       {error ? <NoticeBanner tone="error" message={error} onClose={() => setError(null)} /> : null}
 
@@ -592,12 +596,12 @@ export default function ReviewBillingPage() {
             </div>
 
             <div className="mt-6 flex justify-end gap-4">
-              <button onClick={() => setRejectModalOpen(true)} disabled={isSubmitting} className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 font-semibold">
+              <Button variant="danger" onClick={() => setRejectModalOpen(true)} disabled={isSubmitting}>
                 {isSubmitting ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}
-              </button>
-              <button onClick={handleApprove} disabled={isSubmitting} className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 font-bold">
+              </Button>
+              <Button onClick={handleApprove} disabled={isSubmitting}>
                 {isSubmitting ? 'กำลังอนุมัติ...' : 'อนุมัติและจบงาน'}
-              </button>
+              </Button>
             </div>
           </Card>
         </>
@@ -647,17 +651,17 @@ export default function ReviewBillingPage() {
             />
           </div>
           <div className="flex justify-end gap-3 border-t pt-4">
-            <button type="button" onClick={() => setRejectModalOpen(false)} className="btn-secondary">
+            <Button type="button" variant="secondary" onClick={() => setRejectModalOpen(false)}>
               ยกเลิก
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="danger"
               onClick={handleReject}
               disabled={isSubmitting}
-              className="rounded-lg bg-red-600 px-4 py-2 text-white shadow transition hover:bg-red-700 disabled:opacity-60"
             >
               {isSubmitting ? 'กำลังปฏิเสธ...' : 'ยืนยันการปฏิเสธ'}
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>

@@ -2,9 +2,12 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import { getApprovedContractorCycleReport, getBillingOptions, undoApproveBilling, markBillingsAsPaidOut, unmarkBillingsAsPaidOut } from '@/actions/billing-actions'
-import { BadgeCheck, Loader2, Printer, Undo2 } from 'lucide-react'
+import { BadgeCheck, ChevronDown, ChevronRight, Loader2, Pencil, Printer, Undo2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import { computeActualPayout } from '@/lib/billing'
 
@@ -14,19 +17,29 @@ type Contractor = { id: string; name: string }
 type Filters = {
   projectId?: string
   contractorId?: string
-  dateFrom?: string
-  dateTo?: string
-  includeUnpaidOutsideRange?: boolean
+  month?: string
 }
 
 function todayISO() {
   return new Date().toISOString().split('T')[0]
 }
 
-function monthStartISO() {
-  const d = new Date()
-  d.setDate(1)
-  return d.toISOString().split('T')[0]
+function compareByDocNo(a: any, b: any) {
+  const na = Number(a.doc_no)
+  const nb = Number(b.doc_no)
+  if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb
+  return String(a.doc_no ?? '').localeCompare(String(b.doc_no ?? ''))
+}
+
+// month is 'YYYY-MM'; returns the first/last calendar day as 'YYYY-MM-DD'.
+function monthToRange(month?: string): { dateFrom?: string; dateTo?: string } {
+  if (!month) return {}
+  const [y, m] = month.split('-').map(Number)
+  if (!y || !m) return {}
+  const dateFrom = `${month}-01`
+  const lastDay = new Date(y, m, 0).getDate()
+  const dateTo = `${month}-${String(lastDay).padStart(2, '0')}`
+  return { dateFrom, dateTo }
 }
 
 const RECENTLY_APPROVED_MS = 48 * 60 * 60 * 1000
@@ -41,8 +54,9 @@ function isRecentlyApproved(approvedAt?: string | null) {
 export default function ContractorCycleReportPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [contractors, setContractors] = useState<Contractor[]>([])
-  const [filters, setFilters] = useState<Filters>({ dateFrom: monthStartISO(), dateTo: todayISO() })
-  const [paymentStatus, setPaymentStatus] = useState<'all' | 'unpaid' | 'paid'>('all')
+  const [filters, setFilters] = useState<Filters>({})
+  const derivedRange = useMemo(() => monthToRange(filters.month), [filters.month])
+  const [activeTab, setActiveTab] = useState<'unpaid' | 'paid'>('unpaid')
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,12 +65,18 @@ export default function ContractorCycleReportPage() {
   const [printedAtLabel, setPrintedAtLabel] = useState('')
 
   const [excludedBillIds, setExcludedBillIds] = useState<Set<string>>(new Set())
-  const [payOutConfirm, setPayOutConfirm] = useState<{ contractorId: string; contractorName: string; bills: any[]; total: number } | null>(null)
+  const [expandedPaidBillIds, setExpandedPaidBillIds] = useState<Set<string>>(new Set())
+  const [payOutConfirm, setPayOutConfirm] = useState<{ contractorId: string; contractorName: string; bills: any[]; total: number; isEdit?: boolean } | null>(null)
   const [payOutDate, setPayOutDate] = useState(todayISO())
   const [payOutLoading, setPayOutLoading] = useState(false)
-  const [cycleWhtApplied, setCycleWhtApplied] = useState(true)
+  const [whtAppliedMap, setWhtAppliedMap] = useState<Record<string, boolean>>({})
   const [retentionAppliedMap, setRetentionAppliedMap] = useState<Record<string, boolean>>({})
   const [deductAppliedMap, setDeductAppliedMap] = useState<Record<string, boolean>>({})
+  // Editable ฿ amounts, seeded from the %-based formula but overridable when
+  // reality doesn't match it (e.g. a DC bill with no work-amount base for
+  // retention%, that was still actually paid with a real retention hold).
+  const [retentionAmountMap, setRetentionAmountMap] = useState<Record<string, number>>({})
+  const [whtAmountMap, setWhtAmountMap] = useState<Record<string, number>>({})
 
   useEffect(() => {
     getBillingOptions().then((data) => {
@@ -69,7 +89,12 @@ export default function ContractorCycleReportPage() {
     setLoading(true)
     setError(null)
     try {
-      const result = await getApprovedContractorCycleReport(filters)
+      const { dateFrom, dateTo } = derivedRange
+      const requestFilters =
+        activeTab === 'unpaid'
+          ? { projectId: filters.projectId, contractorId: filters.contractorId, dateFrom, dateTo, paymentState: 'unpaid' as const }
+          : { projectId: filters.projectId, contractorId: filters.contractorId, dateFrom, dateTo, paymentState: 'paid' as const }
+      const result = await getApprovedContractorCycleReport(requestFilters)
       setRows(result || [])
       setExcludedBillIds(new Set())
     } catch (e: any) {
@@ -88,10 +113,19 @@ export default function ContractorCycleReportPage() {
     })
   }
 
+  const togglePaidBillExpanded = (billId: string) => {
+    setExpandedPaidBillIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(billId)) next.delete(billId)
+      else next.add(billId)
+      return next
+    })
+  }
+
   useEffect(() => {
     runReport()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [activeTab])
 
   useEffect(() => {
     document.body.classList.toggle('contractor-cycle-print-preview-open', showPrintPreview)
@@ -119,18 +153,50 @@ export default function ContractorCycleReportPage() {
     }
   }
 
+  // Seeds the editable payout maps for a set of bills. For a fresh payment,
+  // WHT/retention/deduct default to "applied" (typical case). For editing an
+  // already-paid bill, default to whatever was actually saved so the accountant
+  // sees the real prior state rather than a fresh guess.
+  const seedPayoutMaps = (bills: any[], isEdit: boolean) => {
+    const retApplied: Record<string, boolean> = {}
+    const dedApplied: Record<string, boolean> = {}
+    const whtApplied: Record<string, boolean> = {}
+    const retAmount: Record<string, number> = {}
+    const whtAmount: Record<string, number> = {}
+    for (const b of bills) {
+      const workAmt = Number(b.total_work_amount || 0)
+      const addAmt = Number(b.total_add_amount || 0)
+      const deductAmt = Number(b.total_deduct_amount || 0)
+      const grossBeforeWht = workAmt + addAmt - deductAmt
+      retApplied[b.id] = isEdit ? b.retention_applied !== false : true
+      dedApplied[b.id] = isEdit ? b.deduct_applied !== false : true
+      whtApplied[b.id] = isEdit ? !!b.wht_applied : true
+      retAmount[b.id] = b.retention_amount != null ? Number(b.retention_amount) : workAmt * (Number(b.retention_percent || 0) / 100)
+      whtAmount[b.id] = b.wht_amount != null ? Number(b.wht_amount) : grossBeforeWht * (Number(b.wht_percent || 0) / 100)
+    }
+    setRetentionAppliedMap(retApplied)
+    setDeductAppliedMap(dedApplied)
+    setWhtAppliedMap(whtApplied)
+    setRetentionAmountMap(retAmount)
+    setWhtAmountMap(whtAmount)
+  }
+
+  const resetPayoutMaps = () => {
+    setRetentionAppliedMap({})
+    setDeductAppliedMap({})
+    setWhtAppliedMap({})
+    setRetentionAmountMap({})
+    setWhtAmountMap({})
+  }
+
   const handleMarkAsPaidOut = async () => {
     if (!payOutConfirm) return
     setPayOutLoading(true)
     try {
       const billIds = payOutConfirm.bills.map((b: any) => b.id)
-      const whtMap: Record<string, boolean> = {}
-      payOutConfirm.bills.forEach((b: any) => { whtMap[b.id] = cycleWhtApplied })
-      await markBillingsAsPaidOut(billIds, payOutDate, whtMap, retentionAppliedMap, deductAppliedMap)
+      await markBillingsAsPaidOut(billIds, payOutDate, whtAppliedMap, retentionAppliedMap, deductAppliedMap, retentionAmountMap, whtAmountMap)
       setPayOutConfirm(null)
-      setRetentionAppliedMap({})
-      setDeductAppliedMap({})
-      setCycleWhtApplied(true)
+      resetPayoutMaps()
       await runReport()
     } catch (e: any) {
       alert(e.message || 'Mark as paid failed')
@@ -148,6 +214,22 @@ export default function ContractorCycleReportPage() {
     } catch (e: any) {
       alert(e.message || 'Unmark paid out failed')
     }
+  }
+
+  // Reopens the same pay-out modal for a single already-paid bill, pre-filled
+  // with what was actually saved (not fresh defaults), so a mixed-up WHT vs
+  // retention checkbox can be corrected in place instead of forcing a full
+  // Undo → re-pay cycle for the whole batch.
+  const openEditPayout = (bill: any, contractorName: string) => {
+    setPayOutDate(bill.paid_out_at ? String(bill.paid_out_at).slice(0, 10) : todayISO())
+    seedPayoutMaps([bill], true)
+    setPayOutConfirm({
+      contractorId: bill.contractor_id || 'unknown',
+      contractorName,
+      bills: [bill],
+      total: computeActualPayout(bill),
+      isEdit: true,
+    })
   }
 
   const escapeHtml = (value: any) =>
@@ -212,7 +294,7 @@ export default function ContractorCycleReportPage() {
             <div>
               <div class="title">สรุปรอบจ่ายผู้รับเหมา</div>
               <div>ผู้รับเหมา: <strong>${escapeHtml(group.contractor?.name || '-')}</strong></div>
-              <div class="muted">รอบวันที่ ${escapeHtml(filters.dateFrom || '-')} ถึง ${escapeHtml(filters.dateTo || '-')}</div>
+              <div class="muted">รอบวันที่ ${escapeHtml(derivedRange.dateFrom || '-')} ถึง ${escapeHtml(derivedRange.dateTo || '-')}</div>
             </div>
             <div class="right">
               <div>จำนวนใบเบิก: ${group.bills.length}</div>
@@ -351,26 +433,15 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
   const collator = useMemo(() => new Intl.Collator('th', { numeric: true, sensitivity: 'base' }), [])
 
   const grouped = useMemo(() => {
-    const statusFilteredRows = rows.filter((bill: any) => {
-      if (paymentStatus === 'paid') return !!bill.paid_out_at
-      if (paymentStatus === 'unpaid') return !bill.paid_out_at
-      return true
-    })
     const map = new Map<string, { contractor: any; bills: any[] }>()
-    for (const bill of statusFilteredRows) {
+    for (const bill of rows) {
       const key = bill.contractor_id || 'unknown'
       if (!map.has(key)) map.set(key, { contractor: bill.contractors || { name: 'ไม่ระบุผู้รับเหมา' }, bills: [] })
       map.get(key)!.bills.push(bill)
     }
     return Array.from(map.entries())
       .map(([contractorId, group]) => {
-        const bills = group.bills.slice().sort((a: any, b: any) => {
-          const p = collator.compare(a.projects?.name || '', b.projects?.name || '')
-          if (p !== 0) return p
-          const pl = collator.compare(a.plots?.name || '', b.plots?.name || '')
-          if (pl !== 0) return pl
-          return new Date(a.billing_date || a.created_at || 0).getTime() - new Date(b.billing_date || b.created_at || 0).getTime()
-        })
+        const bills = group.bills.slice().sort(compareByDocNo)
         const totals = bills.reduce(
           (acc: any, bill: any) => {
             const workAmt = Number(bill.total_work_amount || 0)
@@ -394,7 +465,37 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         return { contractorId, contractor: group.contractor, bills, totals }
       })
       .sort((a, b) => collator.compare(a.contractor?.name || '', b.contractor?.name || ''))
-  }, [rows, collator, paymentStatus])
+  }, [rows, collator])
+
+  const paidByDate = useMemo(() => {
+    const dateMap = new Map<string, Map<string, { contractor: any; bills: any[] }>>()
+    for (const bill of rows) {
+      if (!bill.paid_out_at) continue
+      const dateKey = String(bill.paid_out_at).slice(0, 10)
+      if (!dateMap.has(dateKey)) dateMap.set(dateKey, new Map())
+      const contractorMap = dateMap.get(dateKey)!
+      const contractorKey = bill.contractor_id || 'unknown'
+      if (!contractorMap.has(contractorKey)) {
+        contractorMap.set(contractorKey, { contractor: bill.contractors || { name: 'ไม่ระบุผู้รับเหมา' }, bills: [] })
+      }
+      contractorMap.get(contractorKey)!.bills.push(bill)
+    }
+    return Array.from(dateMap.entries())
+      .map(([date, contractorMap]) => {
+        const contractorGroups = Array.from(contractorMap.entries())
+          .map(([contractorId, group]) => {
+            const bills = group.bills.slice().sort(compareByDocNo)
+            const totalTransfer = bills.reduce((s: number, b: any) => s + computeActualPayout(b), 0)
+            const totalGross = bills.reduce((s: number, b: any) => s + (Number(b.total_work_amount || 0) + Number(b.total_add_amount || 0) - Number(b.total_deduct_amount || 0)), 0)
+            return { contractorId, contractor: group.contractor, bills, totalTransfer, totalGross }
+          })
+          .sort((a, b) => collator.compare(a.contractor?.name || '', b.contractor?.name || ''))
+        const dateTotal = contractorGroups.reduce((s, cg) => s + cg.totalTransfer, 0)
+        const billCount = contractorGroups.reduce((s, cg) => s + cg.bills.length, 0)
+        return { date, contractorGroups, dateTotal, billCount }
+      })
+      .sort((a, b) => b.date.localeCompare(a.date))
+  }, [rows, collator])
 
   const grandTotals = useMemo(() => {
     return grouped.reduce(
@@ -547,7 +648,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             <div>
               <div class="title">เธชเธฃเธธเธเธฃเธญเธเธเนเธฒเธขเธเธนเนเธฃเธฑเธเน€เธซเธกเธฒ</div>
               <div>เธเธนเนเธฃเธฑเธเน€เธซเธกเธฒ: <strong>${escapeHtml(group.contractor?.name || '-')}</strong></div>
-              <div class="muted">เธฃเธญเธเธงเธฑเธเธ—เธตเน ${escapeHtml(filters.dateFrom || '-')} เธ–เธถเธ ${escapeHtml(filters.dateTo || '-')}</div>
+              <div class="muted">เธฃเธญเธเธงเธฑเธเธ—เธตเน ${escapeHtml(derivedRange.dateFrom || '-')} เธ–เธถเธ ${escapeHtml(derivedRange.dateTo || '-')}</div>
             </div>
             <div class="right">
               <div>เธเธณเธเธงเธเนเธเน€เธเธดเธ: ${group.bills.length}</div>
@@ -559,7 +660,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         </section>
       `
     }).join('')
-  }, [previewGroups, filters.dateFrom, filters.dateTo])
+  }, [previewGroups, derivedRange.dateFrom, derivedRange.dateTo])
 
   const invoiceTemplateHtml = useMemo(() => {
     return previewGroups.map((group: any) => {
@@ -638,7 +739,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               <div class="sub">Construction Progress Billing Summary</div>
             </div>
             <div class="meta-box">
-              <div><span>รอบจ่าย:</span> ${escapeHtml(filters.dateFrom || '-')} ถึง ${escapeHtml(filters.dateTo || '-')}</div>
+              <div><span>รอบจ่าย:</span> ${escapeHtml(derivedRange.dateFrom || '-')} ถึง ${escapeHtml(derivedRange.dateTo || '-')}</div>
               <div><span>ผู้รับเหมา:</span> ${escapeHtml(group.contractor?.name || '-')}</div>
               <div><span>จำนวนใบเบิก:</span> ${group.bills.length}</div>
               <div><span>จำนวนแปลง:</span> ${group.plots.length}</div>
@@ -672,7 +773,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         </section>
       `
     }).join('')
-  }, [previewGroups, filters.dateFrom, filters.dateTo, printedAtLabel])
+  }, [previewGroups, derivedRange.dateFrom, derivedRange.dateTo, printedAtLabel])
 
   return (
     <div className="space-y-4 print:space-y-2">
@@ -707,58 +808,60 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       `}</style>
 
       <div className="no-print">
-        <h1 className="text-2xl font-bold">รายงานสรุปรอบจ่ายผู้รับเหมา</h1>
-        <p className="text-sm text-slate-500">รวมใบเบิกที่อนุมัติแล้ว แยกตามผู้รับเหมา พร้อมสรุปสำหรับฝ่ายบัญชี</p>
+        <PageHeader
+          title="รายงานสรุปรอบจ่ายผู้รับเหมา"
+          subtitle="รวมใบเบิกที่อนุมัติแล้ว แยกตามผู้รับเหมา พร้อมสรุปสำหรับฝ่ายบัญชี"
+        />
+      </div>
+
+      <div className="flex gap-1 rounded-lg border bg-slate-100 p-1 no-print w-fit">
+        <button
+          onClick={() => setActiveTab('unpaid')}
+          className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
+            activeTab === 'unpaid' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          รอจ่าย
+        </button>
+        <button
+          onClick={() => setActiveTab('paid')}
+          className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
+            activeTab === 'paid' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          จ่ายแล้ว
+        </button>
       </div>
 
       <Card className="p-4 no-print">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
-            <label className="block text-xs font-semibold text-slate-600">รอบจ่าย ตั้งแต่</label>
-            <input type="date" className="mt-1 w-full p-2 border rounded" value={filters.dateFrom || ''} onChange={(e) => setFilters((p) => ({ ...p, dateFrom: e.target.value || undefined }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">ถึง</label>
-            <input type="date" className="mt-1 w-full p-2 border rounded" value={filters.dateTo || ''} onChange={(e) => setFilters((p) => ({ ...p, dateTo: e.target.value || undefined }))} />
+            <label className="block text-xs font-semibold text-slate-600">{activeTab === 'paid' ? 'เดือนที่จ่าย' : 'เดือนของบิล'}</label>
+            <input type="month" className="mt-1 w-full" value={filters.month || ''} onChange={(e) => setFilters((p) => ({ ...p, month: e.target.value || undefined }))} />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600">โครงการ</label>
-            <select className="mt-1 w-full p-2 border rounded" value={filters.projectId || ''} onChange={(e) => setFilters((p) => ({ ...p, projectId: e.target.value || undefined }))}>
+            <select className="mt-1 w-full" value={filters.projectId || ''} onChange={(e) => setFilters((p) => ({ ...p, projectId: e.target.value || undefined }))}>
               <option value="">ทั้งหมด</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600">ผู้รับเหมา</label>
-            <select className="mt-1 w-full p-2 border rounded" value={filters.contractorId || ''} onChange={(e) => setFilters((p) => ({ ...p, contractorId: e.target.value || undefined }))}>
+            <select className="mt-1 w-full" value={filters.contractorId || ''} onChange={(e) => setFilters((p) => ({ ...p, contractorId: e.target.value || undefined }))}>
               <option value="">ทั้งหมด</option>
               {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">สถานะการจ่าย</label>
-            <select className="mt-1 w-full p-2 border rounded" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value as 'all' | 'unpaid' | 'paid')}>
-              <option value="all">ทั้งหมด</option>
-              <option value="unpaid">รอจ่าย</option>
-              <option value="paid">จ่ายแล้ว</option>
-            </select>
-          </div>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
-          <label className="flex items-center gap-2 text-xs text-slate-600">
-            <input
-              type="checkbox"
-              checked={!!filters.includeUnpaidOutsideRange}
-              onChange={(e) => setFilters((p) => ({ ...p, includeUnpaidOutsideRange: e.target.checked }))}
-            />
-            แสดงรายการรอจ่ายทั้งหมด แม้อยู่นอกช่วงวันที่เลือก
-          </label>
-        </div>
+        {activeTab === 'unpaid' && !filters.month && (
+          <p className="mt-2 text-xs text-slate-400">ไม่ได้เลือกเดือน — แสดงทุกใบเบิกที่รออนุมัติจ่าย</p>
+        )}
         <div className="mt-3 flex justify-end gap-2">
-          <button onClick={runReport} className="px-4 py-2 bg-slate-900 text-white rounded">ค้นหา</button>
-          <button onClick={() => setShowHtmlModalPreview(true)} className="px-4 py-2 bg-indigo-600 text-white rounded inline-flex items-center gap-2">
+          <Button variant="secondary" onClick={runReport}>ค้นหา</Button>
+          <Button onClick={() => setShowHtmlModalPreview(true)}>
             <Printer className="h-4 w-4" /> Print
-          </button>
+          </Button>
         </div>
       </Card>
       <Modal
@@ -770,11 +873,11 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       >
         <div className="space-y-3 html-preview-modal-host">
           <div className="flex justify-end gap-2 no-print-in-modal">
-            <button onClick={printModalTemplate} className="px-3 py-2 bg-emerald-600 text-white rounded text-sm">
+            <button onClick={printModalTemplate} className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm">
               Print
             </button>
           </div>
-          <div className="max-h-[calc(90dvh-140px)] overflow-auto rounded border bg-slate-50 p-3">
+          <div className="max-h-[calc(90dvh-140px)] overflow-auto rounded-xl border bg-slate-50 p-3">
             <style>{`
               .html-preview-modal{font-family:"Google Sans","Google Sans Text","Product Sans","Noto Sans Thai","Segoe UI",system-ui,-apple-system,sans-serif;color:#0f172a;font-size:14px;line-height:1.45}
               .html-preview-modal .invoice-sheet{background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:18px;margin-bottom:18px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
@@ -817,21 +920,21 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           <div className="no-print mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold">ตัวอย่างพิมพ์สรุปรอบจ่าย (จัดกลุ่มตามแปลง)</h2>
-              <p className="text-sm text-slate-500">รอบวันที่ {filters.dateFrom || '-'} ถึง {filters.dateTo || '-'}</p>
+              <p className="text-sm text-slate-500">รอบวันที่ {derivedRange.dateFrom || '-'} ถึง {derivedRange.dateTo || '-'}</p>
             </div>
-            <button onClick={() => window.print()} className="px-4 py-2 bg-emerald-600 text-white rounded inline-flex items-center gap-2">
+            <button onClick={() => window.print()} className="px-4 py-2 bg-emerald-600 text-white rounded-lg inline-flex items-center gap-2">
               <Printer className="h-4 w-4" /> พิมพ์
             </button>
           </div>
 
           <div className="space-y-6">
             {previewGroups.map((group: any) => (
-              <div key={`preview-${group.contractorId}`} className="rounded border bg-white p-4">
+              <div key={`preview-${group.contractorId}`} className="rounded-xl border bg-white p-4">
                 <div className="mb-3 flex items-start justify-between gap-4">
                   <div>
                     <div className="text-xl font-bold">สรุปรอบจ่ายผู้รับเหมา</div>
                     <div className="text-sm">ผู้รับเหมา: <span className="font-semibold">{group.contractor?.name || '-'}</span></div>
-                    <div className="text-sm text-slate-600">รอบวันที่ {filters.dateFrom || '-'} ถึง {filters.dateTo || '-'}</div>
+                    <div className="text-sm text-slate-600">รอบวันที่ {derivedRange.dateFrom || '-'} ถึง {derivedRange.dateTo || '-'}</div>
                   </div>
                   <div className="text-right text-sm">
                     <div>จำนวนใบเบิก: {group.bills.length}</div>
@@ -842,7 +945,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
 
                 {group.plots.map((plotGroup: any) => (
                   <div key={plotGroup.key} className="mb-4 last:mb-0">
-                    <div className="mb-2 rounded border bg-slate-50 px-3 py-2 flex items-center justify-between">
+                    <div className="mb-2 rounded-lg border bg-slate-50 px-3 py-2 flex items-center justify-between">
                       <div>
                         <div className="font-semibold">{plotGroup.projectName} • แปลง {plotGroup.plotNo}</div>
                         <div className="text-xs text-slate-500">ประเภทบ้าน: {plotGroup.plotType || '-'}</div>
@@ -850,8 +953,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                       <div className="font-bold text-emerald-700">฿{formatCurrency(plotGroup.total)}</div>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full border text-xs">
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full text-xs">
                         <thead className="bg-slate-50">
                           <tr>
                             <th className="border px-2 py-1 text-left">เลขที่ใบเบิก</th>
@@ -904,8 +1007,10 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       <Card className="p-4 print:shadow-none print:border">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold">สรุปรอบจ่ายผู้รับเหมา (Approved)</h2>
-            <p className="text-sm text-slate-600">รอบวันที่ {filters.dateFrom || '-'} ถึง {filters.dateTo || '-'}</p>
+            <h2 className="text-xl font-bold">สรุปรอบจ่ายผู้รับเหมา ({activeTab === 'paid' ? 'จ่ายแล้ว' : 'รอจ่าย'})</h2>
+            <p className="text-sm text-slate-600">
+              {activeTab === 'paid' ? `จ่ายเมื่อ ${derivedRange.dateFrom || '-'} ถึง ${derivedRange.dateTo || '-'}` : 'ทุกใบเบิกที่รออนุมัติจ่าย'}
+            </p>
           </div>
           <div className="text-right text-sm text-slate-600">
             <div>พิมพ์เมื่อ: {printedAtLabel || '-'}</div>
@@ -915,12 +1020,12 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-          <div className="rounded border p-3 bg-slate-50">
+          <div className="rounded-lg border p-3 bg-slate-50">
             <div className="text-slate-500 text-xs">ยอดรวมทั้งหมด (ก่อนหัก)</div>
             <div className="font-bold text-lg text-slate-700">฿{formatCurrency(grandTotals.gross_amount)}</div>
             <div className="text-[11px] text-slate-400 mt-0.5">งานหลัก ฿{formatCurrency(grandTotals.total_work_amount)} · งานเพิ่ม ฿{formatCurrency(grandTotals.total_add_amount)} · งานหัก −฿{formatCurrency(grandTotals.total_deduct_amount)}</div>
           </div>
-          <div className="rounded border p-3 bg-emerald-50">
+          <div className="rounded-lg border p-3 bg-emerald-50">
             <div className="text-slate-500 text-xs">ยอดโอนจริง (หลังหักทั้งหมด)</div>
             <div className="font-bold text-lg text-emerald-700">฿{formatCurrency(grandTotals.actual_transfer)}</div>
             <div className="text-[11px] text-slate-400 mt-0.5">{grandTotals.bill_count} ใบเบิก · {grouped.length} ผู้รับเหมา</div>
@@ -931,8 +1036,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       {/* Pay-out confirmation modal */}
       <Modal
         isOpen={!!payOutConfirm}
-        onClose={() => { setPayOutConfirm(null); setRetentionAppliedMap({}); setDeductAppliedMap({}) }}
-        title="ยืนยันการจ่ายเงิน"
+        onClose={() => { setPayOutConfirm(null); resetPayoutMaps() }}
+        title={payOutConfirm?.isEdit ? 'แก้ไขการจ่ายเงิน' : 'ยืนยันการจ่ายเงิน'}
         panelClassName="max-w-md"
       >
         {payOutConfirm && (() => {
@@ -943,18 +1048,17 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
             const deductAmt = b.total_deduct_amount ?? 0
             const retPct = b.retention_percent ?? 0
             const whtPct = b.wht_percent ?? 0
-            const retAmt = workAmt * (retPct / 100)
             const baseAmt = workAmt + addAmt
-            // WHT base = PM-approved gross (work + add - deductions)
-            const pmGrossAmt = baseAmt - deductAmt
-            const whtAmt = pmGrossAmt * (whtPct / 100)
             const applyDeduct = deductAppliedMap[b.id] ?? true
             const actualDeduct = applyDeduct ? deductAmt : 0
             const applyRetention = retentionAppliedMap[b.id] ?? true
+            const retAmt = retentionAmountMap[b.id] ?? 0
             const actualRetention = applyRetention ? retAmt : 0
-            const actualWht = cycleWhtApplied ? whtAmt : 0
+            const applyWht = whtAppliedMap[b.id] ?? false
+            const whtAmt = whtAmountMap[b.id] ?? 0
+            const actualWht = applyWht ? whtAmt : 0
             const transfer = baseAmt - actualDeduct - actualRetention - actualWht
-            return { b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, baseAmt, pmGrossAmt, applyDeduct, actualDeduct, applyRetention, actualRetention, actualWht, transfer }
+            return { b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, baseAmt, applyDeduct, actualDeduct, applyRetention, actualRetention, applyWht, actualWht, transfer }
           })
 
           const grandTransfer = billDetails.reduce((s, d) => s + d.transfer, 0)
@@ -962,7 +1066,6 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           const grandRetention = billDetails.reduce((s, d) => s + d.actualRetention, 0)
           const grandWht = billDetails.reduce((s, d) => s + d.actualWht, 0)
           const grandGross = billDetails.reduce((s, d) => s + d.baseAmt, 0)
-          const hasWht = billDetails.some(d => d.whtAmt > 0)
 
           return (
             <div className="space-y-4">
@@ -970,21 +1073,8 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               <div className="flex gap-4 flex-wrap">
                 <div className="flex-1 min-w-32">
                   <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่โอนเงิน</label>
-                  <input type="date" value={payOutDate} onChange={(e) => setPayOutDate(e.target.value)} className="w-full p-2 border rounded text-sm" />
+                  <input type="date" value={payOutDate} onChange={(e) => setPayOutDate(e.target.value)} className="w-full text-sm" />
                 </div>
-                {hasWht && (
-                  <div className="flex items-end pb-2">
-                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none border rounded px-3 py-2">
-                      <input
-                        type="checkbox"
-                        checked={cycleWhtApplied}
-                        onChange={(e) => setCycleWhtApplied(e.target.checked)}
-                        className="accent-amber-600 w-4 h-4"
-                      />
-                      <span className="font-medium text-amber-700">หัก WHT</span>
-                    </label>
-                  </div>
-                )}
               </div>
 
               {/* POS-style receipt */}
@@ -995,7 +1085,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                 </div>
                 <div className="border-t border-dashed border-slate-300 my-2" />
 
-                {billDetails.map(({ b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, applyDeduct, applyRetention, transfer }) => (
+                {billDetails.map(({ b, isDC, workAmt, addAmt, deductAmt, retPct, whtPct, retAmt, whtAmt, applyDeduct, applyRetention, applyWht, transfer }) => (
                   <div key={b.id} className="mb-3">
                     <div className="flex justify-between font-semibold text-slate-700">
                       <span>{isDC ? '[DC]' : '[หลัก]'} #{String(b.doc_no || '-').padStart(4, '0')}</span>
@@ -1013,21 +1103,42 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                         <span className={applyDeduct ? 'text-red-600' : 'text-slate-300 line-through'}>−฿{formatCurrency(deductAmt)}</span>
                       </label>
                     )}
-                    {retAmt > 0 && (
-                      <label className="flex items-center justify-between mt-0.5 cursor-pointer select-none">
-                        <span className={`flex items-center gap-1.5 ${applyRetention ? 'text-slate-600' : 'text-slate-300 line-through'}`}>
-                          <input type="checkbox" checked={applyRetention} onChange={(e) => setRetentionAppliedMap(prev => ({ ...prev, [b.id]: e.target.checked }))} className="accent-slate-600" />
-                          หักประกัน {retPct}%
-                        </span>
-                        <span className={applyRetention ? 'text-red-600' : 'text-slate-300 line-through'}>−฿{formatCurrency(retAmt)}</span>
-                      </label>
-                    )}
-                    {whtAmt > 0 && (
-                      <div className={`flex justify-between ${cycleWhtApplied ? 'text-amber-700' : 'text-slate-300 line-through'}`}>
-                        <span>หัก WHT {whtPct}%</span>
-                        <span>−฿{formatCurrency(whtAmt)}</span>
-                      </div>
-                    )}
+                    <label className="flex items-center justify-between mt-0.5 gap-2 cursor-pointer select-none">
+                      <span className={`flex items-center gap-1.5 shrink-0 ${applyRetention ? 'text-slate-600' : 'text-slate-300 line-through'}`}>
+                        <input type="checkbox" checked={applyRetention} onChange={(e) => setRetentionAppliedMap(prev => ({ ...prev, [b.id]: e.target.checked }))} className="accent-slate-600" />
+                        หักประกัน{retPct > 0 ? ` (ปกติ ${retPct}%)` : ''}
+                      </span>
+                      <span className="flex items-center gap-0.5">
+                        <span className={applyRetention ? 'text-red-600' : 'text-slate-300'}>−฿</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          disabled={!applyRetention}
+                          value={retAmt}
+                          onChange={(e) => setRetentionAmountMap(prev => ({ ...prev, [b.id]: Math.max(0, Number(e.target.value) || 0) }))}
+                          className={`w-20 rounded border px-1 py-0.5 text-right font-mono text-xs ${applyRetention ? 'text-red-600 border-slate-300' : 'text-slate-300 border-slate-200 bg-slate-50'}`}
+                        />
+                      </span>
+                    </label>
+                    <label className="flex items-center justify-between mt-0.5 gap-2 cursor-pointer select-none">
+                      <span className={`flex items-center gap-1.5 shrink-0 ${applyWht ? 'text-amber-700' : 'text-slate-300 line-through'}`}>
+                        <input type="checkbox" checked={applyWht} onChange={(e) => setWhtAppliedMap(prev => ({ ...prev, [b.id]: e.target.checked }))} className="accent-amber-600" />
+                        หัก WHT{whtPct > 0 ? ` (ปกติ ${whtPct}%)` : ''}
+                      </span>
+                      <span className="flex items-center gap-0.5">
+                        <span className={applyWht ? 'text-amber-700' : 'text-slate-300'}>−฿</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          disabled={!applyWht}
+                          value={whtAmt}
+                          onChange={(e) => setWhtAmountMap(prev => ({ ...prev, [b.id]: Math.max(0, Number(e.target.value) || 0) }))}
+                          className={`w-20 rounded border px-1 py-0.5 text-right font-mono text-xs ${applyWht ? 'text-amber-700 border-slate-300' : 'text-slate-300 border-slate-200 bg-slate-50'}`}
+                        />
+                      </span>
+                    </label>
                     <div className="border-t border-dotted border-slate-200 mt-1 pt-1 flex justify-between font-bold">
                       <span>โอน</span>
                       <span className="text-emerald-700">฿{formatCurrency(transfer)}</span>
@@ -1048,10 +1159,10 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               </div>
 
               <div className="flex justify-end gap-2 pt-1 border-t">
-                <button onClick={() => { setPayOutConfirm(null); setRetentionAppliedMap({}); setDeductAppliedMap({}); setCycleWhtApplied(true) }} className="px-4 py-2 rounded border text-sm text-slate-600 hover:bg-slate-50">ยกเลิก</button>
-                <button onClick={handleMarkAsPaidOut} disabled={payOutLoading || !payOutDate} className="flex items-center gap-2 px-4 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50">
+                <Button variant="secondary" onClick={() => { setPayOutConfirm(null); resetPayoutMaps() }}>ยกเลิก</Button>
+                <button onClick={handleMarkAsPaidOut} disabled={payOutLoading || !payOutDate} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50">
                   {payOutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
-                  ยืนยันจ่าย ฿{formatCurrency(grandTransfer)}
+                  {payOutConfirm.isEdit ? `บันทึกการแก้ไข ฿${formatCurrency(grandTransfer)}` : `ยืนยันจ่าย ฿${formatCurrency(grandTransfer)}`}
                 </button>
               </div>
             </div>
@@ -1063,8 +1174,204 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
 
       {loading ? (
         <Card className="p-10 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></Card>
+      ) : activeTab === 'paid' ? (
+        paidByDate.length === 0 ? (
+          <Card className="p-8 text-center text-slate-400">ไม่พบใบเบิกที่จ่ายแล้วในช่วงวันที่เลือก</Card>
+        ) : (
+          paidByDate.map((dateGroup) => (
+            <Card key={dateGroup.date} className="p-4 print-break-avoid">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 mb-3">
+                <div>
+                  <div className="text-lg font-bold">
+                    {new Date(`${dateGroup.date}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </div>
+                  <p className="text-xs text-slate-500">{dateGroup.billCount} ใบเบิก · {dateGroup.contractorGroups.length} ผู้รับเหมา</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-slate-500">ยอดโอนรวมวันนี้</div>
+                  <div className="text-lg font-bold text-emerald-700">฿{formatCurrency(dateGroup.dateTotal)}</div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {dateGroup.contractorGroups.map((cg) => (
+                  <div key={cg.contractorId} className="overflow-hidden rounded-lg border border-slate-200">
+                    <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2 border-b">
+                      <div className="font-semibold text-sm">{cg.contractor?.name || 'ไม่ระบุผู้รับเหมา'}</div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-sm font-bold text-emerald-700">฿{formatCurrency(cg.totalTransfer)}</div>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleUnmarkPaidOut(cg.bills.map((b: any) => b.id), cg.contractor?.name || '-')}
+                          className="no-print px-2 py-1 text-xs"
+                        >
+                          <Undo2 className="h-3 w-3" /> Undo
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-white">
+                          <tr className="border-b text-xs text-slate-500">
+                            <th className="px-3 py-1.5 text-left w-6"></th>
+                            <th className="px-3 py-1.5 text-left">เลขที่ใบเบิก</th>
+                            <th className="px-3 py-1.5 text-left">วันที่บิล / อนุมัติ</th>
+                            <th className="px-3 py-1.5 text-left">โครงการ / แปลง</th>
+                            <th className="px-3 py-1.5 text-right">ยอดรวม</th>
+                            <th className="px-3 py-1.5 text-right">หัก</th>
+                            <th className="px-3 py-1.5 text-right">ยอดโอน</th>
+                            <th className="px-3 py-1.5 text-center no-print">จัดการ</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cg.bills.map((bill: any) => {
+                            const workAmt = Number(bill.total_work_amount || 0)
+                            const addAmt = Number(bill.total_add_amount || 0)
+                            const deductAmt = Number(bill.total_deduct_amount || 0)
+                            const grossAmt = workAmt + addAmt - deductAmt
+                            const retentionAmt = bill.retention_amount != null ? Number(bill.retention_amount) : workAmt * (Number(bill.retention_percent || 0) / 100)
+                            const whtAmt = bill.wht_applied
+                              ? (bill.wht_amount != null ? Number(bill.wht_amount) : grossAmt * (Number(bill.wht_percent || 0) / 100))
+                              : 0
+                            const transfer = computeActualPayout(bill)
+                            const showRetention = bill.retention_applied !== false && retentionAmt > 0
+                            const showDeduct = bill.deduct_applied !== false && deductAmt > 0
+                            const isExpanded = expandedPaidBillIds.has(bill.id)
+                            return (
+                              <Fragment key={bill.id}>
+                                <tr
+                                  onClick={() => togglePaidBillExpanded(bill.id)}
+                                  className="border-b last:border-b-0 align-top cursor-pointer hover:bg-slate-50"
+                                >
+                                  <td className="px-3 py-2 text-slate-400">
+                                    {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                                  </td>
+                                  <td className="px-3 py-2 font-semibold">#{String(bill.doc_no || '-').padStart(4, '0')}</td>
+                                  <td className="px-3 py-2">
+                                    <div>{bill.billing_date ? new Date(bill.billing_date).toLocaleDateString('th-TH') : '-'}</div>
+                                    <div className="text-xs text-slate-400">
+                                      อนุมัติ {bill.approved_at ? new Date(bill.approved_at).toLocaleDateString('th-TH') : '-'}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <div>{bill.projects?.name || '-'}</div>
+                                    <div className="text-xs text-slate-500">แปลง {bill.plots?.name || '-'}</div>
+                                  </td>
+                                  <td className="px-3 py-2 text-right">฿{formatCurrency(grossAmt)}</td>
+                                  <td className="px-3 py-2 text-right">
+                                    <div className="flex flex-col items-end gap-0.5">
+                                      {showDeduct && <span className="text-[10px] text-red-600">หักงาน −฿{formatCurrency(deductAmt)}</span>}
+                                      {showRetention && <span className="text-[10px] text-orange-600">ประกัน −฿{formatCurrency(retentionAmt)}</span>}
+                                      {whtAmt > 0 && <span className="text-[10px] text-amber-700">WHT −฿{formatCurrency(whtAmt)}</span>}
+                                      {!showDeduct && !showRetention && whtAmt <= 0 && <span className="text-[10px] text-slate-300">-</span>}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-bold text-blue-700">฿{formatCurrency(transfer)}</td>
+                                  <td className="px-3 py-2 text-center no-print">
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={(e) => { e.stopPropagation(); openEditPayout(bill, cg.contractor?.name || '-') }}
+                                      title="แก้ไข WHT / ประกัน / วันที่จ่าย"
+                                      className="px-2 py-1 text-xs"
+                                    >
+                                      <Pencil className="h-3 w-3" /> แก้ไข
+                                    </Button>
+                                  </td>
+                                </tr>
+                                {isExpanded && (
+                                  <tr className="border-b last:border-b-0 bg-slate-50/40">
+                                    <td colSpan={8} className="px-3 py-2">
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div>
+                                          <div className="text-xs font-semibold text-slate-600 mb-1">รายการงาน</div>
+                                          {Array.isArray(bill.billing_jobs) && bill.billing_jobs.length > 0 ? (
+                                            <table className="w-full overflow-hidden rounded-lg border border-slate-200 text-xs">
+                                              <thead className="bg-white"><tr className="border-b"><th className="px-2 py-1 text-left">งาน</th><th className="px-2 py-1 text-left">แปลง</th><th className="px-2 py-1 text-right">%</th><th className="px-2 py-1 text-right">ยอด</th></tr></thead>
+                                              <tbody>
+                                                {bill.billing_jobs.map((job: any) => (
+                                                  <tr key={job.id} className="border-b last:border-b-0">
+                                                    <td className="px-2 py-1">{job.job_assignments?.boq_master?.item_name || '-'}</td>
+                                                    <td className="px-2 py-1">{job.job_assignments?.plots?.name || '-'}</td>
+                                                    <td className="px-2 py-1 text-right">{job.progress_percent == null ? '-' : `${Number(job.progress_percent).toFixed(2)}%`}</td>
+                                                    <td className="px-2 py-1 text-right">฿{formatCurrency(job.amount)}</td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          ) : <div className="text-xs text-slate-500">ไม่มีรายการงานหลัก</div>}
+                                        </div>
+                                        <div>
+                                          <div className="text-xs font-semibold text-slate-600 mb-1">รายการปรับปรุง (เพิ่ม/หัก)</div>
+                                          {(Array.isArray(bill.billing_adjustments) && bill.billing_adjustments.length > 0) || whtAmt > 0 || showRetention ? (
+                                            <table className="w-full overflow-hidden rounded-lg border border-slate-200 text-xs">
+                                              <thead className="bg-white"><tr className="border-b"><th className="px-2 py-1 text-left">ประเภท</th><th className="px-2 py-1 text-left">รายการ</th><th className="px-2 py-1 text-right">จำนวน</th><th className="px-2 py-1 text-right">ราคา/หน่วย</th><th className="px-2 py-1 text-right">รวม</th></tr></thead>
+                                              <tbody>
+                                                {bill.billing_adjustments.map((adj: any) => {
+                                                  const lineTotal = Number(adj.quantity || 0) * Number(adj.unit_price || 0)
+                                                  return (
+                                                    <tr key={adj.id} className="border-b last:border-b-0">
+                                                      <td className="px-2 py-1">{adj.type === 'deduction' ? 'หัก' : 'เพิ่ม'}</td>
+                                                      <td className="px-2 py-1">{adj.description || '-'}</td>
+                                                      <td className="px-2 py-1 text-right">{adj.quantity || 0} {adj.unit || ''}</td>
+                                                      <td className="px-2 py-1 text-right">฿{formatCurrency(adj.unit_price)}</td>
+                                                      <td className="px-2 py-1 text-right">{adj.type === 'deduction' ? '-' : ''}฿{formatCurrency(lineTotal)}</td>
+                                                    </tr>
+                                                  )
+                                                })}
+                                                {whtAmt > 0 && (
+                                                  <tr className="border-b last:border-b-0 text-amber-700">
+                                                    <td className="px-2 py-1">หัก</td>
+                                                    <td className="px-2 py-1">หัก ณ ที่จ่าย {bill.wht_percent}%</td>
+                                                    <td className="px-2 py-1 text-right">1 รายการ</td>
+                                                    <td className="px-2 py-1 text-right">฿{formatCurrency(whtAmt)}</td>
+                                                    <td className="px-2 py-1 text-right">−฿{formatCurrency(whtAmt)}</td>
+                                                  </tr>
+                                                )}
+                                                {showRetention && (
+                                                  <tr className="border-b last:border-b-0 text-orange-700">
+                                                    <td className="px-2 py-1">หัก</td>
+                                                    <td className="px-2 py-1">หักประกันผลงาน {bill.retention_percent}%</td>
+                                                    <td className="px-2 py-1 text-right">1 รายการ</td>
+                                                    <td className="px-2 py-1 text-right">฿{formatCurrency(retentionAmt)}</td>
+                                                    <td className="px-2 py-1 text-right">−฿{formatCurrency(retentionAmt)}</td>
+                                                  </tr>
+                                                )}
+                                                {showDeduct && (
+                                                  <tr className="border-b last:border-b-0 text-red-700">
+                                                    <td className="px-2 py-1">หัก</td>
+                                                    <td className="px-2 py-1">งานหัก</td>
+                                                    <td className="px-2 py-1 text-right">1 รายการ</td>
+                                                    <td className="px-2 py-1 text-right">฿{formatCurrency(deductAmt)}</td>
+                                                    <td className="px-2 py-1 text-right">−฿{formatCurrency(deductAmt)}</td>
+                                                  </tr>
+                                                )}
+                                              </tbody>
+                                            </table>
+                                          ) : <div className="text-xs text-slate-500">ไม่มีรายการเพิ่ม/หัก</div>}
+                                          {bill.paid_out_at && (
+                                            <div className="mt-2 text-[11px] text-slate-500">จ่ายเมื่อ {new Date(bill.paid_out_at).toLocaleString('th-TH')}</div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ))
+        )
       ) : grouped.length === 0 ? (
-        <Card className="p-8 text-center text-slate-400">ไม่พบข้อมูลใบเบิกที่อนุมัติในช่วงวันที่เลือก</Card>
+        <Card className="p-8 text-center text-slate-400">ไม่พบใบเบิกที่รอจ่าย</Card>
       ) : (
         grouped.map((group) => {
           const billIds = group.bills.map((b: any) => b.id)
@@ -1076,6 +1383,16 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           const selectedUnpaidBills = unpaidBills.filter((b: any) => !excludedBillIds.has(b.id))
           const allUnpaidSelected = unpaidBills.length > 0 && selectedUnpaidBills.length === unpaidBills.length
           const someUnpaidSelected = selectedUnpaidBills.length > 0 && selectedUnpaidBills.length < unpaidBills.length
+          const hasSelection = unpaidBills.length > 0
+          const selectedTotals = (hasSelection ? selectedUnpaidBills : group.bills).reduce(
+            (acc: any, bill: any) => {
+              const gross = Number(bill.total_work_amount || 0) + Number(bill.total_add_amount || 0) - Number(bill.total_deduct_amount || 0)
+              acc.gross += gross
+              acc.transfer += bill.paid_out_at ? computeActualPayout(bill) : gross
+              return acc
+            },
+            { gross: 0, transfer: 0 }
+          )
           const latestPaidAt = allPaid
             ? group.bills.reduce((latest: string, b: any) => {
                 const d = b.paid_out_at || ''
@@ -1090,32 +1407,35 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-lg font-bold">{group.contractor?.name || 'ไม่ระบุผู้รับเหมา'}</h3>
                   {allPaid && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-300">
+                    <Badge tone="success" className="gap-1">
                       <BadgeCheck className="h-3 w-3" /> จ่ายแล้ว {latestPaidAt ? new Date(latestPaidAt).toLocaleDateString('th-TH') : ''}
-                    </span>
+                    </Badge>
                   )}
                   {somePaid && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-300">
+                    <Badge tone="warning">
                       จ่ายบางส่วน ({paidCount}/{group.bills.length})
-                    </span>
+                    </Badge>
                   )}
                   {!allPaid && !somePaid && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+                    <Badge tone="neutral">
                       รอจ่าย
-                    </span>
+                    </Badge>
                   )}
                   {hasRecentlyApproved && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-300">
+                    <Badge tone="info">
                       มีรายการอนุมัติใหม่
-                    </span>
+                    </Badge>
                   )}
                 </div>
                 <p className="text-xs text-slate-500">จำนวนใบเบิกที่อนุมัติ: {group.bills.length}</p>
               </div>
               <div className="flex flex-col items-end gap-2">
                 <div className="text-right text-sm">
-                  <div className="text-slate-600">ยอดรวม: ฿{formatCurrency(group.totals.gross_amount)}</div>
-                  <div className="font-bold text-emerald-700">ยอดโอน: ฿{formatCurrency(group.totals.actual_transfer)}</div>
+                  {hasSelection && !allUnpaidSelected && (
+                    <div className="text-[11px] text-blue-600 font-medium">เลือก {selectedUnpaidBills.length}/{unpaidBills.length} ใบเบิก</div>
+                  )}
+                  <div className="text-slate-600">ยอดรวม: ฿{formatCurrency(selectedTotals.gross)}</div>
+                  <div className="font-bold text-emerald-700">ยอดโอน: ฿{formatCurrency(selectedTotals.transfer)}</div>
                 </div>
                 <div className="flex gap-2 no-print">
                   {!allPaid && (
@@ -1123,15 +1443,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                       disabled={selectedUnpaidBills.length === 0}
                       onClick={() => {
                         setPayOutDate(todayISO())
-                        const initRetention: Record<string, boolean> = {}
-                        const initDeduct: Record<string, boolean> = {}
-                        selectedUnpaidBills.forEach((b: any) => {
-                          initRetention[b.id] = true
-                          initDeduct[b.id] = true
-                        })
-                        setRetentionAppliedMap(initRetention)
-                        setDeductAppliedMap(initDeduct)
-                        setCycleWhtApplied(true)
+                        seedPayoutMaps(selectedUnpaidBills, false)
                         const total = selectedUnpaidBills.reduce((s: number, b: any) => s + Number(b.net_amount || 0), 0)
                         setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', bills: selectedUnpaidBills, total })
                       }}
@@ -1141,21 +1453,23 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     </button>
                   )}
                   {(allPaid || somePaid) && (
-                    <button
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={() => handleUnmarkPaidOut(group.bills.filter((b: any) => !!b.paid_out_at).map((b: any) => b.id), group.contractor?.name || '-')}
-                      className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+                      className="px-3 py-1.5 text-xs"
                     >
                       <Undo2 className="h-3.5 w-3.5" /> Undo
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border">
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full text-sm">
                 <thead className="bg-slate-50">
-                  <tr className="border-b">
+                  <tr className="border-b border-slate-200">
                     {unpaidBills.length > 0 && (
                       <th className="px-3 py-2 text-center no-print w-8">
                         <input
@@ -1177,7 +1491,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                       </th>
                     )}
                     <th className="px-3 py-2 text-left">เลขที่ใบเบิก</th>
-                    <th className="px-3 py-2 text-left">วันที่</th>
+                    <th className="px-3 py-2 text-left">วันที่บิล / อนุมัติ</th>
                     <th className="px-3 py-2 text-left">โครงการ / แปลง</th>
                     <th className="px-3 py-2 text-left">ประเภท</th>
                     <th className="px-3 py-2 text-right">ยอดรวม</th>
@@ -1231,7 +1545,12 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                               </div>
                             )}
                           </td>
-                          <td className="px-3 py-2">{bill.billing_date ? new Date(bill.billing_date).toLocaleDateString('th-TH') : '-'}</td>
+                          <td className="px-3 py-2">
+                            <div>{bill.billing_date ? new Date(bill.billing_date).toLocaleDateString('th-TH') : '-'}</div>
+                            <div className="text-xs text-slate-400">
+                              อนุมัติ {bill.approved_at ? new Date(bill.approved_at).toLocaleDateString('th-TH') : '-'}
+                            </div>
+                          </td>
                           <td className="px-3 py-2">
                             <div>{bill.projects?.name || '-'}</div>
                             <div className="text-xs text-slate-500">แปลง {plotLabel}</div>
@@ -1251,7 +1570,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                             )}
                           </td>
                           <td className="px-3 py-2 text-center no-print">
-                            <button onClick={() => handleUndoApprove(bill.id)} className="px-2 py1 rounded border text-xs text-amber-700 hover:bg-amber-50">Undo Approve</button>
+                            <button onClick={() => handleUndoApprove(bill.id)} className="px-2 py-1 rounded-lg border text-xs text-amber-700 hover:bg-amber-50">Undo Approve</button>
                           </td>
                         </tr>
                         <tr className="border-b bg-slate-50/40">
@@ -1260,7 +1579,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                               <div>
                                 <div className="text-xs font-semibold text-slate-600 mb-1">รายการงาน</div>
                                 {Array.isArray(bill.billing_jobs) && bill.billing_jobs.length > 0 ? (
-                                  <table className="w-full text-xs border">
+                                  <table className="w-full overflow-hidden rounded-lg border border-slate-200 text-xs">
                                     <thead className="bg-white"><tr className="border-b"><th className="px-2 py-1 text-left">งาน</th><th className="px-2 py-1 text-left">แปลง</th><th className="px-2 py-1 text-right">%</th><th className="px-2 py-1 text-right">ยอด</th></tr></thead>
                                     <tbody>
                                       {bill.billing_jobs.map((job: any) => (
@@ -1278,7 +1597,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                               <div>
                                 <div className="text-xs font-semibold text-slate-600 mb-1">รายการปรับปรุง (เพิ่ม/หัก)</div>
                                 {(Array.isArray(bill.billing_adjustments) && bill.billing_adjustments.length > 0) || (bill.paid_out_at && (bill.wht_applied || (retAmt > 0 && bill.retention_applied !== false))) ? (
-                                  <table className="w-full text-xs border">
+                                  <table className="w-full overflow-hidden rounded-lg border border-slate-200 text-xs">
                                     <thead className="bg-white"><tr className="border-b"><th className="px-2 py-1 text-left">ประเภท</th><th className="px-2 py-1 text-left">รายการ</th><th className="px-2 py-1 text-right">จำนวน</th><th className="px-2 py-1 text-right">ราคา/หน่วย</th><th className="px-2 py-1 text-right">รวม</th></tr></thead>
                                     <tbody>
                                       {bill.billing_adjustments.map((adj: any) => {

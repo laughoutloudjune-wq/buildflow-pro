@@ -15,13 +15,13 @@ export default function ForemanShell({ children }: { children: React.ReactNode }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 p-6 text-white shadow">
+      <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 p-6 text-white shadow-[0_1px_2px_rgba(0,0,0,0.06),0_16px_32px_-16px_rgba(15,23,42,0.35)]">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-400/20">
             <HardHat className="h-6 w-6 text-amber-300" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">Foreman Workflow</h1>
+            <h1 className="text-2xl font-semibold">Foreman Workflow</h1>
             <p className="text-sm text-slate-300">สร้างคำขอเบิกงวดและงานเพิ่ม เพื่อส่งให้ PM ตรวจสอบ</p>
           </div>
         </div>

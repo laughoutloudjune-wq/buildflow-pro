@@ -1,20 +1,16 @@
 import Link from 'next/link'
 import { Activity, AlertTriangle, Building2, CheckCircle2, Clock3, Home, ShieldAlert, Sparkles, TrendingUp, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { Badge, statusTone } from '@/components/ui/Badge'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { ButtonLink } from '@/components/ui/Button'
 import { getDashboardStats } from '@/actions/dashboard-actions'
 import { formatCurrency } from '@/lib/currency'
 
-function riskTone(level: string) {
-  if (level === 'high') return 'bg-red-50 text-red-700 ring-red-200'
-  if (level === 'medium') return 'bg-amber-50 text-amber-700 ring-amber-200'
-  return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-}
-
-function statusTone(status: string) {
-  if (status === 'approved' || status === 'paid') return 'text-emerald-700 bg-emerald-50 ring-emerald-200'
-  if (status === 'rejected') return 'text-red-700 bg-red-50 ring-red-200'
-  if (status === 'pending_review') return 'text-amber-700 bg-amber-50 ring-amber-200'
-  return 'text-slate-700 bg-slate-100 ring-slate-200'
+function riskLevelTone(level: string) {
+  if (level === 'high') return 'danger'
+  if (level === 'medium') return 'warning'
+  return 'success'
 }
 
 export default async function DashboardPage() {
@@ -73,20 +69,16 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-semibold text-slate-900">Dashboard Overview</h1>
-          <p className="text-sm text-slate-500">KPI, risk, quality, and current workflow activity.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" href="/dashboard/billing">
-            Open PM Queue
-          </Link>
-          <Link className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800" href="/dashboard/reports/contractor-cycle">
-            Open Contractor Cycle
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard Overview"
+        subtitle="KPI, risk, quality, and current workflow activity."
+        actions={
+          <>
+            <ButtonLink variant="secondary" href="/dashboard/billing">Open PM Queue</ButtonLink>
+            <ButtonLink href="/dashboard/reports/contractor-cycle">Open Contractor Cycle</ButtonLink>
+          </>
+        }
+      />
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         {kpis.map((kpi) => (
@@ -113,9 +105,7 @@ export default async function DashboardPage() {
                 <p className="text-sm font-semibold text-slate-900">{project.project_name}</p>
                 <p className="text-xs text-slate-500">{project.location}</p>
               </div>
-              <span className={`rounded-full px-2 py-1 text-xs font-semibold ring-1 ${riskTone(project.risk_level)}`}>
-                {project.risk_level.toUpperCase()}
-              </span>
+              <Badge tone={riskLevelTone(project.risk_level)}>{project.risk_level.toUpperCase()}</Badge>
             </div>
 
             <div className="mt-3">
@@ -197,9 +187,7 @@ export default async function DashboardPage() {
               <div key={c.contractor_id} className="rounded-lg border border-slate-200 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="truncate text-sm font-semibold text-slate-900">{c.contractor_name}</p>
-                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ring-1 ${riskTone(c.risk_level)}`}>
-                    {c.risk_level.toUpperCase()}
-                  </span>
+                  <Badge tone={riskLevelTone(c.risk_level)}>{c.risk_level.toUpperCase()}</Badge>
                 </div>
                 <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600">
                   <span>Pending: {c.pending_count}</span>
@@ -237,9 +225,7 @@ export default async function DashboardPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${statusTone(item.status)}`}>
-                    {item.status}
-                  </span>
+                  <Badge tone={statusTone(item.status)} className="px-2 py-0.5 text-[11px]">{item.status}</Badge>
                 </div>
                 <p className="truncate text-xs text-slate-600">{item.subtitle}</p>
                 <div className="mt-1 flex items-center justify-between text-xs text-slate-500">

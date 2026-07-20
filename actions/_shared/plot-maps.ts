@@ -41,3 +41,29 @@ export async function getPlotDetailMap(supabase: unknown, plotIds: (string | nul
   if (error) throw new Error(error.message)
   return new Map(((data || []) as PlotDetailRow[]).map((p) => [p.id, p]))
 }
+
+type BillingJobWithPlot = {
+  job_assignments?: {
+    plots?: { name?: string | null } | null
+  } | null
+}
+
+/**
+ * Progress billings often have no plot_id of their own — the plot lives on
+ * each line item (billing_jobs -> job_assignments -> plots), since one
+ * progress billing can cover several plots. DC/extra-work billings, by
+ * contrast, are created against a single plot_id directly. Without this
+ * fallback, a progress billing with no plot_id renders as "plot not
+ * specified" even though every line item clearly names a plot.
+ */
+export function derivePlotLabelFromJobs(billingJobs: BillingJobWithPlot[] | null | undefined): string | null {
+  const names = Array.from(
+    new Set(
+      (billingJobs || [])
+        .map((job) => job.job_assignments?.plots?.name)
+        .filter((name): name is string => !!name)
+    )
+  )
+  if (names.length === 0) return null
+  return names.join(', ')
+}

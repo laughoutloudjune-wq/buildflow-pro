@@ -4,6 +4,8 @@ import { useState, useEffect, useTransition } from 'react'
 import { Plus, Trash2, Loader2, Home, Ruler, Building, RefreshCw, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import { getHouseModels, createHouseModel, deleteHouseModel, updateHouseModel } from '@/actions/boq-actions'
 import { getProjects } from '@/actions/project-actions'
@@ -124,19 +126,16 @@ export default function HouseModelsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">แบบบ้าน & BOQ</h1>
-          <p className="text-sm text-slate-500">จัดการแบบบ้านและราคากลางก่อสร้าง</p>
-        </div>
-        <button
-          onClick={() => openModal()}
-          className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition shadow-sm"
-        >
-          <Plus className="h-4 w-4" />
-          สร้างแบบบ้านใหม่
-        </button>
-      </div>
+      <PageHeader
+        title="แบบบ้าน & BOQ"
+        subtitle="จัดการแบบบ้านและราคากลางก่อสร้าง"
+        actions={
+          <Button onClick={() => openModal()}>
+            <Plus className="h-4 w-4" />
+            สร้างแบบบ้านใหม่
+          </Button>
+        }
+      />
 
       <div className="space-y-6">
         {Array.from(groupedModels.entries()).map(([groupKey, groupModels]) => {
@@ -248,10 +247,10 @@ export default function HouseModelsPage() {
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={closeModal} className="px-4 py-2 rounded-lg border hover:bg-slate-50 text-slate-600">ยกเลิก</button>
-            <button type="submit" disabled={isPending} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
+            <Button type="button" variant="secondary" onClick={closeModal}>ยกเลิก</Button>
+            <Button type="submit" disabled={isPending}>
                {isPending ? 'กำลังบันทึก...' : 'บันทึก'}
-            </button>
+            </Button>
           </div>
         </form>
       </Modal>

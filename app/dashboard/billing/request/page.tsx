@@ -4,6 +4,8 @@ import { Fragment, useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getBillingOptions, getBillableJobs, createBillingRequest, getBillingById, updateBillingRequest, getJobProgressHistory } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
 import JobMaterialLogModal from '@/components/materials/JobMaterialLogModal'
@@ -290,13 +292,13 @@ export default function CreateBillingRequestPage() {
               <p><strong>ผู้รับเหมา:</strong> {contractors.find((contractor: ContractorOption) => contractor.id === submittedData.contractor_id)?.name}</p>
               <p className="mt-2 text-lg font-bold">ยอดขอเบิกรวม: <span className="text-blue-600">{formatCurrency(submittedData.net_amount)} บาท</span></p>
             </div>
-            <button onClick={handleModalClose} className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">กลับไปที่หน้ารายการ</button>
+            <Button onClick={handleModalClose} className="w-full">กลับไปที่หน้ารายการ</Button>
           </div>
         </Modal>
       )}
 
-      <h1 className="text-2xl font-bold mb-4">สร้างใบขอเบิก (สำหรับ Foreman)</h1>
-      <Card className="p-4">
+      <PageHeader title="สร้างใบขอเบิก (สำหรับ Foreman)" className="mb-4" />
+      <Card className="p-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">โครงการ</label>
@@ -323,7 +325,7 @@ export default function CreateBillingRequestPage() {
                 <option value="">ทุกแปลง</option>
                 {adjustmentPlotOptions.map((plot) => <option key={plot} value={plot}>{plot}</option>)}
               </select>
-              <button type="button" onClick={() => { setJobSearch(''); setJobPlotFilter('') }} className="px-3 py-2 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50">ล้างตัวกรอง</button>
+              <Button type="button" variant="secondary" onClick={() => { setJobSearch(''); setJobPlotFilter('') }}>ล้างตัวกรอง</Button>
             </div>
 
             <div className="overflow-x-auto">
@@ -518,9 +520,9 @@ export default function CreateBillingRequestPage() {
         {error && <p className="mt-4 text-red-500">{error}</p>}
 
         <div className="mt-6 flex justify-end">
-          <button onClick={handleSubmit} disabled={isLoading || !selectedProject || !selectedContractor} className="px-6 py-3 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 disabled:bg-gray-400">
+          <Button onClick={handleSubmit} disabled={isLoading || !selectedProject || !selectedContractor}>
             {isLoading ? 'กำลังส่ง...' : 'ส่งใบขอเบิกเพื่อตรวจสอบ'}
-          </button>
+          </Button>
         </div>
       </Card>
 

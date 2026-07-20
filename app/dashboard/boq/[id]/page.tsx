@@ -4,6 +4,8 @@ import { useState, useEffect, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Plus, Trash2, ArrowLeft, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import BoqMaterialItemsModal from '@/components/materials/BoqMaterialItemsModal'
@@ -219,43 +221,41 @@ export default function BOQDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <button 
-            onClick={() => router.push('/dashboard/boq')}
-            className="mb-2 flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition"
-          >
-            <ArrowLeft className="h-4 w-4" /> ย้อนกลับ
-          </button>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Layers className="text-indigo-600 h-6 w-6"/>
-            {model.name}
-          </h1>
-          <p className="text-sm text-slate-500">
-            รหัส: {model.code || '-'} | พื้นที่: {model.area || 0} ตร.ม.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-                <div className="text-sm text-slate-500">ราคากลางรวม (BOQ)</div>
-                <div className="text-xl font-bold text-emerald-600">฿{formatCurrency(grandTotal)}</div>
-            </div>
-            <button
-            onClick={openImportModal}
-            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 shadow-sm transition"
-            >
-            <CopyPlus className="h-4 w-4" />
-            นำเข้า BOQ
-            </button>
-            <button
-            onClick={openCreateModal}
-            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 shadow-sm transition"
-            >
-            <Plus className="h-4 w-4" />
-            เพิ่มรายการ
-            </button>
-        </div>
+      <div>
+        <button
+          onClick={() => router.push('/dashboard/boq')}
+          className="mb-2 flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition"
+        >
+          <ArrowLeft className="h-4 w-4" /> ย้อนกลับ
+        </button>
+        <PageHeader
+          title={
+            <span className="flex items-center gap-2">
+              <Layers className="text-indigo-600 h-6 w-6"/>
+              {model.name}
+            </span>
+          }
+          subtitle={`รหัส: ${model.code || '-'} | พื้นที่: ${model.area || 0} ตร.ม.`}
+          actions={
+            <>
+              <div className="text-right hidden sm:block mr-2">
+                  <div className="text-sm text-slate-500">ราคากลางรวม (BOQ)</div>
+                  <div className="text-xl font-bold text-emerald-600">฿{formatCurrency(grandTotal)}</div>
+              </div>
+              <button
+              onClick={openImportModal}
+              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 shadow-sm transition"
+              >
+              <CopyPlus className="h-4 w-4" />
+              นำเข้า BOQ
+              </button>
+              <Button onClick={openCreateModal}>
+                <Plus className="h-4 w-4" />
+                เพิ่มรายการ
+              </Button>
+            </>
+          }
+        />
       </div>
 
       {/* ตาราง BOQ */}
@@ -387,19 +387,19 @@ export default function BOQDetailPage() {
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t">
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={() => {
                 setIsModalOpen(false)
                 setEditingItem(null)
               }}
-              className="btn-secondary"
             >
               ยกเลิก
-            </button>
-            <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 shadow transition">
+            </Button>
+            <Button type="submit">
               {editingItem ? 'บันทึกการแก้ไข' : 'บันทึกรายการ'}
-            </button>
+            </Button>
           </div>
         </form>
       </Modal>
@@ -470,14 +470,14 @@ export default function BOQDetailPage() {
           )}
 
           <div className="flex justify-end gap-3 pt-2 border-t">
-            <button type="button" onClick={() => setIsImportModalOpen(false)} className="btn-secondary">
+            <Button type="button" variant="secondary" onClick={() => setIsImportModalOpen(false)}>
               ยกเลิก
-            </button>
+            </Button>
             <button
               type="button"
               onClick={handleImportSubmit}
               disabled={isPending || !sourceModelId}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
             >
               นำเข้า
             </button>

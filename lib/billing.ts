@@ -99,6 +99,13 @@ export type BillingPayoutFields = {
   wht_applied?: boolean | null
   retention_applied?: boolean | null
   deduct_applied?: boolean | null
+  // Actual withheld amounts as confirmed by the accountant at payout time.
+  // These override the percentage-derived amount when present — needed for
+  // cases the percent formula can't express, e.g. a DC/extra-work bill
+  // (total_work_amount = 0, so retention% always computes to ฿0) that was
+  // actually paid with a real-world retention withholding anyway.
+  retention_amount?: number | null
+  wht_amount?: number | null
 }
 
 /**
@@ -117,9 +124,11 @@ export function computeActualPayout(bill: BillingPayoutFields) {
 
   const base = work + add
   const grossBeforeWht = base - deduct
+  const retentionAmount = bill.retention_amount != null ? toNumber(bill.retention_amount) : work * (retentionPercent / 100)
+  const whtAmount = bill.wht_amount != null ? toNumber(bill.wht_amount) : grossBeforeWht * (whtPercent / 100)
   const actualDeduct = bill.deduct_applied !== false ? deduct : 0
-  const actualRetention = bill.retention_applied !== false ? work * (retentionPercent / 100) : 0
-  const actualWht = bill.wht_applied ? grossBeforeWht * (whtPercent / 100) : 0
+  const actualRetention = bill.retention_applied !== false ? retentionAmount : 0
+  const actualWht = bill.wht_applied ? whtAmount : 0
 
   return toNumber(base - actualDeduct - actualRetention - actualWht)
 }
