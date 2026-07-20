@@ -143,6 +143,7 @@ export async function getApprovedContractorCycleReport(
     projectId?: string
     dateFrom?: string
     dateTo?: string
+    includeUnpaidOutsideRange?: boolean
   } = {}
 ) {
   const supabase = await createClient()
@@ -172,15 +173,20 @@ export async function getApprovedContractorCycleReport(
   if (filters.contractorId) query = query.eq('contractor_id', filters.contractorId)
   if (filters.projectId) query = query.eq('project_id', filters.projectId)
 
-  // Unpaid approved bills must never fall out of view just because their
-  // billing_date sits outside the selected cycle window — otherwise a job
-  // approved today with an older billing_date silently disappears from the
-  // payout list. The date range only restricts bills that are already paid.
-  const dateConditions: string[] = []
-  if (filters.dateFrom) dateConditions.push(`billing_date.gte.${filters.dateFrom}`)
-  if (filters.dateTo) dateConditions.push(`billing_date.lte.${filters.dateTo}`)
-  if (dateConditions.length > 0) {
+  // By default the date range is strict, matching what the user picked. When
+  // includeUnpaidOutsideRange is set, unpaid approved bills are shown even
+  // outside the window (e.g. to catch up on everything still owed) — an
+  // opt-in surfaced as a checkbox in the UI rather than always-on, since
+  // silently ignoring the selected range surprised users reconciling a
+  // specific cycle.
+  if (filters.includeUnpaidOutsideRange && (filters.dateFrom || filters.dateTo)) {
+    const dateConditions: string[] = []
+    if (filters.dateFrom) dateConditions.push(`billing_date.gte.${filters.dateFrom}`)
+    if (filters.dateTo) dateConditions.push(`billing_date.lte.${filters.dateTo}`)
     query = query.or(`and(${dateConditions.join(',')}),paid_out_at.is.null`)
+  } else {
+    if (filters.dateFrom) query = query.gte('billing_date', filters.dateFrom)
+    if (filters.dateTo) query = query.lte('billing_date', filters.dateTo)
   }
 
   const { data, error } = await query

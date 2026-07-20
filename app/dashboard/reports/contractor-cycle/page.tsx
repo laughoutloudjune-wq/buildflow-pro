@@ -16,6 +16,7 @@ type Filters = {
   contractorId?: string
   dateFrom?: string
   dateTo?: string
+  includeUnpaidOutsideRange?: boolean
 }
 
 function todayISO() {
@@ -41,6 +42,7 @@ export default function ContractorCycleReportPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [contractors, setContractors] = useState<Contractor[]>([])
   const [filters, setFilters] = useState<Filters>({ dateFrom: monthStartISO(), dateTo: todayISO() })
+  const [paymentStatus, setPaymentStatus] = useState<'all' | 'unpaid' | 'paid'>('all')
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,6 +50,7 @@ export default function ContractorCycleReportPage() {
   const [showHtmlModalPreview, setShowHtmlModalPreview] = useState(false)
   const [printedAtLabel, setPrintedAtLabel] = useState('')
 
+  const [excludedBillIds, setExcludedBillIds] = useState<Set<string>>(new Set())
   const [payOutConfirm, setPayOutConfirm] = useState<{ contractorId: string; contractorName: string; bills: any[]; total: number } | null>(null)
   const [payOutDate, setPayOutDate] = useState(todayISO())
   const [payOutLoading, setPayOutLoading] = useState(false)
@@ -68,11 +71,21 @@ export default function ContractorCycleReportPage() {
     try {
       const result = await getApprovedContractorCycleReport(filters)
       setRows(result || [])
+      setExcludedBillIds(new Set())
     } catch (e: any) {
       setError(e.message || 'Failed to load report')
     } finally {
       setLoading(false)
     }
+  }
+
+  const toggleBillExcluded = (billId: string) => {
+    setExcludedBillIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(billId)) next.delete(billId)
+      else next.add(billId)
+      return next
+    })
   }
 
   useEffect(() => {
@@ -338,8 +351,13 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
   const collator = useMemo(() => new Intl.Collator('th', { numeric: true, sensitivity: 'base' }), [])
 
   const grouped = useMemo(() => {
+    const statusFilteredRows = rows.filter((bill: any) => {
+      if (paymentStatus === 'paid') return !!bill.paid_out_at
+      if (paymentStatus === 'unpaid') return !bill.paid_out_at
+      return true
+    })
     const map = new Map<string, { contractor: any; bills: any[] }>()
-    for (const bill of rows) {
+    for (const bill of statusFilteredRows) {
       const key = bill.contractor_id || 'unknown'
       if (!map.has(key)) map.set(key, { contractor: bill.contractors || { name: 'ไม่ระบุผู้รับเหมา' }, bills: [] })
       map.get(key)!.bills.push(bill)
@@ -376,7 +394,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         return { contractorId, contractor: group.contractor, bills, totals }
       })
       .sort((a, b) => collator.compare(a.contractor?.name || '', b.contractor?.name || ''))
-  }, [rows, collator])
+  }, [rows, collator, paymentStatus])
 
   const grandTotals = useMemo(() => {
     return grouped.reduce(
@@ -694,7 +712,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       </div>
 
       <Card className="p-4 no-print">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs font-semibold text-slate-600">รอบจ่าย ตั้งแต่</label>
             <input type="date" className="mt-1 w-full p-2 border rounded" value={filters.dateFrom || ''} onChange={(e) => setFilters((p) => ({ ...p, dateFrom: e.target.value || undefined }))} />
@@ -717,6 +735,24 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600">สถานะการจ่าย</label>
+            <select className="mt-1 w-full p-2 border rounded" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value as 'all' | 'unpaid' | 'paid')}>
+              <option value="all">ทั้งหมด</option>
+              <option value="unpaid">รอจ่าย</option>
+              <option value="paid">จ่ายแล้ว</option>
+            </select>
+          </div>
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={!!filters.includeUnpaidOutsideRange}
+              onChange={(e) => setFilters((p) => ({ ...p, includeUnpaidOutsideRange: e.target.checked }))}
+            />
+            แสดงรายการรอจ่ายทั้งหมด แม้อยู่นอกช่วงวันที่เลือก
+          </label>
         </div>
         <div className="mt-3 flex justify-end gap-2">
           <button onClick={runReport} className="px-4 py-2 bg-slate-900 text-white rounded">ค้นหา</button>
@@ -1036,6 +1072,10 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           const allPaid = paidCount === group.bills.length && group.bills.length > 0
           const somePaid = paidCount > 0 && !allPaid
           const hasRecentlyApproved = group.bills.some((b: any) => !b.paid_out_at && isRecentlyApproved(b.approved_at))
+          const unpaidBills = group.bills.filter((b: any) => !b.paid_out_at)
+          const selectedUnpaidBills = unpaidBills.filter((b: any) => !excludedBillIds.has(b.id))
+          const allUnpaidSelected = unpaidBills.length > 0 && selectedUnpaidBills.length === unpaidBills.length
+          const someUnpaidSelected = selectedUnpaidBills.length > 0 && selectedUnpaidBills.length < unpaidBills.length
           const latestPaidAt = allPaid
             ? group.bills.reduce((latest: string, b: any) => {
                 const d = b.paid_out_at || ''
@@ -1080,23 +1120,24 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                 <div className="flex gap-2 no-print">
                   {!allPaid && (
                     <button
+                      disabled={selectedUnpaidBills.length === 0}
                       onClick={() => {
                         setPayOutDate(todayISO())
-                        const unpaidBills = group.bills.filter((b: any) => !b.paid_out_at)
                         const initRetention: Record<string, boolean> = {}
                         const initDeduct: Record<string, boolean> = {}
-                        unpaidBills.forEach((b: any) => {
+                        selectedUnpaidBills.forEach((b: any) => {
                           initRetention[b.id] = true
                           initDeduct[b.id] = true
                         })
                         setRetentionAppliedMap(initRetention)
                         setDeductAppliedMap(initDeduct)
                         setCycleWhtApplied(true)
-                        setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', bills: unpaidBills, total: group.totals.net_amount })
+                        const total = selectedUnpaidBills.reduce((s: number, b: any) => s + Number(b.net_amount || 0), 0)
+                        setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', bills: selectedUnpaidBills, total })
                       }}
-                      className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                      className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      <BadgeCheck className="h-3.5 w-3.5" /> Mark as Paid
+                      <BadgeCheck className="h-3.5 w-3.5" /> Mark as Paid ({selectedUnpaidBills.length})
                     </button>
                   )}
                   {(allPaid || somePaid) && (
@@ -1115,6 +1156,26 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
               <table className="w-full text-sm border">
                 <thead className="bg-slate-50">
                   <tr className="border-b">
+                    {unpaidBills.length > 0 && (
+                      <th className="px-3 py-2 text-center no-print w-8">
+                        <input
+                          type="checkbox"
+                          checked={allUnpaidSelected}
+                          ref={(el) => { if (el) el.indeterminate = someUnpaidSelected }}
+                          onChange={() => {
+                            setExcludedBillIds((prev) => {
+                              const next = new Set(prev)
+                              if (allUnpaidSelected) {
+                                unpaidBills.forEach((b: any) => next.add(b.id))
+                              } else {
+                                unpaidBills.forEach((b: any) => next.delete(b.id))
+                              }
+                              return next
+                            })
+                          }}
+                        />
+                      </th>
+                    )}
                     <th className="px-3 py-2 text-left">เลขที่ใบเบิก</th>
                     <th className="px-3 py-2 text-left">วันที่</th>
                     <th className="px-3 py-2 text-left">โครงการ / แปลง</th>
@@ -1140,6 +1201,17 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     return (
                       <Fragment key={bill.id}>
                         <tr className="border-b align-top">
+                          {unpaidBills.length > 0 && (
+                            <td className="px-3 py-2 text-center no-print">
+                              {!bill.paid_out_at && (
+                                <input
+                                  type="checkbox"
+                                  checked={!excludedBillIds.has(bill.id)}
+                                  onChange={() => toggleBillExcluded(bill.id)}
+                                />
+                              )}
+                            </td>
+                          )}
                           <td className="px-3 py-2 font-semibold">
                             <div>#{String(bill.doc_no || '-').padStart(4, '0')}</div>
                             {bill.paid_out_at ? (
@@ -1183,7 +1255,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                           </td>
                         </tr>
                         <tr className="border-b bg-slate-50/40">
-                          <td colSpan={7} className="px-3 py-2">
+                          <td colSpan={unpaidBills.length > 0 ? 8 : 7} className="px-3 py-2">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <div>
                                 <div className="text-xs font-semibold text-slate-600 mb-1">รายการงาน</div>

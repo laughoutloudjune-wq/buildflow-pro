@@ -79,6 +79,7 @@ export async function getApprovedContractorCycleReport(filters: {
   projectId?: string
   dateFrom?: string
   dateTo?: string
+  includeUnpaidOutsideRange?: boolean
 } = {}) {
   return getApprovedContractorCycleReportImpl(filters)
 }
