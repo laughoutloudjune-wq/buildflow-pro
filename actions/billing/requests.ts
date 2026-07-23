@@ -41,6 +41,49 @@ type AdjustmentsForRpc = Array<{
   unit_price: number
 }>
 
+/**
+ * A job assignment can only have one live progress request at a time.
+ * Without this, a foreman can submit a second request for the same job
+ * while an earlier one is still sitting in pending_review, producing a
+ * duplicate that a PM can only untangle by rejecting/undoing the whole
+ * billing. `excludeBillingId` lets an edit of an already-pending billing
+ * check against *other* billings without flagging itself.
+ */
+async function findDuplicatePendingJobs(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  jobAssignmentIds: string[],
+  excludeBillingId?: string
+): Promise<Array<{ jobAssignmentId: string; docNo: string | number | null }>> {
+  const ids = Array.from(new Set(jobAssignmentIds.filter(Boolean)))
+  if (ids.length === 0) return []
+
+  const { data, error } = await supabase
+    .from('billing_jobs')
+    .select('job_assignment_id, billings!inner(id, doc_no, status)')
+    .in('job_assignment_id', ids)
+    .eq('billings.status', 'pending_review')
+
+  if (error) throw new Error(error.message)
+
+  type Row = {
+    job_assignment_id: string
+    billings: { id: string; doc_no: string | number | null } | Array<{ id: string; doc_no: string | number | null }> | null
+  }
+
+  return (data as Row[] || [])
+    .map((row) => ({
+      jobAssignmentId: row.job_assignment_id,
+      billing: Array.isArray(row.billings) ? row.billings[0] : row.billings,
+    }))
+    .filter((row) => row.billing && row.billing.id !== excludeBillingId)
+    .map((row) => ({ jobAssignmentId: row.jobAssignmentId, docNo: row.billing!.doc_no }))
+}
+
+function duplicateJobsError(conflicts: Array<{ jobAssignmentId: string; docNo: string | number | null }>): string {
+  const docNos = Array.from(new Set(conflicts.map((c) => c.docNo ?? '-'))).join(', #')
+  return `งานบางรายการที่เลือกมีคำขอเบิกที่รอตรวจสอบอยู่แล้ว (ใบขอเบิก #${docNos}) กรุณารอให้ PM ตรวจสอบคำขอเดิมก่อนส่งคำขอใหม่สำหรับงานเดียวกัน`
+}
+
 function toJobsForRpc(selectedJobs: BillingJobInput[]): JobsForRpc {
   return selectedJobs
     .filter((job) => job.id)
@@ -84,6 +127,11 @@ export async function createBillingRequest(data: BillingPayload): Promise<Billin
       return { success: false, error: 'No permission to create billing request' }
     }
     const profile = await getCurrentUserProfile(supabase, user.id)
+
+    if (payload.type === 'progress' && payload.selected_jobs.length > 0) {
+      const conflicts = await findDuplicatePendingJobs(supabase, payload.selected_jobs.map((j) => j.id))
+      if (conflicts.length > 0) return { success: false, error: duplicateJobsError(conflicts) }
+    }
 
     const signature: BillingActionSignature = {
       user_id: user.id,
@@ -136,6 +184,11 @@ export async function updateBillingRequest(id: string, data: BillingPayload): Pr
     if (!user) return { success: false, error: 'User not found' }
     const profile = await getCurrentUserProfile(supabase, user.id)
     const role = await getCurrentUserRole(supabase, user.id)
+
+    if (payload.type === 'progress' && payload.selected_jobs.length > 0) {
+      const conflicts = await findDuplicatePendingJobs(supabase, payload.selected_jobs.map((j) => j.id), id)
+      if (conflicts.length > 0) return { success: false, error: duplicateJobsError(conflicts) }
+    }
 
     const signature: BillingActionSignature = {
       user_id: user.id,

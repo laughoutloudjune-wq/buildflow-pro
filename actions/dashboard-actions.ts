@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { computeActualPayout } from '@/lib/billing'
 
 const COMPLETED_STATUSES = new Set(['completed', 'done', 'approved'])
 
@@ -40,7 +41,14 @@ export async function getDashboardStats() {
       approved_at,
       billing_date,
       created_at,
-      paid_out_at
+      paid_out_at,
+      wht_percent,
+      retention_percent,
+      wht_applied,
+      retention_applied,
+      deduct_applied,
+      retention_amount,
+      wht_amount
     `).order('created_at', { ascending: false }).limit(500),
     supabase.from('contractors').select('id, name'),
     supabase.from('profiles').select('id, full_name, email, role'),
@@ -87,6 +95,16 @@ export async function getDashboardStats() {
       return ref >= monthStart && ref < monthEnd
     })
     .reduce((sum: number, b: any) => sum + getBillingNetAmount(b), 0)
+
+  const paidOutThisMonthBills = billings.filter((b: any) => {
+    if (!b.paid_out_at) return false
+    const at = new Date(b.paid_out_at)
+    return at >= monthStart && at < monthEnd
+  })
+  const paidOutThisMonth = {
+    count: paidOutThisMonthBills.length,
+    amount: paidOutThisMonthBills.reduce((sum: number, b: any) => sum + computeActualPayout(b), 0),
+  }
 
   const recentApprovalLimit = new Date(now.getTime() - 7 * dayMs)
   const recentlyApprovedBills = billings.filter((b: any) => {
@@ -316,6 +334,7 @@ export async function getDashboardStats() {
     activeJobs,
     pendingApprovals,
     approvedThisMonth,
+    paidOutThisMonth,
     recentlyApproved,
     recentPayments,
     projectHealth,

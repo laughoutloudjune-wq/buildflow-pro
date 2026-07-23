@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Badge, statusTone } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { getBillings } from '@/actions/billing-actions'
+import { getBillings, getBillingOptions } from '@/actions/billing-actions'
 import BillingModal from '@/components/billings/BillingModal'
 import { formatCurrency } from '@/lib/currency'
 import NoticeBanner, { type NoticeTone } from '@/components/ui/NoticeBanner'
@@ -30,11 +30,21 @@ const getStatusChip = (status?: string | null) => (
   </Badge>
 )
 
+type BillingFilters = {
+  month?: string
+  projectId?: string
+  contractorId?: string
+  status?: string
+}
+
 export default function BillingListPage() {
   const [billings, setBillings] = useState<BillingListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [listError, setListError] = useState<string | null>(null)
   const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null)
+  const [filters, setFilters] = useState<BillingFilters>({})
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([])
+  const [contractors, setContractors] = useState<Array<{ id: string; name: string }>>([])
   const [flash, setFlash] = useState<{ tone: 'success' | 'error' | 'info' | 'warning'; message: string } | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -103,6 +113,26 @@ export default function BillingListPage() {
     void loadBillings()
   }, [loadBillings])
 
+  useEffect(() => {
+    void getBillingOptions().then((opts) => {
+      setProjects(opts.projects || [])
+      setContractors(opts.contractors || [])
+    })
+  }, [])
+
+  const filteredBillings = useMemo(() => {
+    return billings.filter((bill) => {
+      if (filters.projectId && bill.project_id !== filters.projectId) return false
+      if (filters.contractorId && bill.contractor_id !== filters.contractorId) return false
+      if (filters.month) {
+        const billMonth = (bill.billing_date || '').slice(0, 7)
+        if (billMonth !== filters.month) return false
+      }
+      if (filters.status && bill.status !== filters.status) return false
+      return true
+    })
+  }, [billings, filters])
+
   // Refetch when returning to the tab so PMs see new foreman submissions without a full reload.
   useEffect(() => {
     const onVisible = () => {
@@ -151,6 +181,67 @@ export default function BillingListPage() {
         />
       ) : null}
 
+      <Card className="p-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600">เดือนของบิล</label>
+            <input
+              type="month"
+              className="mt-1 w-full"
+              value={filters.month || ''}
+              onChange={(e) => setFilters((p) => ({ ...p, month: e.target.value || undefined }))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600">โครงการ</label>
+            <select
+              className="mt-1 w-full"
+              value={filters.projectId || ''}
+              onChange={(e) => setFilters((p) => ({ ...p, projectId: e.target.value || undefined }))}
+            >
+              <option value="">ทั้งหมด</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600">ผู้รับเหมา</label>
+            <select
+              className="mt-1 w-full"
+              value={filters.contractorId || ''}
+              onChange={(e) => setFilters((p) => ({ ...p, contractorId: e.target.value || undefined }))}
+            >
+              <option value="">ทั้งหมด</option>
+              {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600">สถานะ</label>
+            <select
+              className="mt-1 w-full"
+              value={filters.status || ''}
+              onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value || undefined }))}
+            >
+              <option value="">ทั้งหมด</option>
+              {Object.entries(statusLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {(filters.month || filters.projectId || filters.contractorId || filters.status) && (
+          <div className="mt-3 flex items-center justify-between">
+            <p className="text-xs text-slate-400">แสดง {filteredBillings.length} จาก {billings.length} รายการ</p>
+            <button
+              type="button"
+              onClick={() => setFilters({})}
+              className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+            >
+              ล้างตัวกรอง
+            </button>
+          </div>
+        )}
+      </Card>
+
       <Card className="p-4 bg-slate-50/60 border-slate-200">
         {loading ? (
           <PageLoading label="กำลังโหลดรายการเบิกจ่าย..." />
@@ -163,9 +254,11 @@ export default function BillingListPage() {
           </div>
         ) : billings.length === 0 ? (
           <div className="p-12 text-center text-slate-400">ยังไม่มีเอกสารเบิกจ่าย</div>
+        ) : filteredBillings.length === 0 ? (
+          <div className="p-12 text-center text-slate-400">ไม่พบรายการที่ตรงกับตัวกรอง</div>
         ) : (
           <div className="space-y-3">
-            {billings.map((bill) => (
+            {filteredBillings.map((bill) => (
               <div
                 key={bill.id}
                 className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-indigo-300 hover:shadow cursor-pointer transition"

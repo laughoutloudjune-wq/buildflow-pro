@@ -107,15 +107,9 @@ export async function rejectBilling(id: string, note?: string) {
   const role = await getCurrentUserRole(supabase, user.id)
   requireRole(['pm', 'admin'], role, 'Only PM/Admin can reject billing')
 
-  // Single UPDATE — already atomic, no RPC needed.
-  const { error } = await supabase
-    .from('billings')
-    .update({
-      status: 'rejected',
-      note,
-      approved_by: user.id,
-    })
-    .eq('id', id)
+  // RPC (not a plain UPDATE) so the status change and the "notify the
+  // submitter" insert can't get out of sync with each other.
+  const { error } = await supabase.rpc('billing_reject', { p_id: id, p_note: note ?? null })
 
   if (error) throw new Error(error.message)
 

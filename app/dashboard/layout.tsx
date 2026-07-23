@@ -16,7 +16,7 @@ export default async function DashboardLayout({
   const permissions = permissionsForRole(role, rolePermissions)
 
   return (
-    <DashboardShell permissions={permissions} userEmail={user.email}>
+    <DashboardShell permissions={permissions} userEmail={user.email} role={role}>
       {children}
     </DashboardShell>
   )

@@ -1,10 +1,11 @@
 'use client'
 
-import { Bell, User } from 'lucide-react'
+import { User } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { getDashboardPageTitle } from '@/lib/dashboard-page-titles'
+import NotificationBell from '@/components/layout/NotificationBell'
 
-export default function Header({ userEmail }: { userEmail?: string }) {
+export default function Header({ userEmail, role }: { userEmail?: string; role?: string }) {
   const pathname = usePathname()
   const pageTitle = getDashboardPageTitle(pathname)
 
@@ -18,15 +19,7 @@ export default function Header({ userEmail }: { userEmail?: string }) {
       </div>
 
       <div className="flex flex-shrink-0 items-center gap-2 sm:gap-4">
-        <button
-          type="button"
-          className="hidden rounded-full p-2 text-slate-400 sm:block"
-          disabled
-          aria-label="การแจ้งเตือน (ยังไม่พร้อมใช้งาน)"
-          title="เร็วๆ นี้"
-        >
-          <Bell className="h-5 w-5" aria-hidden />
-        </button>
+        <NotificationBell role={role} />
 
         <div className="flex items-center gap-2 border-l border-slate-200/70 pl-3 sm:gap-3 sm:pl-4">
           <div className="text-right hidden min-w-0 sm:block">

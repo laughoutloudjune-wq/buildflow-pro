@@ -142,20 +142,25 @@ export default function ReviewBillingPage() {
     setAdjustments(adjustments.filter((_, i) => i !== index))
   }
 
-  const { totalWorkAmount, totalAddAmount, totalDeductAmount, grossAmount, netAmount, whtAmount, retentionAmount } = useMemo(() => {
+  const removeJob = (jobId: string) => {
+    setJobs((prevJobs) => prevJobs.filter((job) => job.id !== jobId))
+  }
+
+  // WHT/retention are no longer set by the PM here — accounting applies them
+  // later at pay-out time in the contractor-cycle page. Any nonzero percent
+  // still carried on older bills is preserved through re-approval even though
+  // it's no longer editable in this UI.
+  const { totalWorkAmount, totalAddAmount, totalDeductAmount, grossAmount, netAmount } = useMemo(() => {
     const totalWorkAmount = jobs.reduce((sum, job) => sum + (job.amount || 0), 0)
     const totalAddAmount = adjustments.filter((adj) => adj.type === 'addition').reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
     const totalDeductAmount = adjustments.filter((adj) => adj.type === 'deduction').reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
 
     const retentionAmount = totalWorkAmount * (retentionPercent / 100)
     const grossAmount = totalWorkAmount + totalAddAmount - totalDeductAmount
-    // WHT applies to the whole gross invoice (both main and DC portions)
-    // Not baked into net_amount — accounting decides at pay-out per cycle
-    const whtAmount = grossAmount * (whtPercent / 100)
     const netAmount = grossAmount - retentionAmount
 
-    return { totalWorkAmount, totalAddAmount, totalDeductAmount, grossAmount, netAmount, whtAmount, retentionAmount }
-  }, [jobs, adjustments, whtPercent, retentionPercent])
+    return { totalWorkAmount, totalAddAmount, totalDeductAmount, grossAmount, netAmount }
+  }, [jobs, adjustments, retentionPercent])
 
   const adjustmentPlotOptions = useMemo(() => {
     const names = Array.from(
@@ -417,6 +422,7 @@ export default function ReviewBillingPage() {
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">PM %</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">ยอดเงิน</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">คงเหลือหลังเบิก</th>
+                      <th className="px-6 py-3"></th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -460,10 +466,20 @@ export default function ReviewBillingPage() {
                             </td>
                             <td className="px-6 py-4 text-right font-medium">{formatCurrency(job.amount || 0)}</td>
                             <td className="px-6 py-4 text-right font-semibold text-emerald-700">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(job.paid || 0) - Number(job.amount || 0)))}</td>
+                            <td className="px-6 py-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => removeJob(job.id)}
+                                title="ลบรายการนี้ออกจากใบเบิก (เช่น รายการซ้ำ)"
+                                className="p-2 text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </td>
                           </tr>
                           {isExpanded && (
                             <tr>
-                              <td colSpan={8} className="px-6 pb-4 pt-1">
+                              <td colSpan={9} className="px-6 pb-4 pt-1">
                                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                   <div className="text-xs font-semibold text-slate-700 mb-2">ประวัติความคืบหน้าเดิม</div>
                                   <div className="overflow-x-auto">
@@ -532,15 +548,8 @@ export default function ReviewBillingPage() {
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div><label className="block text-sm font-medium text-gray-700">วันที่เบิกจ่าย</label><input type="date" value={billingDate} onChange={(e) => setBillingDate(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" /></div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">หัก ณ ที่จ่าย (WHT) %</label>
-                  <input type="number" value={whtPercent} onChange={(e) => setWhtPercent(parseFloat(e.target.value) || 0)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">ประกันผลงาน (Retention) %</label>
-                  <input type="number" value={retentionPercent} onChange={(e) => setRetentionPercent(parseFloat(e.target.value) || 0)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
-                </div>
               </div>
+              <p className="mb-4 text-xs text-slate-500">หัก ณ ที่จ่ายและประกันผลงานจะดำเนินการโดยฝ่ายบัญชีในหน้ารอบจ่ายผู้รับเหมา</p>
               <div className="mt-4 p-4 bg-white rounded-lg border">
                 <table className="w-full text-sm">
                   <tbody>
@@ -564,32 +573,9 @@ export default function ReviewBillingPage() {
                     )}
                     <tr><td colSpan={2}><hr className="my-1" /></td></tr>
                     <tr>
-                      <td className="py-0.5 text-gray-700 font-medium">รวม</td>
-                      <td className="py-0.5 text-right font-medium">฿{formatCurrency(grossAmount)}</td>
-                    </tr>
-                    {retentionAmount > 0 && (
-                      <tr>
-                        <td className="py-0.5 text-gray-600">หักประกัน {retentionPercent}%</td>
-                        <td className="py-0.5 text-right text-red-600">−฿{formatCurrency(retentionAmount)}</td>
-                      </tr>
-                    )}
-                    {whtAmount > 0 && (
-                      <tr>
-                        <td className="py-0.5 text-gray-600">หัก WHT {whtPercent}%</td>
-                        <td className="py-0.5 text-right text-red-600">−฿{formatCurrency(whtAmount)}</td>
-                      </tr>
-                    )}
-                    <tr><td colSpan={2}><hr className="my-1" /></td></tr>
-                    <tr>
                       <td className="py-1 font-bold text-base">ยอดสุทธิอนุมัติ</td>
                       <td className="py-1 text-right font-bold text-xl text-emerald-700">฿{formatCurrency(netAmount)}</td>
                     </tr>
-                    {whtAmount > 0 && (
-                      <tr className="border-t">
-                        <td className="pt-1 text-amber-700 font-semibold">ยอดโอนจริง (หลังหัก WHT)</td>
-                        <td className="pt-1 text-right font-bold text-amber-700">฿{formatCurrency(netAmount - whtAmount)}</td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>

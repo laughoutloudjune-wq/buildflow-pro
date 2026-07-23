@@ -21,6 +21,8 @@ type BillingReportRow = {
   retention_percent?: number | null
   reason_for_dc?: string | null
   attachment_urls?: string[] | null
+  project_id?: string | null
+  contractor_id?: string | null
   plot_id?: string | null
   submitted_by?: string | null
   approved_by?: string | null

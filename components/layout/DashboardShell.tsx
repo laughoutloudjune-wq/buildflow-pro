@@ -10,10 +10,12 @@ const COLLAPSED_STORAGE_KEY = 'buildflow.sidebar-collapsed'
 export default function DashboardShell({
   permissions,
   userEmail,
+  role,
   children,
 }: {
   permissions: Record<PermissionModule, boolean>
   userEmail?: string
+  role?: string
   children: React.ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -39,7 +41,7 @@ export default function DashboardShell({
           collapsed ? 'ml-20' : 'ml-64'
         }`}
       >
-        <Header userEmail={userEmail} />
+        <Header userEmail={userEmail} role={role} />
         <main className="w-full grow p-6">
           {children}
         </main>

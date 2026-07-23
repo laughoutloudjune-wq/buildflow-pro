@@ -497,6 +497,44 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
       .sort((a, b) => b.date.localeCompare(a.date))
   }, [rows, collator])
 
+  // What actually gets printed — only the bills the user has checked, so a
+  // print run isn't forced to include everything currently loaded on screen.
+  const selectedGrouped = useMemo(() => {
+    const selectedRows = rows.filter((bill: any) => !excludedBillIds.has(bill.id))
+    const map = new Map<string, { contractor: any; bills: any[] }>()
+    for (const bill of selectedRows) {
+      const key = bill.contractor_id || 'unknown'
+      if (!map.has(key)) map.set(key, { contractor: bill.contractors || { name: 'ไม่ระบุผู้รับเหมา' }, bills: [] })
+      map.get(key)!.bills.push(bill)
+    }
+    return Array.from(map.entries())
+      .map(([contractorId, group]) => {
+        const bills = group.bills.slice().sort(compareByDocNo)
+        const totals = bills.reduce(
+          (acc: any, bill: any) => {
+            const workAmt = Number(bill.total_work_amount || 0)
+            const addAmt = Number(bill.total_add_amount || 0)
+            const deductAmt = Number(bill.total_deduct_amount || 0)
+            const pmGrossAmt = workAmt + addAmt - deductAmt
+            acc.total_work_amount += workAmt
+            acc.total_add_amount += addAmt
+            acc.total_deduct_amount += deductAmt
+            acc.net_amount += Number(bill.net_amount || 0)
+            acc.gross_amount += pmGrossAmt
+            if (bill.paid_out_at) {
+              acc.actual_transfer += computeActualPayout(bill)
+            } else {
+              acc.actual_transfer += pmGrossAmt
+            }
+            return acc
+          },
+          { total_work_amount: 0, total_add_amount: 0, total_deduct_amount: 0, net_amount: 0, gross_amount: 0, actual_transfer: 0 }
+        )
+        return { contractorId, contractor: group.contractor, bills, totals }
+      })
+      .sort((a, b) => collator.compare(a.contractor?.name || '', b.contractor?.name || ''))
+  }, [rows, excludedBillIds, collator])
+
   const grandTotals = useMemo(() => {
     return grouped.reduce(
       (acc, g) => {
@@ -559,7 +597,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
   }
 
   const previewGroups = useMemo(() => {
-    return grouped.map((group) => {
+    return selectedGrouped.map((group) => {
       const plotMap = new Map<string, any>()
       for (const bill of group.bills) {
         for (const line of buildPreviewLines(bill)) {
@@ -591,7 +629,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         previewTotal: Number(group.totals.actual_transfer || 0),
       }
     })
-  }, [grouped, collator])
+  }, [selectedGrouped, collator])
 
   const modalTemplateHtml = useMemo(() => {
     return previewGroups.map((group: any) => {
@@ -857,10 +895,22 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         {activeTab === 'unpaid' && !filters.month && (
           <p className="mt-2 text-xs text-slate-400">ไม่ได้เลือกเดือน — แสดงทุกใบเบิกที่รออนุมัติจ่าย</p>
         )}
-        <div className="mt-3 flex justify-end gap-2">
+        <div className="mt-3 flex items-center justify-end gap-2">
+          {(() => {
+            const selectedCount = selectedGrouped.reduce((s, g) => s + g.bills.length, 0)
+            return selectedCount < rows.length ? (
+              <span className="text-xs text-slate-400">เลือกพิมพ์ {selectedCount}/{rows.length} ใบเบิก</span>
+            ) : null
+          })()}
           <Button variant="secondary" onClick={runReport}>ค้นหา</Button>
-          <Button onClick={() => setShowHtmlModalPreview(true)}>
-            <Printer className="h-4 w-4" /> Print
+          <Button
+            onClick={() => setShowHtmlModalPreview(true)}
+            disabled={selectedGrouped.reduce((s, g) => s + g.bills.length, 0) === 0}
+          >
+            <Printer className="h-4 w-4" /> Print{(() => {
+              const selectedCount = selectedGrouped.reduce((s, g) => s + g.bills.length, 0)
+              return selectedCount > 0 && selectedCount < rows.length ? ` (${selectedCount})` : ''
+            })()}
           </Button>
         </div>
       </Card>
@@ -1214,6 +1264,30 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                       <table className="w-full text-sm">
                         <thead className="bg-white">
                           <tr className="border-b text-xs text-slate-500">
+                            <th className="px-3 py-1.5 text-center no-print w-8">
+                              <input
+                                type="checkbox"
+                                checked={cg.bills.every((b: any) => !excludedBillIds.has(b.id))}
+                                ref={(el) => {
+                                  if (el) {
+                                    const selectedCount = cg.bills.filter((b: any) => !excludedBillIds.has(b.id)).length
+                                    el.indeterminate = selectedCount > 0 && selectedCount < cg.bills.length
+                                  }
+                                }}
+                                onChange={() => {
+                                  const allSelected = cg.bills.every((b: any) => !excludedBillIds.has(b.id))
+                                  setExcludedBillIds((prev) => {
+                                    const next = new Set(prev)
+                                    if (allSelected) {
+                                      cg.bills.forEach((b: any) => next.add(b.id))
+                                    } else {
+                                      cg.bills.forEach((b: any) => next.delete(b.id))
+                                    }
+                                    return next
+                                  })
+                                }}
+                              />
+                            </th>
                             <th className="px-3 py-1.5 text-left w-6"></th>
                             <th className="px-3 py-1.5 text-left">เลขที่ใบเบิก</th>
                             <th className="px-3 py-1.5 text-left">วันที่บิล / อนุมัติ</th>
@@ -1244,6 +1318,13 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                                   onClick={() => togglePaidBillExpanded(bill.id)}
                                   className="border-b last:border-b-0 align-top cursor-pointer hover:bg-slate-50"
                                 >
+                                  <td className="px-3 py-2 text-center no-print" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="checkbox"
+                                      checked={!excludedBillIds.has(bill.id)}
+                                      onChange={() => toggleBillExcluded(bill.id)}
+                                    />
+                                  </td>
                                   <td className="px-3 py-2 text-slate-400">
                                     {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                                   </td>
@@ -1282,7 +1363,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                                 </tr>
                                 {isExpanded && (
                                   <tr className="border-b last:border-b-0 bg-slate-50/40">
-                                    <td colSpan={8} className="px-3 py-2">
+                                    <td colSpan={9} className="px-3 py-2">
                                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <div>
                                           <div className="text-xs font-semibold text-slate-600 mb-1">รายการงาน</div>

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Activity, AlertTriangle, Building2, CheckCircle2, Clock3, Home, ShieldAlert, Sparkles, TrendingUp, Wallet } from 'lucide-react'
+import { Activity, AlertTriangle, BadgeCheck, Building2, CheckCircle2, Clock3, Home, ShieldAlert, Sparkles, TrendingUp, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge, statusTone } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -47,6 +47,14 @@ export default async function DashboardPage() {
       hint: 'Approved billing net amount',
       icon: <TrendingUp className="h-5 w-5 text-teal-600" />,
       bg: 'bg-teal-50',
+      href: '/dashboard/reports/contractor-cycle',
+    },
+    {
+      title: 'Paid Out This Month',
+      value: stats.paidOutThisMonth?.count || 0,
+      hint: `THB ${formatCurrency(stats.paidOutThisMonth?.amount || 0)} • marked as paid`,
+      icon: <BadgeCheck className="h-5 w-5 text-emerald-600" />,
+      bg: 'bg-emerald-50',
       href: '/dashboard/reports/contractor-cycle',
     },
     {
