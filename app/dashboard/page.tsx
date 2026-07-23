@@ -88,18 +88,16 @@ export default async function DashboardPage() {
         }
       />
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {kpis.map((kpi) => (
-          <Link key={kpi.title} href={kpi.href} className="group block">
-            <Card className="p-4 transition-shadow group-hover:shadow-md group-hover:border-slate-300">
+          <Link key={kpi.title} href={kpi.href} className="group block h-full">
+            <Card className="flex h-full min-h-[132px] flex-col p-4 transition-shadow group-hover:shadow-md group-hover:border-slate-300">
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{kpi.title}</p>
-                  <p className="mt-1 text-2xl font-semibold text-slate-900">{kpi.value}</p>
-                  <p className="mt-1 text-xs text-slate-500">{kpi.hint}</p>
-                </div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{kpi.title}</p>
                 <div className={`rounded-lg p-2 ${kpi.bg}`}>{kpi.icon}</div>
               </div>
+              <p className="mt-1 text-xl font-semibold text-slate-900">{kpi.value}</p>
+              <p className="mt-1 text-xs text-slate-500">{kpi.hint}</p>
             </Card>
           </Link>
         ))}
