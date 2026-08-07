@@ -56,6 +56,7 @@ const menuSections: SidebarSection[] = [
       { icon: BarChart3, label: 'รายงาน DC', href: '/dashboard/reports/dc-history', permission: 'reports' as const },
       { icon: BarChart3, label: 'ประวัติบ้านเลขที่', href: '/dashboard/reports/house-history', permission: 'reports' as const },
       { icon: BarChart3, label: 'รอบจ่ายผู้รับเหมา', href: '/dashboard/reports/contractor-cycle', permission: 'reports' as const },
+      { icon: BarChart3, label: 'สมุดบัญชีค่าแรง', href: '/dashboard/reports/labor-budget', permission: 'reports' as const },
     ],
   },
   {
