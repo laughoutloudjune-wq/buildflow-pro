@@ -98,7 +98,7 @@ export default function CreateBillingRequestPage() {
   useEffect(() => {
     if (!editId || !editingBilling || didPrefillJobs || billableJobs.length === 0) return
 
-    const next = new Map<string, { progress: string; request_amount: number }>()
+    const next = new Map<string, SelectedBillingJobState>()
     for (const row of editingBilling.billing_jobs || []) {
       const jobAssignmentId = row.job_assignments?.id
       if (!jobAssignmentId) continue
@@ -140,6 +140,27 @@ export default function CreateBillingRequestPage() {
     } else {
       newSelectedJobs.set(jobId, { progress: previousProgress.toFixed(2), request_amount: 0 })
     }
+    setSelectedJobs(newSelectedJobs)
+  }
+
+  const handleAmountChange = (jobId: string, job: BillableJob, amountStr: string) => {
+    const newSelectedJobs = new Map(selectedJobs)
+
+    if (amountStr === '') {
+      newSelectedJobs.set(jobId, { progress: (job.previous_progress ?? 0).toFixed(2), request_amount: 0 })
+      setSelectedJobs(newSelectedJobs)
+      return
+    }
+
+    const amount = parseFloat(amountStr)
+    if (isNaN(amount) || amount < 0) {
+      newSelectedJobs.set(jobId, { progress: selectedJobs.get(jobId)?.progress || '', request_amount: selectedJobs.get(jobId)?.request_amount || 0 })
+      setSelectedJobs(newSelectedJobs)
+      return
+    }
+
+    const newProgress = job.totalBoq > 0 ? ((job.paid + amount) / job.totalBoq) * 100 : 0
+    newSelectedJobs.set(jobId, { progress: newProgress.toFixed(2), request_amount: amount })
     setSelectedJobs(newSelectedJobs)
   }
 
@@ -339,7 +360,7 @@ export default function CreateBillingRequestPage() {
                     <th className="px-4 py-3 text-right">คงเหลือก่อนเบิก</th>
                     <th className="px-4 py-3 text-right">คืบหน้าเดิม %</th>
                     <th className="px-4 py-3 text-right">คืบหน้าปัจจุบัน %</th>
-                    <th className="px-4 py-3 text-right">ยอดขอเบิก</th>
+                    <th className="px-4 py-3 text-right">ยอดขอเบิก (บาท)</th>
                     <th className="px-4 py-3 text-right">คงเหลือหลังเบิก</th>
                     <th className="px-4 py-3 text-center">วัสดุ</th>
                   </tr>
@@ -375,7 +396,20 @@ export default function CreateBillingRequestPage() {
                               />
                             )}
                           </td>
-                          <td className="px-4 py-3 text-right">{formatCurrency(requested)}</td>
+                          <td className="px-4 py-3 text-right">
+                            {selectedJobs.has(job.id) && (
+                              <input
+                                type="number"
+                                className="w-28 p-1 border border-gray-300 rounded-md text-right"
+                                value={selected?.request_amount || ''}
+                                onChange={(e) => handleAmountChange(job.id, job, e.target.value)}
+                                min={0}
+                                max={Math.max(0, Number(job.remaining || 0))}
+                                step="0.01"
+                                placeholder="0"
+                              />
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-right font-semibold text-emerald-700">{formatCurrency(remainingAfter)}</td>
                           <td className="px-4 py-3 text-center">
                             <button
