@@ -601,7 +601,7 @@ export default function PurchaseOrderForm({
           </div>
           <div className="col-span-2 sm:col-span-1">
             <label className={fieldLabel}>โครงการย่อย / แปลง</label>
-            <div className="mb-1.5 flex flex-wrap gap-1.5">
+            <div className="flex h-[38px] flex-wrap items-center gap-1.5">
               {(
                 [
                   ['none', 'ไม่ระบุ'],
@@ -627,26 +627,6 @@ export default function PurchaseOrderForm({
                 </button>
               ))}
             </div>
-            {isPlotsLoading ? (
-              <div className="flex items-center gap-2 text-xs text-[#86868b]">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังโหลดข้อมูลแปลง...
-              </div>
-            ) : (
-              <>
-                {plotScope === 'plot' && (
-                  <SearchableSelect options={plotOptions} value={plotId} onChange={setPlotId} placeholder="เลือกแปลง" disabled={readOnly} />
-                )}
-                {plotScope === 'group' && (
-                  <SearchableSelect
-                    options={plotGroupOptions}
-                    value={plotGroupId}
-                    onChange={setPlotGroupId}
-                    placeholder="เลือกกลุ่มแปลง"
-                    disabled={readOnly}
-                  />
-                )}
-              </>
-            )}
           </div>
           <div>
             <label className={fieldLabel}>ภาษีมูลค่าเพิ่ม</label>
@@ -682,6 +662,33 @@ export default function PurchaseOrderForm({
             />
           </div>
         </div>
+
+        {plotScope !== 'none' && (
+          <div className="mt-3 w-full sm:max-w-xs">
+            {isPlotsLoading ? (
+              <div className="flex items-center gap-2 text-xs text-[#86868b]">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังโหลดข้อมูลแปลง...
+              </div>
+            ) : plotScope === 'plot' ? (
+              <>
+                <label className={fieldLabel}>เลือกแปลง</label>
+                <SearchableSelect options={plotOptions} value={plotId} onChange={setPlotId} placeholder="เลือกแปลง" disabled={readOnly} />
+              </>
+            ) : (
+              <>
+                <label className={fieldLabel}>เลือกกลุ่มแปลง</label>
+                <SearchableSelect
+                  options={plotGroupOptions}
+                  value={plotGroupId}
+                  onChange={setPlotGroupId}
+                  placeholder="เลือกกลุ่มแปลง"
+                  disabled={readOnly}
+                />
+              </>
+            )}
+          </div>
+        )}
+
         <div className="mt-4">
           <label className={fieldLabel}>หมายเหตุ / เงื่อนไขเพิ่มเติม</label>
           <textarea
