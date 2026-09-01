@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
+import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
 import type { ActiveMaterialRow, ConsumptionReport, ConsumptionRow, LowStockRow, StockMovement, StockOverviewRow } from '@/lib/types/stock'
 
 // Stock lives under the `materials` permission, not a new module of its own -
@@ -13,21 +14,30 @@ import type { ActiveMaterialRow, ConsumptionReport, ConsumptionRow, LowStockRow,
  * means no stock_balances row exists yet (never received, withdrawn, or
  * migrated) - the page defaults to hiding these, but the flag lets it show
  * "no activity yet" instead of a plain 0 for anyone who searches for one. */
+type StockOverviewMaterialRow = { id: number; name: string; unit: string; category: string | null; is_requestable: boolean }
+type StockBalanceRow = { material_type_id: number; quantity_on_hand: number }
+
 export async function getStockOverview(): Promise<StockOverviewRow[]> {
   await requireModuleAccess('materials')
   const supabase = await createClient()
 
-  const [{ data: materials, error: matError }, { data: balances, error: balError }] = await Promise.all([
-    supabase.from('material_types').select('id, name, unit, category, is_requestable').eq('is_active', true).order('name'),
-    supabase.from('stock_balances').select('material_type_id, quantity_on_hand'),
+  // Both tables are read in full here, unpaginated by any filter narrow
+  // enough to guarantee staying under PostgREST's 1000-row default cap -
+  // material_types already crossed it once (1169 active rows silently lost
+  // everything past #1000 alphabetically), and stock_balances gets one row
+  // per material that's ever had any movement, so it's headed the same way.
+  const [materials, balances] = await Promise.all([
+    fetchAllRows<StockOverviewMaterialRow>((from, to) =>
+      supabase.from('material_types').select('id, name, unit, category, is_requestable').eq('is_active', true).order('name').range(from, to)
+    ),
+    fetchAllRows<StockBalanceRow>((from, to) =>
+      supabase.from('stock_balances').select('material_type_id, quantity_on_hand').order('material_type_id').range(from, to)
+    ),
   ])
 
-  if (matError) throw new Error(matError.message)
-  if (balError) throw new Error(balError.message)
+  const balanceByMaterial = new Map(balances.map((b) => [b.material_type_id, Number(b.quantity_on_hand)]))
 
-  const balanceByMaterial = new Map((balances || []).map((b) => [b.material_type_id, Number(b.quantity_on_hand)]))
-
-  return (materials || []).map((m) => ({
+  return materials.map((m) => ({
     material_type_id: m.id,
     name: m.name,
     unit: m.unit,

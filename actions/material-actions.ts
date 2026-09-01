@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { getCurrentUser, getCurrentUserRole, requireAuthRole } from '@/actions/_shared/user-role'
+import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
 import type {
   BoqMaterialItem,
   MaterialType,
@@ -32,11 +33,11 @@ const thaiCollator = new Intl.Collator('th', { numeric: true, sensitivity: 'base
 export async function getMaterialTypes(activeOnly = true): Promise<MaterialType[]> {
   await requireModuleAccess('materials')
   const supabase = await createClient()
-  let query = supabase.from('material_types').select('*').order('name')
-  if (activeOnly) query = query.eq('is_active', true)
-  const { data, error } = await query
-  if (error) throw new Error(error.message)
-  return data || []
+  return fetchAllRows<MaterialType>((from, to) => {
+    let query = supabase.from('material_types').select('*').order('name').range(from, to)
+    if (activeOnly) query = query.eq('is_active', true)
+    return query
+  })
 }
 
 // Each mutation below returns the affected row so the settings page can
@@ -328,10 +329,14 @@ export async function importMaterialTypes(
   // filter in the request URL, and a few hundred Thai product names (some
   // 90+ chars) blew the URL past what Cloudflare/the origin would accept,
   // failing the whole import with an opaque 520. A plain `select('name')`
-  // has no such limit and the whole catalog is a few thousand rows at most.
-  const { data: existingRows, error: existingError } = await supabase.from('material_types').select('name')
-  if (existingError) throw new Error(existingError.message)
-  const existingNames = new Set((existingRows || []).map((r) => r.name))
+  // has no such limit, but PostgREST's own default row cap (1000) still
+  // applies to a single unpaginated request - fetchAllRows pages past it,
+  // otherwise a catalog over 1000 rows silently under-reports existing
+  // names and the upsert can create a duplicate instead of updating.
+  const existingRows = await fetchAllRows<{ name: string }>((from, to) =>
+    supabase.from('material_types').select('name').order('id').range(from, to)
+  )
+  const existingNames = new Set(existingRows.map((r) => r.name))
 
   const CHUNK_SIZE = 200
   let inserted = 0
