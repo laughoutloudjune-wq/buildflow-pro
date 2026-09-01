@@ -319,7 +319,10 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
       <div class="card">
         <div class="card-label">รายละเอียดคำสั่งซื้อ</div>
         ${kv('โครงการ', esc(order.projects?.name) || '-')}
-        ${kv('โครงการย่อย / แปลง', esc(order.plots?.name) || '-')}
+        ${kv(
+          'โครงการย่อย / แปลง',
+          esc(order.plots?.name) || (order.plot_groups?.name ? `กลุ่ม ${esc(order.plot_groups.name)}` : '') || '-'
+        )}
         ${order.purchase_requests?.pr_no ? kv('อ้างอิงใบขอซื้อ', `PR-${order.purchase_requests.pr_no}`) : ''}
         ${kv('ผู้ขอซื้อ', esc(order.creator?.full_name) || '-')}
         ${kv('เงื่อนไขชำระเงิน', esc(order.payment_terms) || 'ไม่ระบุ', { strong: true })}

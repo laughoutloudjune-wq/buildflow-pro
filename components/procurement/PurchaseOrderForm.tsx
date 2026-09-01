@@ -13,7 +13,7 @@ import SupplierFormFields from '@/components/procurement/SupplierFormFields'
 import { appleCard, appleCardLabel, appleDivider } from '@/components/procurement/appleTheme'
 import { getProjects } from '@/actions/project-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
-import { getMaterialTypes } from '@/actions/material-actions'
+import { getMaterialTypes, getPlotGroups } from '@/actions/material-actions'
 import {
   getSuppliers,
   getCompanies,
@@ -23,8 +23,10 @@ import {
   updatePurchaseOrder,
   getPurchaseRequestById,
 } from '@/actions/procurement-actions'
-import type { MaterialType } from '@/lib/types/materials'
+import type { MaterialType, PlotGroup } from '@/lib/types/materials'
 import type { Supplier, Company, SupplierInput, VatType, DiscountType, PurchaseOrder } from '@/lib/types/procurement'
+
+type PlotScope = 'none' | 'plot' | 'group'
 
 // Combined rate+type in one control (no second dropdown) - each option
 // carries both the percent and whether it's added on top or already baked
@@ -111,12 +113,16 @@ export default function PurchaseOrderForm({
 
   const [projects, setProjects] = useState<{ id: string; name: string; location: string | null }[]>([])
   const [plots, setPlots] = useState<{ id: string; name: string }[]>([])
+  const [plotGroups, setPlotGroups] = useState<PlotGroup[]>([])
+  const [isPlotsLoading, setIsPlotsLoading] = useState(false)
   const [materials, setMaterials] = useState<MaterialType[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
 
   const [projectId, setProjectId] = useState('')
+  const [plotScope, setPlotScope] = useState<PlotScope>('none')
   const [plotId, setPlotId] = useState('')
+  const [plotGroupId, setPlotGroupId] = useState('')
   const [supplierId, setSupplierId] = useState('')
   const [companyId, setCompanyId] = useState('')
   const [vatOption, setVatOption] = useState('vat7_exclusive')
@@ -158,7 +164,13 @@ export default function PurchaseOrderForm({
 
       if (mode === 'edit' && initialOrder) {
         setProjectId(initialOrder.project_id)
-        setPlotId(initialOrder.plot_id || '')
+        if (initialOrder.plot_group_id) {
+          setPlotScope('group')
+          setPlotGroupId(initialOrder.plot_group_id)
+        } else if (initialOrder.plot_id) {
+          setPlotScope('plot')
+          setPlotId(initialOrder.plot_id)
+        }
         setSupplierId(initialOrder.supplier_id)
         setCompanyId(initialOrder.company_id)
         setOrderDate(initialOrder.order_date)
@@ -195,7 +207,10 @@ export default function PurchaseOrderForm({
         const pr = await getPurchaseRequestById(fromRequestId)
         if (pr) {
           setProjectId(pr.project_id)
-          setPlotId(pr.plot_id || '')
+          if (pr.plot_id) {
+            setPlotScope('plot')
+            setPlotId(pr.plot_id)
+          }
           setLines(
             (pr.purchase_request_items || []).map((item) => ({
               material_type_id: item.material_type_id,
@@ -218,9 +233,18 @@ export default function PurchaseOrderForm({
   useEffect(() => {
     if (!projectId) {
       setPlots([])
+      setPlotGroups([])
       return
     }
-    void getPlotsByProjectId(projectId).then((p) => setPlots(p as any))
+    setIsPlotsLoading(true)
+    Promise.all([getPlotsByProjectId(projectId), getPlotGroups(projectId)])
+      .then(([p, g]) => {
+        setPlots((p as any) || [])
+        setPlotGroups(g)
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : 'โหลดข้อมูลแปลงไม่สำเร็จ'))
+      .finally(() => setIsPlotsLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
   // Prefill the delivery address from the project's location, but only while
@@ -336,6 +360,8 @@ export default function PurchaseOrderForm({
     if (!projectId) return toast.error('กรุณาเลือกโครงการ')
     if (!supplierId) return toast.error('กรุณาเลือกผู้จำหน่าย')
     if (!companyId) return toast.error('กรุณาเลือกบริษัทผู้ซื้อ')
+    if (plotScope === 'plot' && !plotId) return toast.error('กรุณาเลือกแปลง')
+    if (plotScope === 'group' && !plotGroupId) return toast.error('กรุณาเลือกกลุ่มแปลง')
     const validLines = lines.filter((l) => l.material_type_id && Number(l.quantity_ordered) > 0)
     if (validLines.length === 0) return toast.error('กรุณาเพิ่มรายการวัสดุอย่างน้อย 1 รายการ')
 
@@ -343,7 +369,8 @@ export default function PurchaseOrderForm({
       supplier_id: supplierId,
       company_id: companyId,
       project_id: projectId,
-      plot_id: plotId || null,
+      plot_id: plotScope === 'plot' ? plotId : null,
+      plot_group_id: plotScope === 'group' ? plotGroupId : null,
       purchase_request_id: fromRequestId || null,
       order_date: orderDate,
       expected_delivery_date: expectedDeliveryDate || null,
@@ -383,6 +410,11 @@ export default function PurchaseOrderForm({
   const materialOptions = materials.map((m) => ({ value: String(m.id), label: `${m.name} (${m.unit})` }))
   const projectOptions = projects.map((p) => ({ value: p.id, label: p.name, sublabel: p.location || undefined }))
   const plotOptions = plots.map((p) => ({ value: p.id, label: p.name }))
+  const plotGroupOptions = plotGroups.map((g) => ({
+    value: g.id,
+    label: g.name,
+    sublabel: `${g.member_plot_names.length} แปลง: ${g.member_plot_names.join(', ')}`,
+  }))
   const supplierOptions = suppliers.map((s) => ({ value: s.id, label: s.name }))
   const companyOptions = companies.map((c) => ({ value: c.id, label: c.name }))
 
@@ -567,9 +599,54 @@ export default function PurchaseOrderForm({
             <label className={fieldLabel}>โครงการ</label>
             <SearchableSelect options={projectOptions} value={projectId} onChange={setProjectId} placeholder="เลือกโครงการ" disabled={readOnly} />
           </div>
-          <div>
+          <div className="col-span-2 sm:col-span-1">
             <label className={fieldLabel}>โครงการย่อย / แปลง</label>
-            <SearchableSelect options={plotOptions} value={plotId} onChange={setPlotId} placeholder="ไม่ระบุ" disabled={readOnly || !projectId} />
+            <div className="mb-1.5 flex flex-wrap gap-1.5">
+              {(
+                [
+                  ['none', 'ไม่ระบุ'],
+                  ['plot', 'แปลงเดียว'],
+                  ['group', 'ทั้งกลุ่ม (หลายแปลง)'],
+                ] as [PlotScope, string][]
+              ).map(([scope, label]) => (
+                <button
+                  key={scope}
+                  type="button"
+                  onClick={() => setPlotScope(scope)}
+                  disabled={
+                    readOnly ||
+                    !projectId ||
+                    (scope === 'plot' && plots.length === 0) ||
+                    (scope === 'group' && plotGroups.length === 0)
+                  }
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                    plotScope === scope ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {isPlotsLoading ? (
+              <div className="flex items-center gap-2 text-xs text-[#86868b]">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังโหลดข้อมูลแปลง...
+              </div>
+            ) : (
+              <>
+                {plotScope === 'plot' && (
+                  <SearchableSelect options={plotOptions} value={plotId} onChange={setPlotId} placeholder="เลือกแปลง" disabled={readOnly} />
+                )}
+                {plotScope === 'group' && (
+                  <SearchableSelect
+                    options={plotGroupOptions}
+                    value={plotGroupId}
+                    onChange={setPlotGroupId}
+                    placeholder="เลือกกลุ่มแปลง"
+                    disabled={readOnly}
+                  />
+                )}
+              </>
+            )}
           </div>
           <div>
             <label className={fieldLabel}>ภาษีมูลค่าเพิ่ม</label>

@@ -98,6 +98,7 @@ export type PurchaseOrder = {
   company_id: string
   project_id: string
   plot_id: string | null
+  plot_group_id: string | null
   purchase_request_id: string | null
   status: PurchaseOrderStatus
   order_date: string
@@ -124,6 +125,7 @@ export type PurchaseOrder = {
   companies?: Company | null
   projects?: { name: string; location: string | null } | null
   plots?: { name: string } | null
+  plot_groups?: { name: string } | null
   purchase_requests?: { pr_no: number } | null
   creator?: { full_name: string | null } | null
   receiver?: { full_name: string | null } | null
@@ -146,6 +148,7 @@ export type PurchaseOrderInput = {
   company_id: string
   project_id: string
   plot_id?: string | null
+  plot_group_id?: string | null
   purchase_request_id?: string | null
   order_date?: string
   expected_delivery_date?: string | null
