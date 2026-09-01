@@ -13,7 +13,7 @@ import SupplierFormFields from '@/components/procurement/SupplierFormFields'
 import { appleCard, appleCardLabel, appleDivider } from '@/components/procurement/appleTheme'
 import { getProjects } from '@/actions/project-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
-import { getMaterialTypes, getPlotGroups } from '@/actions/material-actions'
+import { getMaterialTypes, getPlotGroups, createMaterialType } from '@/actions/material-actions'
 import {
   getSuppliers,
   getCompanies,
@@ -64,6 +64,7 @@ const emptySupplierDraft: SupplierInput = {
   payment_terms: '',
 }
 const emptyCompanyDraft = { name: '', tax_id: '', address: '', phone: '' }
+const emptyMaterialDraft = { name: '', unit: '', category: '', price: '' }
 
 type Line = {
   material_type_id: number
@@ -147,6 +148,11 @@ export default function PurchaseOrderForm({
   const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false)
   const [companyDraft, setCompanyDraft] = useState(emptyCompanyDraft)
   const [isSavingCompany, setIsSavingCompany] = useState(false)
+
+  const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false)
+  const [materialDraft, setMaterialDraft] = useState(emptyMaterialDraft)
+  const [isSavingMaterial, setIsSavingMaterial] = useState(false)
+  const [materialModalLineIndex, setMaterialModalLineIndex] = useState<number | null>(null)
 
   useEffect(() => {
     void bootstrap()
@@ -305,6 +311,49 @@ export default function PurchaseOrderForm({
       toast.error(error instanceof Error ? error.message : 'เพิ่มบริษัทไม่สำเร็จ')
     } finally {
       setIsSavingCompany(false)
+    }
+  }
+
+  function openMaterialModal(lineIndex: number) {
+    setMaterialModalLineIndex(lineIndex)
+    setMaterialDraft(emptyMaterialDraft)
+    setIsMaterialModalOpen(true)
+  }
+
+  async function handleCreateMaterial() {
+    if (!materialDraft.name.trim()) {
+      toast.error('กรุณาใส่ชื่อวัสดุ')
+      return
+    }
+    if (!materialDraft.unit.trim()) {
+      toast.error('กรุณาใส่หน่วยนับ')
+      return
+    }
+    const price = parseFloat(materialDraft.price)
+    if (materialDraft.price.trim() !== '' && (!Number.isFinite(price) || price < 0)) {
+      toast.error('กรุณาใส่ราคาที่ถูกต้อง')
+      return
+    }
+    setIsSavingMaterial(true)
+    try {
+      const created = await createMaterialType(
+        materialDraft.name,
+        materialDraft.unit,
+        Number.isFinite(price) ? price : 0,
+        materialDraft.category
+      )
+      setMaterials((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name, 'th')))
+      if (materialModalLineIndex !== null) {
+        updateLine(materialModalLineIndex, { material_type_id: created.id })
+      }
+      setIsMaterialModalOpen(false)
+      setMaterialDraft(emptyMaterialDraft)
+      setMaterialModalLineIndex(null)
+      toast.success('เพิ่มวัสดุใหม่แล้ว')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'เพิ่มวัสดุไม่สำเร็จ')
+    } finally {
+      setIsSavingMaterial(false)
     }
   }
 
@@ -797,13 +846,26 @@ export default function PurchaseOrderForm({
                     <tr key={i} className="align-top">
                       <td className="px-3 py-2 text-slate-400">{i + 1}</td>
                       <td className="px-3 py-2">
-                        <SearchableSelect
-                          options={materialOptions}
-                          value={line.material_type_id ? String(line.material_type_id) : ''}
-                          onChange={(v) => updateLine(i, { material_type_id: Number(v) })}
-                          placeholder="เลือกวัสดุ"
-                          disabled={readOnly}
-                        />
+                        <div className="flex items-center gap-1">
+                          <SearchableSelect
+                            className="flex-1"
+                            options={materialOptions}
+                            value={line.material_type_id ? String(line.material_type_id) : ''}
+                            onChange={(v) => updateLine(i, { material_type_id: Number(v) })}
+                            placeholder="เลือกวัสดุ"
+                            disabled={readOnly}
+                          />
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              onClick={() => openMaterialModal(i)}
+                              title="เพิ่มวัสดุใหม่"
+                              className="shrink-0 rounded p-1.5 text-indigo-600 hover:bg-indigo-50"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
                         <input
                           value={line.description}
                           onChange={(e) => updateLine(i, { description: e.target.value })}
@@ -968,6 +1030,74 @@ export default function PurchaseOrderForm({
             </Button>
             <Button type="button" onClick={handleCreateCompany} disabled={isSavingCompany}>
               {isSavingCompany ? <Loader2 className="h-4 w-4 animate-spin" /> : 'บันทึกและเลือก'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isMaterialModalOpen}
+        onClose={() => {
+          setIsMaterialModalOpen(false)
+          setMaterialModalLineIndex(null)
+        }}
+        title="เพิ่มวัสดุใหม่"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className={fieldLabel}>ชื่อวัสดุ</label>
+            <input
+              value={materialDraft.name}
+              onChange={(e) => setMaterialDraft({ ...materialDraft, name: e.target.value })}
+              className="w-full"
+              placeholder="เช่น ปูนซีเมนต์ปอร์ตแลนด์"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={fieldLabel}>หน่วยนับ</label>
+              <input
+                value={materialDraft.unit}
+                onChange={(e) => setMaterialDraft({ ...materialDraft, unit: e.target.value })}
+                className="w-full"
+                placeholder="เช่น ถุง, ลบ.ม., ตัน"
+              />
+            </div>
+            <div>
+              <label className={fieldLabel}>ราคา/หน่วย (บาท)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={materialDraft.price}
+                onChange={(e) => setMaterialDraft({ ...materialDraft, price: e.target.value })}
+                className="w-full"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+          <div>
+            <label className={fieldLabel}>หมวดหมู่ (ถ้ามี)</label>
+            <input
+              value={materialDraft.category}
+              onChange={(e) => setMaterialDraft({ ...materialDraft, category: e.target.value })}
+              className="w-full"
+              placeholder="เช่น ปูน-คอนกรีต"
+            />
+          </div>
+          <div className="flex justify-end gap-3 border-t pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setIsMaterialModalOpen(false)
+                setMaterialModalLineIndex(null)
+              }}
+            >
+              ยกเลิก
+            </Button>
+            <Button type="button" onClick={handleCreateMaterial} disabled={isSavingMaterial}>
+              {isSavingMaterial ? <Loader2 className="h-4 w-4 animate-spin" /> : 'บันทึกและเลือก'}
             </Button>
           </div>
         </div>
