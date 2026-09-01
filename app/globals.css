@@ -66,3 +66,37 @@ body {
 
 /* Consistency guardrail: bare `rounded` (4px) should not be used for buttons,
    inputs, or cards — use rounded-lg (controls) or rounded-xl (cards/panels). */
+
+/* Toast entrance (components/ui/Toast.tsx). Slides up on mobile where the
+   viewport is bottom-anchored, in from the right on wider screens. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (min-width: 640px) {
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(16px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+  }
+}
+
+/* Respect users who have asked the OS to reduce motion. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes toast-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}

@@ -12,6 +12,9 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
+  ShoppingCart,
+  Truck,
+  Package,
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -49,6 +52,17 @@ const menuSections: SidebarSection[] = [
       { icon: HardHat, label: 'ตรวจหน้างาน (Foreman)', href: '/dashboard/foreman/create-progress', permission: 'foreman' as const },
       { icon: FileText, label: 'รายการเบิกจ่าย (For PM)', href: '/dashboard/billing', permission: 'billing' as const },
     ],
+  },
+  {
+    title: 'จัดซื้อ',
+    items: [
+      { icon: ShoppingCart, label: 'คำขอซื้อ', href: '/dashboard/procurement/requests', permission: 'procurement' as const },
+      { icon: Truck, label: 'ใบสั่งซื้อ', href: '/dashboard/procurement/orders', permission: 'procurement' as const },
+    ],
+  },
+  {
+    title: 'สต็อก',
+    items: [{ icon: Package, label: 'สต็อกวัสดุ', href: '/dashboard/stock', permission: 'materials' as const }],
   },
   {
     title: 'รายงาน',

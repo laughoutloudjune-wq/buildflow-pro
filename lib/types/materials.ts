@@ -2,10 +2,20 @@ export type MaterialType = {
   id: number
   name: string
   unit: string
+  category: string | null
   current_price: number
   price_updated_at: string | null
   price_updated_by: string | null
+  is_active: boolean
   created_at: string
+  /** Reorder threshold for the low-stock report - null means no threshold
+   * has been set yet, distinct from a threshold of 0. */
+  reorder_point: number | null
+  /** False for bulk consumables (e.g. อิฐมวลเบา, ปูนถุง) that get used
+   * immediately on delivery rather than warehoused for a later withdrawal -
+   * receiving still counts, but stock_request_create refuses to withdraw
+   * these. Defaults to true; most of the catalog is discretely trackable. */
+  is_requestable: boolean
 }
 
 export type BoqMaterialItem = {

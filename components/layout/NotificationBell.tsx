@@ -14,6 +14,9 @@ const TYPE_LABEL: Record<NotificationItem['type'], string> = {
   new_request: 'มีคำขอเบิกใหม่รอตรวจสอบ',
   billing_approved: 'คำขอเบิกได้รับการอนุมัติ',
   billing_rejected: 'คำขอเบิกถูกปฏิเสธ',
+  pr_pending_review: 'มีใบขอซื้อใหม่รอตรวจสอบ',
+  pr_approved: 'ใบขอซื้อได้รับการอนุมัติ',
+  pr_rejected: 'ใบขอซื้อถูกปฏิเสธ',
 }
 
 const POLL_INTERVAL_MS = 45_000
@@ -30,6 +33,11 @@ function timeAgo(iso: string): string {
 }
 
 function notificationSubtitle(item: NotificationItem): string {
+  if (item.purchase_request) {
+    const pr = item.purchase_request
+    const parts = [pr.pr_no != null ? `#${String(pr.pr_no).padStart(4, '0')}` : null, pr.project_name].filter(Boolean)
+    return parts.join(' • ')
+  }
   const billing = item.billing
   if (!billing) return ''
   const parts = [
@@ -82,6 +90,7 @@ export default function NotificationBell({ role }: { role?: string }) {
   }, [open])
 
   const linkFor = (item: NotificationItem): string | null => {
+    if (item.purchase_request) return `/dashboard/procurement/requests/${item.purchase_request.id}`
     if (!item.billing) return null
     return role === 'foreman' ? '/dashboard/foreman/history' : `/dashboard/billing/${item.billing.id}/review`
   }

@@ -1,18 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect, useTransition, useCallback } from 'react'
-import { Card } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { PageHeader } from '@/components/ui/PageHeader'
-import PageLoading from '@/components/ui/PageLoading'
-import NoticeBanner from '@/components/ui/NoticeBanner'
-import {
-  getOrganizationSettings,
-  updateOrganizationSettings,
-  getUsers,
-  updateUserRole,
-} from '@/actions/settings-actions'
 import {
   Building2,
   Banknote,
@@ -20,420 +8,109 @@ import {
   Hammer,
   ShieldCheck,
   ChevronRight,
-  ImageIcon,
   Boxes,
+  Truck,
+  Landmark,
+  type LucideIcon,
 } from 'lucide-react'
+import { PageHeader } from '@/components/ui/PageHeader'
 
-type Settings = Awaited<ReturnType<typeof getOrganizationSettings>>
-type User = Awaited<ReturnType<typeof getUsers>>[0]
-type TabKey = 'company' | 'financial' | 'users'
-
-const inputClass =
-  'mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20'
-
-const TabButton = ({
-  label,
-  icon,
-  isActive,
-  onClick,
-}: {
+type SettingsLink = {
+  href: string
   label: string
-  icon: React.ReactNode
-  isActive: boolean
-  onClick: () => void
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={`flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-      isActive
-        ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/80'
-        : 'text-slate-600 hover:bg-white/60 hover:text-slate-900'
-    }`}
-  >
-    {icon}
-    {label}
-  </button>
-)
+  description: string
+  icon: LucideIcon
+  tone: 'amber' | 'indigo' | 'emerald' | 'sky' | 'violet' | 'rose'
+}
 
-const roleSelectClass =
-  'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50'
+type SettingsGroup = {
+  title: string
+  description: string
+  links: SettingsLink[]
+}
+
+const TONE_CLASSES: Record<SettingsLink['tone'], { chip: string; hover: string; hoverIcon: string }> = {
+  amber: { chip: 'bg-amber-100 text-amber-700', hover: 'hover:border-amber-200 hover:bg-amber-50/50', hoverIcon: 'group-hover:text-amber-600' },
+  indigo: { chip: 'bg-indigo-100 text-indigo-700', hover: 'hover:border-indigo-200 hover:bg-indigo-50/50', hoverIcon: 'group-hover:text-indigo-600' },
+  emerald: { chip: 'bg-emerald-100 text-emerald-700', hover: 'hover:border-emerald-200 hover:bg-emerald-50/50', hoverIcon: 'group-hover:text-emerald-600' },
+  sky: { chip: 'bg-sky-100 text-sky-700', hover: 'hover:border-sky-200 hover:bg-sky-50/50', hoverIcon: 'group-hover:text-sky-600' },
+  violet: { chip: 'bg-violet-100 text-violet-700', hover: 'hover:border-violet-200 hover:bg-violet-50/50', hoverIcon: 'group-hover:text-violet-600' },
+  rose: { chip: 'bg-rose-100 text-rose-700', hover: 'hover:border-rose-200 hover:bg-rose-50/50', hoverIcon: 'group-hover:text-rose-600' },
+}
+
+// Every setting is grouped by which module it actually serves, and every
+// setting is its own page - this used to be a flat card grid plus a
+// separate tab bar with two forms bolted directly onto this index page,
+// which meant half the settings followed a different navigation pattern
+// than the other half. One consistent pattern now: this page only links out.
+const SETTINGS_GROUPS: SettingsGroup[] = [
+  {
+    title: 'จัดซื้อ',
+    description: 'ข้อมูลที่ใช้ในใบขอซื้อและใบสั่งซื้อ',
+    links: [
+      { href: '/dashboard/settings/suppliers', label: 'ผู้จำหน่าย', description: 'จัดการรายชื่อผู้จำหน่ายวัสดุ', icon: Truck, tone: 'sky' },
+      { href: '/dashboard/settings/companies', label: 'บริษัทในเครือ', description: 'รายชื่อนิติบุคคล โลโก้ และลายเซ็นที่ใช้ซื้อวัสดุ', icon: Landmark, tone: 'violet' },
+      { href: '/dashboard/settings/materials', label: 'รายการวัสดุ', description: 'จัดการชื่อ หน่วย และราคาวัสดุที่ใช้อ้างอิง', icon: Boxes, tone: 'emerald' },
+    ],
+  },
+  {
+    title: 'ผู้รับเหมาและงานเบิกจ่าย',
+    description: 'ข้อมูลที่ใช้ในใบเบิกและงานผู้รับเหมา',
+    links: [
+      { href: '/dashboard/settings/contractor-types', label: 'ประเภทผู้รับเหมา', description: 'จัดการประเภทช่างที่ใช้ในระบบ', icon: Hammer, tone: 'amber' },
+      { href: '/dashboard/settings/billing-info', label: 'ข้อมูลใบเบิก', description: 'ชื่อบริษัทและเลขผู้เสียภาษีบนหัวกระดาษใบเบิก', icon: Building2, tone: 'rose' },
+      { href: '/dashboard/settings/financial-defaults', label: 'ค่าเริ่มต้นทางการเงิน', description: 'VAT, หัก ณ ที่จ่าย, เงินประกันผลงานเริ่มต้น', icon: Banknote, tone: 'emerald' },
+    ],
+  },
+  {
+    title: 'ระบบ',
+    description: 'ผู้ใช้งานและสิทธิ์การเข้าถึง',
+    links: [
+      { href: '/dashboard/settings/users', label: 'ผู้ใช้และบทบาท', description: 'กำหนดบทบาท Admin / PM / Foreman ของแต่ละคน', icon: Users, tone: 'indigo' },
+      { href: '/dashboard/settings/permissions', label: 'สิทธิ์ตามบทบาท', description: 'กำหนดว่าแต่ละตำแหน่งเข้าโมดูลไหนได้', icon: ShieldCheck, tone: 'indigo' },
+    ],
+  },
+]
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabKey>('company')
-  const [settings, setSettings] = useState<Settings | null>(null)
-  const [users, setUsers] = useState<User[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
-  const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
-
-  const loadData = useCallback(async () => {
-    setIsLoading(true)
-    setLoadError(null)
-    try {
-      const [settingsData, usersData] = await Promise.all([getOrganizationSettings(), getUsers()])
-      setSettings(settingsData)
-      setUsers(usersData)
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
-
-  const handleSettingsUpdate = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const formData = new FormData(event.currentTarget)
-
-    startTransition(async () => {
-      setNotice(null)
-      try {
-        await updateOrganizationSettings(formData)
-        setNotice({ tone: 'success', message: 'บันทึกการตั้งค่าเรียบร้อยแล้ว' })
-      } catch (e) {
-        setNotice({ tone: 'error', message: e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ' })
-      }
-    })
-  }
-
-  const handleRoleChange = (userId: string, newRole: 'admin' | 'pm' | 'foreman') => {
-    startTransition(async () => {
-      setNotice(null)
-      try {
-        await updateUserRole(userId, newRole)
-        setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)))
-        const target = users.find((u) => u.id === userId)
-        setNotice({
-          tone: 'success',
-          message: `อัปเดตบทบาทแล้ว: ${target?.email || target?.full_name || userId}`,
-        })
-      } catch (e) {
-        setNotice({ tone: 'error', message: e instanceof Error ? e.message : 'อัปเดตบทบาทไม่สำเร็จ' })
-      }
-    })
-  }
-
-  if (isLoading) {
-    return (
-      <div className="mx-auto max-w-5xl px-2 sm:px-0">
-        <PageLoading label="กำลังโหลดการตั้งค่า..." />
-      </div>
-    )
-  }
-
-  if (loadError && !settings) {
-    return (
-      <div className="mx-auto max-w-lg space-y-4 px-2 sm:px-0">
-        <NoticeBanner tone="error" message={loadError} />
-        <Button type="button" onClick={() => void loadData()} className="w-full">
-          ลองโหลดใหม่
-        </Button>
-      </div>
-    )
-  }
-
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader
-        title="ตั้งค่าระบบ"
-        subtitle="ข้อมูลบริษัท ค่าเริ่มต้นทางบัญชี การจัดการผู้ใช้ และลิงก์ไปยังตั้งค่าเพิ่มเติม"
-      />
+      <PageHeader title="ตั้งค่าระบบ" subtitle="ข้อมูลบริษัท ค่าเริ่มต้นทางบัญชี การจัดการผู้ใช้ และการตั้งค่าทั้งหมดของระบบ" />
 
-      {notice ? (
-        <NoticeBanner tone={notice.tone} message={notice.message} onClose={() => setNotice(null)} />
-      ) : null}
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Link
-          href="/dashboard/settings/contractor-types"
-          className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-amber-200 hover:bg-amber-50/50"
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
-              <Hammer className="h-5 w-5" aria-hidden />
+      <div className="space-y-5">
+        {SETTINGS_GROUPS.map((group) => (
+          <div key={group.title}>
+            <div className="mb-2 flex items-baseline gap-2">
+              <h2 className="text-sm font-semibold text-slate-700">{group.title}</h2>
+              <span className="text-xs text-slate-400">{group.description}</span>
             </div>
-            <div>
-              <div className="font-semibold text-slate-900">ประเภทผู้รับเหมา</div>
-              <div className="text-xs text-slate-500">จัดการประเภทช่างที่ใช้ในระบบ</div>
-            </div>
-          </div>
-          <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:text-amber-600" aria-hidden />
-        </Link>
-        <Link
-          href="/dashboard/settings/permissions"
-          className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50/50"
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
-              <ShieldCheck className="h-5 w-5" aria-hidden />
-            </div>
-            <div>
-              <div className="font-semibold text-slate-900">สิทธิ์ตามบทบาท</div>
-              <div className="text-xs text-slate-500">กำหนดว่าแต่ละตำแหน่งเข้าโมดูลไหนได้</div>
-            </div>
-          </div>
-          <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:text-indigo-600" aria-hidden />
-        </Link>
-        <Link
-          href="/dashboard/settings/materials"
-          className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50/50"
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
-              <Boxes className="h-5 w-5" aria-hidden />
-            </div>
-            <div>
-              <div className="font-semibold text-slate-900">รายการวัสดุ</div>
-              <div className="text-xs text-slate-500">จัดการชื่อ หน่วย และราคาวัสดุที่ใช้อ้างอิง</div>
-            </div>
-          </div>
-          <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:text-emerald-600" aria-hidden />
-        </Link>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-1.5">
-        <div className="flex gap-1 overflow-x-auto pb-0.5 sm:flex-wrap sm:overflow-visible">
-          <TabButton
-            label="ข้อมูลบริษัท"
-            icon={<Building2 className="h-4 w-4" aria-hidden />}
-            isActive={activeTab === 'company'}
-            onClick={() => setActiveTab('company')}
-          />
-          <TabButton
-            label="ค่าเริ่มต้นทางการเงิน"
-            icon={<Banknote className="h-4 w-4" aria-hidden />}
-            isActive={activeTab === 'financial'}
-            onClick={() => setActiveTab('financial')}
-          />
-          <TabButton
-            label="ผู้ใช้และบทบาท"
-            icon={<Users className="h-4 w-4" aria-hidden />}
-            isActive={activeTab === 'users'}
-            onClick={() => setActiveTab('users')}
-          />
-        </div>
-      </div>
-
-      <form onSubmit={handleSettingsUpdate}>
-        {activeTab === 'company' && (
-          <Card className="border-slate-200 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">ข้อมูลบริษัท</h2>
-            <p className="mt-1 text-sm text-slate-500">ใช้แสดงในเอกสารและหัวกระดาษเมื่อพิมพ์</p>
-            <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
-              <div>
-                <label htmlFor="company_name" className="text-sm font-medium text-slate-700">
-                  ชื่อบริษัท
-                </label>
-                <input
-                  id="company_name"
-                  type="text"
-                  name="company_name"
-                  defaultValue={settings?.company_name || ''}
-                  className={inputClass}
-                  autoComplete="organization"
-                />
-              </div>
-              <div>
-                <label htmlFor="tax_id" className="text-sm font-medium text-slate-700">
-                  เลขประจำตัวผู้เสียภาษี
-                </label>
-                <input
-                  id="tax_id"
-                  type="text"
-                  name="tax_id"
-                  defaultValue={settings?.tax_id || ''}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label htmlFor="phone" className="text-sm font-medium text-slate-700">
-                  โทรศัพท์
-                </label>
-                <input
-                  id="phone"
-                  type="text"
-                  name="phone"
-                  defaultValue={settings?.phone || ''}
-                  className={inputClass}
-                  autoComplete="tel"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label htmlFor="address" className="text-sm font-medium text-slate-700">
-                  ที่อยู่
-                </label>
-                <textarea
-                  id="address"
-                  name="address"
-                  defaultValue={settings?.address || ''}
-                  rows={3}
-                  className={inputClass}
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label htmlFor="logo_url" className="text-sm font-medium text-slate-700">
-                  โลโก้บริษัท
-                </label>
-                <div className="mt-2 flex flex-col gap-4 rounded-lg border border-dashed border-slate-200 bg-slate-50/80 p-4 sm:flex-row sm:items-center">
-                  {settings?.logo_url ? (
-                    <div className="flex shrink-0 items-center gap-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={settings.logo_url}
-                        alt="โลโก้บริษัท"
-                        className="h-16 w-auto max-w-[200px] rounded-md border border-slate-200 bg-white object-contain p-1"
-                      />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {group.links.map((link) => {
+                const Icon = link.icon
+                const tone = TONE_CLASSES[link.tone]
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={`group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition ${tone.hover}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${tone.chip}`}>
+                        <Icon className="h-5 w-5" aria-hidden />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-slate-900">{link.label}</div>
+                        <div className="text-xs text-slate-500">{link.description}</div>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="flex h-16 w-24 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400">
-                      <ImageIcon className="h-8 w-8" aria-hidden />
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <input
-                      id="logo_url"
-                      type="file"
-                      name="logo_url"
-                      accept="image/*"
-                      className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-indigo-700 hover:file:bg-indigo-100"
-                    />
-                    <p className="mt-1.5 text-xs text-slate-500">รองรับไฟล์ภาพทั่วไป (ขึ้นกับการตั้งค่าเก็บไฟล์ของระบบ)</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="mt-8 flex justify-end border-t border-slate-100 pt-6">
-              <Button type="submit" disabled={isPending}>
-                {isPending ? 'กำลังบันทึก...' : 'บันทึกข้อมูลบริษัท'}
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {activeTab === 'financial' && (
-          <Card className="border-slate-200 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">ค่าเริ่มต้นทางการเงิน</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              ใช้เป็นค่าเริ่มต้นเมื่อสร้างหรือตรวจใบเบิก (ปรับรายใบได้ภายหลัง)
-            </p>
-            <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-3">
-              <div>
-                <label htmlFor="default_vat" className="text-sm font-medium text-slate-700">
-                  VAT เริ่มต้น (%)
-                </label>
-                <input
-                  id="default_vat"
-                  type="number"
-                  step="0.01"
-                  name="default_vat"
-                  defaultValue={settings?.default_vat ?? 0}
-                  className={inputClass}
-                  min={0}
-                />
-              </div>
-              <div>
-                <label htmlFor="default_wht" className="text-sm font-medium text-slate-700">
-                  หัก ณ ที่จ่าย เริ่มต้น (%)
-                </label>
-                <input
-                  id="default_wht"
-                  type="number"
-                  step="0.01"
-                  name="default_wht"
-                  defaultValue={settings?.default_wht ?? 0}
-                  className={inputClass}
-                  min={0}
-                />
-              </div>
-              <div>
-                <label htmlFor="default_retention" className="text-sm font-medium text-slate-700">
-                  เงินประกันผลงาน เริ่มต้น (%)
-                </label>
-                <input
-                  id="default_retention"
-                  type="number"
-                  step="0.01"
-                  name="default_retention"
-                  defaultValue={settings?.default_retention ?? 0}
-                  className={inputClass}
-                  min={0}
-                />
-              </div>
-            </div>
-            <div className="mt-8 flex justify-end border-t border-slate-100 pt-6">
-              <Button type="submit" disabled={isPending}>
-                {isPending ? 'กำลังบันทึก...' : 'บันทึกค่าเริ่มต้น'}
-              </Button>
-            </div>
-          </Card>
-        )}
-      </form>
-
-      {activeTab === 'users' && (
-        <Card className="border-slate-200 p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">ผู้ใช้และบทบาท</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            บทบาทหลัก (Admin / PM / Foreman) ใช้ร่วมกับเมทริกซ์สิทธิ์ในเมนู &quot;สิทธิ์ตามบทบาท&quot;
-          </p>
-          <div className="mt-6 overflow-hidden rounded-xl border border-slate-200">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                      ชื่อ
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                      อีเมล
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                      บทบาท
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {users.length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="px-4 py-12 text-center text-slate-500">
-                        ยังไม่พบผู้ใช้ในระบบ
-                      </td>
-                    </tr>
-                  ) : (
-                    users.map((user) => (
-                      <tr key={user.id} className="transition hover:bg-slate-50/80">
-                        <td className="whitespace-nowrap px-4 py-3.5 font-medium text-slate-900">
-                          {user.full_name || '—'}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3.5 text-slate-600">{user.email || '—'}</td>
-                        <td className="whitespace-nowrap px-4 py-3.5">
-                          <select
-                            value={user.role || 'foreman'}
-                            onChange={(e) =>
-                              handleRoleChange(user.id, e.target.value as 'admin' | 'pm' | 'foreman')
-                            }
-                            disabled={isPending}
-                            className={roleSelectClass}
-                            aria-label={`บทบาทของ ${user.email || user.full_name || user.id}`}
-                          >
-                            <option value="admin">Admin</option>
-                            <option value="pm">Project Manager</option>
-                            <option value="foreman">Foreman</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    <ChevronRight className={`h-5 w-5 text-slate-400 transition ${tone.hoverIcon}`} aria-hidden />
+                  </Link>
+                )
+              })}
             </div>
           </div>
-        </Card>
-      )}
+        ))}
+      </div>
     </div>
   )
 }

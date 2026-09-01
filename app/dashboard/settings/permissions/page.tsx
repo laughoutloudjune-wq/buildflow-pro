@@ -5,7 +5,7 @@ import { ArrowLeft, Info, Save, ShieldCheck } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import PageLoading from '@/components/ui/PageLoading'
-import NoticeBanner from '@/components/ui/NoticeBanner'
+import { useToast } from '@/components/ui/Toast'
 import { getRolePermissions, updateRolePermissions } from '@/actions/settings-actions'
 import { DEFAULT_ROLE_PERMISSIONS, type PermissionModule, type RolePermissions } from '@/lib/permissions'
 import type { UserRole } from '@/lib/types/billing'
@@ -25,6 +25,7 @@ const moduleLabels: Record<PermissionModule, { title: string; description: strin
   reports: { title: 'รายงาน', description: 'DC, ประวัติบ้าน, รอบจ่ายผู้รับเหมา' },
   settings: { title: 'ตั้งค่าระบบ', description: 'หน้าตั้งค่าและสิทธิ์' },
   materials: { title: 'วัสดุ (Material Log)', description: 'บันทึกและดูการใช้วัสดุเทียบกับ BOQ' },
+  procurement: { title: 'จัดซื้อ', description: 'คำขอซื้อ ใบสั่งซื้อ ผู้จำหน่าย และการรับของ' },
 }
 
 const permissionModules = Object.keys(moduleLabels) as PermissionModule[]
@@ -33,7 +34,7 @@ const roles = Object.keys(roleLabels) as UserRole[]
 export default function PermissionSettingsPage() {
   const [permissions, setPermissions] = useState<RolePermissions>(DEFAULT_ROLE_PERMISSIONS)
   const [isLoading, setIsLoading] = useState(true)
-  const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+  const toast = useToast()
   const [isPending, startTransition] = useTransition()
 
   useEffect(() => {
@@ -42,7 +43,7 @@ export default function PermissionSettingsPage() {
         setPermissions(await getRolePermissions())
       } catch (error) {
         console.error('Failed to load permissions:', error)
-        setNotice({ tone: 'error', message: 'โหลดสิทธิ์การใช้งานไม่สำเร็จ ใช้ค่าเริ่มต้นชั่วคราว' })
+        toast.error('โหลดสิทธิ์การใช้งานไม่สำเร็จ ใช้ค่าเริ่มต้นชั่วคราว')
       } finally {
         setIsLoading(false)
       }
@@ -70,15 +71,11 @@ export default function PermissionSettingsPage() {
 
   const handleSave = () => {
     startTransition(async () => {
-      setNotice(null)
       try {
         await updateRolePermissions(permissions)
-        setNotice({ tone: 'success', message: 'บันทึกสิทธิ์การใช้งานเรียบร้อยแล้ว' })
+        toast.success('บันทึกสิทธิ์การใช้งานเรียบร้อยแล้ว')
       } catch (error) {
-        setNotice({
-          tone: 'error',
-          message: error instanceof Error ? error.message : 'บันทึกสิทธิ์การใช้งานไม่สำเร็จ',
-        })
+        toast.error(error instanceof Error ? error.message : 'บันทึกสิทธิ์การใช้งานไม่สำเร็จ')
       }
     })
   }
@@ -116,7 +113,6 @@ export default function PermissionSettingsPage() {
         </div>
       </div>
 
-      {notice ? <NoticeBanner tone={notice.tone} message={notice.message} onClose={() => setNotice(null)} /> : null}
 
       <Card className="flex gap-3 border-sky-100 bg-sky-50/80 p-4 shadow-sm">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700">

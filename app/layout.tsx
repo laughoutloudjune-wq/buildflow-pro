@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Noto_Sans_Thai } from "next/font/google";
+import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 
 const inter = Inter({
@@ -28,7 +29,10 @@ export default function RootLayout({
   return (
     <html lang="th" className={`${inter.variable} ${notoSansThai.variable}`}>
       <body className="font-sans antialiased text-slate-800">
-        {children}
+        {/* Mounted at the root so every route - including /login and
+            /register, which sit outside the dashboard shell - can raise a
+            toast through useToast(). */}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

@@ -108,53 +108,80 @@ export async function getRolePermissions(): Promise<RolePermissions> {
 }
 
 /**
- * Updates organization settings, including handling a logo upload.
+ * Updates the identity fields that print on the Billing PDF - company name,
+ * tax ID, and the fallback approving signature used on a PO when the
+ * issuing company hasn't uploaded one of its own (see companies.signature_url
+ * in actions/procurement/vendors.ts). phone/address/logo_url used to live
+ * here too, but nothing in the app ever rendered them - they were fields you
+ * could fill in and save with no visible effect, so they were removed rather
+ * than kept as a silent no-op.
  */
-export async function updateOrganizationSettings(formData: FormData) {
+export async function updateBillingInfo(formData: FormData) {
   await requireAuthRole(['admin'])
   const supabase = await createClient()
 
   const settingsData = {
     company_name: formData.get('company_name') as string,
-    address: formData.get('address') as string,
     tax_id: formData.get('tax_id') as string,
-    phone: formData.get('phone') as string,
-    default_vat: parseFloat(formData.get('default_vat') as string),
-    default_wht: parseFloat(formData.get('default_wht') as string),
-    default_retention: parseFloat(formData.get('default_retention') as string),
     updated_at: new Date().toISOString(),
-    logo_url: undefined as string | undefined,
+    signature_url: undefined as string | undefined,
   }
 
-  const logoFile = formData.get('logo_url') as File | null;
-  
-  // Handle file upload
-  if (logoFile && logoFile.size > 0) {
-    const filePath = `public/logo-${new Date().getTime()}.${logoFile.name.split('.').pop()}`
+  const signatureFile = formData.get('signature_url') as File | null;
+
+  if (signatureFile && signatureFile.size > 0) {
+    const filePath = `public/signature-${new Date().getTime()}.${signatureFile.name.split('.').pop()}`
     const { error: uploadError } = await supabase.storage
-      .from('assets') // Assumes a bucket named 'assets'
-      .upload(filePath, logoFile);
+      .from('assets')
+      .upload(filePath, signatureFile);
 
     if (uploadError) {
-      throw new Error(`Logo upload failed: ${uploadError.message}`);
+      throw new Error(`Signature upload failed: ${uploadError.message}`);
     }
 
-    // Get public URL and add to settings data
     const { data: urlData } = supabase.storage.from('assets').getPublicUrl(filePath);
-    settingsData.logo_url = urlData.publicUrl
+    settingsData.signature_url = urlData.publicUrl
   }
 
-  // Upsert the data into the single settings row (id=1)
   const { error: upsertError } = await supabase
     .from('organization_settings')
     .update(settingsData)
     .eq('id', 1);
 
   if (upsertError) {
-    console.error('Error updating settings:', upsertError)
+    console.error('Error updating billing info:', upsertError)
     throw new Error(upsertError.message)
   }
 
+  revalidatePath('/dashboard/settings/billing-info')
+  revalidatePath('/dashboard/settings')
+  return { success: true }
+}
+
+/**
+ * Updates the default VAT/WHT/retention percentages pre-filled when
+ * creating or reviewing a billing request (adjustable per-request afterward).
+ */
+export async function updateFinancialDefaults(formData: FormData) {
+  await requireAuthRole(['admin'])
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('organization_settings')
+    .update({
+      default_vat: parseFloat(formData.get('default_vat') as string) || 0,
+      default_wht: parseFloat(formData.get('default_wht') as string) || 0,
+      default_retention: parseFloat(formData.get('default_retention') as string) || 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', 1);
+
+  if (error) {
+    console.error('Error updating financial defaults:', error)
+    throw new Error(error.message)
+  }
+
+  revalidatePath('/dashboard/settings/financial-defaults')
   revalidatePath('/dashboard/settings')
   return { success: true }
 }

@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { getCurrentUser, getCurrentUserRole, requireAuthRole } from '@/actions/_shared/user-role'
@@ -24,15 +25,35 @@ const thaiCollator = new Intl.Collator('th', { numeric: true, sensitivity: 'base
 // Material catalog (PM/admin manage; anyone with `materials` access can read)
 // ---------------------------------------------------------------------------
 
-export async function getMaterialTypes(): Promise<MaterialType[]> {
+/** activeOnly=true (the default) is for pickers - BOQ, purchase orders,
+ * usage logging - where a deactivated material shouldn't be selectable for
+ * new work. The materials settings page itself passes false so it can still
+ * show and reactivate deactivated rows. */
+export async function getMaterialTypes(activeOnly = true): Promise<MaterialType[]> {
   await requireModuleAccess('materials')
   const supabase = await createClient()
-  const { data, error } = await supabase.from('material_types').select('*').order('name')
+  let query = supabase.from('material_types').select('*').order('name')
+  if (activeOnly) query = query.eq('is_active', true)
+  const { data, error } = await query
   if (error) throw new Error(error.message)
   return data || []
 }
 
-export async function createMaterialType(name: string, unit: string, currentPrice: number) {
+// Each mutation below returns the affected row so the settings page can
+// patch its local list in place instead of refetching and re-rendering the
+// whole (potentially 1000+ row) table after every click. revalidatePath is
+// still called so a fresh navigation/reload picks up the change too - this
+// is about avoiding a redundant round-trip on the click that already has
+// the answer, not about skipping cache invalidation.
+
+export async function createMaterialType(
+  name: string,
+  unit: string,
+  currentPrice: number,
+  category?: string,
+  reorderPoint?: number | null,
+  isRequestable = true
+): Promise<MaterialType> {
   await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
   const user = await getCurrentUser()
@@ -40,44 +61,69 @@ export async function createMaterialType(name: string, unit: string, currentPric
   const trimmedName = name.trim()
   if (!trimmedName) throw new Error('Material name is required')
 
-  const { error } = await supabase.from('material_types').insert([
-    {
+  const { data, error } = await supabase
+    .from('material_types')
+    .insert([
+      {
+        name: trimmedName,
+        unit: unit.trim() || 'unit',
+        category: category?.trim() || null,
+        current_price: Math.max(0, Number(currentPrice) || 0),
+        price_updated_at: new Date().toISOString(),
+        price_updated_by: user?.id ?? null,
+        reorder_point: reorderPoint ?? null,
+        is_requestable: isRequestable,
+      },
+    ])
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/dashboard/settings/materials')
+  return data
+}
+
+/** Updates name/unit/category/reorder point/requestable flag. Use
+ * `updateMaterialPrice` to change the price so the price_updated_at/by audit
+ * fields only change on an actual price update. */
+export async function updateMaterialType(
+  id: number,
+  name: string,
+  unit: string,
+  category?: string,
+  reorderPoint?: number | null,
+  isRequestable = true
+): Promise<MaterialType> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+
+  const trimmedName = name.trim()
+  if (!trimmedName) throw new Error('Material name is required')
+
+  const { data, error } = await supabase
+    .from('material_types')
+    .update({
       name: trimmedName,
       unit: unit.trim() || 'unit',
-      current_price: Math.max(0, Number(currentPrice) || 0),
-      price_updated_at: new Date().toISOString(),
-      price_updated_by: user?.id ?? null,
-    },
-  ])
-
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/settings/materials')
-}
-
-/** Updates name/unit. Use `updateMaterialPrice` to change the price so the
- * price_updated_at/by audit fields only change on an actual price update. */
-export async function updateMaterialType(id: number, name: string, unit: string) {
-  await requireAuthRole(['admin', 'pm'])
-  const supabase = await createClient()
-
-  const trimmedName = name.trim()
-  if (!trimmedName) throw new Error('Material name is required')
-
-  const { error } = await supabase
-    .from('material_types')
-    .update({ name: trimmedName, unit: unit.trim() || 'unit' })
+      category: category?.trim() || null,
+      reorder_point: reorderPoint ?? null,
+      is_requestable: isRequestable,
+    })
     .eq('id', id)
+    .select()
+    .single()
 
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/settings/materials')
+  return data
 }
 
-export async function updateMaterialPrice(id: number, currentPrice: number) {
+export async function updateMaterialPrice(id: number, currentPrice: number): Promise<MaterialType> {
   await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
   const user = await getCurrentUser()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('material_types')
     .update({
       current_price: Math.max(0, Number(currentPrice) || 0),
@@ -85,17 +131,246 @@ export async function updateMaterialPrice(id: number, currentPrice: number) {
       price_updated_by: user?.id ?? null,
     })
     .eq('id', id)
+    .select()
+    .single()
 
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/settings/materials')
+  return data
 }
 
-export async function deleteMaterialType(id: number) {
+/** Soft delete, not a real DELETE - a material is referenced by
+ * boq_material_items/material_usage_log/purchase_request_items/
+ * purchase_order_items the moment it's ever been used anywhere, and a hard
+ * delete on a referenced row fails the FK constraint. Deactivating removes
+ * it from picker lists while every past reference (and the row itself)
+ * stays intact - same pattern as deactivateSupplier/deactivateCompany. */
+export async function deactivateMaterialType(id: number): Promise<MaterialType> {
   await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
-  const { error } = await supabase.from('material_types').delete().eq('id', id)
+  const { data, error } = await supabase.from('material_types').update({ is_active: false }).eq('id', id).select().single()
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/settings/materials')
+  return data
+}
+
+export async function reactivateMaterialType(id: number): Promise<MaterialType> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('material_types').update({ is_active: true }).eq('id', id).select().single()
+  if (error) throw new Error(error.message)
+  revalidatePath('/dashboard/settings/materials')
+  return data
+}
+
+// ---------------------------------------------------------------------------
+// Batch actions (Settings > Material Catalog > select rows > bulk toolbar)
+// ---------------------------------------------------------------------------
+
+// PostgREST puts an `.in('id', [...])` filter in the request URL, not the
+// body - a single call with a very large id list can blow past what
+// Cloudflare/the origin will accept (the same failure mode that broke the
+// spreadsheet import's duplicate-name check). ids are short compared to
+// product names, but a "select all" on a 1000+ row catalog still adds up,
+// so this stays chunked as a matter of habit rather than a proven necessity.
+const BULK_CHUNK_SIZE = 300
+
+async function bulkUpdate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ids: number[],
+  patch: Record<string, unknown>
+): Promise<MaterialType[]> {
+  const uniqueIds = Array.from(new Set(ids))
+  const results: MaterialType[] = []
+  for (let i = 0; i < uniqueIds.length; i += BULK_CHUNK_SIZE) {
+    const chunk = uniqueIds.slice(i, i + BULK_CHUNK_SIZE)
+    const { data, error } = await supabase.from('material_types').update(patch).in('id', chunk).select()
+    if (error) throw new Error(error.message)
+    results.push(...(data || []))
+  }
+  return results
+}
+
+export async function bulkDeactivateMaterialTypes(ids: number[]): Promise<MaterialType[]> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  const result = await bulkUpdate(supabase, ids, { is_active: false })
+  revalidatePath('/dashboard/settings/materials')
+  return result
+}
+
+export async function bulkReactivateMaterialTypes(ids: number[]): Promise<MaterialType[]> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  const result = await bulkUpdate(supabase, ids, { is_active: true })
+  revalidatePath('/dashboard/settings/materials')
+  return result
+}
+
+export async function bulkSetMaterialCategory(ids: number[], category: string): Promise<MaterialType[]> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  const result = await bulkUpdate(supabase, ids, { category: category.trim() || null })
+  revalidatePath('/dashboard/settings/materials')
+  return result
+}
+
+export async function bulkSetMaterialUnit(ids: number[], unit: string): Promise<MaterialType[]> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  const trimmedUnit = unit.trim()
+  if (!trimmedUnit) throw new Error('กรุณาระบุหน่วย')
+  const result = await bulkUpdate(supabase, ids, { unit: trimmedUnit })
+  revalidatePath('/dashboard/settings/materials')
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// Bulk import from a spreadsheet (Settings > Material Catalog > Import)
+// ---------------------------------------------------------------------------
+
+export type MaterialImportRow = { name: string; category: string; price: number }
+
+export type MaterialImportPreview = {
+  rows: MaterialImportRow[]
+  categories: { name: string; count: number }[]
+  skippedRows: number
+  duplicateNamesInFile: number
+}
+
+/**
+ * Reads column A = name, column B = price, column C = category (in that
+ * order) from the first sheet. Rows whose name starts with "หมวดหมู่:" are
+ * section-header rows some category-grouped exports insert above each
+ * group - they carry a subtotal in the price column, not a real product, so
+ * they're dropped rather than imported as materials.
+ */
+export async function parseMaterialImportFile(formData: FormData): Promise<MaterialImportPreview> {
+  await requireAuthRole(['admin', 'pm'])
+
+  const file = formData.get('file') as File | null
+  if (!file || file.size === 0) throw new Error('กรุณาเลือกไฟล์')
+
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const workbook = XLSX.read(buffer, { type: 'buffer' })
+  const sheetName = workbook.SheetNames[0]
+  if (!sheetName) throw new Error('ไม่พบชีทข้อมูลในไฟล์')
+
+  const sheet = workbook.Sheets[sheetName]
+  const raw = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, { header: 1, defval: '' })
+  const dataRows = raw.slice(1) // row 0 is assumed to be the column header
+
+  // Last occurrence wins on an in-file duplicate name - matches how a human
+  // skimming the sheet top-to-bottom would resolve a conflict (later row =
+  // more recent correction).
+  const byName = new Map<string, MaterialImportRow>()
+  let skippedRows = 0
+  let duplicateNamesInFile = 0
+
+  for (const row of dataRows) {
+    const name = String(row[0] ?? '').trim()
+    const priceRaw = row[1]
+    const category = String(row[2] ?? '').trim()
+
+    if (!name || name.startsWith('หมวดหมู่:')) {
+      skippedRows++
+      continue
+    }
+
+    const price = typeof priceRaw === 'number' ? priceRaw : parseFloat(String(priceRaw).replace(/,/g, ''))
+    if (!Number.isFinite(price) || price < 0) {
+      skippedRows++
+      continue
+    }
+
+    if (byName.has(name)) duplicateNamesInFile++
+    byName.set(name, { name, category: category || 'ไม่ระบุหมวดหมู่', price })
+  }
+
+  const rows = Array.from(byName.values())
+  const categoryCounts = new Map<string, number>()
+  for (const row of rows) {
+    categoryCounts.set(row.category, (categoryCounts.get(row.category) || 0) + 1)
+  }
+  const categories = Array.from(categoryCounts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+
+  return { rows, categories, skippedRows, duplicateNamesInFile }
+}
+
+export type MaterialImportItem = { name: string; unit: string; category: string; price: number }
+export type MaterialImportResult = { inserted: number; updated: number; skipped: number }
+
+/**
+ * Upserts by name (material_types.name is unique). Existing materials are
+ * reactivated on import - re-importing is read as "this item is in the
+ * source catalog again," which should undo a prior deactivation.
+ */
+export async function importMaterialTypes(
+  items: MaterialImportItem[],
+  onDuplicate: 'update' | 'skip'
+): Promise<MaterialImportResult> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  const user = await getCurrentUser()
+
+  const byName = new Map<string, MaterialImportItem>()
+  for (const item of items) {
+    const name = item.name.trim()
+    if (name) byName.set(name, { ...item, name })
+  }
+  const rows = Array.from(byName.values())
+  if (rows.length === 0) return { inserted: 0, updated: 0, skipped: 0 }
+
+  // Fetch every existing name ONCE, unfiltered, rather than chunking the
+  // import batch through `.in('name', [...])` - PostgREST puts an .in()
+  // filter in the request URL, and a few hundred Thai product names (some
+  // 90+ chars) blew the URL past what Cloudflare/the origin would accept,
+  // failing the whole import with an opaque 520. A plain `select('name')`
+  // has no such limit and the whole catalog is a few thousand rows at most.
+  const { data: existingRows, error: existingError } = await supabase.from('material_types').select('name')
+  if (existingError) throw new Error(existingError.message)
+  const existingNames = new Set((existingRows || []).map((r) => r.name))
+
+  const CHUNK_SIZE = 200
+  let inserted = 0
+  let updated = 0
+  let skipped = 0
+
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + CHUNK_SIZE)
+
+    let toUpsert = chunk
+    if (onDuplicate === 'skip') {
+      toUpsert = chunk.filter((r) => !existingNames.has(r.name))
+      skipped += chunk.length - toUpsert.length
+    }
+
+    if (toUpsert.length > 0) {
+      const { error } = await supabase.from('material_types').upsert(
+        toUpsert.map((r) => ({
+          name: r.name,
+          unit: r.unit.trim() || 'unit',
+          category: r.category.trim() || null,
+          current_price: Math.max(0, Number(r.price) || 0),
+          price_updated_at: new Date().toISOString(),
+          price_updated_by: user?.id ?? null,
+          is_active: true,
+        })),
+        { onConflict: 'name' }
+      )
+      if (error) throw new Error(error.message)
+    }
+
+    for (const r of toUpsert) {
+      if (existingNames.has(r.name)) updated++
+      else inserted++
+    }
+  }
+
+  revalidatePath('/dashboard/settings/materials')
+  return { inserted, updated, skipped }
 }
 
 // ---------------------------------------------------------------------------

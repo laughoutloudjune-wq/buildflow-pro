@@ -3,7 +3,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/actions/_shared/user-role'
 
-export type NotificationType = 'new_request' | 'billing_approved' | 'billing_rejected'
+export type NotificationType =
+  | 'new_request'
+  | 'billing_approved'
+  | 'billing_rejected'
+  | 'pr_pending_review'
+  | 'pr_approved'
+  | 'pr_rejected'
 
 export type NotificationItem = {
   id: string
@@ -15,6 +21,11 @@ export type NotificationItem = {
     doc_no: string | number | null
     type: string | null
     contractor_name: string | null
+    project_name: string | null
+  } | null
+  purchase_request: {
+    id: string
+    pr_no: string | number | null
     project_name: string | null
   } | null
 }
@@ -40,6 +51,18 @@ type NotificationRow = {
         projects: { name: string | null } | Array<{ name: string | null }> | null
       }>
     | null
+  purchase_requests:
+    | {
+        id: string
+        pr_no: string | number | null
+        projects: { name: string | null } | Array<{ name: string | null }> | null
+      }
+    | Array<{
+        id: string
+        pr_no: string | number | null
+        projects: { name: string | null } | Array<{ name: string | null }> | null
+      }>
+    | null
 }
 
 function asSingle<T>(value: T | T[] | null | undefined): T | null {
@@ -57,7 +80,8 @@ export async function getMyNotifications(limit = 30): Promise<{ items: Notificat
       .from('notifications')
       .select(`
         id, type, read_at, created_at,
-        billings ( id, doc_no, type, contractors (name), projects (name) )
+        billings ( id, doc_no, type, contractors (name), projects (name) ),
+        purchase_requests ( id, pr_no, projects (name) )
       `)
       .eq('recipient_id', user.id)
       .order('created_at', { ascending: false })
@@ -74,6 +98,7 @@ export async function getMyNotifications(limit = 30): Promise<{ items: Notificat
 
   const items: NotificationItem[] = ((listRes.data || []) as NotificationRow[]).map((row) => {
     const billing = asSingle(row.billings)
+    const purchaseRequest = asSingle(row.purchase_requests)
     return {
       id: row.id,
       type: row.type,
@@ -86,6 +111,13 @@ export async function getMyNotifications(limit = 30): Promise<{ items: Notificat
             type: billing.type,
             contractor_name: asSingle(billing.contractors)?.name ?? null,
             project_name: asSingle(billing.projects)?.name ?? null,
+          }
+        : null,
+      purchase_request: purchaseRequest
+        ? {
+            id: purchaseRequest.id,
+            pr_no: purchaseRequest.pr_no,
+            project_name: asSingle(purchaseRequest.projects)?.name ?? null,
           }
         : null,
     }

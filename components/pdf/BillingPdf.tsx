@@ -3,12 +3,15 @@
 import React from 'react'
 import { Page, Text, View, Document, StyleSheet, Font } from '@react-pdf/renderer'
 
-// ใช้ CDN Link
+// Self-hosted (public/fonts/) rather than a third-party CDN: @react-pdf/renderer
+// fetches registered fonts client-side at render time, and a CDN hiccup makes
+// it silently fall back to a font with no Thai glyphs - same-origin avoids
+// that failure mode entirely.
 Font.register({
   family: 'Sarabun',
   fonts: [
-    { src: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sarabun/Sarabun-Regular.ttf' },
-    { src: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sarabun/Sarabun-Bold.ttf', fontWeight: 'bold' }
+    { src: '/fonts/Sarabun-Regular.ttf' },
+    { src: '/fonts/Sarabun-Bold.ttf', fontWeight: 'bold' }
   ]
 })
 
