@@ -39,6 +39,7 @@ const VAT_OPTIONS: { value: string; percent: number; type: VatType; label: strin
 
 const PAYMENT_TERM_PRESETS = ['เงินสด (COD)', 'เครดิต 7 วัน', 'เครดิต 15 วัน', 'เครดิต 30 วัน', 'เครดิต 45 วัน', 'เครดิต 60 วัน']
 const CUSTOM_TERM = 'อื่นๆ...'
+const CUSTOM_MATERIAL_CATEGORY = 'อื่นๆ (ระบุใหม่)...'
 
 // One mode drives discounting for the whole order - either a single
 // whole-order discount (percent/amount) or a per-line amount typed on each
@@ -151,6 +152,7 @@ export default function PurchaseOrderForm({
 
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false)
   const [materialDraft, setMaterialDraft] = useState(emptyMaterialDraft)
+  const [isCustomMaterialCategory, setIsCustomMaterialCategory] = useState(false)
   const [isSavingMaterial, setIsSavingMaterial] = useState(false)
   const [materialModalLineIndex, setMaterialModalLineIndex] = useState<number | null>(null)
 
@@ -264,6 +266,12 @@ export default function PurchaseOrderForm({
 
   const selectedSupplier = useMemo(() => suppliers.find((s) => s.id === supplierId) || null, [suppliers, supplierId])
   const selectedCompany = useMemo(() => companies.find((c) => c.id === companyId) || null, [companies, companyId])
+  // Picking from what's already in the catalog (instead of free text) keeps
+  // it from accumulating near-duplicate spellings of the same category.
+  const existingMaterialCategories = useMemo(() => {
+    const set = new Set(materials.map((m) => m.category).filter((c): c is string => !!c && c.trim() !== ''))
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'))
+  }, [materials])
 
   function handleSelectSupplier(id: string) {
     setSupplierId(id)
@@ -317,6 +325,7 @@ export default function PurchaseOrderForm({
   function openMaterialModal(lineIndex: number) {
     setMaterialModalLineIndex(lineIndex)
     setMaterialDraft(emptyMaterialDraft)
+    setIsCustomMaterialCategory(false)
     setIsMaterialModalOpen(true)
   }
 
@@ -1078,12 +1087,36 @@ export default function PurchaseOrderForm({
           </div>
           <div>
             <label className={fieldLabel}>หมวดหมู่ (ถ้ามี)</label>
-            <input
-              value={materialDraft.category}
-              onChange={(e) => setMaterialDraft({ ...materialDraft, category: e.target.value })}
+            <select
+              value={isCustomMaterialCategory ? CUSTOM_MATERIAL_CATEGORY : materialDraft.category}
+              onChange={(e) => {
+                if (e.target.value === CUSTOM_MATERIAL_CATEGORY) {
+                  setIsCustomMaterialCategory(true)
+                  setMaterialDraft({ ...materialDraft, category: '' })
+                } else {
+                  setIsCustomMaterialCategory(false)
+                  setMaterialDraft({ ...materialDraft, category: e.target.value })
+                }
+              }}
               className="w-full"
-              placeholder="เช่น ปูน-คอนกรีต"
-            />
+            >
+              <option value="">ไม่ระบุ</option>
+              {existingMaterialCategories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+              <option value={CUSTOM_MATERIAL_CATEGORY}>{CUSTOM_MATERIAL_CATEGORY}</option>
+            </select>
+            {isCustomMaterialCategory && (
+              <input
+                value={materialDraft.category}
+                onChange={(e) => setMaterialDraft({ ...materialDraft, category: e.target.value })}
+                className="mt-2 w-full"
+                placeholder="ระบุชื่อหมวดหมู่ใหม่"
+                autoFocus
+              />
+            )}
           </div>
           <div className="flex justify-end gap-3 border-t pt-4">
             <Button
