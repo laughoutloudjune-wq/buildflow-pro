@@ -32,6 +32,10 @@ import {
   unmarkPurchaseOrderReceived as unmarkPurchaseOrderReceivedImpl,
   markPurchaseOrdersAsPaid as markPurchaseOrdersAsPaidImpl,
   unmarkPurchaseOrderPaid as unmarkPurchaseOrderPaidImpl,
+  deletePurchaseOrder as deletePurchaseOrderImpl,
+  deletePurchaseOrders as deletePurchaseOrdersImpl,
+  duplicatePurchaseOrder as duplicatePurchaseOrderImpl,
+  duplicatePurchaseOrders as duplicatePurchaseOrdersImpl,
   type PurchaseOrderFilters,
 } from '@/actions/procurement/orders'
 import { getGoodsReceiptsForOrder as getGoodsReceiptsForOrderImpl, createGoodsReceipt as createGoodsReceiptImpl } from '@/actions/procurement/receipts'
@@ -150,6 +154,22 @@ export async function markPurchaseOrdersAsPaid(ids: string[], paidAt: string) {
 
 export async function unmarkPurchaseOrderPaid(id: string) {
   return unmarkPurchaseOrderPaidImpl(id)
+}
+
+export async function deletePurchaseOrder(id: string) {
+  return deletePurchaseOrderImpl(id)
+}
+
+export async function deletePurchaseOrders(ids: string[]) {
+  return deletePurchaseOrdersImpl(ids)
+}
+
+export async function duplicatePurchaseOrder(id: string) {
+  return duplicatePurchaseOrderImpl(id)
+}
+
+export async function duplicatePurchaseOrders(ids: string[]) {
+  return duplicatePurchaseOrdersImpl(ids)
 }
 
 // ---------------------------------------------------------------------------

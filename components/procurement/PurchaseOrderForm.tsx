@@ -657,6 +657,16 @@ export default function PurchaseOrderForm({
             <label className={fieldLabel}>โครงการ</label>
             <SearchableSelect options={projectOptions} value={projectId} onChange={setProjectId} placeholder="เลือกโครงการ" disabled={readOnly} />
           </div>
+          <div>
+            <label className={fieldLabel}>ภาษีมูลค่าเพิ่ม</label>
+            <select value={vatOption} onChange={(e) => setVatOption(e.target.value)} className="w-full" disabled={readOnly}>
+              {VAT_OPTIONS.map((v) => (
+                <option key={v.value} value={v.value}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="col-span-2 sm:col-span-1">
             <label className={fieldLabel}>โครงการย่อย / แปลง</label>
             <div className="flex h-[38px] flex-wrap items-center gap-1.5">
@@ -685,16 +695,6 @@ export default function PurchaseOrderForm({
                 </button>
               ))}
             </div>
-          </div>
-          <div>
-            <label className={fieldLabel}>ภาษีมูลค่าเพิ่ม</label>
-            <select value={vatOption} onChange={(e) => setVatOption(e.target.value)} className="w-full" disabled={readOnly}>
-              {VAT_OPTIONS.map((v) => (
-                <option key={v.value} value={v.value}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
           </div>
           <div>
             <label className={fieldLabel}>กำหนดส่งของ</label>

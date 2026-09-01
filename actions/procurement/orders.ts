@@ -171,3 +171,70 @@ export async function unmarkPurchaseOrderPaid(id: string) {
   revalidatePath('/dashboard/procurement/orders')
   revalidatePath(`/dashboard/procurement/orders/${id}`)
 }
+
+/** Only draft/sent/cancelled orders with no goods_receipts can be deleted -
+ * po_delete enforces this server-side; this just surfaces its error. */
+export async function deletePurchaseOrder(id: string) {
+  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can delete a purchase order')
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('po_delete', { p_id: id })
+  if (error) throw new Error(error.message)
+  revalidatePath('/dashboard/procurement/orders')
+  revalidatePath('/dashboard/procurement/requests')
+}
+
+/** Deletes each id independently (no partial-batch rollback) and reports how
+ * many succeeded - the list page's bulk "delete selected" action. */
+export async function deletePurchaseOrders(ids: string[]) {
+  const results = await Promise.allSettled(ids.map((id) => deletePurchaseOrder(id)))
+  const errors = results
+    .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+    .map((r) => (r.reason instanceof Error ? r.reason.message : String(r.reason)))
+  return { deleted: ids.length - errors.length, failed: errors.length, errors }
+}
+
+/** Copies a PO's vendor/terms/line items into a brand-new draft - a fresh
+ * po_no, today's date, and no link back to the source order's purchase
+ * request (that request was already consumed by the original order). */
+export async function duplicatePurchaseOrder(id: string) {
+  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can duplicate a purchase order')
+  const source = await getPurchaseOrderById(id)
+  if (!source) throw new Error('Purchase order not found')
+
+  return createPurchaseOrder({
+    supplier_id: source.supplier_id,
+    company_id: source.company_id,
+    project_id: source.project_id,
+    plot_id: source.plot_id,
+    plot_group_id: source.plot_group_id,
+    delivery_address: source.delivery_address || undefined,
+    vat_percent: source.vat_percent,
+    vat_type: source.vat_type,
+    payment_terms: source.payment_terms || undefined,
+    discount_type: source.discount_type,
+    discount_value: source.discount_value,
+    note: source.note || undefined,
+    status: 'draft',
+    items: (source.purchase_order_items || []).map((i) => ({
+      material_type_id: i.material_type_id,
+      quantity_ordered: i.quantity_ordered,
+      unit_price: i.unit_price,
+      description: i.description || undefined,
+      discount_type: i.discount_type,
+      discount_value: i.discount_value,
+    })),
+  })
+}
+
+/** Duplicates each id independently and reports how many succeeded - the
+ * list page's bulk "duplicate selected" action. */
+export async function duplicatePurchaseOrders(ids: string[]) {
+  const results = await Promise.allSettled(ids.map((id) => duplicatePurchaseOrder(id)))
+  const created = results
+    .filter((r): r is PromiseFulfilledResult<{ id: string; po_no: string }> => r.status === 'fulfilled')
+    .map((r) => r.value)
+  const errors = results
+    .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+    .map((r) => (r.reason instanceof Error ? r.reason.message : String(r.reason)))
+  return { created, failed: errors.length, errors }
+}

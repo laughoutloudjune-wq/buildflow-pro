@@ -2,13 +2,18 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, Plus } from 'lucide-react'
+import { Copy, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
-import { getPurchaseOrders, markPurchaseOrdersAsPaid } from '@/actions/procurement-actions'
+import {
+  getPurchaseOrders,
+  markPurchaseOrdersAsPaid,
+  duplicatePurchaseOrders,
+  deletePurchaseOrders,
+} from '@/actions/procurement-actions'
 import type { PurchaseOrder, PurchaseOrderStatus } from '@/lib/types/procurement'
 
 const STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
@@ -58,6 +63,15 @@ function dateColumnFor(tab: TabKey, order: PurchaseOrder): string | null {
   return order.order_date
 }
 
+/** First material line plus a count of how many more, for a quick "what's
+ * in this PO" glance without opening it. Item order isn't guaranteed by the
+ * schema - this is a hint, not a promise of line 1. */
+function materialSummary(order: PurchaseOrder): { label: string; extra: number } {
+  const items = order.purchase_order_items || []
+  if (items.length === 0) return { label: '-', extra: 0 }
+  return { label: items[0].material_types?.name || '-', extra: items.length - 1 }
+}
+
 export default function PurchaseOrdersPage() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
   const [tab, setTab] = useState<TabKey>('po')
@@ -65,6 +79,8 @@ export default function PurchaseOrdersPage() {
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [isLoading, setIsLoading] = useState(true)
   const [isMarkingPaid, setIsMarkingPaid] = useState(false)
+  const [isDuplicating, setIsDuplicating] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -120,6 +136,37 @@ export default function PurchaseOrdersPage() {
       .finally(() => setIsMarkingPaid(false))
   }
 
+  function handleDuplicateSelected() {
+    if (selected.size === 0) return
+    const ids = Array.from(selected)
+    setIsDuplicating(true)
+    duplicatePurchaseOrders(ids)
+      .then(async ({ created, failed }) => {
+        setSelected(new Set())
+        await load()
+        if (created.length > 0) toast.success(`ทำสำเนาใบสั่งซื้อแล้ว ${created.length} รายการ (บันทึกเป็นร่าง)`)
+        if (failed > 0) toast.error(`ทำสำเนาไม่สำเร็จ ${failed} รายการ`)
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : 'ทำสำเนาไม่สำเร็จ'))
+      .finally(() => setIsDuplicating(false))
+  }
+
+  function handleDeleteSelected() {
+    if (selected.size === 0) return
+    if (!confirm(`ลบใบสั่งซื้อที่เลือก ${selected.size} รายการ? การลบไม่สามารถย้อนกลับได้`)) return
+    const ids = Array.from(selected)
+    setIsDeleting(true)
+    deletePurchaseOrders(ids)
+      .then(async ({ deleted, failed, errors }) => {
+        setSelected(new Set())
+        await load()
+        if (deleted > 0) toast.success(`ลบใบสั่งซื้อแล้ว ${deleted} รายการ`)
+        if (failed > 0) toast.error(`ลบไม่สำเร็จ ${failed} รายการ${errors[0] ? `: ${errors[0]}` : ''}`)
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : 'ลบไม่สำเร็จ'))
+      .finally(() => setIsDeleting(false))
+  }
+
   if (isLoading) {
     return (
       <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-slate-500">
@@ -172,14 +219,22 @@ export default function PurchaseOrdersPage() {
             เลือกแล้ว <span className="font-semibold">{selected.size}</span> รายการ · ยอดรวม{' '}
             <span className="font-semibold">฿{formatCurrency(selectedTotal)}</span>
           </span>
-          {tab === 'receive' && (
-            <div className="flex items-center gap-2">
-              <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="text-sm" />
-              <Button type="button" size="sm" onClick={handleMarkPaid} disabled={isMarkingPaid}>
-                {isMarkingPaid ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'ทำเครื่องหมายว่าชำระแล้ว'}
-              </Button>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {tab === 'receive' && (
+              <>
+                <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="text-sm" />
+                <Button type="button" size="sm" onClick={handleMarkPaid} disabled={isMarkingPaid}>
+                  {isMarkingPaid ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'ทำเครื่องหมายว่าชำระแล้ว'}
+                </Button>
+              </>
+            )}
+            <Button type="button" size="sm" variant="secondary" onClick={handleDuplicateSelected} disabled={isDuplicating}>
+              {isDuplicating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />} ทำสำเนา
+            </Button>
+            <Button type="button" size="sm" variant="danger" onClick={handleDeleteSelected} disabled={isDeleting}>
+              {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} ลบ
+            </Button>
+          </div>
         </Card>
       )}
 
@@ -203,6 +258,7 @@ export default function PurchaseOrdersPage() {
                 <th className="px-4 py-3">สถานะ</th>
                 <th className="px-4 py-3">ผู้จำหน่าย</th>
                 <th className="px-4 py-3">บริษัทผู้ซื้อ</th>
+                <th className="px-4 py-3">วัสดุ</th>
                 <th className="px-4 py-3">โครงการ</th>
                 <th className="px-4 py-3">{dateHeader}</th>
                 <th className="px-4 py-3 text-right">ยอดรวม</th>
@@ -211,13 +267,14 @@ export default function PurchaseOrdersPage() {
             <tbody className="divide-y divide-slate-100 bg-white">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center italic text-slate-400">
+                  <td colSpan={9} className="px-4 py-8 text-center italic text-slate-400">
                     ไม่มีใบสั่งซื้อในสถานะนี้
                   </td>
                 </tr>
               ) : (
                 rows.map((o) => {
                   const dateValue = dateColumnFor(tab, o)
+                  const { label: materialLabel, extra: materialExtra } = materialSummary(o)
                   return (
                     <tr key={o.id} className="transition-colors hover:bg-slate-50">
                       <td className="px-4 py-3">
@@ -236,6 +293,10 @@ export default function PurchaseOrdersPage() {
                       </td>
                       <td className="px-4 py-3 text-slate-700">{o.suppliers?.name || '-'}</td>
                       <td className="px-4 py-3 text-slate-500">{o.companies?.name || '-'}</td>
+                      <td className="max-w-[180px] truncate px-4 py-3 text-slate-500">
+                        {materialLabel}
+                        {materialExtra > 0 && <span className="ml-1 text-xs text-slate-400">+{materialExtra}</span>}
+                      </td>
                       <td className="px-4 py-3 text-slate-500">{o.projects?.name || '-'}</td>
                       <td className="px-4 py-3 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH') : '-'}</td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(o.total_amount)}</td>
