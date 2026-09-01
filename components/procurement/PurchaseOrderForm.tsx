@@ -696,6 +696,35 @@ export default function PurchaseOrderForm({
               ))}
             </div>
           </div>
+
+          {plotScope !== 'none' && (
+            <div className="col-span-2 sm:col-span-3">
+              <div className="w-full sm:max-w-xs">
+                {isPlotsLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-[#86868b]">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังโหลดข้อมูลแปลง...
+                  </div>
+                ) : plotScope === 'plot' ? (
+                  <>
+                    <label className={fieldLabel}>เลือกแปลง</label>
+                    <SearchableSelect options={plotOptions} value={plotId} onChange={setPlotId} placeholder="เลือกแปลง" disabled={readOnly} />
+                  </>
+                ) : (
+                  <>
+                    <label className={fieldLabel}>เลือกกลุ่มแปลง</label>
+                    <SearchableSelect
+                      options={plotGroupOptions}
+                      value={plotGroupId}
+                      onChange={setPlotGroupId}
+                      placeholder="เลือกกลุ่มแปลง"
+                      disabled={readOnly}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className={fieldLabel}>กำหนดส่งของ</label>
             <input
@@ -720,32 +749,6 @@ export default function PurchaseOrderForm({
             />
           </div>
         </div>
-
-        {plotScope !== 'none' && (
-          <div className="mt-3 w-full sm:max-w-xs">
-            {isPlotsLoading ? (
-              <div className="flex items-center gap-2 text-xs text-[#86868b]">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังโหลดข้อมูลแปลง...
-              </div>
-            ) : plotScope === 'plot' ? (
-              <>
-                <label className={fieldLabel}>เลือกแปลง</label>
-                <SearchableSelect options={plotOptions} value={plotId} onChange={setPlotId} placeholder="เลือกแปลง" disabled={readOnly} />
-              </>
-            ) : (
-              <>
-                <label className={fieldLabel}>เลือกกลุ่มแปลง</label>
-                <SearchableSelect
-                  options={plotGroupOptions}
-                  value={plotGroupId}
-                  onChange={setPlotGroupId}
-                  placeholder="เลือกกลุ่มแปลง"
-                  disabled={readOnly}
-                />
-              </>
-            )}
-          </div>
-        )}
 
         <div className="mt-4">
           <label className={fieldLabel}>หมายเหตุ / เงื่อนไขเพิ่มเติม</label>
