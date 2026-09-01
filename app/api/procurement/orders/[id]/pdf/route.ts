@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import puppeteer from 'puppeteer'
+import type { Browser } from 'puppeteer-core'
 import { getPurchaseOrderById } from '@/actions/procurement-actions'
 import { getOrganizationSettings } from '@/actions/settings-actions'
 import { buildPurchaseOrderHtml } from '@/lib/pdf/purchaseOrderHtml'
@@ -33,6 +33,36 @@ const FOOTER_TEMPLATE = `
     <span>หน้า <span class="pageNumber"></span> / <span class="totalPages"></span></span>
   </div>`
 
+// Vercel's serverless functions have no system Chrome, and the full
+// `puppeteer` package's own bundled-Chrome download is a build-time cache
+// path that doesn't ship with the deployed function - hitting this route in
+// production threw "Could not find Chrome" even though it worked locally.
+// @sparticuz/chromium is a Chromium build packaged specifically to fit and
+// run inside that environment, driven through puppeteer-core (same Page API,
+// no bundled browser of its own). Locally there's a real Chrome the full
+// `puppeteer` package already manages, so dev keeps using that - simpler
+// than making the serverless build of Chromium behave on Windows.
+async function launchBrowser(): Promise<Browser> {
+  if (process.env.VERCEL) {
+    const [{ default: chromium }, { default: puppeteerCore }] = await Promise.all([
+      import('@sparticuz/chromium'),
+      import('puppeteer-core'),
+    ])
+    return puppeteerCore.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    })
+  }
+  // The full `puppeteer` package is puppeteer-core plus its own bundled
+  // browser; its Browser/Page instances are the same shape, just typed
+  // against a separately-versioned copy of the same lib - cast rather than
+  // fight the two nominally-distinct-but-identical types.
+  const { default: puppeteer } = await import('puppeteer')
+  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] })
+  return browser as unknown as Browser
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
@@ -46,10 +76,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const format = request.nextUrl.searchParams.get('format') === 'png' ? 'png' : 'pdf'
   const download = request.nextUrl.searchParams.get('download') === '1'
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  })
+  const browser = await launchBrowser()
 
   try {
     const page = await browser.newPage()
