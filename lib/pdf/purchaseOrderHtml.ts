@@ -299,9 +299,12 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
   .notes { margin-bottom: 10px; }
   .notes-text { font-size: 9.5px; color: ${c.muted}; line-height: 1.5; white-space: pre-wrap; }
 
-  /* Signatures */
-  .signature-row { display: flex; justify-content: space-between; gap: 16px; margin-top: 18px; page-break-inside: avoid; }
-  .signature-box { flex: 1; text-align: center; }
+  /* Signatures
+     Only two boxes now (ผู้อนุมัติ removed) - flex:1 on both stretched each
+     one to half the page width, which read as way too much empty space for
+     a name/line/date block. Fixed-width boxes centered as a group instead. */
+  .signature-row { display: flex; justify-content: center; gap: 64px; margin-top: 18px; page-break-inside: avoid; }
+  .signature-box { flex: 0 0 200px; text-align: center; }
   /* Height must match .signature-spacer exactly or the signed column sits
      lower than the blank ones and the three rules stop aligning. */
   .signature-img { height: 48px; object-fit: contain; object-position: bottom; margin-bottom: 3px; }
