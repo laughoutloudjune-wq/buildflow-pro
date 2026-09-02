@@ -136,7 +136,23 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
   // สำนักงานใหญ่ is the correct designation when no branch code is recorded.
   const supplierBranch = supplier?.branch_code ? `สาขา ${esc(supplier.branch_code)}` : 'สำนักงานใหญ่'
 
-  const deliveryAddress = order.delivery_address || order.projects?.location || ''
+  // No longer derived from the project's location - a plain note the buyer
+  // types per order, not an address the system guesses at.
+  const deliveryNote = order.delivery_address || ''
+
+  // "โครงการย่อย / แปลง": one plot, a saved batch, an ad-hoc multi-select of
+  // plots, or nothing - in that precedence, matching how the form and
+  // po_create/po_update resolve the same three mutually exclusive sources.
+  const plotScopeLine = (() => {
+    if (order.plots?.name) return esc(order.plots.name)
+    if (order.plot_groups?.name) return `กลุ่ม ${esc(order.plot_groups.name)}`
+    const multiPlots = order.purchase_order_plots || []
+    if (multiPlots.length > 0) {
+      const names = multiPlots.map((p) => p.plots?.name).filter((n): n is string => !!n)
+      return esc(names.join(', '))
+    }
+    return ''
+  })()
 
   // ผู้จัดทำ and ผู้อนุมัติ both sign off on the same event - the PO being
   // confirmed (draft -> sent) - so both dates are that single timestamp
@@ -223,8 +239,8 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
   .muted { color: ${c.muted}; }
   .strong { font-weight: 700; }
 
-  /* Delivery strip - deliberately full width and high contrast; a wrong
-     delivery address is the most expensive mistake on this document. */
+  /* Delivery note strip - deliberately full width and high contrast so it
+     doesn't get missed among the smaller fields above it. */
   .delivery {
     background: #fff; border: 1px solid ${c.cardBorder}; border-left: 2.5px solid ${c.accent};
     border-radius: 9px; padding: 8px 12px; margin-bottom: 10px;
@@ -325,10 +341,7 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
       <div class="card">
         <div class="card-label">รายละเอียดคำสั่งซื้อ</div>
         ${kv('โครงการ', esc(order.projects?.name) || '-')}
-        ${kv(
-          'โครงการย่อย / แปลง',
-          esc(order.plots?.name) || (order.plot_groups?.name ? `กลุ่ม ${esc(order.plot_groups.name)}` : '') || '-'
-        )}
+        ${kv('โครงการย่อย / แปลง', plotScopeLine || '-')}
         ${order.purchase_requests?.pr_no ? kv('อ้างอิงใบขอซื้อ', `PR-${order.purchase_requests.pr_no}`) : ''}
         ${kv('ผู้ขอซื้อ', esc(order.creator?.full_name) || '-')}
         ${kv('เงื่อนไขชำระเงิน', esc(order.payment_terms) || 'ไม่ระบุ', { strong: true })}
@@ -337,10 +350,10 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
     </div>
 
     ${
-      deliveryAddress || order.expected_delivery_date
+      deliveryNote || order.expected_delivery_date
         ? `<div class="delivery">
-             <span class="delivery-label">สถานที่ส่งของ</span>
-             <span class="delivery-text">${esc(deliveryAddress) || '-'}</span>
+             <span class="delivery-label">หมายเหตุการจัดส่ง</span>
+             <span class="delivery-text">${esc(deliveryNote) || '-'}</span>
              ${
                order.expected_delivery_date
                  ? `<span class="delivery-date"><span class="muted">กำหนดส่ง</span> <strong>${thaiDate(order.expected_delivery_date)}</strong></span>`

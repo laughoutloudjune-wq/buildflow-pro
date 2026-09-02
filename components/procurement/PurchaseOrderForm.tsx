@@ -26,7 +26,7 @@ import {
 import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
 import type { Supplier, Company, SupplierInput, VatType, DiscountType, PurchaseOrder } from '@/lib/types/procurement'
 
-type PlotScope = 'none' | 'plot' | 'group'
+type PlotScope = 'none' | 'plot' | 'group' | 'multi'
 
 // Combined rate+type in one control (no second dropdown) - each option
 // carries both the percent and whether it's added on top or already baked
@@ -131,16 +131,17 @@ export default function PurchaseOrderForm({
   const [plotScope, setPlotScope] = useState<PlotScope>('none')
   const [plotId, setPlotId] = useState('')
   const [plotGroupId, setPlotGroupId] = useState('')
+  // Ad-hoc multi-plot selection ('multi' scope) - any combination of the
+  // project's plots, not limited to a pre-saved plot_groups batch.
+  const [plotIds, setPlotIds] = useState<string[]>([])
   const [supplierId, setSupplierId] = useState('')
   const [companyId, setCompanyId] = useState('')
   const [vatOption, setVatOption] = useState('vat7_exclusive')
   const [orderDate, setOrderDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('')
+  // Free-form delivery note, typed per order - not derived from the
+  // project's address.
   const [deliveryAddress, setDeliveryAddress] = useState('')
-  // Tracks whether deliveryAddress is still the value we auto-filled from the
-  // project. Once the user edits it we stop overwriting on project change,
-  // so a deliberate override survives switching projects.
-  const [deliveryAddressTouched, setDeliveryAddressTouched] = useState(false)
   const [status, setStatus] = useState<'draft' | 'sent'>('sent')
   const [paymentTerms, setPaymentTerms] = useState('')
   const [discountMode, setDiscountMode] = useState<DiscountMode>('none')
@@ -195,15 +196,15 @@ export default function PurchaseOrderForm({
         } else if (initialOrder.plot_id) {
           setPlotScope('plot')
           setPlotId(initialOrder.plot_id)
+        } else if (initialOrder.purchase_order_plots && initialOrder.purchase_order_plots.length > 0) {
+          setPlotScope('multi')
+          setPlotIds(initialOrder.purchase_order_plots.map((p) => p.plot_id))
         }
         setSupplierId(initialOrder.supplier_id)
         setCompanyId(initialOrder.company_id)
         setOrderDate(initialOrder.order_date)
         setExpectedDeliveryDate(initialOrder.expected_delivery_date || '')
         setDeliveryAddress(initialOrder.delivery_address || '')
-        // An existing PO's address is whatever was saved; never re-derive it
-        // from the project or an edit would silently revert it.
-        setDeliveryAddressTouched(true)
         setStatus(initialOrder.status === 'draft' ? 'draft' : 'sent')
         setPaymentTerms(initialOrder.payment_terms || '')
         setVatOption(vatOptionFor(initialOrder.vat_percent, initialOrder.vat_type))
@@ -272,15 +273,6 @@ export default function PurchaseOrderForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
-  // Prefill the delivery address from the project's location, but only while
-  // the user hasn't typed their own - a project can take deliveries at more
-  // than one point, so this is a starting value, not a binding one.
-  useEffect(() => {
-    if (deliveryAddressTouched) return
-    const project = projects.find((p) => p.id === projectId)
-    setDeliveryAddress(project?.location || '')
-  }, [projectId, projects, deliveryAddressTouched])
-
   const selectedSupplier = useMemo(() => suppliers.find((s) => s.id === supplierId) || null, [suppliers, supplierId])
   const selectedCompany = useMemo(() => companies.find((c) => c.id === companyId) || null, [companies, companyId])
   // Picking from what's already in the catalog (instead of free text) keeps
@@ -289,27 +281,6 @@ export default function PurchaseOrderForm({
     const set = new Set(materials.map((m) => m.category).filter((c): c is string => !!c && c.trim() !== ''))
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'))
   }, [materials])
-
-  // Preset delivery addresses sourced from data that's already loaded (no
-  // extra fetch, no new table to manage): every project's site location plus
-  // every buyer company's office address, deduped by the exact text.
-  const addressPresets = useMemo(() => {
-    const seen = new Set<string>()
-    const list: { value: string; label: string }[] = []
-    for (const p of projects) {
-      const loc = (p.location || '').trim()
-      if (!loc || seen.has(loc)) continue
-      seen.add(loc)
-      list.push({ value: loc, label: `${p.name} — ${loc}` })
-    }
-    for (const c of companies) {
-      const addr = (c.address || '').trim()
-      if (!addr || seen.has(addr)) continue
-      seen.add(addr)
-      list.push({ value: addr, label: `${c.name} (สำนักงาน) — ${addr}` })
-    }
-    return list
-  }, [projects, companies])
 
   function handleSelectSupplier(id: string) {
     setSupplierId(id)
@@ -458,6 +429,7 @@ export default function PurchaseOrderForm({
     if (!companyId) return toast.error('กรุณาเลือกบริษัทผู้ซื้อ')
     if (plotScope === 'plot' && !plotId) return toast.error('กรุณาเลือกแปลง')
     if (plotScope === 'group' && !plotGroupId) return toast.error('กรุณาเลือกกลุ่มแปลง')
+    if (plotScope === 'multi' && plotIds.length === 0) return toast.error('กรุณาเลือกแปลงอย่างน้อย 1 แปลง')
     const validLines = lines.filter((l) => l.material_type_id && Number(l.quantity_ordered) > 0)
     if (validLines.length === 0) return toast.error('กรุณาเพิ่มรายการวัสดุอย่างน้อย 1 รายการ')
 
@@ -467,6 +439,7 @@ export default function PurchaseOrderForm({
       project_id: projectId,
       plot_id: plotScope === 'plot' ? plotId : null,
       plot_group_id: plotScope === 'group' ? plotGroupId : null,
+      plot_ids: plotScope === 'multi' ? plotIds : [],
       purchase_request_id: fromRequestId || null,
       order_date: orderDate,
       expected_delivery_date: expectedDeliveryDate || null,
@@ -712,7 +685,8 @@ export default function PurchaseOrderForm({
                 [
                   ['none', 'ไม่ระบุ'],
                   ['plot', 'แปลงเดียว'],
-                  ['group', 'ทั้งกลุ่ม (หลายแปลง)'],
+                  ['multi', 'หลายแปลง (เลือกเอง)'],
+                  ['group', 'กลุ่มที่บันทึกไว้'],
                 ] as [PlotScope, string][]
               ).map(([scope, label]) => (
                 <button
@@ -723,6 +697,7 @@ export default function PurchaseOrderForm({
                     readOnly ||
                     !projectId ||
                     (scope === 'plot' && plots.length === 0) ||
+                    (scope === 'multi' && plots.length === 0) ||
                     (scope === 'group' && plotGroups.length === 0)
                   }
                   className={`rounded-full px-2.5 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -737,7 +712,7 @@ export default function PurchaseOrderForm({
 
           {plotScope !== 'none' && (
             <div className="col-span-2 sm:col-span-3">
-              <div className="w-full sm:max-w-xs">
+              <div className={plotScope === 'multi' ? 'w-full' : 'w-full sm:max-w-xs'}>
                 {isPlotsLoading ? (
                   <div className="flex items-center gap-2 text-xs text-[#86868b]">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังโหลดข้อมูลแปลง...
@@ -746,6 +721,31 @@ export default function PurchaseOrderForm({
                   <>
                     <label className={fieldLabel}>เลือกแปลง</label>
                     <SearchableSelect options={plotOptions} value={plotId} onChange={setPlotId} placeholder="เลือกแปลง" disabled={readOnly} />
+                  </>
+                ) : plotScope === 'multi' ? (
+                  <>
+                    <label className={fieldLabel}>เลือกแปลง (เลือกได้หลายแปลง)</label>
+                    <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-[10px] border border-[#e8e8ed] p-2">
+                      {plots.map((p) => {
+                        const checked = plotIds.includes(p.id)
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() =>
+                              setPlotIds((prev) => (prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id]))
+                            }
+                            disabled={readOnly}
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                              checked ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+                            }`}
+                          >
+                            {p.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {plotIds.length > 0 && <p className="mt-1 text-xs text-[#86868b]">เลือกแล้ว {plotIds.length} แปลง</p>}
                   </>
                 ) : (
                   <>
@@ -764,34 +764,13 @@ export default function PurchaseOrderForm({
           )}
 
           <div className="col-span-2 sm:col-span-3">
-            <label className={fieldLabel}>สถานที่ส่งของ</label>
-            {addressPresets.length > 0 && (
-              <select
-                value=""
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  setDeliveryAddressTouched(true)
-                  setDeliveryAddress(e.target.value)
-                }}
-                className="mb-1.5 w-full"
-                disabled={readOnly}
-              >
-                <option value="">เลือกที่อยู่ที่ใช้บ่อย...</option>
-                {addressPresets.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            )}
-            <input
+            <label className={fieldLabel}>หมายเหตุการจัดส่ง</label>
+            <textarea
               value={deliveryAddress}
-              onChange={(e) => {
-                setDeliveryAddressTouched(true)
-                setDeliveryAddress(e.target.value)
-              }}
+              onChange={(e) => setDeliveryAddress(e.target.value)}
               className="w-full"
-              placeholder="ที่อยู่สำหรับจัดส่ง (ดึงจากโครงการอัตโนมัติ แก้ไขได้)"
+              rows={2}
+              placeholder="ระบุหมายเหตุการจัดส่ง เช่น จุดส่งของ ผู้ติดต่อหน้างาน เวลาที่สะดวก (ถ้ามี)"
               disabled={readOnly}
             />
           </div>

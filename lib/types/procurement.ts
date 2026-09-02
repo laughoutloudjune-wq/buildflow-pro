@@ -126,6 +126,10 @@ export type PurchaseOrder = {
   projects?: { name: string; location: string | null } | null
   plots?: { name: string } | null
   plot_groups?: { name: string } | null
+  /** Ad-hoc multi-plot selection (ordered by nothing in particular - see
+   * purchase_order_plots) - populated only when neither plot_id nor
+   * plot_group_id is set. */
+  purchase_order_plots?: { plot_id: string; plots?: { name: string } | null }[]
   purchase_requests?: { pr_no: number } | null
   creator?: { full_name: string | null } | null
   receiver?: { full_name: string | null } | null
@@ -149,6 +153,9 @@ export type PurchaseOrderInput = {
   project_id: string
   plot_id?: string | null
   plot_group_id?: string | null
+  /** Ad-hoc multi-plot selection - when non-empty, wins over plot_id/
+   * plot_group_id (both are forced null server-side). */
+  plot_ids?: string[]
   purchase_request_id?: string | null
   order_date?: string
   expected_delivery_date?: string | null
