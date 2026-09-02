@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { login } from './actions'
@@ -58,12 +57,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           เข้าสู่ระบบ
         </Button>
 
-        <div className="text-center text-sm text-slate-500">
-          ยังไม่มีบัญชี?{' '}
-          <Link href="/register" className="font-medium text-indigo-600 hover:text-indigo-700">
-            ลงทะเบียน
-          </Link>
-        </div>
+        <p className="text-center text-xs text-slate-400">ยังไม่มีบัญชี? ติดต่อผู้ดูแลระบบเพื่อขอลิงก์เชิญเข้าใช้งาน</p>
       </form>
     </div>
   )
