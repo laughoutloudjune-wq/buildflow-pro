@@ -199,6 +199,14 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
     font-size: 10px;
     color: ${c.text};
     background: ${c.bg};
+    /* Sarabun's regular weight at these print sizes (7.5-10pt) draws
+       hairline-thin strokes - dark in color, but thin enough that many
+       printers reproduce them lightly regardless of the ink color's own
+       contrast. A slight text-stroke thickens every glyph in place (no
+       layout/size change) so it holds ink instead of looking faint;
+       currentColor keeps each element's own color, so muted text is still
+       lighter than main text, just each a bit bolder on its own. */
+    -webkit-text-stroke: 0.3px currentColor;
   }
   /* A4 at 96dpi is 1122.24px tall; the PDF route reserves 0.4in (38.4px) of
      that for the footer template, leaving ~1084px of printable page - a few
@@ -248,13 +256,13 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
     padding: 10px 12px;
   }
   .card-label {
-    font-size: 8px; font-weight: 700; color: ${c.accent}; text-transform: uppercase;
+    font-size: 9px; font-weight: 700; color: ${c.accent}; text-transform: uppercase;
     letter-spacing: 0.06em; margin-bottom: 7px;
   }
-  .card-line { font-size: 10px; margin-bottom: 3px; line-height: 1.45; }
-  .card-line.name { font-weight: 700; font-size: 11px; }
-  .card-line.muted { font-size: 9px; color: ${c.muted}; }
-  .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 9.5px; margin-bottom: 4px; line-height: 1.4; }
+  .card-line { font-size: 11.5px; margin-bottom: 3px; line-height: 1.45; }
+  .card-line.name { font-weight: 700; font-size: 12.5px; }
+  .card-line.muted { font-size: 10.5px; color: ${c.muted}; }
+  .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; margin-bottom: 4px; line-height: 1.4; }
   .kv span:last-child { text-align: right; }
   .muted { color: ${c.muted}; }
   .strong { font-weight: 700; }
@@ -300,10 +308,10 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
     flex: 1; background: #fff; border-radius: 12px; border: 1px solid ${c.cardBorder};
     padding: 10px 12px; display: flex; flex-direction: column; justify-content: center;
   }
-  .words-text { font-size: 10.5px; font-weight: 700; line-height: 1.5; }
-  .totals-card { width: 196px; flex-shrink: 0; background: #fff; border-radius: 12px; border: 1px solid ${c.cardBorder}; padding: 10px 12px; }
+  .words-text { font-size: 12.5px; font-weight: 700; line-height: 1.5; }
+  .totals-card { width: 215px; flex-shrink: 0; background: #fff; border-radius: 12px; border: 1px solid ${c.cardBorder}; padding: 10px 12px; }
   .totals-divider { height: 1px; background: ${c.divider}; margin: 5px 0; }
-  .totals-final { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; }
+  .totals-final { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 700; }
 
   .notes { margin-bottom: 10px; }
   .notes-text { font-size: 9.5px; color: ${c.muted}; line-height: 1.5; white-space: pre-wrap; }
