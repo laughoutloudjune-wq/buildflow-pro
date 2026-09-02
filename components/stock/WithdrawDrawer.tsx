@@ -271,7 +271,11 @@ export default function WithdrawDrawer({
                   {plotScope === 'group' && (
                     <SearchableSelect
                       className="mt-2"
-                      options={plotGroups.map((g) => ({ value: g.id, label: g.name, sublabel: `${g.member_plot_names.length} แปลง: ${g.member_plot_names.join(', ')}` }))}
+                      options={plotGroups.map((g) => ({
+                        value: g.id,
+                        label: g.name,
+                        sublabel: g.member_plot_names.length === 0 ? 'ยังไม่มีแปลงในกลุ่ม' : `${g.member_plot_names.length} แปลง: ${g.member_plot_names.join(', ')}`,
+                      }))}
                       value={plotGroupId}
                       onChange={setPlotGroupId}
                       placeholder="เลือกกลุ่มแปลง"

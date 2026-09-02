@@ -493,8 +493,12 @@ export async function createPlotGroup(projectId: string, name: string, plotIds: 
 
   const trimmedName = name.trim()
   if (!trimmedName) throw new Error('กรุณาตั้งชื่อกลุ่ม')
+  // No minimum member count - a batch's name is usually known (e.g. "98-102")
+  // before every individual plot in it exists yet, since creating a plot is
+  // its own heavier flow (house model + auto-generated BOQ jobs). Letting the
+  // group exist name-only means stock/material logging can start referencing
+  // it right away, with plots added as they're actually created.
   const uniquePlotIds = Array.from(new Set(plotIds.filter(Boolean)))
-  if (uniquePlotIds.length < 2) throw new Error('กลุ่มต้องมีอย่างน้อย 2 แปลง')
 
   const { data: group, error } = await supabase
     .from('plot_groups')
@@ -504,18 +508,20 @@ export async function createPlotGroup(projectId: string, name: string, plotIds: 
 
   if (error) throw new Error(error.message)
 
-  const { error: membersError } = await supabase
-    .from('plot_group_members')
-    .insert(uniquePlotIds.map((plotId) => ({ group_id: group.id, plot_id: plotId })))
+  if (uniquePlotIds.length > 0) {
+    const { error: membersError } = await supabase
+      .from('plot_group_members')
+      .insert(uniquePlotIds.map((plotId) => ({ group_id: group.id, plot_id: plotId })))
 
-  if (membersError) {
-    // Roll back the empty group so a failed member insert (e.g. a plot that
-    // is already in another group) doesn't leave a hollow group behind.
-    await supabase.from('plot_groups').delete().eq('id', group.id)
-    if (membersError.message.includes('plot_group_members_plot_unique')) {
-      throw new Error('มีแปลงที่อยู่ในกลุ่มอื่นแล้ว - แปลงหนึ่งอยู่ได้เพียงกลุ่มเดียว')
+    if (membersError) {
+      // Roll back the empty group so a failed member insert (e.g. a plot that
+      // is already in another group) doesn't leave a hollow group behind.
+      await supabase.from('plot_groups').delete().eq('id', group.id)
+      if (membersError.message.includes('plot_group_members_plot_unique')) {
+        throw new Error('มีแปลงที่อยู่ในกลุ่มอื่นแล้ว - แปลงหนึ่งอยู่ได้เพียงกลุ่มเดียว')
+      }
+      throw new Error(membersError.message)
     }
-    throw new Error(membersError.message)
   }
 
   revalidatePath(`/dashboard/projects/${projectId}`)
@@ -527,8 +533,9 @@ export async function updatePlotGroup(groupId: string, projectId: string, name: 
 
   const trimmedName = name.trim()
   if (!trimmedName) throw new Error('กรุณาตั้งชื่อกลุ่ม')
+  // No minimum member count here either - see createPlotGroup. Editing down
+  // to zero (or building up one plot at a time) both need to work.
   const uniquePlotIds = Array.from(new Set(plotIds.filter(Boolean)))
-  if (uniquePlotIds.length < 2) throw new Error('กลุ่มต้องมีอย่างน้อย 2 แปลง')
 
   const { error: nameError } = await supabase.from('plot_groups').update({ name: trimmedName }).eq('id', groupId)
   if (nameError) throw new Error(nameError.message)
@@ -536,15 +543,17 @@ export async function updatePlotGroup(groupId: string, projectId: string, name: 
   const { error: clearError } = await supabase.from('plot_group_members').delete().eq('group_id', groupId)
   if (clearError) throw new Error(clearError.message)
 
-  const { error: membersError } = await supabase
-    .from('plot_group_members')
-    .insert(uniquePlotIds.map((plotId) => ({ group_id: groupId, plot_id: plotId })))
+  if (uniquePlotIds.length > 0) {
+    const { error: membersError } = await supabase
+      .from('plot_group_members')
+      .insert(uniquePlotIds.map((plotId) => ({ group_id: groupId, plot_id: plotId })))
 
-  if (membersError) {
-    if (membersError.message.includes('plot_group_members_plot_unique')) {
-      throw new Error('มีแปลงที่อยู่ในกลุ่มอื่นแล้ว - แปลงหนึ่งอยู่ได้เพียงกลุ่มเดียว')
+    if (membersError) {
+      if (membersError.message.includes('plot_group_members_plot_unique')) {
+        throw new Error('มีแปลงที่อยู่ในกลุ่มอื่นแล้ว - แปลงหนึ่งอยู่ได้เพียงกลุ่มเดียว')
+      }
+      throw new Error(membersError.message)
     }
-    throw new Error(membersError.message)
   }
 
   revalidatePath(`/dashboard/projects/${projectId}`)

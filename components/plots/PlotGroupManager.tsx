@@ -129,7 +129,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
             <>
               <p className="text-xs text-slate-500">
                 กลุ่มแปลงคือชุดแปลงที่สร้าง/เบิกวัสดุพร้อมกัน (เช่น 98-102) - เวลาบันทึกวัสดุจะเลือกบันทึกให้ทั้งกลุ่มได้
-                และงบเทียบต่อแปลงจะเฉลี่ยให้อัตโนมัติ · หนึ่งแปลงอยู่ได้เพียงกลุ่มเดียว
+                และงบเทียบต่อแปลงจะเฉลี่ยให้อัตโนมัติ · หนึ่งแปลงอยู่ได้เพียงกลุ่มเดียว · ตั้งชื่อกลุ่มไว้ก่อนได้ ไม่ต้องรอให้สร้างแปลงครบ
               </p>
 
               {groups.length === 0 ? (
@@ -149,7 +149,9 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                           {group.name}
                         </div>
                         <div className="mt-0.5 truncate text-xs text-slate-500">
-                          {group.member_plot_names.length} แปลง: {group.member_plot_names.join(', ')}
+                          {group.member_plot_names.length === 0
+                            ? 'ยังไม่มีแปลงในกลุ่ม - ตั้งชื่อไว้ก่อน เพิ่มแปลงทีหลังได้'
+                            : `${group.member_plot_names.length} แปลง: ${group.member_plot_names.join(', ')}`}
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
@@ -200,11 +202,11 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  เลือกแปลงในกลุ่ม ({selectedPlotIds.size} แปลง - อย่างน้อย 2)
+                  เลือกแปลงในกลุ่ม ({selectedPlotIds.size} แปลง - จะเพิ่มทีหลังก็ได้)
                 </label>
                 {eligiblePlots.length === 0 ? (
                   <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-400">
-                    ไม่มีแปลงว่าง - ทุกแปลงอยู่ในกลุ่มอื่นแล้ว
+                    ยังไม่มีแปลงว่างให้เลือก - บันทึกชื่อกลุ่มไว้ก่อนได้ แล้วกลับมาเพิ่มแปลงทีหลัง
                   </p>
                 ) : (
                   <div className="flex max-h-56 flex-wrap gap-2 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-2.5">
@@ -240,7 +242,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={isSaving || !nameDraft.trim() || selectedPlotIds.size < 2}
+                  disabled={isSaving || !nameDraft.trim()}
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {isSaving ? 'กำลังบันทึก...' : editing === 'new' ? 'สร้างกลุ่ม' : 'บันทึกการแก้ไข'}

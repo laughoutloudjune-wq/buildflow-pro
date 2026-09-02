@@ -482,7 +482,7 @@ export default function PurchaseOrderForm({
   const plotGroupOptions = plotGroups.map((g) => ({
     value: g.id,
     label: g.name,
-    sublabel: `${g.member_plot_names.length} แปลง: ${g.member_plot_names.join(', ')}`,
+    sublabel: g.member_plot_names.length === 0 ? 'ยังไม่มีแปลงในกลุ่ม' : `${g.member_plot_names.length} แปลง: ${g.member_plot_names.join(', ')}`,
   }))
   const supplierOptions = suppliers.map((s) => ({ value: s.id, label: s.name }))
   const companyOptions = companies.map((c) => ({ value: c.id, label: c.name }))
