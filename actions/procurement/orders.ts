@@ -11,7 +11,7 @@ const SELECT_WITH_RELATIONS = `
   suppliers (*),
   companies (*),
   projects (name, location),
-  plots (name),
+  plots!purchase_orders_plot_id_fkey (name),
   plot_groups (name),
   purchase_order_plots (plot_id, plots (name)),
   purchase_requests (pr_no),
