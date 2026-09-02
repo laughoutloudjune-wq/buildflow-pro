@@ -11,15 +11,18 @@ export default function Header({ userEmail, role }: { userEmail?: string; role?:
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200/70 bg-white/75 px-4 backdrop-blur-xl sm:px-6">
-      {/* self-start + pt-5: centering this two-line block in the h-16 row
-          (like the single-line sidebar brand text) sits the title ~9px
-          above the sidebar's "BuildFlow" instead of level with it - this
-          pins the title line to the same baseline instead. */}
-      <div className="min-w-0 self-start pt-5">
+      {/* Only the title line is a real flex item here, centered by the same
+          `items-center` mechanism as the sidebar's single-line "BuildFlow" -
+          that's what makes the two match exactly. The subtitle is pulled out
+          of flow (absolute) so it doesn't add height that would shift the
+          title's centered position off the sidebar's. A padding-based nudge
+          was tried first but centered the title lower than a plain
+          top-aligned line looks correct, i.e. off-center on its own. */}
+      <div className="relative flex h-16 min-w-0 items-center">
         <p className="truncate text-[15px] font-semibold tracking-tight text-slate-900" title={pageTitle}>
           {pageTitle}
         </p>
-        <p className="hidden text-xs text-slate-500 sm:block">BuildFlow</p>
+        <p className="absolute left-0 top-1/2 mt-2 hidden text-xs text-slate-500 sm:block">BuildFlow</p>
       </div>
 
       <div className="flex flex-shrink-0 items-center gap-2 sm:gap-4">
