@@ -43,10 +43,15 @@ function thaiDate(iso: string): string {
 // bg and tableHead were faint off-white/gray fills that printBackground:true
 // bakes into the PDF as a visible tint - flattened to pure white so printing
 // uses no background ink at all.
+// muted was #86868b (~52% gray, ~3.6:1 contrast on white - below the ~4.5:1
+// normal-text threshold) - used for every field label (โครงการ, ที่อยู่,
+// เลขประจำตัวผู้เสียภาษี, table headers, etc), so this was the other half of
+// "faint in black and white" even once accent stopped being blue. Darkened
+// to ~7:1 contrast, still visibly lighter than the near-black main text.
 const c = {
   bg: '#ffffff',
   text: '#1d1d1f',
-  muted: '#86868b',
+  muted: '#595959',
   accent: '#1d1d1f',
   cardBorder: '#f0f0f2',
   divider: '#e8e8ed',
