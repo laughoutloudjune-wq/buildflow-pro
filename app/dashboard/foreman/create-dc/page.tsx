@@ -157,8 +157,8 @@ export default function CreateExtraWorkPage() {
 
   const handleSubmit = async () => {
     setError(null)
-    if (!selectedProject || !selectedContractor || !selectedPlot) {
-      setError('กรุณาเลือกโครงการ ผู้รับเหมา และแปลง')
+    if (!selectedProject || !selectedContractor) {
+      setError('กรุณาเลือกโครงการและผู้รับเหมา')
       return
     }
     if (!reason) {
@@ -167,6 +167,10 @@ export default function CreateExtraWorkPage() {
     }
     if (adjustments.length === 0) {
       setError('กรุณาเพิ่มรายการงานเพิ่มหรืองานหักอย่างน้อย 1 รายการ')
+      return
+    }
+    if (adjustments.some((adj) => !adj.plot_name?.trim())) {
+      setError('กรุณาระบุแปลงให้ครบทุกรายการ')
       return
     }
 
@@ -260,7 +264,7 @@ export default function CreateExtraWorkPage() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700">แปลง (บังคับ)</label>
+            <label className="block text-sm font-medium text-gray-700">แปลงหลัก (ถ้ามี)</label>
             <select value={selectedPlot} onChange={(e) => setSelectedPlot(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
               <option value="">เลือกแปลง</option>
               {plots.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -298,6 +302,7 @@ export default function CreateExtraWorkPage() {
             totalDeductAmount={totalDeductAmount}
             netValue={netAmount}
             theme="amber"
+            requirePlot
           />
         </div>
 

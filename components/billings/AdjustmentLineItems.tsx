@@ -21,6 +21,8 @@ type Props = {
   theme?: 'amber' | 'slate'
   /** Show who last edited each line (used on the PM review screen). */
   showSignature?: boolean
+  /** Require a plot on every line (DC/extra-work forms) instead of it being optional. */
+  requirePlot?: boolean
 }
 
 /** Parses a number input's raw value, coercing anything invalid (empty, NaN) to 0
@@ -42,6 +44,7 @@ export default function AdjustmentLineItems({
   netValue,
   theme = 'amber',
   showSignature = false,
+  requirePlot = false,
 }: Props) {
   const net = netValue ?? totalAddAmount - totalDeductAmount
   const barClass = theme === 'amber' ? 'bg-amber-50 border-amber-200' : 'bg-slate-100 border-slate-200'
@@ -52,7 +55,7 @@ export default function AdjustmentLineItems({
       {adjustments.length > 0 && (
         <div className="grid grid-cols-12 gap-2 mb-1 items-center px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
           <div className="col-span-2">ประเภท</div>
-          <div className="col-span-2">แปลง</div>
+          <div className="col-span-2">แปลง{requirePlot ? ' *' : ''}</div>
           <div className={showSignature ? 'col-span-3' : 'col-span-2'}>รายละเอียด</div>
           <div className="col-span-1">หน่วย</div>
           <div className="col-span-1 text-right">จำนวน</div>
@@ -87,9 +90,11 @@ export default function AdjustmentLineItems({
                 <select
                   value={adj.plot_name || ''}
                   onChange={(e) => onChange(index, 'plot_name', e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                  className={`w-full p-2 border rounded-md text-sm ${
+                    requirePlot && !adj.plot_name ? 'border-red-300' : 'border-gray-300'
+                  }`}
                 >
-                  <option value="">แปลง (ถ้ามี)</option>
+                  <option value="">{requirePlot ? 'เลือกแปลง' : 'แปลง (ถ้ามี)'}</option>
                   {plotOptions.map((plot) => (
                     <option key={plot} value={plot}>{plot}</option>
                   ))}
@@ -97,10 +102,12 @@ export default function AdjustmentLineItems({
               ) : (
                 <input
                   type="text"
-                  placeholder="แปลง"
+                  placeholder={requirePlot ? 'ระบุแปลง' : 'แปลง'}
                   value={adj.plot_name || ''}
                   onChange={(e) => onChange(index, 'plot_name', e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                  className={`w-full p-2 border rounded-md text-sm ${
+                    requirePlot && !adj.plot_name ? 'border-red-300' : 'border-gray-300'
+                  }`}
                 />
               )}
             </div>
