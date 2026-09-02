@@ -11,10 +11,10 @@ import { useToast } from '@/components/ui/Toast'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { getProjects } from '@/actions/project-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
-import { getMaterialTypes } from '@/actions/material-actions'
+import { getMaterialPickerOptions } from '@/actions/material-actions'
 import { createPurchaseRequest, getPurchaseRequests } from '@/actions/procurement-actions'
 import type { PurchaseRequest, PurchaseRequestStatus } from '@/lib/types/procurement'
-import type { MaterialType } from '@/lib/types/materials'
+import type { MaterialPickerOption } from '@/lib/types/materials'
 
 const STATUS_LABEL: Record<PurchaseRequestStatus, string> = {
   pending_review: 'รอตรวจสอบ',
@@ -55,7 +55,7 @@ export default function PurchaseRequestsPage() {
   const [isPending, startTransition] = useTransition()
   const [projects, setProjects] = useState<{ id: string; name: string; location: string | null }[]>([])
   const [plots, setPlots] = useState<{ id: string; name: string }[]>([])
-  const [materials, setMaterials] = useState<MaterialType[]>([])
+  const [materials, setMaterials] = useState<MaterialPickerOption[]>([])
   const [projectId, setProjectId] = useState('')
   const [plotId, setPlotId] = useState('')
   const [note, setNote] = useState('')
@@ -90,7 +90,7 @@ export default function PurchaseRequestsPage() {
     setLines([])
     setIsModalOpen(true)
     if (projects.length === 0 || materials.length === 0) {
-      const [p, m] = await Promise.all([getProjects(), getMaterialTypes()])
+      const [p, m] = await Promise.all([getProjects(), getMaterialPickerOptions()])
       setProjects(p as any)
       setMaterials(m)
     }

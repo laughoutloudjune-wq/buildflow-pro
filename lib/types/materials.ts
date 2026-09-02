@@ -18,6 +18,18 @@ export type MaterialType = {
   is_requestable: boolean
 }
 
+/** Narrow projection of MaterialType for pickers that only display and
+ * search by name/unit/category - on a 1000+ row catalog, the unused columns
+ * (current_price, price_updated_at/by, is_active, created_at, reorder_point,
+ * is_requestable) meaningfully bloat both the query and the server-action
+ * payload for no benefit to a picker that never reads them. */
+export type MaterialPickerOption = {
+  id: number
+  name: string
+  unit: string
+  category: string | null
+}
+
 export type BoqMaterialItem = {
   id: string
   boq_id: string

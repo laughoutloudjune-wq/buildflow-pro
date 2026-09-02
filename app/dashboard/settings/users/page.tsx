@@ -6,17 +6,25 @@ import { Card } from '@/components/ui/Card'
 import { ButtonLink } from '@/components/ui/Button'
 import PageLoading from '@/components/ui/PageLoading'
 import { useToast } from '@/components/ui/Toast'
-import { getUsers, updateUserRole } from '@/actions/settings-actions'
+import { getUsers, updateUserRole, updateUserFullName } from '@/actions/settings-actions'
 
 type User = Awaited<ReturnType<typeof getUsers>>[0]
 
 const roleSelectClass =
   'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50'
 
+const nameInputClass =
+  'w-full rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-sm font-medium text-slate-900 hover:border-slate-200 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50'
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isPending, startTransition] = useTransition()
+  // Local text while a name is being typed, keyed by user id - lets the
+  // input hold an in-progress edit without touching `users` (and thus the
+  // rest of the row) until the blur-triggered save actually lands.
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({})
+  const [savingNameFor, setSavingNameFor] = useState<string | null>(null)
   const toast = useToast()
 
   useEffect(() => {
@@ -43,6 +51,26 @@ export default function UsersPage() {
         toast.error(error instanceof Error ? error.message : 'อัปเดตบทบาทไม่สำเร็จ')
       }
     })
+  }
+
+  function handleNameBlur(user: User) {
+    const draft = nameDrafts[user.id]
+    if (draft === undefined) return
+    const trimmed = draft.trim()
+    setNameDrafts((prev) => {
+      const next = { ...prev }
+      delete next[user.id]
+      return next
+    })
+    if (!trimmed || trimmed === (user.full_name || '')) return
+
+    setSavingNameFor(user.id)
+    updateUserFullName(user.id, trimmed)
+      .then(() => {
+        setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, full_name: trimmed } : u)))
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : 'เปลี่ยนชื่อไม่สำเร็จ'))
+      .finally(() => setSavingNameFor(null))
   }
 
   if (isLoading) {
@@ -93,7 +121,20 @@ export default function UsersPage() {
                 ) : (
                   users.map((user) => (
                     <tr key={user.id} className="transition hover:bg-slate-50/80">
-                      <td className="whitespace-nowrap px-4 py-3.5 font-medium text-slate-900">{user.full_name || '—'}</td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          value={nameDrafts[user.id] ?? user.full_name ?? ''}
+                          onChange={(e) => setNameDrafts((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                          onBlur={() => handleNameBlur(user)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                          }}
+                          disabled={savingNameFor === user.id}
+                          placeholder="ระบุชื่อ"
+                          className={nameInputClass}
+                          aria-label={`ชื่อของ ${user.email || user.id}`}
+                        />
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3.5 text-slate-600">{user.email || '—'}</td>
                       <td className="whitespace-nowrap px-4 py-3.5">
                         <select

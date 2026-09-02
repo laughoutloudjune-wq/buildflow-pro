@@ -8,6 +8,7 @@ import { getCurrentUser, getCurrentUserRole, requireAuthRole } from '@/actions/_
 import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
 import type {
   BoqMaterialItem,
+  MaterialPickerOption,
   MaterialType,
   MaterialUsageLogEntry,
   MaterialVariance,
@@ -38,6 +39,18 @@ export async function getMaterialTypes(activeOnly = true): Promise<MaterialType[
     if (activeOnly) query = query.eq('is_active', true)
     return query
   })
+}
+
+/** Same active rows as getMaterialTypes(true), trimmed to just the columns a
+ * picker renders/searches - see MaterialPickerOption. Use this instead of
+ * getMaterialTypes wherever the result is only feeding a dropdown (BOQ
+ * lines, PO/PR items) rather than an edit form that needs the full row. */
+export async function getMaterialPickerOptions(): Promise<MaterialPickerOption[]> {
+  await requireModuleAccess('materials')
+  const supabase = await createClient()
+  return fetchAllRows<MaterialPickerOption>((from, to) =>
+    supabase.from('material_types').select('id, name, unit, category').eq('is_active', true).order('name').range(from, to)
+  )
 }
 
 // Each mutation below returns the affected row so the settings page can

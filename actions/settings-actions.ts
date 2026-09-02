@@ -265,7 +265,7 @@ export async function updateUserRole(userId: string, newRole: 'admin' | 'pm' | '
   const supabase = await createClient()
   const { role } = await getCurrentUserAndRole(supabase)
   if (role !== 'admin') throw new Error('Only admin can update user roles')
-  
+
   const { error } = await supabase
     .from('profiles')
     .update({ role: newRole })
@@ -273,6 +273,36 @@ export async function updateUserRole(userId: string, newRole: 'admin' | 'pm' | '
 
   if (error) {
     console.error('Error updating user role:', error)
+    throw new Error(error.message)
+  }
+
+  revalidatePath('/dashboard/settings')
+  return { success: true }
+}
+
+/**
+ * Updates a user's display name. Signup defaults full_name to the account's
+ * email when none is provided (see handle_auth_user_created), which is how
+ * "ผู้จัดทำ" on a PO printout ends up showing an email address instead of a
+ * name - this is how that gets fixed. Admin can rename anyone; everyone else
+ * can only rename themselves.
+ */
+export async function updateUserFullName(userId: string, fullName: string) {
+  const supabase = await createClient()
+  const { user, role } = await getCurrentUserAndRole(supabase)
+  if (!user) throw new Error('Not authenticated')
+  if (role !== 'admin' && userId !== user.id) throw new Error('You can only change your own name')
+
+  const trimmed = fullName.trim()
+  if (!trimmed) throw new Error('กรุณาใส่ชื่อ')
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ full_name: trimmed })
+    .eq('id', userId)
+
+  if (error) {
+    console.error('Error updating user full name:', error)
     throw new Error(error.message)
   }
 

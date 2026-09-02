@@ -138,6 +138,12 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
 
   const deliveryAddress = order.delivery_address || order.projects?.location || ''
 
+  // ผู้จัดทำ and ผู้อนุมัติ both sign off on the same event - the PO being
+  // confirmed (draft -> sent) - so both dates are that single timestamp
+  // rather than two blanks to fill in by hand. Still blank on a draft, which
+  // has no confirmed_at yet.
+  const approvalDateLine = order.confirmed_at ? `วันที่ ${thaiDate(order.confirmed_at)}` : 'วันที่ ................................'
+
   return `<!DOCTYPE html>
 <html lang="th">
 <head>
@@ -382,14 +388,14 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
         <div class="signature-line"></div>
         <div class="signature-label">ผู้จัดทำ</div>
         <div class="signature-name">${esc(order.creator?.full_name) || ''}</div>
-        <div class="signature-date">วันที่ ................................</div>
+        <div class="signature-date">${approvalDateLine}</div>
       </div>
       <div class="signature-box">
         ${signatureImg || '<div class="signature-spacer"></div>'}
         <div class="signature-line"></div>
         <div class="signature-label">ผู้อนุมัติ</div>
         <div class="signature-name"></div>
-        <div class="signature-date">วันที่ ................................</div>
+        <div class="signature-date">${approvalDateLine}</div>
       </div>
       <div class="signature-box">
         <div class="signature-spacer"></div>

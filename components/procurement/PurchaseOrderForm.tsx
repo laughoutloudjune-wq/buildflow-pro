@@ -13,7 +13,7 @@ import SupplierFormFields from '@/components/procurement/SupplierFormFields'
 import { appleCard, appleCardLabel, appleDivider } from '@/components/procurement/appleTheme'
 import { getProjects } from '@/actions/project-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
-import { getMaterialTypes, getPlotGroups, createMaterialType } from '@/actions/material-actions'
+import { getMaterialPickerOptions, getPlotGroups, createMaterialType } from '@/actions/material-actions'
 import {
   getSuppliers,
   getCompanies,
@@ -23,7 +23,7 @@ import {
   updatePurchaseOrder,
   getPurchaseRequestById,
 } from '@/actions/procurement-actions'
-import type { MaterialType, PlotGroup } from '@/lib/types/materials'
+import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
 import type { Supplier, Company, SupplierInput, VatType, DiscountType, PurchaseOrder } from '@/lib/types/procurement'
 
 type PlotScope = 'none' | 'plot' | 'group'
@@ -117,7 +117,13 @@ export default function PurchaseOrderForm({
   const [plots, setPlots] = useState<{ id: string; name: string }[]>([])
   const [plotGroups, setPlotGroups] = useState<PlotGroup[]>([])
   const [isPlotsLoading, setIsPlotsLoading] = useState(false)
-  const [materials, setMaterials] = useState<MaterialType[]>([])
+  // Fetched separately from bootstrap() and not gating isLoading: the
+  // material catalog is 1000+ rows and was blocking the whole form behind a
+  // spinner while everything else (projects/suppliers/companies - a handful
+  // of rows each) was long since ready. The line-item material picker shows
+  // its own loading state instead.
+  const [materials, setMaterials] = useState<MaterialPickerOption[]>([])
+  const [isMaterialsLoading, setIsMaterialsLoading] = useState(true)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
 
@@ -158,15 +164,26 @@ export default function PurchaseOrderForm({
 
   useEffect(() => {
     void bootstrap()
+    void loadMaterials()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function loadMaterials() {
+    setIsMaterialsLoading(true)
+    try {
+      setMaterials(await getMaterialPickerOptions())
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'โหลดรายการวัสดุไม่สำเร็จ')
+    } finally {
+      setIsMaterialsLoading(false)
+    }
+  }
 
   async function bootstrap() {
     setIsLoading(true)
     try {
-      const [p, m, s, c] = await Promise.all([getProjects(), getMaterialTypes(), getSuppliers(), getCompanies()])
+      const [p, s, c] = await Promise.all([getProjects(), getSuppliers(), getCompanies()])
       setProjects(p as any)
-      setMaterials(m)
       setSuppliers(s)
       setCompanies(c)
 
@@ -272,6 +289,27 @@ export default function PurchaseOrderForm({
     const set = new Set(materials.map((m) => m.category).filter((c): c is string => !!c && c.trim() !== ''))
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'))
   }, [materials])
+
+  // Preset delivery addresses sourced from data that's already loaded (no
+  // extra fetch, no new table to manage): every project's site location plus
+  // every buyer company's office address, deduped by the exact text.
+  const addressPresets = useMemo(() => {
+    const seen = new Set<string>()
+    const list: { value: string; label: string }[] = []
+    for (const p of projects) {
+      const loc = (p.location || '').trim()
+      if (!loc || seen.has(loc)) continue
+      seen.add(loc)
+      list.push({ value: loc, label: `${p.name} — ${loc}` })
+    }
+    for (const c of companies) {
+      const addr = (c.address || '').trim()
+      if (!addr || seen.has(addr)) continue
+      seen.add(addr)
+      list.push({ value: addr, label: `${c.name} (สำนักงาน) — ${addr}` })
+    }
+    return list
+  }, [projects, companies])
 
   function handleSelectSupplier(id: string) {
     setSupplierId(id)
@@ -725,18 +763,27 @@ export default function PurchaseOrderForm({
             </div>
           )}
 
-          <div>
-            <label className={fieldLabel}>กำหนดส่งของ</label>
-            <input
-              type="date"
-              value={expectedDeliveryDate}
-              onChange={(e) => setExpectedDeliveryDate(e.target.value)}
-              className="w-full"
-              disabled={readOnly}
-            />
-          </div>
-          <div className="col-span-2">
+          <div className="col-span-2 sm:col-span-3">
             <label className={fieldLabel}>สถานที่ส่งของ</label>
+            {addressPresets.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  setDeliveryAddressTouched(true)
+                  setDeliveryAddress(e.target.value)
+                }}
+                className="mb-1.5 w-full"
+                disabled={readOnly}
+              >
+                <option value="">เลือกที่อยู่ที่ใช้บ่อย...</option>
+                {addressPresets.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            )}
             <input
               value={deliveryAddress}
               onChange={(e) => {
@@ -864,15 +911,16 @@ export default function PurchaseOrderForm({
                             options={materialOptions}
                             value={line.material_type_id ? String(line.material_type_id) : ''}
                             onChange={(v) => updateLine(i, { material_type_id: Number(v) })}
-                            placeholder="เลือกวัสดุ"
-                            disabled={readOnly}
+                            placeholder={isMaterialsLoading ? 'กำลังโหลดรายการวัสดุ...' : 'เลือกวัสดุ'}
+                            disabled={readOnly || isMaterialsLoading}
                           />
                           {!readOnly && (
                             <button
                               type="button"
                               onClick={() => openMaterialModal(i)}
                               title="เพิ่มวัสดุใหม่"
-                              className="shrink-0 rounded p-1.5 text-indigo-600 hover:bg-indigo-50"
+                              disabled={isMaterialsLoading}
+                              className="shrink-0 rounded p-1.5 text-indigo-600 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               <Plus className="h-3.5 w-3.5" />
                             </button>
