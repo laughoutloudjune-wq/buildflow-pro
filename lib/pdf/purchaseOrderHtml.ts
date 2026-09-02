@@ -36,14 +36,21 @@ function thaiDate(iso: string): string {
 }
 
 // Palette matches the approved "Modern Apple-style PO form" reference.
+// accent was #0071e3 (blue) - on a black-and-white printer that converts to
+// a faint light gray, so section labels effectively disappeared on paper.
+// Dark near-black keeps the same visual weight in both color and grayscale
+// printing; hierarchy still comes through via bold/uppercase/letter-spacing.
+// bg and tableHead were faint off-white/gray fills that printBackground:true
+// bakes into the PDF as a visible tint - flattened to pure white so printing
+// uses no background ink at all.
 const c = {
-  bg: '#fbfbfd',
+  bg: '#ffffff',
   text: '#1d1d1f',
   muted: '#86868b',
-  accent: '#0071e3',
+  accent: '#1d1d1f',
   cardBorder: '#f0f0f2',
   divider: '#e8e8ed',
-  tableHead: '#f5f5f7',
+  tableHead: '#ffffff',
 }
 
 // Only statuses that change how the document should be read get a stamp.
@@ -259,7 +266,7 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
   thead tr { background: ${c.tableHead}; }
   th {
     text-align: left; padding: 7px 10px; font-size: 8px; font-weight: 700; color: ${c.muted};
-    text-transform: uppercase; letter-spacing: 0.04em;
+    text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1.5px solid ${c.divider};
   }
   th.right, td.right { text-align: right; }
   td { padding: 7px 10px; font-size: 10px; border-top: 1px solid ${c.cardBorder}; vertical-align: top; }
