@@ -239,6 +239,14 @@ export async function bulkSetMaterialUnit(ids: number[], unit: string): Promise<
   return result
 }
 
+export async function bulkSetMaterialRequestable(ids: number[], isRequestable: boolean): Promise<MaterialType[]> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  const result = await bulkUpdate(supabase, ids, { is_requestable: isRequestable })
+  revalidatePath('/dashboard/settings/materials')
+  return result
+}
+
 // ---------------------------------------------------------------------------
 // Bulk import from a spreadsheet (Settings > Material Catalog > Import)
 // ---------------------------------------------------------------------------

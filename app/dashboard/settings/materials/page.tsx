@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Pencil, Plus, RotateCcw, Tags, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Loader2, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Tags, Trash2, Upload, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -13,6 +13,7 @@ import {
   bulkDeactivateMaterialTypes,
   bulkReactivateMaterialTypes,
   bulkSetMaterialCategory,
+  bulkSetMaterialRequestable,
   bulkSetMaterialUnit,
   createMaterialType,
   deactivateMaterialType,
@@ -244,6 +245,18 @@ export default function MaterialTypesPage() {
       .finally(() => setIsBulkPending(false))
   }
 
+  function handleBulkSetRequestable(isRequestable: boolean) {
+    setIsBulkPending(true)
+    bulkSetMaterialRequestable(Array.from(selected), isRequestable)
+      .then((updated) => {
+        patchMaterials(updated)
+        setSelected(new Set())
+        toast.success(`${isRequestable ? 'ทำเครื่องหมายว่าเบิกได้' : 'ทำเครื่องหมายว่ารับเข้าอย่างเดียว'}แล้ว ${updated.length} รายการ`)
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : 'อัปเดตไม่สำเร็จ'))
+      .finally(() => setIsBulkPending(false))
+  }
+
   function openBulkCategoryModal() {
     setBulkCategoryDraft('')
     setIsBulkCategoryCustom(false)
@@ -377,6 +390,14 @@ export default function MaterialTypesPage() {
             <Button type="button" variant="secondary" size="sm" onClick={openBulkCategoryModal} disabled={isBulkPending}>
               <Tags className="h-3.5 w-3.5" />
               กำหนดหมวดหมู่
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => handleBulkSetRequestable(true)} disabled={isBulkPending}>
+              <PackageCheck className="h-3.5 w-3.5" />
+              เบิกได้
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => handleBulkSetRequestable(false)} disabled={isBulkPending}>
+              <PackageX className="h-3.5 w-3.5" />
+              รับเข้าอย่างเดียว
             </Button>
             <Button type="button" variant="secondary" size="sm" onClick={handleBulkReactivate} disabled={isBulkPending}>
               <RotateCcw className="h-3.5 w-3.5" />
