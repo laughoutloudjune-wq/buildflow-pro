@@ -200,7 +200,16 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
     color: ${c.text};
     background: ${c.bg};
   }
-  .page { padding: 0.42in 0.45in; }
+  /* A4 at 96dpi is 1122.24px tall; the PDF route reserves 0.4in (38.4px) of
+     that for the footer template, leaving ~1084px of printable page - a few
+     px of safety margin below that so a PO that just barely fits doesn't
+     get tipped onto an accidental blank second page. Stretching .page to
+     that height and growing .table-card into the leftover space is what
+     pins the totals/signature block to the bottom of the page instead of
+     leaving a dead gap under a short item list. Has no effect once the
+     item list is naturally taller than one page - flex-grow only adds
+     space, it never forces the table shorter. */
+  .page { padding: 0.42in 0.45in; display: flex; flex-direction: column; min-height: 1078px; }
 
   /* Header
      The right column (title + number/date pills + any status stamp) is
@@ -266,7 +275,7 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
 
   /* Items table */
   table { width: 100%; border-collapse: collapse; }
-  .table-card { background: #fff; border-radius: 12px; border: 1px solid ${c.cardBorder}; overflow: hidden; margin-bottom: 10px; }
+  .table-card { background: #fff; border-radius: 12px; border: 1px solid ${c.cardBorder}; overflow: hidden; margin-bottom: 10px; flex: 1 1 auto; }
   thead tr { background: ${c.tableHead}; }
   th {
     text-align: left; padding: 7px 10px; font-size: 8px; font-weight: 700; color: ${c.muted};
