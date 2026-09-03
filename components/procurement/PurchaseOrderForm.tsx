@@ -663,55 +663,34 @@ export default function PurchaseOrderForm({
       {/* Terms card */}
       <Card className={`mt-5 p-5 ${appleCard}`}>
         <div className={appleCardLabel}>เงื่อนไขใบสั่งซื้อ</div>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={fieldLabel}>โครงการ</label>
             <SearchableSelect options={projectOptions} value={projectId} onChange={setProjectId} placeholder="เลือกโครงการ" disabled={readOnly} />
           </div>
           <div>
-            <label className={fieldLabel}>ภาษีมูลค่าเพิ่ม</label>
-            <select value={vatOption} onChange={(e) => setVatOption(e.target.value)} className="w-full" disabled={readOnly}>
-              {VAT_OPTIONS.map((v) => (
-                <option key={v.value} value={v.value}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="col-span-2 sm:col-span-1">
             <label className={fieldLabel}>โครงการย่อย / แปลง</label>
-            <div className="flex h-[38px] flex-wrap items-center gap-1.5">
-              {(
-                [
-                  ['none', 'ไม่ระบุ'],
-                  ['plot', 'แปลงเดียว'],
-                  ['multi', 'หลายแปลง (เลือกเอง)'],
-                  ['group', 'กลุ่มที่บันทึกไว้'],
-                ] as [PlotScope, string][]
-              ).map(([scope, label]) => (
-                <button
-                  key={scope}
-                  type="button"
-                  onClick={() => setPlotScope(scope)}
-                  disabled={
-                    readOnly ||
-                    !projectId ||
-                    (scope === 'plot' && plots.length === 0) ||
-                    (scope === 'multi' && plots.length === 0) ||
-                    (scope === 'group' && plotGroups.length === 0)
-                  }
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                    plotScope === scope ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <select
+              value={plotScope}
+              onChange={(e) => setPlotScope(e.target.value as PlotScope)}
+              className="w-full"
+              disabled={readOnly || !projectId}
+            >
+              <option value="none">ไม่ระบุ</option>
+              <option value="plot" disabled={plots.length === 0}>
+                แปลงเดียว
+              </option>
+              <option value="multi" disabled={plots.length === 0}>
+                หลายแปลง (เลือกเอง)
+              </option>
+              <option value="group" disabled={plotGroups.length === 0}>
+                กลุ่มที่บันทึกไว้
+              </option>
+            </select>
           </div>
 
           {plotScope !== 'none' && (
-            <div className="col-span-2 sm:col-span-3">
+            <div className="col-span-2">
               <div className={plotScope === 'multi' ? 'w-full' : 'w-full sm:max-w-xs'}>
                 {isPlotsLoading ? (
                   <div className="flex items-center gap-2 text-xs text-[#86868b]">
@@ -763,7 +742,7 @@ export default function PurchaseOrderForm({
             </div>
           )}
 
-          <div className="col-span-2 sm:col-span-3">
+          <div className="col-span-2">
             <label className={fieldLabel}>หมายเหตุการจัดส่ง</label>
             <textarea
               value={deliveryAddress}
@@ -792,10 +771,20 @@ export default function PurchaseOrderForm({
       {/* Payment conditions card */}
       <Card className={`mt-5 p-5 ${appleCard}`}>
         <div className={appleCardLabel}>เงื่อนไขการชำระเงิน</div>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
             <label className={fieldLabel}>สกุลเงิน</label>
             <div className={readOnlyBox}>THB - บาท</div>
+          </div>
+          <div>
+            <label className={fieldLabel}>ภาษีมูลค่าเพิ่ม</label>
+            <select value={vatOption} onChange={(e) => setVatOption(e.target.value)} className="w-full" disabled={readOnly}>
+              {VAT_OPTIONS.map((v) => (
+                <option key={v.value} value={v.value}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className={fieldLabel}>เครดิต / เงื่อนไขชำระเงิน</label>
