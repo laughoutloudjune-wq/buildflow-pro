@@ -169,6 +169,13 @@ export type PurchaseOrderInput = {
   items: PurchaseOrderItemInput[]
 }
 
+export type LastMaterialOrderPrice = {
+  unitPrice: number
+  orderDate: string
+  poNo: number
+  purchaseOrderId: string
+}
+
 export type GoodsReceiptItem = {
   id: string
   goods_receipt_id: string

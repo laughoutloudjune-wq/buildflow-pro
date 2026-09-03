@@ -2,18 +2,17 @@
 
 import { useEffect, useState, useTransition, use } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { ArrowLeft, Loader2, XCircle, PackageCheck, ChevronDown, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
 import PurchaseOrderForm from '@/components/procurement/PurchaseOrderForm'
 import PurchaseOrderDocActions from '@/components/procurement/PurchaseOrderDocActions'
+import GoodsReceiptModal from '@/components/procurement/GoodsReceiptModal'
 import {
   cancelPurchaseOrder,
   getPurchaseOrderById,
   setPurchaseOrderStatus,
-  markPurchaseOrderReceived,
   unmarkPurchaseOrderReceived,
   unmarkPurchaseOrderPaid,
 } from '@/actions/procurement-actions'
@@ -44,10 +43,10 @@ function formatDate(value: string | null) {
 
 export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const router = useRouter()
   const [order, setOrder] = useState<PurchaseOrder | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isPending, startTransition] = useTransition()
+  const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -92,21 +91,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     })
   }
 
-  function handleMarkReceived() {
-    const today = new Date().toISOString().slice(0, 10)
-    const input = prompt('วันที่รับของ (YYYY-MM-DD):', today)
-    if (input === null) return
-    startTransition(async () => {
-      try {
-        await markPurchaseOrderReceived(id, input)
-        await load()
-        toast.success('บันทึกการรับของแล้ว')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'บันทึกการรับของไม่สำเร็จ')
-      }
-    })
-  }
-
   function handleUnmarkReceived() {
     if (!confirm('ยกเลิกการรับของ และย้อนกลับไปสถานะยืนยันสั่งซื้อ?')) return
     startTransition(async () => {
@@ -146,8 +130,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
   const canEditStatus = order.status === 'draft' || order.status === 'sent'
   const canCancel = order.status === 'draft' || order.status === 'sent'
-  const canReceiveLineItems = order.status === 'sent' || order.status === 'partially_received'
-  const canMarkReceived = order.status === 'sent' || order.status === 'partially_received'
+  const canReceive = order.status === 'sent' || order.status === 'partially_received'
   const canUnmarkReceived = order.status === 'received'
   const canUnmarkPaid = order.status === 'paid'
   const isFormReadOnly = order.status !== 'draft'
@@ -192,14 +175,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
               <PurchaseOrderDocActions orderId={order.id} poNo={order.po_no} />
 
-              {canReceiveLineItems && (
-                <Button type="button" variant="secondary" size="sm" onClick={() => router.push(`/dashboard/procurement/orders/${order.id}/receive`)}>
-                  <PackageCheck className="h-3.5 w-3.5" /> รับของ (รายการ)
-                </Button>
-              )}
-              {canMarkReceived && (
-                <Button type="button" size="sm" onClick={handleMarkReceived} disabled={isPending}>
-                  <PackageCheck className="h-3.5 w-3.5" /> ทำเครื่องหมายว่ารับของแล้ว
+              {canReceive && (
+                <Button type="button" size="sm" onClick={() => setIsReceiveModalOpen(true)}>
+                  <PackageCheck className="h-3.5 w-3.5" /> รับของ
                 </Button>
               )}
               {canUnmarkReceived && (
@@ -235,6 +213,16 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
 
       <PurchaseOrderForm mode="edit" orderId={id} initialOrder={order} readOnly={isFormReadOnly} />
+
+      <GoodsReceiptModal
+        isOpen={isReceiveModalOpen}
+        onClose={() => setIsReceiveModalOpen(false)}
+        order={order}
+        onSuccess={async () => {
+          await load()
+          toast.success('บันทึกการรับของแล้ว')
+        }}
+      />
     </div>
   )
 }

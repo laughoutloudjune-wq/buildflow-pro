@@ -22,9 +22,10 @@ import {
   createPurchaseOrder,
   updatePurchaseOrder,
   getPurchaseRequestById,
+  getLastMaterialOrderPrice,
 } from '@/actions/procurement-actions'
 import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
-import type { Supplier, Company, SupplierInput, VatType, DiscountType, PurchaseOrder } from '@/lib/types/procurement'
+import type { Supplier, Company, SupplierInput, VatType, DiscountType, PurchaseOrder, LastMaterialOrderPrice } from '@/lib/types/procurement'
 
 type PlotScope = 'none' | 'plot' | 'group' | 'multi'
 
@@ -148,6 +149,11 @@ export default function PurchaseOrderForm({
   const [discountValue, setDiscountValue] = useState('')
   const [note, setNote] = useState('')
   const [lines, setLines] = useState<Line[]>([])
+  // Keyed by material_type_id (not line index) so materials repeated across
+  // lines share one fetch. A missing key means "not fetched yet"; an
+  // explicit null means "fetched, no prior order found" - both read as
+  // falsy, so the effect below only checks key presence via `in`.
+  const [lastPrices, setLastPrices] = useState<Record<number, LastMaterialOrderPrice | null>>({})
 
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false)
   const [supplierDraft, setSupplierDraft] = useState(emptySupplierDraft)
@@ -272,6 +278,42 @@ export default function PurchaseOrderForm({
       .finally(() => setIsPlotsLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
+
+  // Derived to a stable, sorted string so the effect below only re-runs when
+  // the actual set of materials on the order changes - not on every
+  // keystroke in an unrelated field, which would otherwise re-create the
+  // `lines` array reference on each render.
+  const materialIdsKey = useMemo(
+    () =>
+      Array.from(new Set(lines.map((l) => l.material_type_id).filter((id) => id > 0)))
+        .sort((a, b) => a - b)
+        .join(','),
+    [lines]
+  )
+
+  useEffect(() => {
+    if (!materialIdsKey) return
+    const ids = materialIdsKey.split(',').map(Number)
+    const toFetch = ids.filter((id) => !(id in lastPrices))
+    if (toFetch.length === 0) return
+    // Mark as in-flight immediately so a re-render before the fetches
+    // resolve doesn't re-trigger the same requests.
+    setLastPrices((prev) => {
+      const next = { ...prev }
+      toFetch.forEach((id) => {
+        next[id] = null
+      })
+      return next
+    })
+    toFetch.forEach((id) => {
+      getLastMaterialOrderPrice(id, mode === 'edit' ? orderId : undefined)
+        .then((result) => setLastPrices((prev) => ({ ...prev, [id]: result })))
+        .catch(() => {
+          /* comparison is a convenience, not worth surfacing an error toast for */
+        })
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialIdsKey])
 
   const selectedSupplier = useMemo(() => suppliers.find((s) => s.id === supplierId) || null, [suppliers, supplierId])
   const selectedCompany = useMemo(() => companies.find((c) => c.id === companyId) || null, [companies, companyId])
@@ -935,6 +977,26 @@ export default function PurchaseOrderForm({
                           className="w-full text-right"
                           disabled={readOnly}
                         />
+                        {(() => {
+                          const last = line.material_type_id ? lastPrices[line.material_type_id] : undefined
+                          if (!last) return null
+                          const current = Number(line.unit_price) || 0
+                          const diff = current - last.unitPrice
+                          const pct = last.unitPrice > 0 ? (diff / last.unitPrice) * 100 : 0
+                          const tone = diff > 0 ? 'text-rose-600' : diff < 0 ? 'text-emerald-600' : 'text-slate-400'
+                          return (
+                            <div className={`mt-1 text-right text-[10px] ${tone}`}>
+                              ครั้งก่อน ฿{formatMoney(last.unitPrice)}
+                              {current > 0 && diff !== 0 && (
+                                <>
+                                  {' '}
+                                  ({diff > 0 ? '+' : ''}
+                                  {pct.toFixed(1)}%)
+                                </>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </td>
                       <td className="px-3 py-2 text-right font-medium text-slate-700">฿{formatMoney(netLineTotal)}</td>
                       {!readOnly && (

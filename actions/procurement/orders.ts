@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole } from '@/actions/_shared/user-role'
-import type { PurchaseOrder, PurchaseOrderInput, PurchaseOrderStatus } from '@/lib/types/procurement'
+import type { LastMaterialOrderPrice, PurchaseOrder, PurchaseOrderInput, PurchaseOrderStatus } from '@/lib/types/procurement'
 
 const SELECT_WITH_RELATIONS = `
   *,
@@ -81,6 +81,46 @@ export async function getPurchaseOrderById(id: string): Promise<PurchaseOrder | 
   const { data, error } = await supabase.from('purchase_orders').select(SELECT_WITH_RELATIONS).eq('id', id).maybeSingle()
   if (error) throw new Error(error.message)
   return data as unknown as PurchaseOrder | null
+}
+
+// Draft/cancelled orders were never actually fulfilled, so they're skipped
+// in favour of the most recent order that was - looking a few rows back
+// (rather than filtering server-side through the purchase_orders!inner
+// embed, whose cross-table filter syntax is easy to get subtly wrong) keeps
+// this simple and correct even if the last couple of orders for a material
+// happened to be drafts or got cancelled.
+export async function getLastMaterialOrderPrice(
+  materialTypeId: number,
+  excludeOrderId?: string
+): Promise<LastMaterialOrderPrice | null> {
+  await requireModuleAccess('procurement')
+  const supabase = await createClient()
+
+  let query = supabase
+    .from('purchase_order_items')
+    .select('unit_price, purchase_order_id, purchase_orders!inner(po_no, order_date, status)')
+    .eq('material_type_id', materialTypeId)
+    .order('order_date', { foreignTable: 'purchase_orders', ascending: false })
+    .limit(10)
+
+  if (excludeOrderId) query = query.neq('purchase_order_id', excludeOrderId)
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+
+  type Row = {
+    unit_price: number
+    purchase_order_id: string
+    purchase_orders: { po_no: number; order_date: string; status: string } | { po_no: number; order_date: string; status: string }[]
+  }
+
+  for (const row of (data || []) as unknown as Row[]) {
+    const po = Array.isArray(row.purchase_orders) ? row.purchase_orders[0] : row.purchase_orders
+    if (po && po.status !== 'draft' && po.status !== 'cancelled') {
+      return { unitPrice: row.unit_price, orderDate: po.order_date, poNo: po.po_no, purchaseOrderId: row.purchase_order_id }
+    }
+  }
+  return null
 }
 
 export async function createPurchaseOrder(input: PurchaseOrderInput & { status?: 'draft' | 'sent' }) {
