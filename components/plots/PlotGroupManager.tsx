@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Loader2, Package, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { createPlotGroup, deletePlotGroup, getPlotGroups, updatePlotGroup } from '@/actions/material-actions'
-import MaterialsSummaryModal from '@/components/procurement/MaterialsSummaryModal'
+import ProjectCostReportModal from '@/components/reports/ProjectCostReportModal'
 import type { PlotGroup } from '@/lib/types/materials'
 
 type PlotOption = { id: string; name: string }
@@ -31,7 +31,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
   const [editing, setEditing] = useState<string | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const [selectedPlotIds, setSelectedPlotIds] = useState<Set<string>>(new Set())
-  const [materialsGroup, setMaterialsGroup] = useState<PlotGroup | null>(null)
+  const [costReportGroup, setCostReportGroup] = useState<PlotGroup | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -160,10 +160,10 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                       <div className="flex shrink-0 items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => setMaterialsGroup(group)}
+                          onClick={() => setCostReportGroup(group)}
                           disabled={isSaving}
                           className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
-                          title="ดูวัสดุที่เกี่ยวข้อง"
+                          title="รายงานต้นทุน"
                         >
                           <Package className="h-4 w-4" />
                         </button>
@@ -266,14 +266,14 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
       )}
     </Modal>
 
-    {materialsGroup && (
-      <MaterialsSummaryModal
-        isOpen={Boolean(materialsGroup)}
-        onClose={() => setMaterialsGroup(null)}
+    {costReportGroup && (
+      <ProjectCostReportModal
+        isOpen={Boolean(costReportGroup)}
+        onClose={() => setCostReportGroup(null)}
         projectId={projectId}
-        scopeLabel={`กลุ่มแปลง ${materialsGroup.name}`}
-        plotGroupId={materialsGroup.id}
-        plotIds={materialsGroup.member_plot_ids}
+        scopeLabel={`กลุ่มแปลง ${costReportGroup.name}`}
+        plotGroupId={costReportGroup.id}
+        plotIds={costReportGroup.member_plot_ids}
       />
     )}
     </>

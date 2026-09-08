@@ -9,6 +9,11 @@ export type MaterialsSummaryRow = {
   unit: string
   quantity_ordered: number
   quantity_received: number
+  /** quantity_ordered x unit_price, summed across contributing PO lines. */
+  ordered_value: number
+  /** quantity_received x unit_price - the actual cost incurred so far, since
+   * unreceived quantity hasn't been paid for or physically arrived yet. */
+  received_value: number
   orders: { id: string; po_no: string; status: string; order_date: string }[]
 }
 
@@ -25,6 +30,7 @@ type QueriedOrder = {
         material_type_id: number
         quantity_ordered: number
         quantity_received: number
+        unit_price: number
         material_types: { name: string; unit: string } | null
       }[]
     | null
@@ -51,7 +57,7 @@ export async function getMaterialsSummaryForProject(
     .select(
       `id, po_no, status, order_date, plot_id, plot_group_id,
        purchase_order_plots (plot_id),
-       purchase_order_items (material_type_id, quantity_ordered, quantity_received, material_types (name, unit))`
+       purchase_order_items (material_type_id, quantity_ordered, quantity_received, unit_price, material_types (name, unit))`
     )
     .eq('project_id', projectId)
     .neq('status', 'cancelled')
@@ -80,12 +86,17 @@ export async function getMaterialsSummaryForProject(
           unit: item.material_types?.unit || '',
           quantity_ordered: 0,
           quantity_received: 0,
+          ordered_value: 0,
+          received_value: 0,
           orders: [],
         }
         summary.set(item.material_type_id, row)
       }
+      const unitPrice = Number(item.unit_price) || 0
       row.quantity_ordered += Number(item.quantity_ordered) || 0
       row.quantity_received += Number(item.quantity_received) || 0
+      row.ordered_value += (Number(item.quantity_ordered) || 0) * unitPrice
+      row.received_value += (Number(item.quantity_received) || 0) * unitPrice
       if (!row.orders.some((o) => o.id === order.id)) {
         row.orders.push({ id: order.id, po_no: order.po_no, status: order.status, order_date: order.order_date })
       }

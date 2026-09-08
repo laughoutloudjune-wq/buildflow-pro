@@ -10,7 +10,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import PlotGroupManager from '@/components/plots/PlotGroupManager'
-import MaterialsSummaryModal from '@/components/procurement/MaterialsSummaryModal'
+import ProjectCostReportModal from '@/components/reports/ProjectCostReportModal'
 import { getProjectById, updateProject } from '@/actions/project-actions'
 import { getPlotsByProjectId, createPlot, deletePlot } from '@/actions/plot-actions'
 import { getHouseModels } from '@/actions/boq-actions'
@@ -32,7 +32,7 @@ export default function ProjectDetailPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isGroupManagerOpen, setIsGroupManagerOpen] = useState(false)
-  const [isMaterialsSummaryOpen, setIsMaterialsSummaryOpen] = useState(false)
+  const [isCostReportOpen, setIsCostReportOpen] = useState(false)
   const [plotGroups, setPlotGroups] = useState<PlotGroup[]>([])
 
   const [selectedHouseModelId, setSelectedHouseModelId] = useState('')
@@ -290,9 +290,9 @@ export default function ProjectDetailPage() {
             }
             actions={
               <>
-                <Button variant="secondary" onClick={() => setIsMaterialsSummaryOpen(true)}>
+                <Button variant="secondary" onClick={() => setIsCostReportOpen(true)}>
                   <Package className="h-4 w-4" />
-                  วัสดุทั้งโครงการ
+                  รายงานต้นทุนโครงการ
                 </Button>
                 <Button variant="secondary" onClick={() => setIsGroupManagerOpen(true)}>
                   <Users className="h-4 w-4" />
@@ -520,9 +520,9 @@ export default function ProjectDetailPage() {
           onChanged={refreshGroups}
         />
 
-        <MaterialsSummaryModal
-          isOpen={isMaterialsSummaryOpen}
-          onClose={() => setIsMaterialsSummaryOpen(false)}
+        <ProjectCostReportModal
+          isOpen={isCostReportOpen}
+          onClose={() => setIsCostReportOpen(false)}
           projectId={projectId}
           scopeLabel="ทั้งโครงการ"
         />
