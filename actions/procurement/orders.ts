@@ -123,42 +123,79 @@ export async function getLastMaterialOrderPrice(
   return null
 }
 
-export async function createPurchaseOrder(input: PurchaseOrderInput & { status?: 'draft' | 'sent' }) {
-  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can create a purchase order')
-  const supabase = await createClient()
+// Next.js strips the message off anything thrown across a Server Action
+// boundary in production (replaced with a generic digest, to avoid leaking
+// server internals by default) - so a plain `throw` here would turn even a
+// clean, expected validation message like "already has goods received" into
+// an unreadable "An error occurred in the Server Components render" toast
+// for the user. Returning `{ error }` as normal data instead sidesteps that
+// sanitization. The substring map below also covers the raw RPC exception
+// text (English, from the SQL function) with the Thai the rest of the form
+// is in - same convention as the plot-group-member conflict message in
+// material-actions.ts.
+const PO_ERROR_TRANSLATIONS: [string, string][] = [
+  ['Cannot edit a purchase order that already has goods received', 'ไม่สามารถแก้ไขใบสั่งซื้อนี้ได้ เนื่องจากมีการรับของแล้วบางส่วน กรุณากลับไปหน้ารายละเอียดเพื่อดูข้อมูลล่าสุด'],
+  ['Cannot edit a purchase order that has already been received or cancelled', 'ไม่สามารถแก้ไขใบสั่งซื้อนี้ได้ เนื่องจากรับของครบแล้วหรือถูกยกเลิกไปแล้ว'],
+  ['Choose either a single plot or a plot group, not both', 'กรุณาเลือกแปลงเดียวหรือกลุ่มแปลงอย่างใดอย่างหนึ่งเท่านั้น'],
+  ['Purchase order not found', 'ไม่พบใบสั่งซื้อนี้'],
+  ['Only PM/Admin can edit a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถแก้ไขใบสั่งซื้อได้'],
+  ['Only PM/Admin can create a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถสร้างใบสั่งซื้อได้'],
+  ['Not authenticated', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง'],
+]
 
-  if (!input.supplier_id) throw new Error('Supplier is required')
-  if (!input.company_id) throw new Error('Company is required')
-  if (!input.project_id) throw new Error('Project is required')
-  const { payload, itemCount } = buildPayload(input)
-  if (itemCount === 0) throw new Error('At least one material line is required')
-
-  const { data, error } = await supabase.rpc('po_create', {
-    p_payload: { ...payload, status: input.status || 'sent' },
-  })
-
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/procurement/orders')
-  revalidatePath('/dashboard/procurement/requests')
-  return data as { id: string; po_no: string }
+function translatePoError(message: string): string {
+  return PO_ERROR_TRANSLATIONS.find(([needle]) => message.includes(needle))?.[1] || message
 }
 
-export async function updatePurchaseOrder(id: string, input: PurchaseOrderInput) {
-  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can edit a purchase order')
-  const supabase = await createClient()
+export async function createPurchaseOrder(
+  input: PurchaseOrderInput & { status?: 'draft' | 'sent' }
+): Promise<{ id: string; po_no: string } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can create a purchase order')
+    const supabase = await createClient()
 
-  if (!input.supplier_id) throw new Error('Supplier is required')
-  if (!input.company_id) throw new Error('Company is required')
-  if (!input.project_id) throw new Error('Project is required')
-  const { payload, itemCount } = buildPayload(input)
-  if (itemCount === 0) throw new Error('At least one material line is required')
+    if (!input.supplier_id) throw new Error('Supplier is required')
+    if (!input.company_id) throw new Error('Company is required')
+    if (!input.project_id) throw new Error('Project is required')
+    const { payload, itemCount } = buildPayload(input)
+    if (itemCount === 0) throw new Error('At least one material line is required')
 
-  const { data, error } = await supabase.rpc('po_update', { p_id: id, p_payload: payload })
+    const { data, error } = await supabase.rpc('po_create', {
+      p_payload: { ...payload, status: input.status || 'sent' },
+    })
 
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/procurement/orders')
-  revalidatePath(`/dashboard/procurement/orders/${id}`)
-  return data as { id: string; po_no: string }
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/procurement/orders')
+    revalidatePath('/dashboard/procurement/requests')
+    return data as { id: string; po_no: string }
+  } catch (error) {
+    return { error: translatePoError(error instanceof Error ? error.message : 'Failed to create purchase order') }
+  }
+}
+
+export async function updatePurchaseOrder(
+  id: string,
+  input: PurchaseOrderInput
+): Promise<{ id: string; po_no: string } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can edit a purchase order')
+    const supabase = await createClient()
+
+    if (!input.supplier_id) throw new Error('Supplier is required')
+    if (!input.company_id) throw new Error('Company is required')
+    if (!input.project_id) throw new Error('Project is required')
+    const { payload, itemCount } = buildPayload(input)
+    if (itemCount === 0) throw new Error('At least one material line is required')
+
+    const { data, error } = await supabase.rpc('po_update', { p_id: id, p_payload: payload })
+
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/procurement/orders')
+    revalidatePath(`/dashboard/procurement/orders/${id}`)
+    return data as { id: string; po_no: string }
+  } catch (error) {
+    return { error: translatePoError(error instanceof Error ? error.message : 'Failed to update purchase order') }
+  }
 }
 
 export async function setPurchaseOrderStatus(id: string, status: 'draft' | 'sent') {
@@ -238,12 +275,12 @@ export async function deletePurchaseOrders(ids: string[]) {
 /** Copies a PO's vendor/terms/line items into a brand-new draft - a fresh
  * po_no, today's date, and no link back to the source order's purchase
  * request (that request was already consumed by the original order). */
-export async function duplicatePurchaseOrder(id: string) {
+export async function duplicatePurchaseOrder(id: string): Promise<{ id: string; po_no: string }> {
   await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can duplicate a purchase order')
   const source = await getPurchaseOrderById(id)
   if (!source) throw new Error('Purchase order not found')
 
-  return createPurchaseOrder({
+  const result = await createPurchaseOrder({
     supplier_id: source.supplier_id,
     company_id: source.company_id,
     project_id: source.project_id,
@@ -266,6 +303,12 @@ export async function duplicatePurchaseOrder(id: string) {
       discount_value: i.discount_value,
     })),
   })
+  // createPurchaseOrder returns `{ error }` instead of throwing (see its
+  // definition above) - re-throw here so this function keeps the throws-on-
+  // failure contract that duplicatePurchaseOrders' Promise.allSettled below
+  // relies on to sort successes from failures.
+  if ('error' in result) throw new Error(result.error)
+  return result
 }
 
 /** Duplicates each id independently and reports how many succeeded - the

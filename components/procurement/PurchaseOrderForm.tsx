@@ -507,9 +507,17 @@ export default function PurchaseOrderForm({
       try {
         if (mode === 'create') {
           const result = await createPurchaseOrder({ ...payload, status })
+          if ('error' in result) {
+            toast.error(result.error)
+            return
+          }
           router.push(`/dashboard/procurement/orders/${result.id}`)
         } else if (orderId) {
-          await updatePurchaseOrder(orderId, payload)
+          const result = await updatePurchaseOrder(orderId, payload)
+          if ('error' in result) {
+            toast.error(result.error)
+            return
+          }
           router.push(`/dashboard/procurement/orders/${orderId}`)
         }
       } catch (error) {
