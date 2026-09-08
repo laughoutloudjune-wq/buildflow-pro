@@ -247,10 +247,17 @@ export default function PurchaseOrderForm({
         const pr = await getPurchaseRequestById(fromRequestId)
         if (pr) {
           setProjectId(pr.project_id)
-          if (pr.plot_id) {
+          if (pr.plot_group_id) {
+            setPlotScope('group')
+            setPlotGroupId(pr.plot_group_id)
+          } else if (pr.plot_id) {
             setPlotScope('plot')
             setPlotId(pr.plot_id)
+          } else if (pr.purchase_request_plots && pr.purchase_request_plots.length > 0) {
+            setPlotScope('multi')
+            setPlotIds(pr.purchase_request_plots.map((p) => p.plot_id))
           }
+          setNote(pr.note || '')
           setLines(
             (pr.purchase_request_items || []).map((item) => ({
               id: null,
