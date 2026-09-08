@@ -3,10 +3,11 @@
 import { useEffect, useState, useTransition } from 'react'
 import { ArrowLeft, Users } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
-import { ButtonLink } from '@/components/ui/Button'
+import { Button, ButtonLink } from '@/components/ui/Button'
 import PageLoading from '@/components/ui/PageLoading'
 import { useToast } from '@/components/ui/Toast'
 import { getUsers, updateUserRole, updateUserFullName } from '@/actions/settings-actions'
+import { generateInviteLink } from '@/actions/invite-actions'
 
 type User = Awaited<ReturnType<typeof getUsers>>[0]
 
@@ -25,6 +26,9 @@ export default function UsersPage() {
   // rest of the row) until the blur-triggered save actually lands.
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({})
   const [savingNameFor, setSavingNameFor] = useState<string | null>(null)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteLink, setInviteLink] = useState('')
+  const [generatingLink, setGeneratingLink] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -73,6 +77,31 @@ export default function UsersPage() {
       .finally(() => setSavingNameFor(null))
   }
 
+  async function handleGenerateLink() {
+    if (!inviteEmail.trim()) {
+      toast.error('กรุณาใส่อีเมล')
+      return
+    }
+    setGeneratingLink(true)
+    setInviteLink('')
+    try {
+      setInviteLink(await generateInviteLink(inviteEmail.trim()))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'สร้างลิงก์ไม่สำเร็จ')
+    } finally {
+      setGeneratingLink(false)
+    }
+  }
+
+  async function handleCopyLink() {
+    try {
+      await navigator.clipboard.writeText(inviteLink)
+      toast.success('คัดลอกลิงก์แล้ว')
+    } catch {
+      toast.error('คัดลอกไม่สำเร็จ ลองเลือกข้อความแล้วคัดลอกเอง')
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="mx-auto max-w-4xl px-2 sm:px-0">
@@ -99,6 +128,38 @@ export default function UsersPage() {
           กลับไปตั้งค่า
         </ButtonLink>
       </div>
+
+      <Card className="border-slate-200 p-6 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">เชิญผู้ใช้ใหม่</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          สร้างลิงก์แล้วส่งเองผ่านแชท (Line, WhatsApp ฯลฯ) แทนอีเมล ใช้เมื่ออีเมลเชิญของระบบถูกจำกัดโควต้า
+        </p>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <input
+            type="email"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            placeholder="email@example.com"
+            className="w-full flex-1"
+          />
+          <Button type="button" onClick={handleGenerateLink} disabled={generatingLink} className="shrink-0">
+            {generatingLink ? 'กำลังสร้างลิงก์...' : 'สร้างลิงก์เชิญ'}
+          </Button>
+        </div>
+        {inviteLink ? (
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              readOnly
+              value={inviteLink}
+              onFocus={(e) => e.target.select()}
+              className="w-full flex-1 text-xs text-slate-500"
+            />
+            <Button type="button" variant="secondary" onClick={handleCopyLink} className="shrink-0">
+              คัดลอกลิงก์
+            </Button>
+          </div>
+        ) : null}
+      </Card>
 
       <Card className="border-slate-200 p-6 shadow-sm">
         <div className="overflow-hidden rounded-xl border border-slate-200">
