@@ -96,7 +96,7 @@ export default function PurchaseRequestsPageClient({
     setLines([])
     setIsModalOpen(true)
     if (projects.length === 0 || materials.length === 0) {
-      const [p, m] = await Promise.all([getProjects(), getMaterialPickerOptions()])
+      const [p, m] = await Promise.all([getProjects({ includeCentralStock: true }), getMaterialPickerOptions()])
       setProjects(p as any)
       setMaterials(m)
     }

@@ -158,7 +158,7 @@ export async function getStockWithdrawPickerOptions(): Promise<{
   const supabase = await createClient()
 
   const [{ data: projects, error: projError }, { data: contractors, error: contError }] = await Promise.all([
-    supabase.from('projects').select('id, name').order('name'),
+    supabase.from('projects').select('id, name').eq('is_central_stock', false).order('name'),
     supabase.from('contractors').select('id, name').order('name'),
   ])
 

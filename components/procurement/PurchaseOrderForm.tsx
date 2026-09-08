@@ -195,7 +195,7 @@ export default function PurchaseOrderForm({
   async function bootstrap() {
     setIsLoading(true)
     try {
-      const [p, s, c] = await Promise.all([getProjects(), getSuppliers(), getCompanies()])
+      const [p, s, c] = await Promise.all([getProjects({ includeCentralStock: true }), getSuppliers(), getCompanies()])
       setProjects(p as any)
       setSuppliers(s)
       setCompanies(c)

@@ -291,7 +291,7 @@ export default function PurchaseOrdersPageClient({
   const dateHeader = tab === 'receive' ? 'วันที่รับของ' : tab === 'paid' ? 'วันที่ชำระ' : 'วันที่สั่งซื้อ'
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-screen-2xl space-y-6">
       <PageHeader
         title="ใบสั่งซื้อ (Purchase Orders)"
         subtitle="ใบสั่งซื้อวัสดุที่ออกให้ผู้จำหน่าย ติดตามสถานะจนถึงชำระเงิน"
@@ -446,14 +446,14 @@ export default function PurchaseOrdersPageClient({
                           {STATUS_LABEL[o.status]}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{o.suppliers?.name || '-'}</td>
-                      <td className="px-4 py-3 text-slate-500">{o.companies?.name || '-'}</td>
-                      <td className="max-w-[180px] truncate px-4 py-3 text-slate-500">
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">{o.suppliers?.name || '-'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{o.companies?.name || '-'}</td>
+                      <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">
                         {materialLabel}
                         {materialExtra > 0 && <span className="ml-1 text-xs text-slate-400">+{materialExtra}</span>}
                       </td>
-                      <td className="px-4 py-3 text-slate-500">{o.projects?.name || '-'}</td>
-                      <td className="px-4 py-3 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH') : '-'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{o.projects?.name || '-'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH') : '-'}</td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(o.total_amount)}</td>
                     </tr>
                   )

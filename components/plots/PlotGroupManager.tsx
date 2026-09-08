@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react'
+import { Loader2, Package, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { createPlotGroup, deletePlotGroup, getPlotGroups, updatePlotGroup } from '@/actions/material-actions'
+import MaterialsSummaryModal from '@/components/procurement/MaterialsSummaryModal'
 import type { PlotGroup } from '@/lib/types/materials'
 
 type PlotOption = { id: string; name: string }
@@ -30,6 +31,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
   const [editing, setEditing] = useState<string | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const [selectedPlotIds, setSelectedPlotIds] = useState<Set<string>>(new Set())
+  const [materialsGroup, setMaterialsGroup] = useState<PlotGroup | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -116,6 +118,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
   )
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={onClose} title="จัดกลุ่มแปลง (สำหรับบันทึกวัสดุแบบรวมกลุ่ม)" panelClassName="max-w-2xl">
       {isLoading ? (
         <div className="flex items-center justify-center py-10 text-slate-400">
@@ -155,6 +158,15 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setMaterialsGroup(group)}
+                          disabled={isSaving}
+                          className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                          title="ดูวัสดุที่เกี่ยวข้อง"
+                        >
+                          <Package className="h-4 w-4" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => startEdit(group)}
@@ -253,5 +265,17 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
         </div>
       )}
     </Modal>
+
+    {materialsGroup && (
+      <MaterialsSummaryModal
+        isOpen={Boolean(materialsGroup)}
+        onClose={() => setMaterialsGroup(null)}
+        projectId={projectId}
+        scopeLabel={`กลุ่มแปลง ${materialsGroup.name}`}
+        plotGroupId={materialsGroup.id}
+        plotIds={materialsGroup.member_plot_ids}
+      />
+    )}
+    </>
   )
 }

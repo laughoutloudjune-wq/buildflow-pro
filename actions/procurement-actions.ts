@@ -40,6 +40,7 @@ import {
   type PurchaseOrderFilters,
 } from '@/actions/procurement/orders'
 import { getGoodsReceiptsForOrder as getGoodsReceiptsForOrderImpl, createGoodsReceipt as createGoodsReceiptImpl } from '@/actions/procurement/receipts'
+import { getMaterialsSummaryForProject as getMaterialsSummaryForProjectImpl } from '@/actions/procurement/materials-summary'
 
 // ---------------------------------------------------------------------------
 // Suppliers / Companies
@@ -187,4 +188,15 @@ export async function getGoodsReceiptsForOrder(purchaseOrderId: string) {
 
 export async function createGoodsReceipt(input: Parameters<typeof createGoodsReceiptImpl>[0]) {
   return createGoodsReceiptImpl(input)
+}
+
+// ---------------------------------------------------------------------------
+// Materials summary (which materials are tagged to a project/plot group)
+// ---------------------------------------------------------------------------
+
+export async function getMaterialsSummaryForProject(
+  projectId: string,
+  opts?: Parameters<typeof getMaterialsSummaryForProjectImpl>[1]
+) {
+  return getMaterialsSummaryForProjectImpl(projectId, opts)
 }

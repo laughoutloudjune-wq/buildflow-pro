@@ -5,14 +5,20 @@ import { revalidatePath } from 'next/cache'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 
 // ดึงโครงการทั้งหมด
-export async function getProjects() {
+// includeCentralStock: รวมโครงการพิเศษ "ของเบิกสโตร์" ด้วยหรือไม่ - ค่าเริ่มต้นไม่รวม
+// เพราะหน้าจัดการโครงการ/แดชบอร์ดไม่ควรนับหรือแสดงมันปนกับโครงการจริง มีแค่ฟอร์ม PO/PR
+// ที่ต้องรวมไว้ให้เลือกซื้อเข้าสโตร์กลางได้
+export async function getProjects(opts: { includeCentralStock?: boolean } = {}) {
   const supabase = await createClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('projects')
     .select('*')
     .order('location', { ascending: true })
     .order('name', { ascending: true })
-  
+  if (!opts.includeCentralStock) query = query.eq('is_central_stock', false)
+
+  const { data, error } = await query
+
   // ✅ วิธีเช็ค Error ที่ปลอดภัยที่สุด
   if (error) {
     console.error("Error fetching projects:", error) // Log error ลงใน Terminal

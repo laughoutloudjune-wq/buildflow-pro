@@ -136,7 +136,7 @@ export async function getBillingOptions() {
   const supabase = await createClient()
 
   const [projects, contractors] = await Promise.all([
-    supabase.from('projects').select('id, name').order('name'),
+    supabase.from('projects').select('id, name').eq('is_central_stock', false).order('name'),
     supabase.from('contractors').select('id, name, contractor_types(name)').order('name'),
   ])
 

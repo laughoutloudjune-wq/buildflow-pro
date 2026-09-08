@@ -268,7 +268,7 @@ export async function getLaborLedgerOptions() {
   const supabase = await createClient()
 
   const [projects, contractors, plotGroups] = await Promise.all([
-    supabase.from('projects').select('id, name').order('name'),
+    supabase.from('projects').select('id, name').eq('is_central_stock', false).order('name'),
     supabase.from('contractors').select('id, name').order('name'),
     supabase.from('plot_groups').select('id, name, project_id').order('name'),
   ])

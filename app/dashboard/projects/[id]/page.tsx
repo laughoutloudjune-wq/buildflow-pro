@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, Loader2, MapPin, AlertCircle, Pencil, Users } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, Loader2, MapPin, AlertCircle, Pencil, Users, Package } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import PlotGroupManager from '@/components/plots/PlotGroupManager'
+import MaterialsSummaryModal from '@/components/procurement/MaterialsSummaryModal'
 import { getProjectById, updateProject } from '@/actions/project-actions'
 import { getPlotsByProjectId, createPlot, deletePlot } from '@/actions/plot-actions'
 import { getHouseModels } from '@/actions/boq-actions'
@@ -31,6 +32,7 @@ export default function ProjectDetailPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isGroupManagerOpen, setIsGroupManagerOpen] = useState(false)
+  const [isMaterialsSummaryOpen, setIsMaterialsSummaryOpen] = useState(false)
   const [plotGroups, setPlotGroups] = useState<PlotGroup[]>([])
 
   const [selectedHouseModelId, setSelectedHouseModelId] = useState('')
@@ -288,6 +290,10 @@ export default function ProjectDetailPage() {
             }
             actions={
               <>
+                <Button variant="secondary" onClick={() => setIsMaterialsSummaryOpen(true)}>
+                  <Package className="h-4 w-4" />
+                  วัสดุทั้งโครงการ
+                </Button>
                 <Button variant="secondary" onClick={() => setIsGroupManagerOpen(true)}>
                   <Users className="h-4 w-4" />
                   จัดกลุ่มแปลง
@@ -512,6 +518,13 @@ export default function ProjectDetailPage() {
           projectId={projectId}
           plots={sortedPlots.map((plot) => ({ id: plot.id, name: plot.name }))}
           onChanged={refreshGroups}
+        />
+
+        <MaterialsSummaryModal
+          isOpen={isMaterialsSummaryOpen}
+          onClose={() => setIsMaterialsSummaryOpen(false)}
+          projectId={projectId}
+          scopeLabel="ทั้งโครงการ"
         />
 
       </div>

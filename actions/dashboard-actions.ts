@@ -19,7 +19,7 @@ export async function getDashboardStats() {
   const supabase = await createClient()
 
   const [projectsRes, plotsRes, jobsRes, paymentsRes, billingsRes, contractorsRes, profilesRes] = await Promise.all([
-    supabase.from('projects').select('id, name, location, status'),
+    supabase.from('projects').select('id, name, location, status').eq('is_central_stock', false),
     supabase.from('plots').select('id, name, project_id'),
     supabase.from('job_assignments').select('id, plot_id, contractor_id, status'),
     supabase.from('payments').select('id, amount, created_at, note, job_assignment_id').order('created_at', { ascending: false }).limit(20),
