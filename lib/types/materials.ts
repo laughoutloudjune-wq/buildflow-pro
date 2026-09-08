@@ -16,6 +16,11 @@ export type MaterialType = {
    * receiving still counts, but stock_request_create refuses to withdraw
    * these. Defaults to true; most of the catalog is discretely trackable. */
   is_requestable: boolean
+  /** Typical days between placing an order and receiving this material -
+   * shown to the PM at purchase-request approval time so they can judge
+   * whether the requested need-by date is still achievable. Null means not
+   * set yet, distinct from a lead time of 0 (in-stock/immediate). */
+  lead_time_days: number | null
 }
 
 /** Narrow projection of MaterialType for pickers that only display and

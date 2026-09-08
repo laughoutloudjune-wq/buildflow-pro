@@ -6,6 +6,8 @@ import { useRouter, useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling, getJobProgressHistory } from '@/actions/billing-actions'
 import { getOrganizationSettings } from '@/actions/settings-actions'
+import { getSignatureSlots } from '@/actions/signature-slots-actions'
+import type { SignatureSlot } from '@/lib/types/signatures'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -44,6 +46,7 @@ export default function ReviewBillingPage() {
 
   const [billing, setBilling] = useState<BillingData>(null)
   const [settings, setSettings] = useState<SettingsData>(null)
+  const [signatureSlots, setSignatureSlots] = useState<SignatureSlot[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
   const [adjustments, setAdjustments] = useState<Adjustment[]>([])
   const [billingDate, setBillingDate] = useState(new Date().toISOString().split('T')[0])
@@ -64,9 +67,10 @@ export default function ReviewBillingPage() {
     if (!id) return
     async function fetchData() {
       try {
-        const [billingData, settingsData] = await Promise.all([
+        const [billingData, settingsData, slotsData] = await Promise.all([
           getBillingById(id),
           getOrganizationSettings(),
+          getSignatureSlots('billing'),
         ])
 
         if (billingData) {
@@ -89,6 +93,7 @@ export default function ReviewBillingPage() {
           setError('ไม่พบใบเบิกนี้')
         }
         setSettings(settingsData)
+        setSignatureSlots(slotsData)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load billing')
       } finally {
@@ -596,7 +601,7 @@ export default function ReviewBillingPage() {
       {activeTab === 'preview' && (
         <div className="h-[75vh] w-full bg-slate-500 rounded-lg shadow-inner overflow-hidden flex flex-col">
           <PDFViewer className="w-full h-full border-none">
-            <BillingPdf data={previewData} settings={settings} />
+            <BillingPdf data={previewData} settings={settings} slots={signatureSlots} />
           </PDFViewer>
         </div>
       )}

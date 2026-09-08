@@ -66,7 +66,8 @@ export async function createMaterialType(
   currentPrice: number,
   category?: string,
   reorderPoint?: number | null,
-  isRequestable = true
+  isRequestable = true,
+  leadTimeDays?: number | null
 ): Promise<MaterialType> {
   await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
@@ -87,6 +88,7 @@ export async function createMaterialType(
         price_updated_by: user?.id ?? null,
         reorder_point: reorderPoint ?? null,
         is_requestable: isRequestable,
+        lead_time_days: leadTimeDays ?? null,
       },
     ])
     .select()
@@ -97,7 +99,7 @@ export async function createMaterialType(
   return data
 }
 
-/** Updates name/unit/category/reorder point/requestable flag. Use
+/** Updates name/unit/category/reorder point/requestable flag/lead time. Use
  * `updateMaterialPrice` to change the price so the price_updated_at/by audit
  * fields only change on an actual price update. */
 export async function updateMaterialType(
@@ -106,7 +108,8 @@ export async function updateMaterialType(
   unit: string,
   category?: string,
   reorderPoint?: number | null,
-  isRequestable = true
+  isRequestable = true,
+  leadTimeDays?: number | null
 ): Promise<MaterialType> {
   await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
@@ -122,6 +125,7 @@ export async function updateMaterialType(
       category: category?.trim() || null,
       reorder_point: reorderPoint ?? null,
       is_requestable: isRequestable,
+      lead_time_days: leadTimeDays ?? null,
     })
     .eq('id', id)
     .select()

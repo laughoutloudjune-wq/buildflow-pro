@@ -1,14 +1,16 @@
 import { getBillingById } from '@/actions/billing-actions'
 import { getOrganizationSettings } from '@/actions/settings-actions'
+import { getSignatureSlots } from '@/actions/signature-slots-actions'
 import { BillingPdfViewer } from './BillingPdfViewer'
 import { CloseButton } from './CloseButton'
 
 export const dynamic = 'force-dynamic'
 
 export default async function PrintBillingPage({ params }: { params: { id: string } }) {
-  const [billing, settings] = await Promise.all([
+  const [billing, settings, slots] = await Promise.all([
     getBillingById(params.id),
-    getOrganizationSettings()
+    getOrganizationSettings(),
+    getSignatureSlots('billing'),
   ])
 
   if (!billing) {
@@ -26,7 +28,7 @@ export default async function PrintBillingPage({ params }: { params: { id: strin
          <CloseButton />
       </div>
       
-      <BillingPdfViewer data={billing} settings={settings} />
+      <BillingPdfViewer data={billing} settings={settings} slots={slots} />
     </div>
   )
 }

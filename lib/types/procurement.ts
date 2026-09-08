@@ -73,6 +73,7 @@ export type PurchaseRequest = {
    * plot_group_id is set. */
   purchase_request_plots?: { plot_id: string; plots?: { name: string } | null }[]
   requester?: { full_name: string | null; email: string | null } | null
+  reviewer?: { full_name: string | null; email: string | null } | null
   purchase_request_items?: PurchaseRequestItem[]
 }
 

@@ -9,7 +9,27 @@ import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
 import { approvePurchaseRequest, getPurchaseRequestById, rejectPurchaseRequest } from '@/actions/procurement-actions'
+import PurchaseRequestDocActions from '@/components/procurement/PurchaseRequestDocActions'
 import type { PurchaseRequest, PurchaseRequestStatus } from '@/lib/types/procurement'
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** The whole request can't be ordered faster than its slowest-lead-time
+ * line, since procurement places one order per request - so the request
+ * level "when must we order" is the max across its items, not a per-item
+ * figure. Null when no item has a lead time set yet. */
+function maxLeadTimeDays(request: PurchaseRequest): number | null {
+  const values = (request.purchase_request_items || [])
+    .map((item) => item.material_types?.lead_time_days)
+    .filter((v): v is number => v != null)
+  return values.length > 0 ? Math.max(...values) : null
+}
+
+function orderByDate(request: PurchaseRequest): Date | null {
+  const leadTime = maxLeadTimeDays(request)
+  if (leadTime == null || !request.needed_by_date) return null
+  return new Date(new Date(request.needed_by_date).getTime() - leadTime * DAY_MS)
+}
 
 const STATUS_LABEL: Record<PurchaseRequestStatus, string> = {
   pending_review: 'รอตรวจสอบ',
@@ -115,9 +135,12 @@ export default function PurchaseRequestDetailPage({ params }: { params: Promise<
           title={`คำขอซื้อ #${String(request.pr_no).padStart(4, '0')}`}
           subtitle={`${request.projects?.name || '-'}${plotLabel(request) ? ' • ' + plotLabel(request) : ''}`}
           actions={
-            <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_TONE[request.status]}`}>
-              {STATUS_LABEL[request.status]}
-            </span>
+            <>
+              <PurchaseRequestDocActions requestId={request.id} prNo={request.pr_no} />
+              <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_TONE[request.status]}`}>
+                {STATUS_LABEL[request.status]}
+              </span>
+            </>
           }
         />
       </div>
@@ -135,6 +158,25 @@ export default function PurchaseRequestDetailPage({ params }: { params: Promise<
               {request.needed_by_date ? new Date(request.needed_by_date).toLocaleDateString('th-TH') : '-'}
             </div>
           </div>
+          {(() => {
+            const leadTime = maxLeadTimeDays(request)
+            if (leadTime == null) return null
+            const byDate = orderByDate(request)
+            const isUrgent = byDate ? byDate.getTime() <= Date.now() : false
+            return (
+              <div className="col-span-2">
+                <div className="text-xs text-slate-400">ระยะเวลาสั่งของ (นานสุดในรายการ {leadTime} วัน)</div>
+                {byDate ? (
+                  <div className={`font-medium ${isUrgent ? 'text-red-600' : 'text-slate-800'}`}>
+                    ควรสั่งภายในวันที่ {byDate.toLocaleDateString('th-TH')}
+                    {isUrgent && ' — เลยกำหนดที่ควรสั่งแล้ว'}
+                  </div>
+                ) : (
+                  <div className="font-medium text-slate-800">ระบุ &ldquo;ต้องการภายในวันที่&rdquo; เพื่อคำนวณวันที่ควรสั่ง</div>
+                )}
+              </div>
+            )
+          })()}
           {request.note && (
             <div className="col-span-2">
               <div className="text-xs text-slate-400">หมายเหตุ</div>
@@ -159,6 +201,7 @@ export default function PurchaseRequestDetailPage({ params }: { params: Promise<
                 <th className="px-4 py-2 font-medium">วัสดุ</th>
                 <th className="px-4 py-2 text-right font-medium">จำนวน</th>
                 <th className="px-4 py-2 font-medium">หน่วย</th>
+                <th className="px-4 py-2 font-medium">เวลาที่ต้องสั่ง</th>
                 <th className="px-4 py-2 font-medium">หมายเหตุ</th>
               </tr>
             </thead>
@@ -168,6 +211,9 @@ export default function PurchaseRequestDetailPage({ params }: { params: Promise<
                   <td className="px-4 py-2.5 text-slate-800">{item.material_types?.name || '-'}</td>
                   <td className="px-4 py-2.5 text-right font-medium text-slate-700">{item.quantity_requested}</td>
                   <td className="px-4 py-2.5 text-slate-500">{item.material_types?.unit || '-'}</td>
+                  <td className="px-4 py-2.5 text-slate-500">
+                    {item.material_types?.lead_time_days != null ? `${item.material_types.lead_time_days} วัน` : '-'}
+                  </td>
                   <td className="px-4 py-2.5 text-slate-500">{item.note || '-'}</td>
                 </tr>
               ))}

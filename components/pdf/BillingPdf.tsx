@@ -1,7 +1,8 @@
 'use client'
 
 import React from 'react'
-import { Page, Text, View, Document, StyleSheet, Font } from '@react-pdf/renderer'
+import { Page, Text, View, Document, StyleSheet, Font, Image } from '@react-pdf/renderer'
+import type { SignatureSlot } from '@/lib/types/signatures'
 
 // Self-hosted (public/fonts/) rather than a third-party CDN: @react-pdf/renderer
 // fetches registered fonts client-side at render time, and a CDN hiccup makes
@@ -83,11 +84,15 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
   netAmount: { fontSize: 14, fontWeight: 'bold', color: '#059669', borderTop: '1px solid #000', paddingTop: 4 },
 
-  footer: { position: 'absolute', bottom: 30, left: 30, right: 30, flexDirection: 'row', justifyContent: 'space-between' },
-    signatureBox: { width: '30%', borderTop: '1px solid #ccc', paddingTop: 8, textAlign: 'center', fontSize: 9 }
+  // flexWrap/gap (not the old fixed 3-column space-between) so a customized
+  // signature section with a different number of slots still centers nicely
+  // instead of assuming exactly 3.
+  footer: { position: 'absolute', bottom: 30, left: 30, right: 30, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 20, rowGap: 10 },
+    signatureBox: { width: 140, borderTop: '1px solid #ccc', paddingTop: 8, textAlign: 'center', fontSize: 9 },
+    signatureImage: { height: 30, marginTop: 4, objectFit: 'contain' }
   })
-  
-  export const BillingPdf = ({ data, settings }: { data: any, settings: any }) => {
+
+  export const BillingPdf = ({ data, settings, slots }: { data: any, settings: any, slots: SignatureSlot[] }) => {
     const totalBase = (data.total_work_amount || 0) + (data.total_add_amount || 0)
     // Use pre-calculated amounts from data if available, otherwise calculate
     const retentionAmount = data.retentionAmount ?? (data.total_work_amount || 0) * (data.retention_percent || 0) / 100
@@ -215,18 +220,16 @@ const styles = StyleSheet.create({
   
           {/* Signatures */}
           <View style={styles.footer}>
-              <View style={styles.signatureBox}>
-                  <Text>ผู้เบิก / ผู้รับเหมา</Text>
-                  <Text style={{ marginTop: 20 }}>_______________________</Text>
-              </View>
-              <View style={styles.signatureBox}>
-                  <Text>โฟร์แมน / ผู้ตรวจงาน</Text>
-                  <Text style={{ marginTop: 20 }}>_______________________</Text>
-              </View>
-              <View style={styles.signatureBox}>
-                  <Text>ผู้อนุมัติจ่าย (เจ้าของ)</Text>
-                  <Text style={{ marginTop: 20 }}>_______________________</Text>
-              </View>
+              {slots.map((slot) => (
+                  <View key={slot.id} style={styles.signatureBox}>
+                      <Text>{slot.label}</Text>
+                      {slot.signature_url ? (
+                          <Image src={slot.signature_url} style={styles.signatureImage} />
+                      ) : (
+                          <Text style={{ marginTop: 20 }}>_______________________</Text>
+                      )}
+                  </View>
+              ))}
           </View>
   
         </Page>

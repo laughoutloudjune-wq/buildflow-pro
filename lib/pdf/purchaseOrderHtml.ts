@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { bahtText } from '@/lib/bahtText'
 import type { PurchaseOrder } from '@/lib/types/procurement'
+import type { SignatureSlot } from '@/lib/types/signatures'
 
 // Fonts are embedded as base64 data URIs rather than linked - Puppeteer's
 // headless page has no guarantee of network access to either a third-party
@@ -73,11 +74,37 @@ function kv(label: string, value: string, opts: { strong?: boolean } = {}): stri
   return `<div class="kv"><span class="muted">${label}</span><span class="${opts.strong ? 'strong' : ''}">${value}</span></div>`
 }
 
-/**
- * @param fallbackSignatureUrl organization-level signature, used only when the
- *   buying company has no signature of its own.
- */
-export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUrl?: string | null): string {
+/** Resolves what a signature box shows for one slot. 'preparer' and
+ * 'supplier' pull a real name/date from the order; a custom slot (system_key
+ * null) only shows its configured label - a blank line, or a stored stamp
+ * image if the slot has one. */
+function slotContent(
+  order: PurchaseOrder,
+  slot: SignatureSlot,
+  fallbackSignatureUrl?: string | null
+): { name: string; dateLine: string; imageUrl: string | null } {
+  if (slot.system_key === 'preparer') {
+    // ผู้จัดทำ signs off on the PO being confirmed (draft -> sent), so the
+    // date is that single timestamp rather than a blank to fill in by hand.
+    // Still blank on a draft, which has no confirmed_at yet. The signing
+    // entity is the company the PO is issued in the name of, so its own
+    // signature wins over both the organization-level fallback and this
+    // slot's own static image - a company's real signature is always more
+    // correct than one generic stamp shared across every company.
+    const dateLine = order.confirmed_at ? `วันที่ ${thaiDate(order.confirmed_at)}` : 'วันที่ ................................'
+    return {
+      name: esc(order.creator?.full_name) || '',
+      dateLine,
+      imageUrl: order.companies?.signature_url || fallbackSignatureUrl || slot.signature_url || null,
+    }
+  }
+  if (slot.system_key === 'supplier') {
+    return { name: `ในนาม ${esc(order.suppliers?.name) || ''}`, dateLine: 'วันที่ ................................', imageUrl: slot.signature_url }
+  }
+  return { name: '', dateLine: '', imageUrl: slot.signature_url }
+}
+
+export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUrl: string | null | undefined, slots: SignatureSlot[]): string {
   if (!cachedRegular) cachedRegular = fontBase64('Sarabun-Regular.ttf')
   if (!cachedBold) cachedBold = fontBase64('Sarabun-Bold.ttf')
 
@@ -131,12 +158,6 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
     ? `<div class="card notes"><div class="card-label">หมายเหตุ / เงื่อนไข</div><div class="notes-text">${esc(order.note)}</div></div>`
     : ''
 
-  // The signing entity is the company the PO is issued in the name of, so its
-  // own signature wins; the organization-level one is only a fallback for
-  // companies that haven't had one uploaded yet.
-  const signatureUrl = order.companies?.signature_url || fallbackSignatureUrl
-  const signatureImg = signatureUrl ? `<img src="${esc(signatureUrl)}" class="signature-img" />` : ''
-
   const stamp = STATUS_STAMP[order.status]
   const stampBlock = stamp
     ? `<div class="stamp" style="color:${stamp.color};border-color:${stamp.color}">${stamp.label}</div>`
@@ -166,10 +187,20 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
     return ''
   })()
 
-  // ผู้จัดทำ signs off on the PO being confirmed (draft -> sent), so the date
-  // is that single timestamp rather than a blank to fill in by hand. Still
-  // blank on a draft, which has no confirmed_at yet.
-  const preparedDateLine = order.confirmed_at ? `วันที่ ${thaiDate(order.confirmed_at)}` : 'วันที่ ................................'
+  const signatureBoxes = slots
+    .map((slot) => {
+      const { name, dateLine, imageUrl } = slotContent(order, slot, fallbackSignatureUrl)
+      const image = imageUrl ? `<img src="${esc(imageUrl)}" class="signature-img" />` : '<div class="signature-spacer"></div>'
+      return `
+        <div class="signature-box">
+          ${image}
+          <div class="signature-line"></div>
+          <div class="signature-label">${esc(slot.label)}</div>
+          <div class="signature-name">${name}</div>
+          <div class="signature-date">${dateLine}</div>
+        </div>`
+    })
+    .join('')
 
   return `<!DOCTYPE html>
 <html lang="th">
@@ -317,11 +348,12 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
   .notes-text { font-size: 9.5px; color: ${c.muted}; line-height: 1.5; white-space: pre-wrap; }
 
   /* Signatures
-     Only two boxes now (ผู้อนุมัติ removed) - flex:1 on both stretched each
-     one to half the page width, which read as way too much empty space for
-     a name/line/date block. Fixed-width boxes centered as a group instead. */
-  .signature-row { display: flex; justify-content: center; gap: 64px; margin-top: 18px; page-break-inside: avoid; }
-  .signature-box { flex: 0 0 200px; text-align: center; }
+     Fixed-width boxes centered as a group rather than flex:1 (which used to
+     stretch each one to half the page width). flex-wrap so a customized
+     document with more than 2-3 slots drops to a second row instead of
+     overflowing the page width. */
+  .signature-row { display: flex; flex-wrap: wrap; justify-content: center; column-gap: 28px; row-gap: 16px; margin-top: 18px; page-break-inside: avoid; }
+  .signature-box { flex: 0 0 165px; text-align: center; }
   /* Height must match .signature-spacer exactly or the signed column sits
      lower than the blank ones and the three rules stop aligning. */
   .signature-img { height: 48px; object-fit: contain; object-position: bottom; margin-bottom: 3px; }
@@ -426,22 +458,7 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
 
     ${noteBlock}
 
-    <div class="signature-row">
-      <div class="signature-box">
-        ${signatureImg || '<div class="signature-spacer"></div>'}
-        <div class="signature-line"></div>
-        <div class="signature-label">ผู้จัดทำ</div>
-        <div class="signature-name">${esc(order.creator?.full_name) || ''}</div>
-        <div class="signature-date">${preparedDateLine}</div>
-      </div>
-      <div class="signature-box">
-        <div class="signature-spacer"></div>
-        <div class="signature-line"></div>
-        <div class="signature-label">ผู้รับใบสั่งซื้อ</div>
-        <div class="signature-name">ในนาม ${esc(supplier?.name) || ''}</div>
-        <div class="signature-date">วันที่ ................................</div>
-      </div>
-    </div>
+    <div class="signature-row">${signatureBoxes}</div>
   </div>
 </body>
 </html>`

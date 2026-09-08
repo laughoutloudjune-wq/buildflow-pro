@@ -11,6 +11,7 @@ import {
   Boxes,
   Truck,
   Landmark,
+  PenTool,
   type LucideIcon,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -68,6 +69,13 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
     links: [
       { href: '/dashboard/settings/users', label: 'ผู้ใช้และบทบาท', description: 'กำหนดบทบาท Admin / PM / Foreman ของแต่ละคน', icon: Users, tone: 'indigo' },
       { href: '/dashboard/settings/permissions', label: 'สิทธิ์ตามบทบาท', description: 'กำหนดว่าแต่ละตำแหน่งเข้าโมดูลไหนได้', icon: ShieldCheck, tone: 'indigo' },
+    ],
+  },
+  {
+    title: 'เอกสารพิมพ์',
+    description: 'รูปแบบช่องเซ็นชื่อบนเอกสารที่พิมพ์ได้',
+    links: [
+      { href: '/dashboard/settings/signatures', label: 'ลายเซ็นในเอกสาร', description: 'จำนวน ป้ายชื่อ และรูปลายเซ็นของ PR, PO และใบเบิกงวดงาน', icon: PenTool, tone: 'rose' },
     ],
   },
 ]

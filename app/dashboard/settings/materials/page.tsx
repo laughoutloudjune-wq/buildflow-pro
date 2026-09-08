@@ -48,6 +48,7 @@ export default function MaterialTypesPage() {
   const [isCustomCategory, setIsCustomCategory] = useState(false)
   const [priceDraft, setPriceDraft] = useState('0')
   const [reorderPointDraft, setReorderPointDraft] = useState('')
+  const [leadTimeDraft, setLeadTimeDraft] = useState('')
   const [isRequestableDraft, setIsRequestableDraft] = useState(true)
 
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -135,6 +136,7 @@ export default function MaterialTypesPage() {
     setIsCustomCategory(false)
     setPriceDraft('0')
     setReorderPointDraft('')
+    setLeadTimeDraft('')
     setIsRequestableDraft(true)
     setIsModalOpen(true)
   }
@@ -150,6 +152,7 @@ export default function MaterialTypesPage() {
     setIsCustomCategory(!!material.category && !existingCategories.includes(material.category))
     setPriceDraft(String(material.current_price))
     setReorderPointDraft(material.reorder_point === null ? '' : String(material.reorder_point))
+    setLeadTimeDraft(material.lead_time_days === null ? '' : String(material.lead_time_days))
     setIsRequestableDraft(material.is_requestable)
     setIsModalOpen(true)
   }
@@ -177,6 +180,14 @@ export default function MaterialTypesPage() {
         return
       }
     }
+    let leadTimeDays: number | null = null
+    if (leadTimeDraft.trim() !== '') {
+      leadTimeDays = parseInt(leadTimeDraft, 10)
+      if (!Number.isFinite(leadTimeDays) || leadTimeDays < 0) {
+        toast.error('กรุณาใส่ระยะเวลาสั่งของ (วัน) ที่ถูกต้อง หรือเว้นว่างไว้')
+        return
+      }
+    }
 
     startTransition(async () => {
       try {
@@ -187,14 +198,15 @@ export default function MaterialTypesPage() {
             unitDraft,
             categoryDraft,
             reorderPoint,
-            isRequestableDraft
+            isRequestableDraft,
+            leadTimeDays
           )
           if (price !== editingMaterial.current_price) {
             updated = await updateMaterialPrice(editingMaterial.id, price)
           }
           patchMaterial(updated)
         } else {
-          const created = await createMaterialType(nameDraft, unitDraft, price, categoryDraft, reorderPoint, isRequestableDraft)
+          const created = await createMaterialType(nameDraft, unitDraft, price, categoryDraft, reorderPoint, isRequestableDraft, leadTimeDays)
           insertMaterial(created)
         }
         closeModal()
@@ -433,6 +445,7 @@ export default function MaterialTypesPage() {
                 <th className="px-4 py-3 font-semibold">หน่วย</th>
                 <th className="px-4 py-3 text-right font-semibold">ราคาล่าสุด</th>
                 <th className="px-4 py-3 text-right font-semibold">จุดสั่งซื้อขั้นต่ำ</th>
+                <th className="px-4 py-3 text-right font-semibold">เวลาสั่งของ (วัน)</th>
                 <th className="px-4 py-3 font-semibold">อัปเดตราคาล่าสุดเมื่อ</th>
                 <th className="px-4 py-3 w-[100px] text-center font-semibold">จัดการ</th>
               </tr>
@@ -440,7 +453,7 @@ export default function MaterialTypesPage() {
             <tbody className="divide-y divide-slate-100 bg-white">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center italic text-slate-400">
+                  <td colSpan={9} className="px-4 py-8 text-center italic text-slate-400">
                     {materials.length === 0
                       ? 'ยังไม่มีวัสดุในระบบ กดปุ่ม "เพิ่มวัสดุใหม่" หรือ "นำเข้าจาก Excel" เพื่อเริ่มต้น'
                       : 'ไม่พบวัสดุที่ตรงกับตัวกรอง'}
@@ -473,6 +486,9 @@ export default function MaterialTypesPage() {
                     </td>
                     <td className="px-4 py-3 text-right text-slate-500">
                       {material.reorder_point === null ? '-' : material.reorder_point.toLocaleString('th-TH')}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-500">
+                      {material.lead_time_days === null ? '-' : material.lead_time_days.toLocaleString('th-TH')}
                     </td>
                     <td className="px-4 py-3 text-slate-500">
                       {material.price_updated_at
@@ -597,6 +613,21 @@ export default function MaterialTypesPage() {
               className="w-full"
               placeholder="เว้นว่างไว้ถ้ายังไม่ต้องการแจ้งเตือน"
             />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">ระยะเวลาสั่งของ (วัน)</label>
+            <input
+              type="number"
+              step="1"
+              min="0"
+              value={leadTimeDraft}
+              onChange={(e) => setLeadTimeDraft(e.target.value)}
+              className="w-full"
+              placeholder="เว้นว่างไว้ถ้ายังไม่ทราบ"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              ใช้แจ้งเตือน PM ตอนอนุมัติคำขอซื้อว่าวัสดุนี้ต้องสั่งล่วงหน้ากี่วัน
+            </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
