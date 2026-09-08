@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { createClient } from '@/lib/supabase/client'
+import { updateUserFullName } from '@/actions/settings-actions'
 
 // Where both invite-link formats land: /auth/confirm forwards here after a
 // server-side token_hash verify, and the older hash-fragment link
@@ -16,6 +17,7 @@ export default function SetPasswordPage() {
   const router = useRouter()
   const [checking, setChecking] = useState(true)
   const [hasSession, setHasSession] = useState(false)
+  const [fullName, setFullName] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
@@ -33,6 +35,10 @@ export default function SetPasswordPage() {
     e.preventDefault()
     setError('')
 
+    if (!fullName.trim()) {
+      setError('กรุณาใส่ชื่อ')
+      return
+    }
     if (password.length < 6) {
       setError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร')
       return
@@ -44,14 +50,19 @@ export default function SetPasswordPage() {
 
     setSubmitting(true)
     const supabase = createClient()
-    const { error: updateError } = await supabase.auth.updateUser({ password })
-    setSubmitting(false)
+    const { data, error: updateError } = await supabase.auth.updateUser({ password })
 
     if (updateError) {
+      setSubmitting(false)
       setError(updateError.message)
       return
     }
 
+    if (data.user) {
+      await updateUserFullName(data.user.id, fullName.trim()).catch(() => {})
+    }
+
+    setSubmitting(false)
     router.push('/dashboard')
     router.refresh()
   }
@@ -79,6 +90,21 @@ export default function SetPasswordPage() {
         ) : (
           <>
             {error ? <div className="rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+
+            <div className="space-y-1.5">
+              <label htmlFor="full_name" className="text-sm font-medium text-slate-600">
+                ชื่อ-นามสกุล
+              </label>
+              <input
+                id="full_name"
+                type="text"
+                required
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="เช่น สมชาย ใจดี"
+                className="w-full"
+              />
+            </div>
 
             <div className="space-y-1.5">
               <label htmlFor="password" className="text-sm font-medium text-slate-600">
