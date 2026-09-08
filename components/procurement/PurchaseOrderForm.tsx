@@ -69,6 +69,12 @@ const emptyCompanyDraft = { name: '', tax_id: '', address: '', phone: '' }
 const emptyMaterialDraft = { name: '', unit: '', category: '', price: '' }
 
 type Line = {
+  /** Existing purchase_order_item id when this line already exists on the
+   * order (null for a freshly-added line) - carried through to po_update so
+   * it can preserve quantity_received / the goods_receipt_items FK instead
+   * of recreating the row. */
+  id: string | null
+  quantity_received: number
   material_type_id: number
   purchase_request_item_id: string | null
   quantity_ordered: string
@@ -227,6 +233,8 @@ export default function PurchaseOrderForm({
         setNote(initialOrder.note || '')
         setLines(
           items.map((item) => ({
+            id: item.id,
+            quantity_received: item.quantity_received,
             material_type_id: item.material_type_id,
             purchase_request_item_id: item.purchase_request_item_id,
             quantity_ordered: String(item.quantity_ordered),
@@ -245,6 +253,8 @@ export default function PurchaseOrderForm({
           }
           setLines(
             (pr.purchase_request_items || []).map((item) => ({
+              id: null,
+              quantity_received: 0,
               material_type_id: item.material_type_id,
               purchase_request_item_id: item.id,
               quantity_ordered: String(item.quantity_requested),
@@ -420,7 +430,16 @@ export default function PurchaseOrderForm({
   function addLine() {
     setLines((prev) => [
       ...prev,
-      { material_type_id: 0, purchase_request_item_id: null, quantity_ordered: '', unit_price: '', description: '', discountValue: '' },
+      {
+        id: null,
+        quantity_received: 0,
+        material_type_id: 0,
+        purchase_request_item_id: null,
+        quantity_ordered: '',
+        unit_price: '',
+        description: '',
+        discountValue: '',
+      },
     ])
   }
 
@@ -429,6 +448,10 @@ export default function PurchaseOrderForm({
   }
 
   function removeLine(index: number) {
+    if (lines[index]?.quantity_received > 0) {
+      toast.error('ลบรายการนี้ไม่ได้ เนื่องจากมีการรับของแล้ว ลดจำนวนแทนได้')
+      return
+    }
     setLines((prev) => prev.filter((_, i) => i !== index))
   }
 
@@ -474,6 +497,8 @@ export default function PurchaseOrderForm({
     if (plotScope === 'multi' && plotIds.length === 0) return toast.error('กรุณาเลือกแปลงอย่างน้อย 1 แปลง')
     const validLines = lines.filter((l) => l.material_type_id && Number(l.quantity_ordered) > 0)
     if (validLines.length === 0) return toast.error('กรุณาเพิ่มรายการวัสดุอย่างน้อย 1 รายการ')
+    const droppedReceivedLine = lines.some((l) => l.quantity_received > 0 && !(l.material_type_id && Number(l.quantity_ordered) >= l.quantity_received))
+    if (droppedReceivedLine) return toast.error('มีรายการที่รับของแล้วแต่จำนวนสั่งซื้อน้อยกว่าจำนวนที่รับ กรุณาแก้ไขก่อนบันทึก')
 
     const payload = {
       supplier_id: supplierId,
@@ -493,6 +518,7 @@ export default function PurchaseOrderForm({
       discount_value: discountMode === 'individual' ? 0 : Number(discountValue) || 0,
       note,
       items: validLines.map((l) => ({
+        id: l.id,
         material_type_id: l.material_type_id,
         purchase_request_item_id: l.purchase_request_item_id,
         quantity_ordered: Number(l.quantity_ordered),
@@ -898,6 +924,12 @@ export default function PurchaseOrderForm({
       <Card className={`mt-5 p-5 ${appleCard}`}>
         <div className={appleCardLabel}>รายการสินค้า</div>
 
+        {!readOnly && lines.some((l) => l.quantity_received > 0) && (
+          <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+            มีรายการที่รับของแล้วบางส่วน - แก้ไขราคา/รายละเอียดได้ และเพิ่มจำนวนสั่งซื้อได้ แต่ลดจำนวนต่ำกว่าที่รับแล้วหรือลบรายการนั้นไม่ได้
+          </p>
+        )}
+
         {lines.length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">
             ยังไม่มีรายการ กดเพิ่มรายการสินค้าเพื่อเริ่มต้น
@@ -967,13 +999,18 @@ export default function PurchaseOrderForm({
                       <td className="px-3 py-2">
                         <input
                           type="number"
-                          min="0"
+                          min={line.quantity_received || 0}
                           step="any"
                           value={line.quantity_ordered}
                           onChange={(e) => updateLine(i, { quantity_ordered: e.target.value })}
                           className="w-full text-right"
                           disabled={readOnly}
                         />
+                        {line.quantity_received > 0 && (
+                          <div className="mt-1 text-right text-[10px] text-emerald-600">
+                            รับแล้ว {line.quantity_received.toLocaleString('th-TH')}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <input

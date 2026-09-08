@@ -133,7 +133,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const canReceive = order.status === 'sent' || order.status === 'partially_received'
   const canUnmarkReceived = order.status === 'received'
   const canUnmarkPaid = order.status === 'paid'
-  const isFormReadOnly = order.status !== 'draft'
+  const isFormReadOnly = order.status !== 'draft' && order.status !== 'partially_received'
 
   const milestones = [
     { label: 'สร้างเมื่อ', value: formatDate(order.created_at) },

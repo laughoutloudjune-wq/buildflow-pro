@@ -29,6 +29,16 @@ const STATUS_TONE: Record<PurchaseRequestStatus, string> = {
   cancelled: 'bg-slate-100 text-slate-500',
 }
 
+/** Plot scope is one of three mutually exclusive shapes (single plot, saved
+ * group, or an ad-hoc multi-select) - same convention as purchase orders. */
+function plotLabel(request: PurchaseRequest): string | null {
+  if (request.plots?.name) return `แปลง ${request.plots.name}`
+  if (request.plot_groups?.name) return `กลุ่มแปลง ${request.plot_groups.name}`
+  const names = (request.purchase_request_plots || []).map((p) => p.plots?.name).filter(Boolean)
+  if (names.length > 0) return `แปลง ${names.join(', ')}`
+  return null
+}
+
 export default function PurchaseRequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
@@ -103,7 +113,7 @@ export default function PurchaseRequestDetailPage({ params }: { params: Promise<
         </Link>
         <PageHeader
           title={`คำขอซื้อ #${String(request.pr_no).padStart(4, '0')}`}
-          subtitle={`${request.projects?.name || '-'}${request.plots?.name ? ' • แปลง ' + request.plots.name : ''}`}
+          subtitle={`${request.projects?.name || '-'}${plotLabel(request) ? ' • ' + plotLabel(request) : ''}`}
           actions={
             <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_TONE[request.status]}`}>
               {STATUS_LABEL[request.status]}

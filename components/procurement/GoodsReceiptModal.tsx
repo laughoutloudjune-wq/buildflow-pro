@@ -30,6 +30,7 @@ export default function GoodsReceiptModal({
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   const [deliveryNoteNo, setDeliveryNoteNo] = useState('')
+  const [receivedAt, setReceivedAt] = useState(() => new Date().toISOString().slice(0, 10))
 
   const receivableItems = (order.purchase_order_items || [])
     .map((item) => ({ item, remaining: Math.max(0, item.quantity_ordered - item.quantity_received) }))
@@ -46,6 +47,7 @@ export default function GoodsReceiptModal({
     setSelected(initialSelected)
     setQuantities(initialQty)
     setDeliveryNoteNo('')
+    setReceivedAt(new Date().toISOString().slice(0, 10))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, order.id])
 
@@ -68,7 +70,12 @@ export default function GoodsReceiptModal({
 
     startTransition(async () => {
       try {
-        await createGoodsReceipt({ purchase_order_id: order.id, delivery_note_no: deliveryNoteNo, items })
+        await createGoodsReceipt({
+          purchase_order_id: order.id,
+          delivery_note_no: deliveryNoteNo,
+          received_at: receivedAt,
+          items,
+        })
         onSuccess()
         onClose()
       } catch (error) {
@@ -140,9 +147,15 @@ export default function GoodsReceiptModal({
           </div>
         )}
 
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">เลขที่ใบส่งของ (ถ้ามี)</label>
-          <input value={deliveryNoteNo} onChange={(e) => setDeliveryNoteNo(e.target.value)} className="w-full" />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">วันที่รับของ</label>
+            <input type="date" value={receivedAt} onChange={(e) => setReceivedAt(e.target.value)} className="w-full" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">เลขที่ใบส่งของ (ถ้ามี)</label>
+            <input value={deliveryNoteNo} onChange={(e) => setDeliveryNoteNo(e.target.value)} className="w-full" />
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 border-t pt-4">

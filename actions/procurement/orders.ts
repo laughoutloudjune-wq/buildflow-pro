@@ -48,6 +48,7 @@ function buildPayload(input: PurchaseOrderInput) {
       discount_value: Math.max(0, Number(input.discount_value) || 0),
       note: input.note?.trim() || null,
       items: items.map((i) => ({
+        id: i.id || null,
         material_type_id: i.material_type_id,
         purchase_request_item_id: i.purchase_request_item_id || null,
         quantity_ordered: Number(i.quantity_ordered),

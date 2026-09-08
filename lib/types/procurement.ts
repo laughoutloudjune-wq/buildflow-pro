@@ -57,6 +57,7 @@ export type PurchaseRequest = {
   pr_no: number
   project_id: string
   plot_id: string | null
+  plot_group_id: string | null
   status: PurchaseRequestStatus
   note: string | null
   review_note: string | null
@@ -67,6 +68,10 @@ export type PurchaseRequest = {
   created_at: string
   projects?: { name: string } | null
   plots?: { name: string } | null
+  plot_groups?: { name: string } | null
+  /** Ad-hoc multi-plot selection - populated only when neither plot_id nor
+   * plot_group_id is set. */
+  purchase_request_plots?: { plot_id: string; plots?: { name: string } | null }[]
   requester?: { full_name: string | null; email: string | null } | null
   purchase_request_items?: PurchaseRequestItem[]
 }
@@ -138,6 +143,11 @@ export type PurchaseOrder = {
 }
 
 export type PurchaseOrderItemInput = {
+  /** Existing purchase_order_item id when editing a line that's already on
+   * the order - lets po_update preserve quantity_received and the
+   * goods_receipt_items FK by updating that row in place instead of
+   * recreating it. Omit/null for a brand-new line. */
+  id?: string | null
   material_type_id: number
   purchase_request_item_id?: string | null
   quantity_ordered: number

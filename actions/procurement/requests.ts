@@ -9,7 +9,9 @@ import type { PurchaseRequest, PurchaseRequestStatus } from '@/lib/types/procure
 const SELECT_WITH_RELATIONS = `
   *,
   projects (name),
-  plots (name),
+  plots!purchase_requests_plot_id_fkey (name),
+  plot_groups (name),
+  purchase_request_plots (plot_id, plots (name)),
   requester:profiles!purchase_requests_requested_by_fkey (full_name, email),
   purchase_request_items (*, material_types (*))
 `
@@ -43,6 +45,10 @@ export async function getPurchaseRequestById(id: string): Promise<PurchaseReques
 export async function createPurchaseRequest(input: {
   project_id: string
   plot_id?: string | null
+  plot_group_id?: string | null
+  /** Ad-hoc multi-plot selection - when non-empty, wins over plot_id/
+   * plot_group_id (both are forced null server-side). */
+  plot_ids?: string[]
   note?: string
   needed_by_date?: string
   items: { material_type_id: number; quantity_requested: number; note?: string }[]
@@ -58,6 +64,8 @@ export async function createPurchaseRequest(input: {
     p_payload: {
       project_id: input.project_id,
       plot_id: input.plot_id || null,
+      plot_group_id: input.plot_group_id || null,
+      plot_ids: input.plot_ids && input.plot_ids.length > 0 ? input.plot_ids : [],
       note: input.note?.trim() || null,
       needed_by_date: input.needed_by_date || null,
       items,

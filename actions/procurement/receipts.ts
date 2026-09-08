@@ -23,6 +23,9 @@ export async function createGoodsReceipt(input: {
   purchase_order_id: string
   delivery_note_no?: string
   note?: string
+  /** When the delivery actually happened, if backdating a receipt entered
+   * late - defaults to now() server-side when omitted. */
+  received_at?: string
   items: { purchase_order_item_id: string; quantity_received: number; unit_price_at_receipt?: number }[]
 }) {
   await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can record a goods receipt')
@@ -37,6 +40,7 @@ export async function createGoodsReceipt(input: {
       purchase_order_id: input.purchase_order_id,
       delivery_note_no: input.delivery_note_no?.trim() || null,
       note: input.note?.trim() || null,
+      received_at: input.received_at || null,
       items: items.map((i) => ({
         purchase_order_item_id: i.purchase_order_item_id,
         quantity_received: Number(i.quantity_received),
