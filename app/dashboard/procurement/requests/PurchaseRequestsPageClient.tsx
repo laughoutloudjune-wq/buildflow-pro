@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -10,6 +9,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
+import PurchaseRequestDetail from '@/components/procurement/PurchaseRequestDetail'
 import type { PurchaseRequest, PurchaseRequestStatus } from '@/lib/types/procurement'
 
 const STATUS_LABEL: Record<PurchaseRequestStatus, string> = {
@@ -59,6 +59,11 @@ export default function PurchaseRequestsPageClient({
   const toast = useToast()
   const [filter, setFilter] = useState<PurchaseRequestStatus | 'all'>('all')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
+  // Looked up from `requests` (not the status-filtered `filtered` list) so
+  // an approve/reject inside the modal that moves the request out of the
+  // current filter doesn't yank the modal's content out from under it.
+  const selectedRequest = requests.find((r) => r.id === selectedRequestId) ?? null
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -118,11 +123,15 @@ export default function PurchaseRequestsPageClient({
                 </tr>
               ) : (
                 filtered.map((r) => (
-                  <tr key={r.id} className="transition-colors hover:bg-slate-50">
+                  <tr
+                    key={r.id}
+                    className="cursor-pointer transition-colors hover:bg-slate-50"
+                    onClick={() => setSelectedRequestId(r.id)}
+                  >
                     <td className="px-4 py-3">
-                      <Link href={`/dashboard/procurement/requests/${r.id}`} className="font-mono font-medium text-indigo-600 hover:underline">
+                      <span className="font-mono font-medium text-indigo-600 hover:underline">
                         #{String(r.pr_no).padStart(4, '0')}
-                      </Link>
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-slate-700">{r.projects?.name || '-'}</td>
                     <td className="px-4 py-3 text-slate-500">{r.requester?.full_name || r.requester?.email || '-'}</td>
@@ -160,6 +169,15 @@ export default function PurchaseRequestsPageClient({
             router.refresh()
           }}
         />
+      </Modal>
+
+      <Modal
+        isOpen={selectedRequest != null}
+        onClose={() => setSelectedRequestId(null)}
+        title={selectedRequest ? `คำขอซื้อ #${String(selectedRequest.pr_no).padStart(4, '0')}` : undefined}
+        panelClassName="max-w-3xl"
+      >
+        {selectedRequest && <PurchaseRequestDetail request={selectedRequest} onChanged={() => router.refresh()} />}
       </Modal>
     </div>
   )
