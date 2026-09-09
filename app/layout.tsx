@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Noto_Sans_Thai } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 
@@ -33,6 +34,7 @@ export default function RootLayout({
             /register, which sit outside the dashboard shell - can raise a
             toast through useToast(). */}
         <ToastProvider>{children}</ToastProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
