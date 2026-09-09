@@ -2,7 +2,7 @@ import { getProjects } from '@/actions/project-actions'
 import ProjectsPageClient from './ProjectsPageClient'
 
 export default async function ProjectsPage() {
-  const projects = (await getProjects()) || []
+  const projects = (await getProjects({ onlyProjectsPage: true })) || []
 
   return <ProjectsPageClient projects={projects} />
 }
