@@ -42,26 +42,6 @@ const STATUS_TEXT: Record<PurchaseOrderStatus, string> = {
   cancelled: 'text-red-600',
 }
 
-type TabKey = 'po' | 'receive' | 'paid'
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'po', label: 'PO' },
-  { key: 'receive', label: 'รับบิล' },
-  { key: 'paid', label: 'ชำระบิล' },
-]
-
-function tabOf(status: PurchaseOrderStatus): TabKey {
-  if (status === 'received') return 'receive'
-  if (status === 'paid') return 'paid'
-  return 'po'
-}
-
-function dateColumnFor(tab: TabKey, order: PurchaseOrder): string | null {
-  if (tab === 'receive') return order.received_at
-  if (tab === 'paid') return order.paid_at
-  return order.order_date
-}
-
 /** First material line plus a count of how many more, for a quick "what's
  * in this PO" glance without opening it. Item order isn't guaranteed by the
  * schema - this is a hint, not a promise of line 1. */
@@ -113,7 +93,6 @@ export default function PurchaseOrdersPageClient({
 }) {
   const router = useRouter()
   const toast = useToast()
-  const [tab, setTab] = useState<TabKey>('po')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [isDuplicating, setIsDuplicating] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -131,17 +110,6 @@ export default function PurchaseOrdersPageClient({
   const [dateTo, setDateTo] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' })
   const collator = useMemo(() => new Intl.Collator('th', { numeric: true, sensitivity: 'base' }), [])
-
-  function resetTabScopedFilters() {
-    setSelected(new Set())
-    setDateFrom('')
-    setDateTo('')
-  }
-
-  function changeTab(next: TabKey) {
-    setTab(next)
-    resetTabScopedFilters()
-  }
 
   function toggleSort(key: SortKey) {
     setSort((prev) => (prev.key === key ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' }))
@@ -169,18 +137,16 @@ export default function PurchaseOrdersPageClient({
     [orders, collator]
   )
 
-  const tabRows = useMemo(() => orders.filter((o) => tabOf(o.status) === tab), [orders, tab])
-
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    let result = tabRows
+    let result = orders
 
     if (supplierFilter) result = result.filter((o) => o.suppliers?.name === supplierFilter)
     if (projectFilter) result = result.filter((o) => o.projects?.name === projectFilter)
     if (companyFilter) result = result.filter((o) => o.companies?.name === companyFilter)
     if (dateFrom || dateTo) {
       result = result.filter((o) => {
-        const d = dateColumnFor(tab, o)
+        const d = o.order_date
         if (!d) return false
         if (dateFrom && d < dateFrom) return false
         if (dateTo && d > dateTo) return false
@@ -209,8 +175,8 @@ export default function PurchaseOrdersPageClient({
         case 'project':
           return collator.compare(a.projects?.name || '', b.projects?.name || '') * dir
         case 'date': {
-          const da = dateColumnFor(tab, a) || ''
-          const db = dateColumnFor(tab, b) || ''
+          const da = a.order_date || ''
+          const db = b.order_date || ''
           return da < db ? -dir : da > db ? dir : 0
         }
         case 'total':
@@ -219,7 +185,7 @@ export default function PurchaseOrdersPageClient({
           return 0
       }
     })
-  }, [tabRows, tab, search, supplierFilter, projectFilter, companyFilter, dateFrom, dateTo, sort, collator])
+  }, [orders, search, supplierFilter, projectFilter, companyFilter, dateFrom, dateTo, sort, collator])
 
   const grandTotal = useMemo(() => rows.reduce((sum, o) => sum + o.total_amount, 0), [rows])
   const selectedTotal = useMemo(
@@ -272,7 +238,7 @@ export default function PurchaseOrdersPageClient({
       .finally(() => setIsDeleting(false))
   }
 
-  const dateHeader = tab === 'receive' ? 'วันที่รับของ' : tab === 'paid' ? 'วันที่ชำระ' : 'วันที่สั่งซื้อ'
+  const dateHeader = 'วันที่สั่งซื้อ'
 
   return (
     <div className="mx-auto max-w-screen-2xl space-y-6">
@@ -288,26 +254,6 @@ export default function PurchaseOrdersPageClient({
         }
       />
 
-
-      <div className="flex gap-2 border-b border-slate-200">
-        {TABS.map((t) => {
-          const count = orders.filter((o) => tabOf(o.status) === t.key).length
-          return (
-            <button
-              key={t.key}
-              onClick={() => changeTab(t.key)}
-              className={`relative -mb-px flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition ${
-                tab === t.key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {t.label}
-              <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${tab === t.key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
-                {count}
-              </span>
-            </button>
-          )
-        })}
-      </div>
 
       <Card className="border-slate-200 p-3">
         <div className="grid grid-cols-1 gap-2 md:grid-cols-6">
@@ -359,11 +305,6 @@ export default function PurchaseOrdersPageClient({
             <span className="font-semibold">฿{formatCurrency(selectedTotal)}</span>
           </span>
           <div className="flex flex-wrap items-center gap-2">
-            {tab === 'receive' && (
-              <Link href="/dashboard/procurement/receipts" className="text-sm font-medium text-indigo-600 hover:underline">
-                ไปที่ใบรับสินค้าเพื่อสร้างใบสำคัญจ่าย →
-              </Link>
-            )}
             <Button type="button" size="sm" variant="secondary" onClick={handleDuplicateSelected} disabled={isDuplicating}>
               {isDuplicating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />} ทำสำเนา
             </Button>
@@ -404,12 +345,12 @@ export default function PurchaseOrdersPageClient({
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center italic text-slate-400">
-                    ไม่มีใบสั่งซื้อในสถานะนี้
+                    ไม่พบใบสั่งซื้อ
                   </td>
                 </tr>
               ) : (
                 rows.map((o) => {
-                  const dateValue = dateColumnFor(tab, o)
+                  const dateValue = o.order_date
                   const { label: materialLabel, extra: materialExtra } = materialSummary(o)
                   return (
                     <tr key={o.id} className="transition-colors hover:bg-slate-50">
