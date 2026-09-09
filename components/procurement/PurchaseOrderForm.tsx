@@ -259,16 +259,21 @@ export default function PurchaseOrderForm({
           }
           setNote(pr.note || '')
           setLines(
-            (pr.purchase_request_items || []).map((item) => ({
-              id: null,
-              quantity_received: 0,
-              material_type_id: item.material_type_id,
-              purchase_request_item_id: item.id,
-              quantity_ordered: String(item.quantity_requested),
-              unit_price: String(item.material_types?.current_price ?? 0),
-              description: '',
-              discountValue: '',
-            }))
+            // quantity_requested tracks what's still outstanding, not the
+            // original ask - a line a prior PO already fully covered sits
+            // at 0 and has nothing left to prefill here.
+            (pr.purchase_request_items || [])
+              .filter((item) => item.quantity_requested > 0)
+              .map((item) => ({
+                id: null,
+                quantity_received: 0,
+                material_type_id: item.material_type_id,
+                purchase_request_item_id: item.id,
+                quantity_ordered: String(item.quantity_requested),
+                unit_price: String(item.material_types?.current_price ?? 0),
+                description: '',
+                discountValue: '',
+              }))
           )
         }
       }

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Pencil, ShoppingCart } from 'lucide-react'
+import { CheckCircle2, Loader2, PackageCheck, Pencil, ShoppingCart } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -34,10 +34,13 @@ export const PR_STATUS_TONE: Record<PurchaseRequestStatus, string> = {
 
 /** The whole request can't be ordered faster than its slowest-lead-time
  * line, since procurement places one order per request - so the request
- * level "when must we order" is the max across its items, not a per-item
- * figure. Null when no item has a lead time set yet. */
+ * level "when must we order" is the max across its still-outstanding items
+ * (a line already fully covered by an earlier PO doesn't need ordering
+ * again, so it shouldn't hold the "order by" date hostage). Null when
+ * nothing outstanding has a lead time set yet. */
 function maxLeadTimeDays(request: PurchaseRequest): number | null {
   const values = (request.purchase_request_items || [])
+    .filter((item) => item.quantity_requested > 0)
     .map((item) => item.material_types?.lead_time_days)
     .filter((v): v is number => v != null)
   return values.length > 0 ? Math.max(...values) : null
@@ -47,6 +50,17 @@ function orderByDate(request: PurchaseRequest): Date | null {
   const leadTime = maxLeadTimeDays(request)
   if (leadTime == null || !request.needed_by_date) return null
   return new Date(new Date(request.needed_by_date).getTime() - leadTime * DAY_MS)
+}
+
+/** True once at least one PO has been placed against this request but it
+ * hasn't reached 'ordered' yet - i.e. some material was bought, some is
+ * still outstanding (po_create/po_update settle a fully-covered line at 0
+ * remaining rather than removing it, and only flip status to 'ordered'
+ * once every line hits 0). A request no PO has ever touched has no
+ * purchase_orders at all, so this stays false for the common "nothing
+ * ordered yet" case. */
+function isPartiallyOrdered(request: PurchaseRequest): boolean {
+  return request.status === 'approved' && (request.purchase_orders?.length ?? 0) > 0
 }
 
 /** Plot scope is one of three mutually exclusive shapes (single plot, saved
@@ -120,6 +134,14 @@ export default function PurchaseRequestDetail({
             </Button>
           )}
           <PurchaseRequestDocActions requestId={request.id} prNo={request.pr_no} />
+          {isPartiallyOrdered(request) && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-sm font-medium text-amber-700"
+              title={`สั่งซื้อบางส่วนแล้วจาก: ${(request.purchase_orders || []).map((po) => po.po_no).join(', ')}`}
+            >
+              <PackageCheck className="h-3.5 w-3.5" /> สั่งซื้อบางส่วนแล้ว
+            </span>
+          )}
           <span className={`rounded-full px-3 py-1 text-sm font-medium ${PR_STATUS_TONE[request.status]}`}>
             {PR_STATUS_LABEL[request.status]}
           </span>
@@ -186,17 +208,29 @@ export default function PurchaseRequestDetail({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {(request.purchase_request_items || []).map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-2.5 text-slate-800">{item.material_types?.name || '-'}</td>
-                  <td className="px-4 py-2.5 text-right font-medium text-slate-700">{item.quantity_requested}</td>
-                  <td className="px-4 py-2.5 text-slate-500">{item.material_types?.unit || '-'}</td>
-                  <td className="px-4 py-2.5 text-slate-500">
-                    {item.material_types?.lead_time_days != null ? `${item.material_types.lead_time_days} วัน` : '-'}
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-500">{item.note || '-'}</td>
-                </tr>
-              ))}
+              {(request.purchase_request_items || []).map((item) => {
+                const fullyOrdered = item.quantity_requested <= 0 && (request.purchase_orders?.length ?? 0) > 0
+                return (
+                  <tr key={item.id}>
+                    <td className="px-4 py-2.5 text-slate-800">
+                      {item.material_types?.name || '-'}
+                      {fullyOrdered && (
+                        <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> สั่งซื้อครบแล้ว
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-medium text-slate-700">
+                      {fullyOrdered ? <span className="text-slate-400">-</span> : item.quantity_requested}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-500">{item.material_types?.unit || '-'}</td>
+                    <td className="px-4 py-2.5 text-slate-500">
+                      {item.material_types?.lead_time_days != null ? `${item.material_types.lead_time_days} วัน` : '-'}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-500">{item.note || '-'}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

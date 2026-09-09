@@ -75,6 +75,12 @@ export type PurchaseRequest = {
   requester?: { full_name: string | null; email: string | null } | null
   reviewer?: { full_name: string | null; email: string | null } | null
   purchase_request_items?: PurchaseRequestItem[]
+  /** POs already placed against this request, if any - lets the UI flag an
+   * 'approved' request that's actually been partially ordered already
+   * (some lines settled at 0 remaining, others still outstanding) rather
+   * than never touched at all. Empty/absent for a request no PO has ever
+   * referenced. */
+  purchase_orders?: { po_no: string; status: PurchaseOrderStatus }[] | null
 }
 
 export type PurchaseOrderStatus = 'draft' | 'sent' | 'partially_received' | 'received' | 'paid' | 'cancelled'

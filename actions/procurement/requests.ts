@@ -14,7 +14,8 @@ const SELECT_WITH_RELATIONS = `
   purchase_request_plots (plot_id, plots (name)),
   requester:profiles!purchase_requests_requested_by_fkey (full_name, email),
   reviewer:profiles!purchase_requests_reviewed_by_fkey (full_name, email),
-  purchase_request_items (*, material_types (*))
+  purchase_request_items (*, material_types (*)),
+  purchase_orders (po_no, status)
 `
 
 export type PurchaseRequestFilters = {

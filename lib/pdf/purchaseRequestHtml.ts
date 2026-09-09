@@ -34,10 +34,13 @@ function thaiDate(iso: string): string {
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /** Same rule as the on-screen approval page: the request can't be ordered
- * faster than its slowest-lead-time line, since procurement places one
- * order per request. Null when no item has a lead time set yet. */
+ * faster than its slowest-lead-time line among what's still outstanding
+ * (a line already fully covered by an earlier PO settles at 0 and
+ * shouldn't extend the "order by" date). Null when nothing outstanding has
+ * a lead time set yet. */
 function maxLeadTimeDays(request: PurchaseRequest): number | null {
   const values = (request.purchase_request_items || [])
+    .filter((item) => item.quantity_requested > 0)
     .map((item) => item.material_types?.lead_time_days)
     .filter((v): v is number => v != null)
   return values.length > 0 ? Math.max(...values) : null

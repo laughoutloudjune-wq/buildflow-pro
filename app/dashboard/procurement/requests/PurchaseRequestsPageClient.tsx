@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus } from 'lucide-react'
+import { PackageCheck, Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -28,6 +28,13 @@ const STATUS_TONE: Record<PurchaseRequestStatus, string> = {
   ordered: 'bg-violet-50 text-violet-700',
   received: 'bg-emerald-50 text-emerald-700',
   cancelled: 'bg-slate-100 text-slate-500',
+}
+
+/** True once at least one PO has been placed against this request but it
+ * hasn't reached 'ordered' yet - some material was bought, some is still
+ * outstanding. Mirrors PurchaseRequestDetail's isPartiallyOrdered(). */
+function isPartiallyOrdered(request: PurchaseRequest): boolean {
+  return request.status === 'approved' && (request.purchase_orders?.length ?? 0) > 0
 }
 
 /** First material line plus a count of how many more, for a quick "what's
@@ -150,6 +157,14 @@ export default function PurchaseRequestsPageClient({
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[r.status]}`}>
                         {STATUS_LABEL[r.status]}
                       </span>
+                      {isPartiallyOrdered(r) && (
+                        <span
+                          className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                          title={`สั่งซื้อบางส่วนแล้วจาก: ${(r.purchase_orders || []).map((po) => po.po_no).join(', ')}`}
+                        >
+                          <PackageCheck className="h-3 w-3" /> สั่งบางส่วนแล้ว
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-slate-500">{new Date(r.created_at).toLocaleDateString('th-TH')}</td>
                   </tr>
