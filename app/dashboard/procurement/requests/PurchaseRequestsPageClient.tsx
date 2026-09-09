@@ -1,23 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import SearchableSelect from '@/components/ui/SearchableSelect'
-import { getProjects } from '@/actions/project-actions'
-import { getPlotsByProjectId } from '@/actions/plot-actions'
-import { getMaterialPickerOptions, getPlotGroups } from '@/actions/material-actions'
-import { createPurchaseRequest } from '@/actions/procurement-actions'
+import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import type { PurchaseRequest, PurchaseRequestStatus } from '@/lib/types/procurement'
-import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
-
-type PlotScope = 'none' | 'plot' | 'group' | 'multi'
 
 const STATUS_LABEL: Record<PurchaseRequestStatus, string> = {
   pending_review: 'รอตรวจสอบ',
@@ -37,6 +30,15 @@ const STATUS_TONE: Record<PurchaseRequestStatus, string> = {
   cancelled: 'bg-slate-100 text-slate-500',
 }
 
+/** First material line plus a count of how many more, for a quick "what's
+ * in this request" glance without opening it - same convention as the PO
+ * list's materialSummary(). */
+function materialSummary(request: PurchaseRequest): { label: string; extra: number } {
+  const items = request.purchase_request_items || []
+  if (items.length === 0) return { label: '-', extra: 0 }
+  return { label: items[0].material_types?.name || '-', extra: items.length - 1 }
+}
+
 const FILTERS: { key: PurchaseRequestStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'ทั้งหมด' },
   { key: 'pending_review', label: 'รอตรวจสอบ' },
@@ -45,8 +47,6 @@ const FILTERS: { key: PurchaseRequestStatus | 'all'; label: string }[] = [
   { key: 'received', label: 'รับของครบ' },
   { key: 'rejected', label: 'ปฏิเสธ' },
 ]
-
-type Line = { material_type_id: number; quantity_requested: string; note: string }
 
 export default function PurchaseRequestsPageClient({
   requests,
@@ -58,22 +58,7 @@ export default function PurchaseRequestsPageClient({
   const router = useRouter()
   const toast = useToast()
   const [filter, setFilter] = useState<PurchaseRequestStatus | 'all'>('all')
-
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [isPending, startTransition] = useTransition()
-  const [projects, setProjects] = useState<{ id: string; name: string; location: string | null }[]>([])
-  const [plots, setPlots] = useState<{ id: string; name: string }[]>([])
-  const [plotGroups, setPlotGroups] = useState<PlotGroup[]>([])
-  const [isPlotsLoading, setIsPlotsLoading] = useState(false)
-  const [materials, setMaterials] = useState<MaterialPickerOption[]>([])
-  const [projectId, setProjectId] = useState('')
-  const [plotScope, setPlotScope] = useState<PlotScope>('none')
-  const [plotId, setPlotId] = useState('')
-  const [plotGroupId, setPlotGroupId] = useState('')
-  const [plotIds, setPlotIds] = useState<string[]>([])
-  const [note, setNote] = useState('')
-  const [neededByDate, setNeededByDate] = useState('')
-  const [lines, setLines] = useState<Line[]>([])
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -85,124 +70,17 @@ export default function PurchaseRequestsPageClient({
     [requests, filter]
   )
 
-  async function openCreateModal() {
-    setProjectId('')
-    setPlotScope('none')
-    setPlotId('')
-    setPlotGroupId('')
-    setPlotIds([])
-    setNote('')
-    setNeededByDate('')
-    setLines([])
-    setIsModalOpen(true)
-    if (projects.length === 0 || materials.length === 0) {
-      const [p, m] = await Promise.all([getProjects({ includeCentralStock: true }), getMaterialPickerOptions()])
-      setProjects(p as any)
-      setMaterials(m)
-    }
-  }
-
-  useEffect(() => {
-    if (!projectId) {
-      setPlots([])
-      setPlotGroups([])
-      setPlotScope('none')
-      setPlotId('')
-      setPlotGroupId('')
-      setPlotIds([])
-      return
-    }
-    setIsPlotsLoading(true)
-    Promise.all([getPlotsByProjectId(projectId), getPlotGroups(projectId)])
-      .then(([p, g]) => {
-        setPlots((p as any) || [])
-        setPlotGroups(g)
-      })
-      .catch((error) => toast.error(error instanceof Error ? error.message : 'โหลดข้อมูลแปลงไม่สำเร็จ'))
-      .finally(() => setIsPlotsLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId])
-
-  function addLine() {
-    setLines((prev) => [...prev, { material_type_id: 0, quantity_requested: '', note: '' }])
-  }
-
-  function updateLine(index: number, patch: Partial<Line>) {
-    setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
-  }
-
-  function removeLine(index: number) {
-    setLines((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  function handleSubmit() {
-    if (!projectId) {
-      toast.error('กรุณาเลือกโครงการ')
-      return
-    }
-    if (plotScope === 'plot' && !plotId) {
-      toast.error('กรุณาเลือกแปลง')
-      return
-    }
-    if (plotScope === 'group' && !plotGroupId) {
-      toast.error('กรุณาเลือกกลุ่มแปลง')
-      return
-    }
-    if (plotScope === 'multi' && plotIds.length === 0) {
-      toast.error('กรุณาเลือกแปลงอย่างน้อย 1 แปลง')
-      return
-    }
-    const validLines = lines.filter((l) => l.material_type_id && Number(l.quantity_requested) > 0)
-    if (validLines.length === 0) {
-      toast.error('กรุณาเพิ่มรายการวัสดุอย่างน้อย 1 รายการ')
-      return
-    }
-
-    startTransition(async () => {
-      try {
-        await createPurchaseRequest({
-          project_id: projectId,
-          plot_id: plotScope === 'plot' ? plotId : null,
-          plot_group_id: plotScope === 'group' ? plotGroupId : null,
-          plot_ids: plotScope === 'multi' ? plotIds : [],
-          note,
-          needed_by_date: neededByDate,
-          items: validLines.map((l) => ({
-            material_type_id: l.material_type_id,
-            quantity_requested: Number(l.quantity_requested),
-            note: l.note,
-          })),
-        })
-        setIsModalOpen(false)
-        router.refresh()
-        toast.success('ส่งใบขอซื้อเรียบร้อยแล้ว')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ส่งใบขอซื้อไม่สำเร็จ')
-      }
-    })
-  }
-
-  const materialOptions = materials.map((m) => ({ value: String(m.id), label: `${m.name} (${m.unit})` }))
-  const projectOptions = projects.map((p) => ({ value: p.id, label: p.name, sublabel: p.location || undefined }))
-  const plotOptions = plots.map((p) => ({ value: p.id, label: p.name }))
-  const plotGroupOptions = plotGroups.map((g) => ({
-    value: g.id,
-    label: g.name,
-    sublabel: g.member_plot_names.length === 0 ? 'ยังไม่มีแปลงในกลุ่ม' : `${g.member_plot_names.length} แปลง: ${g.member_plot_names.join(', ')}`,
-  }))
-
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
         title="คำขอซื้อ (Purchase Requests)"
         subtitle="คำขอซื้อที่ส่งเข้ามา รอตรวจสอบและอนุมัติก่อนออกใบสั่งซื้อ"
         actions={
-          <Button onClick={openCreateModal}>
+          <Button onClick={() => setIsModalOpen(true)}>
             <Plus className="h-4 w-4" /> สร้างคำขอซื้อ
           </Button>
         }
       />
-
 
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
@@ -248,7 +126,17 @@ export default function PurchaseRequestsPageClient({
                     </td>
                     <td className="px-4 py-3 text-slate-700">{r.projects?.name || '-'}</td>
                     <td className="px-4 py-3 text-slate-500">{r.requester?.full_name || r.requester?.email || '-'}</td>
-                    <td className="px-4 py-3 text-slate-500">{r.purchase_request_items?.length || 0} รายการ</td>
+                    <td className="max-w-[220px] truncate px-4 py-3 text-slate-700">
+                      {(() => {
+                        const { label, extra } = materialSummary(r)
+                        return (
+                          <>
+                            {label}
+                            {extra > 0 && <span className="text-slate-400"> +{extra}</span>}
+                          </>
+                        )
+                      })()}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[r.status]}`}>
                         {STATUS_LABEL[r.status]}
@@ -264,139 +152,14 @@ export default function PurchaseRequestsPageClient({
       </Card>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="สร้างคำขอซื้อ" panelClassName="max-w-2xl">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">โครงการ</label>
-              <SearchableSelect options={projectOptions} value={projectId} onChange={setProjectId} placeholder="เลือกโครงการ" />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">โครงการย่อย / แปลง</label>
-              <select
-                value={plotScope}
-                onChange={(e) => setPlotScope(e.target.value as PlotScope)}
-                className="w-full"
-                disabled={!projectId}
-              >
-                <option value="none">ไม่ระบุ</option>
-                <option value="plot" disabled={plots.length === 0}>แปลงเดียว</option>
-                <option value="multi" disabled={plots.length === 0}>หลายแปลง (เลือกเอง)</option>
-                <option value="group" disabled={plotGroups.length === 0}>กลุ่มที่บันทึกไว้</option>
-              </select>
-            </div>
-          </div>
-
-          {plotScope !== 'none' && (
-            <div>
-              {isPlotsLoading ? (
-                <div className="flex items-center gap-2 text-xs text-slate-400">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังโหลดข้อมูลแปลง...
-                </div>
-              ) : plotScope === 'plot' ? (
-                <>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">เลือกแปลง</label>
-                  <SearchableSelect options={plotOptions} value={plotId} onChange={setPlotId} placeholder="เลือกแปลง" />
-                </>
-              ) : plotScope === 'multi' ? (
-                <>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">เลือกแปลง (เลือกได้หลายแปลง)</label>
-                  <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-slate-200 p-2">
-                    {plots.map((p) => {
-                      const checked = plotIds.includes(p.id)
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => setPlotIds((prev) => (prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id]))}
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                            checked ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          {p.name}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {plotIds.length > 0 && <p className="mt-1 text-xs text-slate-400">เลือกแล้ว {plotIds.length} แปลง</p>}
-                </>
-              ) : (
-                <>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">เลือกกลุ่มแปลง</label>
-                  <SearchableSelect options={plotGroupOptions} value={plotGroupId} onChange={setPlotGroupId} placeholder="เลือกกลุ่มแปลง" />
-                </>
-              )}
-            </div>
-          )}
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">ต้องการภายในวันที่</label>
-            <input type="date" value={neededByDate} onChange={(e) => setNeededByDate(e.target.value)} className="w-full" />
-          </div>
-
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <label className="text-sm font-medium text-slate-700">รายการวัสดุ</label>
-              <Button type="button" variant="secondary" size="sm" onClick={addLine}>
-                <Plus className="h-3.5 w-3.5" /> เพิ่มรายการ
-              </Button>
-            </div>
-            {lines.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
-                ยังไม่มีรายการ กดเพิ่มรายการเพื่อเริ่มต้น
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {lines.map((line, i) => (
-                  <div key={i} className="rounded-lg border border-slate-200 p-2">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1">
-                        <SearchableSelect
-                          options={materialOptions}
-                          value={line.material_type_id ? String(line.material_type_id) : ''}
-                          onChange={(v) => updateLine(i, { material_type_id: Number(v) })}
-                          placeholder="เลือกวัสดุ"
-                        />
-                      </div>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={line.quantity_requested}
-                        onChange={(e) => updateLine(i, { quantity_requested: e.target.value })}
-                        placeholder="จำนวน"
-                        className="w-24"
-                      />
-                      <button type="button" onClick={() => removeLine(i)} className="rounded p-2 text-slate-300 hover:bg-red-50 hover:text-red-500">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={line.note}
-                      onChange={(e) => updateLine(i, { note: e.target.value })}
-                      placeholder="หมายเหตุสำหรับรายการนี้ (ถ้ามี)"
-                      className="mt-2 w-full text-sm"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">หมายเหตุ</label>
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} className="w-full" rows={2} />
-          </div>
-
-          <div className="flex justify-end gap-3 border-t pt-4">
-            <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
-              ยกเลิก
-            </Button>
-            <Button type="button" onClick={handleSubmit} disabled={isPending}>
-              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'ส่งคำขอซื้อ'}
-            </Button>
-          </div>
-        </div>
+        <PurchaseRequestForm
+          mode="create"
+          onCancel={() => setIsModalOpen(false)}
+          onSaved={() => {
+            setIsModalOpen(false)
+            router.refresh()
+          }}
+        />
       </Modal>
     </div>
   )

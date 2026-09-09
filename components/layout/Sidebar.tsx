@@ -15,6 +15,8 @@ import {
   ShoppingCart,
   Truck,
   Package,
+  PackageCheck,
+  Wallet,
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -58,6 +60,8 @@ const menuSections: SidebarSection[] = [
     items: [
       { icon: ShoppingCart, label: 'คำขอซื้อ', href: '/dashboard/procurement/requests', permission: 'procurement' as const },
       { icon: Truck, label: 'ใบสั่งซื้อ', href: '/dashboard/procurement/orders', permission: 'procurement' as const },
+      { icon: PackageCheck, label: 'ใบรับสินค้า', href: '/dashboard/procurement/receipts', permission: 'procurement' as const },
+      { icon: Wallet, label: 'ใบสำคัญจ่าย', href: '/dashboard/procurement/payments', permission: 'procurement' as const },
     ],
   },
   {

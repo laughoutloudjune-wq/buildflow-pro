@@ -78,6 +78,60 @@ export async function createPurchaseRequest(input: {
   return data as { id: string; pr_no: string }
 }
 
+const PR_ERROR_TRANSLATIONS: [string, string][] = [
+  ['Cannot edit a purchase request that has already been reviewed', 'ไม่สามารถแก้ไขคำขอซื้อนี้ได้ เนื่องจากถูกตรวจสอบไปแล้ว กรุณาโหลดหน้าใหม่เพื่อดูข้อมูลล่าสุด'],
+  ['Choose either a single plot or a plot group, not both', 'กรุณาเลือกแปลงเดียวหรือกลุ่มแปลงอย่างใดอย่างหนึ่งเท่านั้น'],
+  ['Purchase request not found', 'ไม่พบคำขอซื้อนี้'],
+  ['No permission to edit this purchase request', 'ไม่มีสิทธิ์แก้ไขคำขอซื้อนี้'],
+  ['Not authenticated', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง'],
+]
+
+function translatePrError(message: string): string {
+  return PR_ERROR_TRANSLATIONS.find(([needle]) => message.includes(needle))?.[1] || message
+}
+
+export async function updatePurchaseRequest(
+  id: string,
+  input: {
+    project_id: string
+    plot_id?: string | null
+    plot_group_id?: string | null
+    plot_ids?: string[]
+    note?: string
+    needed_by_date?: string
+    items: { material_type_id: number; quantity_requested: number; note?: string }[]
+  }
+): Promise<{ id: string; pr_no: string } | { error: string }> {
+  try {
+    await requireModuleAccess('procurement')
+    const supabase = await createClient()
+
+    if (!input.project_id) throw new Error('Project is required')
+    const items = input.items.filter((i) => i.material_type_id && Number(i.quantity_requested) > 0)
+    if (items.length === 0) throw new Error('At least one material line is required')
+
+    const { data, error } = await supabase.rpc('pr_update', {
+      p_id: id,
+      p_payload: {
+        project_id: input.project_id,
+        plot_id: input.plot_id || null,
+        plot_group_id: input.plot_group_id || null,
+        plot_ids: input.plot_ids && input.plot_ids.length > 0 ? input.plot_ids : [],
+        note: input.note?.trim() || null,
+        needed_by_date: input.needed_by_date || null,
+        items,
+      },
+    })
+
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/procurement/requests')
+    revalidatePath(`/dashboard/procurement/requests/${id}`)
+    return data as { id: string; pr_no: string }
+  } catch (error) {
+    return { error: translatePrError(error instanceof Error ? error.message : 'Failed to update purchase request') }
+  }
+}
+
 export async function approvePurchaseRequest(id: string) {
   await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can approve a purchase request')
   const supabase = await createClient()

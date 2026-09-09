@@ -6,12 +6,32 @@ import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole } from '@/actions/_shared/user-role'
 import type { GoodsReceipt } from '@/lib/types/procurement'
 
+const SELECT_WITH_RELATIONS = `
+  *,
+  purchase_orders (po_no, supplier_id, company_id, suppliers (name), companies (name)),
+  goods_receipt_items (*, purchase_order_items (material_types (name))),
+  payment_voucher_receipts (payment_voucher_id, amount, payment_vouchers (pp_no))
+`
+
+/** Every goods receipt across every PO - the ใบรับสินค้า list page. */
+export async function getGoodsReceipts(): Promise<GoodsReceipt[]> {
+  await requireModuleAccess('procurement')
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('goods_receipts')
+    .select(SELECT_WITH_RELATIONS)
+    .order('received_at', { ascending: false })
+
+  if (error) throw new Error(error.message)
+  return (data as unknown as GoodsReceipt[]) || []
+}
+
 export async function getGoodsReceiptsForOrder(purchaseOrderId: string): Promise<GoodsReceipt[]> {
   await requireModuleAccess('procurement')
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('goods_receipts')
-    .select('*, goods_receipt_items (*)')
+    .select(SELECT_WITH_RELATIONS)
     .eq('purchase_order_id', purchaseOrderId)
     .order('received_at', { ascending: false })
 
@@ -53,5 +73,6 @@ export async function createGoodsReceipt(input: {
   revalidatePath('/dashboard/procurement/orders')
   revalidatePath(`/dashboard/procurement/orders/${input.purchase_order_id}`)
   revalidatePath('/dashboard/procurement/requests')
-  return data as { id: string; po_status: string }
+  revalidatePath('/dashboard/procurement/receipts')
+  return data as { id: string; ri_no: string; po_status: string }
 }

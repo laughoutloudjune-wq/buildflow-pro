@@ -10,7 +10,6 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import {
-  markPurchaseOrdersAsPaid,
   duplicatePurchaseOrders,
   deletePurchaseOrders,
 } from '@/actions/procurement-actions'
@@ -116,8 +115,6 @@ export default function PurchaseOrdersPageClient({
   const toast = useToast()
   const [tab, setTab] = useState<TabKey>('po')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [isMarkingPaid, setIsMarkingPaid] = useState(false)
   const [isDuplicating, setIsDuplicating] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -244,19 +241,6 @@ export default function PurchaseOrdersPageClient({
     })
   }
 
-  function handleMarkPaid() {
-    if (selected.size === 0) return
-    setIsMarkingPaid(true)
-    markPurchaseOrdersAsPaid(Array.from(selected), payDate)
-      .then(() => {
-        setSelected(new Set())
-        router.refresh()
-        toast.success('ทำเครื่องหมายว่าชำระเงินแล้ว')
-      })
-      .catch((error) => toast.error(error instanceof Error ? error.message : 'ทำเครื่องหมายว่าชำระเงินไม่สำเร็จ'))
-      .finally(() => setIsMarkingPaid(false))
-  }
-
   function handleDuplicateSelected() {
     if (selected.size === 0) return
     const ids = Array.from(selected)
@@ -376,12 +360,9 @@ export default function PurchaseOrdersPageClient({
           </span>
           <div className="flex flex-wrap items-center gap-2">
             {tab === 'receive' && (
-              <>
-                <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="text-sm" />
-                <Button type="button" size="sm" onClick={handleMarkPaid} disabled={isMarkingPaid}>
-                  {isMarkingPaid ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'ทำเครื่องหมายว่าชำระแล้ว'}
-                </Button>
-              </>
+              <Link href="/dashboard/procurement/receipts" className="text-sm font-medium text-indigo-600 hover:underline">
+                ไปที่ใบรับสินค้าเพื่อสร้างใบสำคัญจ่าย →
+              </Link>
             )}
             <Button type="button" size="sm" variant="secondary" onClick={handleDuplicateSelected} disabled={isDuplicating}>
               {isDuplicating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />} ทำสำเนา

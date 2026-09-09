@@ -14,7 +14,6 @@ import {
   getPurchaseOrderById,
   setPurchaseOrderStatus,
   unmarkPurchaseOrderReceived,
-  unmarkPurchaseOrderPaid,
 } from '@/actions/procurement-actions'
 import type { PurchaseOrder, PurchaseOrderStatus } from '@/lib/types/procurement'
 
@@ -103,18 +102,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     })
   }
 
-  function handleUnmarkPaid() {
-    if (!confirm('ยกเลิกการชำระเงิน และย้อนกลับไปสถานะรับของแล้ว?')) return
-    startTransition(async () => {
-      try {
-        await unmarkPurchaseOrderPaid(id)
-        await load()
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ยกเลิกการชำระเงินไม่สำเร็จ')
-      }
-    })
-  }
-
   if (isLoading) {
     return (
       <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-slate-500">
@@ -132,7 +119,6 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const canCancel = order.status === 'draft' || order.status === 'sent'
   const canReceive = order.status === 'sent' || order.status === 'partially_received'
   const canUnmarkReceived = order.status === 'received'
-  const canUnmarkPaid = order.status === 'paid'
   const isFormReadOnly = order.status !== 'draft' && order.status !== 'partially_received'
 
   const milestones = [
@@ -185,10 +171,13 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                   <Undo2 className="h-3.5 w-3.5" /> ยกเลิกการรับของ
                 </Button>
               )}
-              {canUnmarkPaid && (
-                <Button type="button" variant="secondary" size="sm" onClick={handleUnmarkPaid} disabled={isPending}>
-                  <Undo2 className="h-3.5 w-3.5" /> ยกเลิกการชำระ
-                </Button>
+              {order.status === 'paid' && (
+                <Link
+                  href="/dashboard/procurement/payments"
+                  className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-indigo-600 hover:underline"
+                >
+                  ดูใบสำคัญจ่าย →
+                </Link>
               )}
               {canCancel && (
                 <Button type="button" variant="danger" size="sm" onClick={handleCancel} disabled={isPending}>

@@ -15,6 +15,7 @@ import {
   getPurchaseRequests as getPurchaseRequestsImpl,
   getPurchaseRequestById as getPurchaseRequestByIdImpl,
   createPurchaseRequest as createPurchaseRequestImpl,
+  updatePurchaseRequest as updatePurchaseRequestImpl,
   approvePurchaseRequest as approvePurchaseRequestImpl,
   rejectPurchaseRequest as rejectPurchaseRequestImpl,
   getApprovedRequestsForOrder as getApprovedRequestsForOrderImpl,
@@ -31,15 +32,23 @@ import {
   cancelPurchaseOrder as cancelPurchaseOrderImpl,
   markPurchaseOrderReceived as markPurchaseOrderReceivedImpl,
   unmarkPurchaseOrderReceived as unmarkPurchaseOrderReceivedImpl,
-  markPurchaseOrdersAsPaid as markPurchaseOrdersAsPaidImpl,
-  unmarkPurchaseOrderPaid as unmarkPurchaseOrderPaidImpl,
   deletePurchaseOrder as deletePurchaseOrderImpl,
   deletePurchaseOrders as deletePurchaseOrdersImpl,
   duplicatePurchaseOrder as duplicatePurchaseOrderImpl,
   duplicatePurchaseOrders as duplicatePurchaseOrdersImpl,
   type PurchaseOrderFilters,
 } from '@/actions/procurement/orders'
-import { getGoodsReceiptsForOrder as getGoodsReceiptsForOrderImpl, createGoodsReceipt as createGoodsReceiptImpl } from '@/actions/procurement/receipts'
+import {
+  getGoodsReceipts as getGoodsReceiptsImpl,
+  getGoodsReceiptsForOrder as getGoodsReceiptsForOrderImpl,
+  createGoodsReceipt as createGoodsReceiptImpl,
+} from '@/actions/procurement/receipts'
+import {
+  getPaymentVouchers as getPaymentVouchersImpl,
+  getPaymentVoucherById as getPaymentVoucherByIdImpl,
+  createPaymentVoucher as createPaymentVoucherImpl,
+  voidPaymentVoucher as voidPaymentVoucherImpl,
+} from '@/actions/procurement/payments'
 import { getMaterialsSummaryForProject as getMaterialsSummaryForProjectImpl } from '@/actions/procurement/materials-summary'
 
 // ---------------------------------------------------------------------------
@@ -98,6 +107,10 @@ export async function createPurchaseRequest(input: Parameters<typeof createPurch
   return createPurchaseRequestImpl(input)
 }
 
+export async function updatePurchaseRequest(id: string, input: Parameters<typeof updatePurchaseRequestImpl>[1]) {
+  return updatePurchaseRequestImpl(id, input)
+}
+
 export async function approvePurchaseRequest(id: string) {
   return approvePurchaseRequestImpl(id)
 }
@@ -154,14 +167,6 @@ export async function unmarkPurchaseOrderReceived(id: string) {
   return unmarkPurchaseOrderReceivedImpl(id)
 }
 
-export async function markPurchaseOrdersAsPaid(ids: string[], paidAt: string) {
-  return markPurchaseOrdersAsPaidImpl(ids, paidAt)
-}
-
-export async function unmarkPurchaseOrderPaid(id: string) {
-  return unmarkPurchaseOrderPaidImpl(id)
-}
-
 export async function deletePurchaseOrder(id: string) {
   return deletePurchaseOrderImpl(id)
 }
@@ -182,12 +187,36 @@ export async function duplicatePurchaseOrders(ids: string[]) {
 // Goods Receipts
 // ---------------------------------------------------------------------------
 
+export async function getGoodsReceipts() {
+  return getGoodsReceiptsImpl()
+}
+
 export async function getGoodsReceiptsForOrder(purchaseOrderId: string) {
   return getGoodsReceiptsForOrderImpl(purchaseOrderId)
 }
 
 export async function createGoodsReceipt(input: Parameters<typeof createGoodsReceiptImpl>[0]) {
   return createGoodsReceiptImpl(input)
+}
+
+// ---------------------------------------------------------------------------
+// Payment Vouchers
+// ---------------------------------------------------------------------------
+
+export async function getPaymentVouchers() {
+  return getPaymentVouchersImpl()
+}
+
+export async function getPaymentVoucherById(id: string) {
+  return getPaymentVoucherByIdImpl(id)
+}
+
+export async function createPaymentVoucher(input: Parameters<typeof createPaymentVoucherImpl>[0]) {
+  return createPaymentVoucherImpl(input)
+}
+
+export async function voidPaymentVoucher(id: string) {
+  return voidPaymentVoucherImpl(id)
 }
 
 // ---------------------------------------------------------------------------

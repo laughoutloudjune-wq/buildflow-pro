@@ -235,23 +235,6 @@ export async function unmarkPurchaseOrderReceived(id: string) {
   revalidatePath(`/dashboard/procurement/orders/${id}`)
 }
 
-export async function markPurchaseOrdersAsPaid(ids: string[], paidAt: string) {
-  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can mark purchase orders as paid')
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('po_mark_paid', { p_ids: ids, p_paid_at: paidAt })
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/procurement/orders')
-}
-
-export async function unmarkPurchaseOrderPaid(id: string) {
-  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can unmark a purchase order as paid')
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('po_unmark_paid', { p_id: id })
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/procurement/orders')
-  revalidatePath(`/dashboard/procurement/orders/${id}`)
-}
-
 /** Only draft/sent/cancelled orders with no goods_receipts can be deleted -
  * po_delete enforces this server-side; this just surfaces its error. */
 export async function deletePurchaseOrder(id: string) {

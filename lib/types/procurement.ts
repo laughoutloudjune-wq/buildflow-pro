@@ -193,14 +193,54 @@ export type GoodsReceiptItem = {
   purchase_order_item_id: string
   quantity_received: number
   unit_price_at_receipt: number
+  purchase_order_items?: { material_types?: { name: string } | null } | null
 }
 
 export type GoodsReceipt = {
   id: string
+  ri_no: string
   purchase_order_id: string
   delivery_note_no: string | null
   received_by: string
   received_at: string
   note: string | null
   goods_receipt_items?: GoodsReceiptItem[]
+  purchase_orders?: {
+    po_no: string
+    supplier_id: string
+    company_id: string
+    suppliers?: { name: string } | null
+    companies?: { name: string } | null
+  } | null
+  payment_voucher_receipts?: { payment_voucher_id: string; amount: number; payment_vouchers?: { pp_no: string } | null }[]
+}
+
+export type PaymentMethod = 'cash' | 'bank_transfer' | 'director_loan'
+
+export type PaymentVoucherReceipt = {
+  id: string
+  payment_voucher_id: string
+  goods_receipt_id: string
+  subtotal: number
+  vat_amount: number
+  amount: number
+  goods_receipts?: { ri_no: string; purchase_orders?: { po_no: string } | null } | null
+}
+
+export type PaymentVoucher = {
+  id: string
+  pp_no: string
+  supplier_id: string
+  company_id: string
+  payment_date: string
+  payment_method: PaymentMethod
+  subtotal: number
+  vat_amount: number
+  total_amount: number
+  note: string | null
+  created_by: string
+  created_at: string
+  suppliers?: Supplier | null
+  companies?: Company | null
+  payment_voucher_receipts?: PaymentVoucherReceipt[]
 }

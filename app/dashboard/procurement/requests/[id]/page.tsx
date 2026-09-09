@@ -3,13 +3,15 @@
 import { useEffect, useState, useTransition, use } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Loader2, ShoppingCart } from 'lucide-react'
+import { ArrowLeft, Loader2, Pencil, ShoppingCart } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { approvePurchaseRequest, getPurchaseRequestById, rejectPurchaseRequest } from '@/actions/procurement-actions'
 import PurchaseRequestDocActions from '@/components/procurement/PurchaseRequestDocActions'
+import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import type { PurchaseRequest, PurchaseRequestStatus } from '@/lib/types/procurement'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -68,6 +70,7 @@ export default function PurchaseRequestDetailPage({ params }: { params: Promise<
   const toast = useToast()
   const [rejectNote, setRejectNote] = useState('')
   const [showRejectBox, setShowRejectBox] = useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
 
   useEffect(() => {
     void load()
@@ -136,6 +139,11 @@ export default function PurchaseRequestDetailPage({ params }: { params: Promise<
           subtitle={`${request.projects?.name || '-'}${plotLabel(request) ? ' • ' + plotLabel(request) : ''}`}
           actions={
             <>
+              {request.status === 'pending_review' && (
+                <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditModalOpen(true)}>
+                  <Pencil className="h-3.5 w-3.5" /> แก้ไข
+                </Button>
+              )}
               <PurchaseRequestDocActions requestId={request.id} prNo={request.pr_no} />
               <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_TONE[request.status]}`}>
                 {STATUS_LABEL[request.status]}
@@ -257,6 +265,19 @@ export default function PurchaseRequestDetailPage({ params }: { params: Promise<
           </Button>
         </div>
       )}
+
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="แก้ไขคำขอซื้อ" panelClassName="max-w-2xl">
+        <PurchaseRequestForm
+          mode="edit"
+          requestId={request.id}
+          initialRequest={request}
+          onCancel={() => setIsEditModalOpen(false)}
+          onSaved={() => {
+            setIsEditModalOpen(false)
+            void load()
+          }}
+        />
+      </Modal>
     </div>
   )
 }
