@@ -3,13 +3,13 @@ import { getPurchaseOrderById } from '@/actions/procurement-actions'
 import { getOrganizationSettings } from '@/actions/settings-actions'
 import { getSignatureSlots } from '@/actions/signature-slots-actions'
 import { buildPurchaseOrderHtml } from '@/lib/pdf/purchaseOrderHtml'
-import { renderPrintable } from '@/lib/pdf/renderPrintable'
+import { respondWithPrintable } from '@/lib/pdf/printableResponse'
 
 // Puppeteer needs to spawn a real Chromium process, so this must run on the
-// Node runtime (not edge). A new browser is launched per request and closed
-// after rendering - simple and safe for this feature's traffic (internal PO
-// documents, not a hot path); a shared browser pool can be added later if
-// generation volume ever justifies the extra complexity.
+// Node runtime (not edge). Two layers keep that off the critical path: the
+// browser is pooled across requests (lib/pdf/renderPrintable.ts), and a
+// repeat view of an unchanged document is answered with a 304 before any
+// rendering happens at all (lib/pdf/printableResponse.ts).
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -27,26 +27,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const html = buildPurchaseOrderHtml(order, settings?.signature_url, slots)
-  const format = request.nextUrl.searchParams.get('format') === 'png' ? 'png' : 'pdf'
-  const download = request.nextUrl.searchParams.get('download') === '1'
 
-  const buffer = await renderPrintable(html, format)
-
-  if (format === 'png') {
-    return new NextResponse(buffer, {
-      headers: {
-        'Content-Type': 'image/png',
-        'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${order.po_no}.png"`,
-        'Cache-Control': 'no-store',
-      },
-    })
-  }
-
-  return new NextResponse(buffer, {
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${order.po_no}.pdf"`,
-      'Cache-Control': 'no-store',
-    },
+  return respondWithPrintable({
+    request,
+    html,
+    format: request.nextUrl.searchParams.get('format') === 'png' ? 'png' : 'pdf',
+    download: request.nextUrl.searchParams.get('download') === '1',
+    filename: order.po_no,
   })
 }
