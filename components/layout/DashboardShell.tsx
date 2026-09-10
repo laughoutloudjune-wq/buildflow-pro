@@ -1,34 +1,38 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
 import type { PermissionModule } from '@/lib/permissions'
 
-const COLLAPSED_STORAGE_KEY = 'buildflow.sidebar-collapsed'
+/** A cookie, not localStorage, so the server can read the preference while
+ * rendering and emit the correct sidebar width in the first HTML. Reading it
+ * client-side in an effect meant the page always painted expanded and then
+ * snapped to collapsed after hydration - a ~176px shift of the entire content
+ * column on every navigation. */
+export const SIDEBAR_COLLAPSED_COOKIE = 'buildflow.sidebar-collapsed'
+
+const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365
 
 export default function DashboardShell({
   permissions,
   userEmail,
   role,
+  initialCollapsed = false,
   children,
 }: {
   permissions: Record<PermissionModule, boolean>
   userEmail?: string
   role?: string
+  initialCollapsed?: boolean
   children: React.ReactNode
 }) {
-  const [collapsed, setCollapsed] = useState(false)
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(COLLAPSED_STORAGE_KEY)
-    if (stored === '1') setCollapsed(true)
-  }, [])
+  const [collapsed, setCollapsed] = useState(initialCollapsed)
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
       const next = !prev
-      window.localStorage.setItem(COLLAPSED_STORAGE_KEY, next ? '1' : '0')
+      document.cookie = `${SIDEBAR_COLLAPSED_COOKIE}=${next ? '1' : '0'}; path=/; max-age=${ONE_YEAR_SECONDS}; samesite=lax`
       return next
     })
   }

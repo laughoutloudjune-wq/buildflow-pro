@@ -101,26 +101,47 @@ function vatOptionFor(percent: number, type: VatType): string {
   return type === 'inclusive' ? 'vat7_inclusive' : 'vat7_exclusive'
 }
 
+/** The three small lookups the form needs before it can render anything.
+ * Supplied by the server component that renders the form so the first paint
+ * already has them - fetching these after hydration meant the whole form sat
+ * behind a spinner (see the `isLoading` gate below) until a round trip
+ * completed, which is what made /dashboard/procurement/orders/create the
+ * worst Largest Contentful Paint in the app. The material catalog is
+ * deliberately NOT part of this: it is ~1000 rows / ~200KB and isn't needed
+ * until the user opens a line-item picker, so it stays a client fetch. */
+export type PurchaseOrderFormOptions = {
+  projects: { id: string; name: string; location: string | null }[]
+  suppliers: Supplier[]
+  companies: Company[]
+}
+
 export default function PurchaseOrderForm({
   mode,
   orderId,
   fromRequestId,
   initialOrder,
+  initialOptions,
   readOnly = false,
 }: {
   mode: 'create' | 'edit'
   orderId?: string
   fromRequestId?: string | null
   initialOrder?: PurchaseOrder | null
+  initialOptions?: PurchaseOrderFormOptions
   readOnly?: boolean
 }) {
   const router = useRouter()
 
-  const [isLoading, setIsLoading] = useState(true)
+  // With options in hand there is nothing left to await before the form can
+  // paint - unless this is a create-from-request, which still has to load the
+  // source PR to prefill its lines.
+  const [isLoading, setIsLoading] = useState(!initialOptions || Boolean(fromRequestId))
   const [isPending, startTransition] = useTransition()
   const toast = useToast()
 
-  const [projects, setProjects] = useState<{ id: string; name: string; location: string | null }[]>([])
+  const [projects, setProjects] = useState<{ id: string; name: string; location: string | null }[]>(
+    initialOptions?.projects ?? []
+  )
   const [plots, setPlots] = useState<{ id: string; name: string }[]>([])
   const [plotGroups, setPlotGroups] = useState<PlotGroup[]>([])
   const [isPlotsLoading, setIsPlotsLoading] = useState(false)
@@ -131,8 +152,8 @@ export default function PurchaseOrderForm({
   // its own loading state instead.
   const [materials, setMaterials] = useState<MaterialPickerOption[]>([])
   const [isMaterialsLoading, setIsMaterialsLoading] = useState(true)
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [companies, setCompanies] = useState<Company[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>(initialOptions?.suppliers ?? [])
+  const [companies, setCompanies] = useState<Company[]>(initialOptions?.companies ?? [])
 
   const [projectId, setProjectId] = useState('')
   const [plotScope, setPlotScope] = useState<PlotScope>('none')
@@ -195,10 +216,13 @@ export default function PurchaseOrderForm({
   async function bootstrap() {
     setIsLoading(true)
     try {
-      const [p, s, c] = await Promise.all([getProjects({ includeCentralStock: true }), getSuppliers(), getCompanies()])
-      setProjects(p as any)
-      setSuppliers(s)
-      setCompanies(c)
+      // Already seeded from server props - skip the round trip entirely.
+      if (!initialOptions) {
+        const [p, s, c] = await Promise.all([getProjects({ includeCentralStock: true }), getSuppliers(), getCompanies()])
+        setProjects(p as PurchaseOrderFormOptions['projects'])
+        setSuppliers(s)
+        setCompanies(c)
+      }
 
       if (mode === 'edit' && initialOrder) {
         setProjectId(initialOrder.project_id)
@@ -293,7 +317,7 @@ export default function PurchaseOrderForm({
     setIsPlotsLoading(true)
     Promise.all([getPlotsByProjectId(projectId), getPlotGroups(projectId)])
       .then(([p, g]) => {
-        setPlots((p as any) || [])
+        setPlots((p as { id: string; name: string }[]) || [])
         setPlotGroups(g)
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : 'โหลดข้อมูลแปลงไม่สำเร็จ'))

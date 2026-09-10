@@ -7,7 +7,7 @@ import { ArrowLeft, XCircle, PackageCheck, ChevronDown, Undo2 } from 'lucide-rea
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
-import PurchaseOrderForm from '@/components/procurement/PurchaseOrderForm'
+import PurchaseOrderForm, { type PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
 import PurchaseOrderDocActions from '@/components/procurement/PurchaseOrderDocActions'
 import GoodsReceiptModal from '@/components/procurement/GoodsReceiptModal'
 import { cancelPurchaseOrder, setPurchaseOrderStatus, unmarkPurchaseOrderReceived } from '@/actions/procurement-actions'
@@ -39,10 +39,12 @@ function formatDate(value: string | null) {
 export default function PurchaseOrderDetailPageClient({
   id,
   order,
+  formOptions,
   initialError,
 }: {
   id: string
   order: PurchaseOrder | null
+  formOptions?: PurchaseOrderFormOptions
   initialError?: string | null
 }) {
   const router = useRouter()
@@ -183,7 +185,7 @@ export default function PurchaseOrderDetailPageClient({
       </div>
 
 
-      <PurchaseOrderForm mode="edit" orderId={id} initialOrder={order} readOnly={isFormReadOnly} />
+      <PurchaseOrderForm mode="edit" orderId={id} initialOrder={order} initialOptions={formOptions} readOnly={isFormReadOnly} />
 
       <GoodsReceiptModal
         isOpen={isReceiveModalOpen}
