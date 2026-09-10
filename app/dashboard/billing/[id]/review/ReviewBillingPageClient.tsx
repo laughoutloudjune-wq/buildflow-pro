@@ -1,0 +1,640 @@
+'use client'
+
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
+import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling, getJobProgressHistory } from '@/actions/billing-actions'
+import { getOrganizationSettings } from '@/actions/settings-actions'
+import type { SignatureSlot } from '@/lib/types/signatures'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { BillingPdf } from '@/components/pdf/BillingPdf'
+import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
+import { Trash2, Edit, Loader2 } from 'lucide-react'
+import { formatCurrency } from '@/lib/currency'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import Modal from '@/components/ui/Modal'
+import NoticeBanner from '@/components/ui/NoticeBanner'
+import type { BillingAdjustmentForm, ProgressHistoryItem } from '@/lib/types/billing'
+
+const PDFViewer = dynamic(
+  () => import('@react-pdf/renderer').then((mod) => mod.PDFViewer),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-[400px] text-slate-400">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="ml-2">กำลังสร้างเอกสาร PDF...</span>
+      </div>
+    ),
+  }
+)
+
+type BillingData = Awaited<ReturnType<typeof getBillingById>>
+type SettingsData = Awaited<ReturnType<typeof getOrganizationSettings>>
+type Job = NonNullable<NonNullable<BillingData>['billing_jobs']>[number]
+type Adjustment = BillingAdjustmentForm & { id?: string }
+
+export default function ReviewBillingPageClient({
+  id,
+  initialBilling,
+  initialSettings,
+  initialSignatureSlots,
+  initialJobs,
+  initialAdjustments,
+  initialBillingDate,
+  initialWhtPercent,
+  initialRetentionPercent,
+  initialProgressHistoryByJob,
+  initialError,
+}: {
+  id: string
+  initialBilling: BillingData
+  initialSettings: SettingsData
+  initialSignatureSlots: SignatureSlot[]
+  initialJobs: Job[]
+  initialAdjustments: Adjustment[]
+  initialBillingDate: string
+  initialWhtPercent: number
+  initialRetentionPercent: number
+  initialProgressHistoryByJob: Record<string, ProgressHistoryItem[]>
+  initialError: string | null
+}) {
+  const router = useRouter()
+
+  const [billing] = useState<BillingData>(initialBilling)
+  const [settings] = useState<SettingsData>(initialSettings)
+  const [signatureSlots] = useState<SignatureSlot[]>(initialSignatureSlots)
+  const [jobs, setJobs] = useState<Job[]>(initialJobs)
+  const [adjustments, setAdjustments] = useState<Adjustment[]>(initialAdjustments)
+  const [billingDate, setBillingDate] = useState(initialBillingDate)
+  const [whtPercent] = useState(initialWhtPercent)
+  const [retentionPercent] = useState(initialRetentionPercent)
+  const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit')
+  const [progressHistoryByJob, setProgressHistoryByJob] = useState<Record<string, ProgressHistoryItem[]>>(initialProgressHistoryByJob)
+  const [expandedHistoryRows, setExpandedHistoryRows] = useState<Set<string>>(new Set())
+
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(initialError)
+  const [confirmAction, setConfirmAction] = useState<'delete' | 'undoApprove' | null>(null)
+  const [rejectModalOpen, setRejectModalOpen] = useState(false)
+  const [rejectNote, setRejectNote] = useState('')
+
+  const isExtraWork = billing?.type === 'extra_work'
+  const plotNames = useMemo(() => {
+    if (!billing) return []
+    if (billing.plots?.name) return [billing.plots.name]
+    const names = (billing.billing_jobs || [])
+      .map((job: Job) => job.job_assignments?.plots?.name)
+      .filter((name: string | null | undefined): name is string => Boolean(name))
+    return Array.from(new Set(names))
+  }, [billing])
+
+  const handleProgressChange = (jobAssignmentId: string, newProgress: number) => {
+    if (newProgress < 0 || newProgress > 100) return
+
+    setJobs((prevJobs) =>
+      prevJobs.map((job) => {
+        if (job.job_assignments.id === jobAssignmentId) {
+          const totalBoq = job.totalBoq
+          const paid = job.paid
+          const newAmount = (totalBoq * newProgress) / 100 - paid
+          return {
+            ...job,
+            progress_percent: newProgress,
+            amount: Math.max(0, newAmount),
+          }
+        }
+        return job
+      })
+    )
+  }
+
+  const handleAdjustmentChange = (index: number, field: keyof Adjustment, value: Adjustment[keyof Adjustment]) => {
+    const next = [...adjustments]
+    next[index] = { ...next[index], [field]: value }
+    setAdjustments(next)
+  }
+
+  const addAdjustment = (type: 'addition' | 'deduction') => {
+    setAdjustments([...adjustments, { type, description: '', plot_name: '', unit: 'หน่วย', quantity: 1, unit_price: 0 }])
+  }
+
+  const removeAdjustment = (index: number) => {
+    setAdjustments(adjustments.filter((_, i) => i !== index))
+  }
+
+  const removeJob = (jobId: string) => {
+    setJobs((prevJobs) => prevJobs.filter((job) => job.id !== jobId))
+  }
+
+  // WHT/retention are no longer set by the PM here — accounting applies them
+  // later at pay-out time in the contractor-cycle page. Any nonzero percent
+  // still carried on older bills is preserved through re-approval even though
+  // it's no longer editable in this UI.
+  const { totalWorkAmount, totalAddAmount, totalDeductAmount, grossAmount, netAmount } = useMemo(() => {
+    const totalWorkAmount = jobs.reduce((sum, job) => sum + (job.amount || 0), 0)
+    const totalAddAmount = adjustments.filter((adj) => adj.type === 'addition').reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
+    const totalDeductAmount = adjustments.filter((adj) => adj.type === 'deduction').reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
+
+    const retentionAmount = totalWorkAmount * (retentionPercent / 100)
+    const grossAmount = totalWorkAmount + totalAddAmount - totalDeductAmount
+    const netAmount = grossAmount - retentionAmount
+
+    return { totalWorkAmount, totalAddAmount, totalDeductAmount, grossAmount, netAmount }
+  }, [jobs, adjustments, retentionPercent])
+
+  const adjustmentPlotOptions = useMemo(() => {
+    const names = Array.from(
+      new Set(
+        (jobs || [])
+          .map((job: Job) => job.job_assignments?.plots?.name)
+          .filter((name: string | null | undefined): name is string => Boolean(name))
+      )
+    )
+    names.sort((a, b) => a.localeCompare(b, 'th', { numeric: true, sensitivity: 'base' }))
+    return names
+  }, [jobs])
+
+  // Initial progress history already arrived as a prop from the server -
+  // only refetch when the job list actually changes underneath it (e.g. a
+  // row gets removed).
+  const isFirstJobsEffect = useRef(true)
+  useEffect(() => {
+    if (isFirstJobsEffect.current) {
+      isFirstJobsEffect.current = false
+      return
+    }
+    const ids = Array.from(
+      new Set(
+        (jobs || [])
+          .map((job: Job) => job.job_assignments?.id)
+          .filter((jobId: string | undefined): jobId is string => Boolean(jobId))
+      )
+    )
+    if (ids.length === 0) {
+      setProgressHistoryByJob({})
+      return
+    }
+    let mounted = true
+    getJobProgressHistory(ids)
+      .then((res: Record<string, ProgressHistoryItem[]>) => {
+        if (mounted) setProgressHistoryByJob(res || {})
+      })
+      .catch(() => {
+        if (mounted) setProgressHistoryByJob({})
+      })
+    return () => {
+      mounted = false
+    }
+  }, [jobs])
+
+  const toggleHistory = (jobAssignmentId: string) => {
+    setExpandedHistoryRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(jobAssignmentId)) next.delete(jobAssignmentId)
+      else next.add(jobAssignmentId)
+      return next
+    })
+  }
+
+  const handleApprove = async () => {
+    setError(null)
+    setIsSubmitting(true)
+    try {
+      const approvalData = {
+        billing_date: billingDate,
+        selected_jobs: jobs.map((j) => ({
+          id: j.job_assignments?.id || '',
+          job_assignment_id: j.job_assignments?.id || '',
+          request_amount: j.amount,
+          progress_percent: j.progress_percent,
+        })),
+        adjustments,
+        total_work_amount: totalWorkAmount,
+        total_add_amount: totalAddAmount,
+        total_deduct_amount: totalDeductAmount,
+        wht_percent: whtPercent,
+        retention_percent: retentionPercent,
+        net_amount: netAmount,
+        type: billing?.type,
+        attachment_urls: billing?.attachment_urls,
+        reason_for_dc: billing?.reason_for_dc,
+      }
+      await approveBilling(id, approvalData)
+      router.push('/dashboard/billing?type=success&message=อนุมัติใบเบิกเรียบร้อยแล้ว')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Approve failed')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleReject = async () => {
+    setError(null)
+    setIsSubmitting(true)
+    try {
+      await rejectBilling(id, rejectNote.trim() || undefined)
+      router.push('/dashboard/billing?type=success&message=ปฏิเสธใบเบิกเรียบร้อยแล้ว')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Reject failed')
+    } finally {
+      setIsSubmitting(false)
+      setRejectModalOpen(false)
+      setRejectNote('')
+    }
+  }
+
+  const handleDelete = async () => {
+    setIsSubmitting(true)
+    try {
+      await deleteBilling(id)
+      router.push('/dashboard/billing?type=success&message=ลบใบขอเบิกเรียบร้อยแล้ว')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
+    } finally {
+      setIsSubmitting(false)
+      setConfirmAction(null)
+    }
+  }
+
+  const handleUndoApprove = async () => {
+    setError(null)
+    setIsSubmitting(true)
+    try {
+      await undoApproveBilling(id)
+      router.push('/dashboard/billing?type=success&message=ยกเลิกการอนุมัติเรียบร้อยแล้ว')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Undo approve failed')
+    } finally {
+      setIsSubmitting(false)
+      setConfirmAction(null)
+    }
+  }
+
+  const previewData = useMemo(
+    () => ({
+      ...billing,
+      billing_jobs: jobs,
+      billing_adjustments: adjustments,
+      billing_date: billingDate,
+      wht_percent: whtPercent,
+      retention_percent: retentionPercent,
+      total_work_amount: totalWorkAmount,
+      total_add_amount: totalAddAmount,
+      total_deduct_amount: totalDeductAmount,
+      net_amount: netAmount,
+    }),
+    [billing, jobs, adjustments, billingDate, whtPercent, retentionPercent, totalWorkAmount, totalAddAmount, totalDeductAmount, netAmount]
+  )
+
+  if (error && !billing) {
+    return (
+      <div className="container mx-auto max-w-lg space-y-4 p-4">
+        <NoticeBanner tone="error" message={error} onClose={() => setError(null)} />
+        <div className="text-center">
+          <Link href="/dashboard/billing" className="text-sm font-medium text-indigo-600 hover:text-indigo-800">
+            ← กลับไปรายการเบิกจ่าย
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (!billing) {
+    return (
+      <div className="container mx-auto max-w-lg space-y-4 p-4">
+        <p className="text-center text-slate-600">ไม่พบข้อมูลใบเบิก</p>
+        <div className="text-center">
+          <Link href="/dashboard/billing" className="text-sm font-medium text-indigo-600 hover:text-indigo-800">
+            ← กลับไปรายการเบิกจ่าย
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="container mx-auto p-4 space-y-4">
+      <PageHeader
+        title={`ตรวจสอบใบขอเบิก #${billing.doc_no}`}
+        actions={
+          <>
+            {billing.status === 'approved' && (
+              <Button variant="ghost" size="sm" onClick={() => setConfirmAction('undoApprove')} disabled={isSubmitting}>
+                <Edit className="h-4 w-4" /> Undo Approve
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setConfirmAction('delete')}>
+              <Trash2 className="h-4 w-4" /> ลบใบคำขอ
+            </Button>
+          </>
+        }
+      />
+
+      {error ? <NoticeBanner tone="error" message={error} onClose={() => setError(null)} /> : null}
+
+      <div className="flex border-b">
+        <button
+          onClick={() => setActiveTab('edit')}
+          className={`flex-1 py-3 text-sm font-bold transition flex items-center justify-center gap-2 ${
+            activeTab === 'edit' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50' : 'text-slate-500 hover:bg-slate-50'
+          }`}
+        >
+          <Edit className="h-4 w-4" /> แก้ไขข้อมูล
+        </button>
+      </div>
+
+      {activeTab === 'edit' && (
+        <>
+          <Card className="p-4 bg-slate-50">
+            <h2 className="text-xl font-semibold mb-3">ข้อมูลจาก Foreman</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <p><span className="font-semibold">โครงการ:</span> {billing.projects?.name}</p>
+              <p><span className="font-semibold">แปลง:</span> {plotNames.length ? plotNames.join(', ') : '-'}</p>
+              <p><span className="font-semibold">ผู้รับเหมา:</span> {billing.contractors?.name}</p>
+              <p><span className="font-semibold">ผู้ส่งคำขอ:</span> {billing.submitted_by_user?.full_name || billing.submitted_by_user?.email || 'ไม่ระบุผู้ใช้'}</p>
+              <p><span className="font-semibold">วันที่ส่ง:</span> {billing.created_at ? new Date(billing.created_at).toLocaleString('th-TH') : '-'}</p>
+            </div>
+            {billing.note && <p className="mt-4"><span className="font-semibold">หมายเหตุ:</span> {billing.note}</p>}
+          </Card>
+
+          {isExtraWork && (
+            <Card className="p-4 border-amber-200 bg-amber-50/40">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-amber-800">ตรวจสอบงานเพิ่ม (DC)</h2>
+                  <p className="text-sm text-amber-700">ปรับรายการและราคาได้ก่อนอนุมัติ</p>
+                </div>
+                <span className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-200 text-amber-900">EXTRA WORK</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="space-y-2">
+                  <p><span className="font-semibold">เหตุผล:</span> {billing.reason_for_dc || '-'}</p>
+                </div>
+                <div>
+                  <p className="font-semibold mb-2">รูปถ่ายงานเพิ่ม</p>
+                  {Array.isArray(billing.attachment_urls) && billing.attachment_urls.length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {billing.attachment_urls.map((url: string, idx: number) => (
+                        <img key={idx} src={url} alt={`dc-${idx + 1}`} className="h-24 w-full object-cover rounded border" />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">ไม่มีรูปแนบ</p>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {!isExtraWork && (
+            <Card className="p-4">
+              <h2 className="text-xl font-semibold mb-2">รายการงานที่เบิก</h2>
+              <div className="overflow-x-auto mb-6">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ชื่องาน</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">มูลค่าทั้งหมด</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">เบิกแล้ว</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">คงเหลือก่อนเบิก</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Foreman %</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">PM %</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">ยอดเงิน</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">คงเหลือหลังเบิก</th>
+                      <th className="px-6 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {jobs.map((job) => {
+                      const jobAssignmentId = job.job_assignments?.id
+                      const isExpanded = expandedHistoryRows.has(jobAssignmentId)
+                      const historyRows = (progressHistoryByJob[jobAssignmentId] || []).filter(
+                        (history: ProgressHistoryItem) =>
+                          String(history.status || '') !== 'pending_review' || String(history.doc_no || '') !== String(billing.doc_no || '')
+                      )
+                      return (
+                        <Fragment key={job.id}>
+                          <tr>
+                            <td className="px-6 py-4">
+                              <div>{job.job_assignments.boq_master.item_name}</div>
+                              <div className="text-xs text-slate-500">แปลง {job.job_assignments.plots?.name || '-'}</div>
+                              <button
+                                type="button"
+                                onClick={() => toggleHistory(jobAssignmentId)}
+                                className="mt-1 text-xs text-indigo-600 hover:text-indigo-800"
+                              >
+                                {isExpanded ? 'ซ่อนประวัติความคืบหน้า' : 'ดูประวัติความคืบหน้า'}
+                              </button>
+                            </td>
+                            <td className="px-6 py-4 text-right">{formatCurrency(job.totalBoq)}</td>
+                            <td className="px-6 py-4 text-right">{formatCurrency(job.paid)}</td>
+                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(job.paid || 0)))}</td>
+                            <td className="px-6 py-4 text-right font-semibold text-blue-600">
+                              {billing.billing_jobs.find((billingJob: Job) => billingJob.id === job.id)?.progress_percent?.toFixed(2)}%
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <input
+                                type="number"
+                                className="w-24 p-1 border border-gray-300 rounded-md text-right"
+                                value={job.progress_percent || ''}
+                                onChange={(e) => handleProgressChange(job.job_assignments.id, parseFloat(e.target.value))}
+                                min={job.previous_progress.toFixed(2)}
+                                max="100"
+                                step="0.01"
+                              />
+                            </td>
+                            <td className="px-6 py-4 text-right font-medium">{formatCurrency(job.amount || 0)}</td>
+                            <td className="px-6 py-4 text-right font-semibold text-emerald-700">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(job.paid || 0) - Number(job.amount || 0)))}</td>
+                            <td className="px-6 py-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => removeJob(job.id)}
+                                title="ลบรายการนี้ออกจากใบเบิก (เช่น รายการซ้ำ)"
+                                className="p-2 text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr>
+                              <td colSpan={9} className="px-6 pb-4 pt-1">
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                  <div className="text-xs font-semibold text-slate-700 mb-2">ประวัติความคืบหน้าเดิม</div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-sm border border-slate-200 bg-white">
+                                      <thead className="bg-slate-100">
+                                        <tr>
+                                          <th className="px-2 py-1 text-left">เลขที่ใบเบิก</th>
+                                          <th className="px-2 py-1 text-left">วันที่</th>
+                                          <th className="px-2 py-1 text-left">สถานะ</th>
+                                          <th className="px-2 py-1 text-right">%</th>
+                                          <th className="px-2 py-1 text-right">ยอดเบิก</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {historyRows.length === 0 ? (
+                                          <tr>
+                                            <td colSpan={5} className="px-2 py-2 text-center text-slate-400">ยังไม่มีประวัติก่อนหน้า</td>
+                                          </tr>
+                                        ) : historyRows.map((history: ProgressHistoryItem) => (
+                                          <tr key={history.id} className="border-t border-slate-100">
+                                            <td className="px-2 py-1">#{String(history.doc_no || '-').padStart(4, '0')}</td>
+                                            <td className="px-2 py-1">
+                                              {history.billing_date
+                                                ? new Date(history.billing_date).toLocaleDateString('th-TH')
+                                                : history.created_at
+                                                  ? new Date(history.created_at).toLocaleDateString('th-TH')
+                                                  : '-'}
+                                            </td>
+                                            <td className="px-2 py-1">{history.status || '-'}</td>
+                                            <td className="px-2 py-1 text-right">
+                                              {history.progress_percent == null ? '-' : `${Number(history.progress_percent).toFixed(2)}%`}
+                                            </td>
+                                            <td className="px-2 py-1 text-right">{formatCurrency(history.amount || 0)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          <Card className="p-4">
+            <h2 className="text-xl font-semibold mb-2">รายการปรับปรุง (งานเพิ่ม/งานหัก)</h2>
+            <AdjustmentLineItems
+              adjustments={adjustments}
+              plotOptions={adjustmentPlotOptions}
+              onChange={handleAdjustmentChange}
+              onAdd={addAdjustment}
+              onRemove={removeAdjustment}
+              totalAddAmount={totalAddAmount}
+              totalDeductAmount={totalDeductAmount}
+              showSignature
+            />
+
+            <h2 className="text-xl font-semibold mt-6 mb-2">สรุปและคำนวณยอดสุดท้าย</h2>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div><label className="block text-sm font-medium text-gray-700">วันที่เบิกจ่าย</label><input type="date" value={billingDate} onChange={(e) => setBillingDate(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" /></div>
+              </div>
+              <p className="mb-4 text-xs text-slate-500">หัก ณ ที่จ่ายและประกันผลงานจะดำเนินการโดยฝ่ายบัญชีในหน้ารอบจ่ายผู้รับเหมา</p>
+              <div className="mt-4 p-4 bg-white rounded-lg border">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {totalWorkAmount > 0 && (
+                      <tr>
+                        <td className="py-0.5 text-gray-600">งานหลัก</td>
+                        <td className="py-0.5 text-right font-medium">฿{formatCurrency(totalWorkAmount)}</td>
+                      </tr>
+                    )}
+                    {totalAddAmount > 0 && (
+                      <tr>
+                        <td className="py-0.5 text-gray-600">งานเพิ่ม DC</td>
+                        <td className="py-0.5 text-right font-medium text-green-700">฿{formatCurrency(totalAddAmount)}</td>
+                      </tr>
+                    )}
+                    {totalDeductAmount > 0 && (
+                      <tr>
+                        <td className="py-0.5 text-gray-600">งานหัก</td>
+                        <td className="py-0.5 text-right font-medium text-red-600">−฿{formatCurrency(totalDeductAmount)}</td>
+                      </tr>
+                    )}
+                    <tr><td colSpan={2}><hr className="my-1" /></td></tr>
+                    <tr>
+                      <td className="py-1 font-bold text-base">ยอดสุทธิอนุมัติ</td>
+                      <td className="py-1 text-right font-bold text-xl text-emerald-700">฿{formatCurrency(netAmount)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-4">
+              <Button variant="danger" onClick={() => setRejectModalOpen(true)} disabled={isSubmitting}>
+                {isSubmitting ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}
+              </Button>
+              <Button onClick={handleApprove} disabled={isSubmitting}>
+                {isSubmitting ? 'กำลังอนุมัติ...' : 'อนุมัติและจบงาน'}
+              </Button>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {activeTab === 'preview' && (
+        <div className="h-[75vh] w-full bg-slate-500 rounded-lg shadow-inner overflow-hidden flex flex-col">
+          <PDFViewer className="w-full h-full border-none">
+            <BillingPdf data={previewData} settings={settings} slots={signatureSlots} />
+          </PDFViewer>
+        </div>
+      )}
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'delete'}
+        title="ลบใบขอเบิก"
+        message="ต้องการลบใบขอเบิกนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้"
+        confirmLabel={isSubmitting ? 'กำลังลบ...' : 'ลบใบคำขอ'}
+        cancelLabel="ยกเลิก"
+        busy={isSubmitting}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'undoApprove'}
+        title="ย้อนสถานะอนุมัติ"
+        message="ต้องการย้อนสถานะอนุมัติกลับไปเป็นรอตรวจสอบใช่หรือไม่? ระบบจะลบรายการจ่ายที่สร้างจากใบเบิกนี้"
+        confirmLabel={isSubmitting ? 'กำลังย้อนสถานะ...' : 'ย้อนสถานะ'}
+        cancelLabel="ยกเลิก"
+        tone="primary"
+        busy={isSubmitting}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={handleUndoApprove}
+      />
+
+      <Modal isOpen={rejectModalOpen} onClose={() => setRejectModalOpen(false)} title="ปฏิเสธใบเบิก">
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">เหตุผลที่ปฏิเสธ (ไม่บังคับ)</label>
+            <textarea
+              rows={4}
+              value={rejectNote}
+              onChange={(e) => setRejectNote(e.target.value)}
+              className="w-full rounded-md border border-slate-300 p-2"
+              placeholder="ระบุเหตุผลหรือข้อแก้ไขที่ต้องการแจ้งกลับ"
+            />
+          </div>
+          <div className="flex justify-end gap-3 border-t pt-4">
+            <Button type="button" variant="secondary" onClick={() => setRejectModalOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={handleReject}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'กำลังปฏิเสธ...' : 'ยืนยันการปฏิเสธ'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}

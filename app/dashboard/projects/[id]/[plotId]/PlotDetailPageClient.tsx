@@ -1,0 +1,374 @@
+'use client'
+
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Boxes, Hammer, Pencil, RefreshCw, User } from 'lucide-react'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
+import Modal from '@/components/ui/Modal'
+import JobMaterialLogModal from '@/components/materials/JobMaterialLogModal'
+import {
+  assignContractor,
+  getJobAssignments,
+  getPlotById,
+  syncPlotJobs,
+  updateAgreedPricePerUnit,
+  updateJobStatus,
+} from '@/actions/job-actions'
+import { updatePlot } from '@/actions/plot-actions'
+import { getHouseModels } from '@/actions/boq-actions'
+import { getContractors } from '@/actions/contractor-actions'
+import { formatCurrency } from '@/lib/currency'
+
+type Plot = Awaited<ReturnType<typeof getPlotById>>
+type Job = Awaited<ReturnType<typeof getJobAssignments>>[number]
+type Contractor = Awaited<ReturnType<typeof getContractors>>[number]
+type HouseModel = Awaited<ReturnType<typeof getHouseModels>>[number]
+
+function buildPriceDrafts(jobs: Job[]): Record<string, string> {
+  return jobs.reduce((acc: Record<string, string>, job) => {
+    acc[job.id] = job.agreed_price_per_unit == null ? '' : String(job.agreed_price_per_unit)
+    return acc
+  }, {})
+}
+
+export default function PlotDetailPageClient({
+  projectId,
+  plotId,
+  plot,
+  initialJobs,
+  contractors,
+  houseModels,
+}: {
+  projectId: string
+  plotId: string
+  plot: Plot
+  initialJobs: Job[]
+  contractors: Contractor[]
+  houseModels: HouseModel[]
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+
+  const [jobs, setJobs] = useState<Job[]>(initialJobs)
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>(() => buildPriceDrafts(initialJobs))
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [materialsJob, setMaterialsJob] = useState<{ id: string; label: string } | null>(null)
+
+  const getHouseModelLabel = (model: HouseModel) => {
+    const projectName = model?.projects?.name
+    const projectLocation = model?.projects?.location
+    const scopeLabel = projectName
+      ? [projectLocation, projectName].filter(Boolean).join(' - ')
+      : 'ทุกโครงการ'
+    const codeLabel = model?.code ? ` (${model.code})` : ''
+
+    return `${model?.name || 'ไม่ระบุแบบบ้าน'}${codeLabel} - ${scopeLabel}`
+  }
+
+  // Re-fetches just the job list in place (e.g. after syncing new BOQ jobs
+  // onto this plot), without toggling a page-wide loading state - which
+  // would otherwise blank the whole table behind a spinner just to add a
+  // couple of rows.
+  const refreshJobs = async () => {
+    const jData = await getJobAssignments(plotId)
+    setJobs(jData || [])
+    setPriceDrafts((prev) => {
+      const next = { ...prev }
+      for (const job of jData || []) {
+        if (!(job.id in next)) {
+          next[job.id] = job.agreed_price_per_unit == null ? '' : String(job.agreed_price_per_unit)
+        }
+      }
+      return next
+    })
+  }
+
+  const handleAssign = (jobId: string, contractorId: string) => {
+    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, contractor_id: contractorId || null } : j)))
+    startTransition(async () => {
+      await assignContractor(jobId, contractorId, plotId, projectId)
+    })
+  }
+
+  const handleStatusChange = (jobId: string, newStatus: string) => {
+    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j)))
+    startTransition(async () => {
+      await updateJobStatus(jobId, newStatus, plotId, projectId)
+    })
+  }
+
+  const handleSync = () => {
+    if (!plot) return
+    if (!confirm('ต้องการดึงรายการ BOQ ล่าสุดมาเพิ่มใช่ไหม?')) return
+    startTransition(async () => {
+      await syncPlotJobs(plotId, plot.house_model_id, projectId)
+      await refreshJobs()
+    })
+  }
+
+  const handlePriceDraftChange = (jobId: string, value: string) => {
+    setPriceDrafts((prev) => ({ ...prev, [jobId]: value }))
+  }
+
+  const handleSaveVariablePrice = (job: Job) => {
+    const raw = (priceDrafts[job.id] ?? '').trim()
+
+    if (raw === '') {
+      setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, agreed_price_per_unit: null } : j)))
+      startTransition(async () => {
+        await updateAgreedPricePerUnit(job.id, null, plotId, projectId)
+      })
+      return
+    }
+
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      alert('กรุณาใส่ราคาต่อหน่วยที่ถูกต้อง')
+      return
+    }
+
+    setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, agreed_price_per_unit: parsed } : j)))
+    startTransition(async () => {
+      await updateAgreedPricePerUnit(job.id, parsed, plotId, projectId)
+    })
+  }
+
+  const handleResetVariablePrice = (job: Job) => {
+    setPriceDrafts((prev) => ({ ...prev, [job.id]: '' }))
+    setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, agreed_price_per_unit: null } : j)))
+    startTransition(async () => {
+      await updateAgreedPricePerUnit(job.id, null, plotId, projectId)
+    })
+  }
+
+  const getJobFinancials = (job: Job) => {
+    if (!job) return { totalBoq: 0, paid: 0, remaining: 0, paidPercent: 0, effectivePrice: 0 }
+
+    const effectivePrice = (job.agreed_price_per_unit ?? job.boq_master?.price_per_unit) || 0
+    const totalBoq = (job.boq_master?.quantity || 0) * effectivePrice
+    const payments = (job.payments ?? []) as Array<{ amount: number | null }>
+    const paid = payments.reduce((sum, p) => sum + (p.amount || 0), 0)
+    const remaining = totalBoq - paid
+    const paidPercent = totalBoq > 0 ? (paid / totalBoq) * 100 : 0
+
+    return { totalBoq, paid, remaining, paidPercent, effectivePrice }
+  }
+
+  const handleUpdatePlot = async (formData: FormData) => {
+    setIsEditModalOpen(false)
+    startTransition(async () => {
+      await updatePlot(plotId, projectId, formData)
+      // No need to call router.refresh() because revalidatePath will trigger one
+    })
+  }
+
+  if (!plot) return <div className="p-8 text-center text-red-500">ไม่พบข้อมูลแปลง</div>
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={() => router.push(`/dashboard/projects/${projectId}`)}
+          className="text-sm text-slate-500 hover:text-indigo-600 w-fit flex gap-1 items-center"
+        >
+          <ArrowLeft className="h-4 w-4" /> กลับหน้ารายการ
+        </button>
+
+        <PageHeader
+          title={
+            <span className="flex items-center gap-3">
+              <span className="flex items-center gap-2">
+                <Hammer className="text-indigo-600" /> แปลง {plot.name}
+              </span>
+              <button onClick={() => setIsEditModalOpen(true)} className="text-slate-400 hover:text-indigo-600">
+                <Pencil className="h-4 w-4" />
+              </button>
+            </span>
+          }
+          subtitle={`แบบบ้าน: ${plot.house_models?.name || ''}`}
+          actions={
+            <>
+              <Button variant="secondary" size="sm" onClick={handleSync} disabled={isPending}>
+                <RefreshCw className={`h-3 w-3 ${isPending ? 'animate-spin' : ''}`} /> ดึง BOQ
+              </Button>
+              <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-sm font-bold border border-slate-200">
+                งานทั้งหมด {jobs.length} รายการ
+              </span>
+            </>
+          }
+        />
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-700 border-b">
+              <tr>
+                <th className="px-4 py-3 font-semibold">รายการงาน</th>
+                <th className="px-4 py-3 font-semibold w-[220px]">Variable Price / Unit</th>
+                <th className="px-4 py-3 font-semibold text-right">งบประมาณ (BOQ)</th>
+                <th className="px-4 py-3 font-semibold text-right">จ่ายแล้ว</th>
+                <th className="px-4 py-3 font-semibold w-[200px]">ผู้รับเหมา</th>
+                <th className="px-4 py-3 font-semibold w-[120px]">สถานะ</th>
+                <th className="px-4 py-3 font-semibold w-[80px] text-center">วัสดุ</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {jobs.map((job) => {
+                const { totalBoq, paid, effectivePrice } = getJobFinancials(job)
+                const isOverBudget = paid > totalBoq
+
+                return (
+                  <tr key={job.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-800">{job.boq_master?.item_name}</div>
+                      <div className="text-xs text-slate-400">
+                        {job.boq_master?.quantity} {job.boq_master?.unit} x {formatCurrency(job.boq_master?.price_per_unit)}
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder={String(job.boq_master?.price_per_unit || 0)}
+                            value={priceDrafts[job.id] ?? ''}
+                            onChange={(e) => handlePriceDraftChange(job.id, e.target.value)}
+                            className="w-28 rounded border border-slate-300 px-2 py-1 text-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveVariablePrice(job)}
+                            disabled={isPending}
+                            className="rounded-lg bg-indigo-600 px-2 py-1 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleResetVariablePrice(job)}
+                            disabled={isPending}
+                            className="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-60"
+                          >
+                            Reset
+                          </button>
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {job.agreed_price_per_unit != null
+                            ? `ใช้ราคาตกลง: ฿${formatCurrency(Number(effectivePrice))}`
+                            : `ใช้ราคา BOQ: ฿${formatCurrency(Number(effectivePrice))}`}
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3 text-right text-slate-600 font-medium">฿{formatCurrency(totalBoq)}</td>
+                    <td className={`px-4 py-3 text-right font-bold ${isOverBudget ? 'text-red-600' : 'text-emerald-600'}`}>
+                      ฿{formatCurrency(paid)}
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <div className="relative">
+                        <User className="absolute left-2 top-2.5 h-3 w-3 text-slate-400" />
+                        <select
+                          value={job.contractor_id || ''}
+                          onChange={(e) => handleAssign(job.id, e.target.value)}
+                          className={`w-full pl-7 pr-2 py-1.5 rounded border text-xs cursor-pointer outline-none ${
+                            job.contractor_id ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200'
+                          }`}
+                        >
+                          <option value="">-- ว่าง --</option>
+                          {contractors.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <select
+                        value={job.status}
+                        onChange={(e) => handleStatusChange(job.id, e.target.value)}
+                        disabled={!job.contractor_id}
+                        className={`w-full px-2 py-1.5 rounded text-xs font-bold border-0 cursor-pointer ${
+                          job.status === 'completed'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : job.status === 'in_progress'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        <option value="pending">รอเริ่ม</option>
+                        <option value="in_progress">กำลังทำ</option>
+                        <option value="completed">เสร็จสิ้น</option>
+                      </select>
+                    </td>
+
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMaterialsJob({ id: job.id, label: job.boq_master?.item_name || 'งาน' })
+                        }
+                        className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition"
+                        title="บันทึกวัสดุ"
+                      >
+                        <Boxes className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="แก้ไขรายละเอียดแปลง">
+        <form action={handleUpdatePlot} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">ชื่อแปลง</label>
+            <input name="name" required className="w-full" defaultValue={plot.name} />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">แบบบ้าน</label>
+            <select name="house_model_id" required className="w-full" defaultValue={plot.house_model_id}>
+              <option value="" disabled>
+                -- เลือกแบบบ้าน --
+              </option>
+              {houseModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {getHouseModelLabel(m)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button type="button" variant="secondary" onClick={() => setIsEditModalOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button type="submit">
+              บันทึก
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {materialsJob && (
+        <JobMaterialLogModal
+          isOpen={Boolean(materialsJob)}
+          onClose={() => setMaterialsJob(null)}
+          jobAssignmentId={materialsJob.id}
+          jobLabel={materialsJob.label}
+        />
+      )}
+    </div>
+  )
+}

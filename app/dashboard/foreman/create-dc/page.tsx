@@ -1,354 +1,81 @@
-'use client'
-
-import { useEffect, useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Card } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { PageHeader } from '@/components/ui/PageHeader'
-import { createClient } from '@/lib/supabase/client'
-import { getBillingOptions, createBillingRequest, getBillingById, updateBillingRequest } from '@/actions/billing-actions'
-import { getPlotsByProjectId } from '@/actions/plot-actions'
-import { Camera, CheckCircle } from 'lucide-react'
-import Modal from '@/components/ui/Modal'
-import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
-import { formatCurrency } from '@/lib/currency'
-import type { BillingAdjustmentInput, BillingPayload } from '@/lib/billing'
-import type {
-  BillingAdjustmentForm,
-  BillingAdjustmentRecord,
-  ContractorOption,
-  PlotOption,
-  ProjectOption,
-} from '@/lib/types/billing'
+import { getBillingOptions, getBillingById } from '@/actions/billing-actions'
+import type { BillingAdjustmentForm, BillingAdjustmentRecord } from '@/lib/types/billing'
+import CreateExtraWorkPageClient from './CreateExtraWorkPageClient'
 
 type Adjustment = BillingAdjustmentForm
 
+// Kept in sync with CreateExtraWorkPageClient's copy - only used server-side
+// here to seed the default reason before the client component mounts.
 const DC_REASONS = ['Owner Request', 'Site Condition', 'Design Error', 'Scope Change', 'Other']
 
-export default function CreateExtraWorkPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const editId = searchParams.get('editId')
+export default async function CreateExtraWorkPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ editId?: string }>
+}) {
+  const { editId } = await searchParams
 
-  const [projects, setProjects] = useState<ProjectOption[]>([])
-  const [contractors, setContractors] = useState<ContractorOption[]>([])
-  const [plots, setPlots] = useState<PlotOption[]>([])
+  let projects: Awaited<ReturnType<typeof getBillingOptions>>['projects'] = []
+  let contractors: Awaited<ReturnType<typeof getBillingOptions>>['contractors'] = []
+  let initialSelectedProject = ''
+  let initialSelectedContractor = ''
+  let initialSelectedPlot = ''
+  let initialReason = DC_REASONS[0]
+  let initialNote = ''
+  let initialBillingDate = new Date().toISOString()
+  let initialExistingAttachmentUrls: string[] = []
+  let initialAdjustments: Adjustment[] = []
+  let initialError: string | null = null
 
-  const [selectedProject, setSelectedProject] = useState('')
-  const [selectedContractor, setSelectedContractor] = useState('')
-  const [selectedPlot, setSelectedPlot] = useState('')
-
-  const [reason, setReason] = useState(DC_REASONS[0])
-  const [note, setNote] = useState('')
-  const [adjustments, setAdjustments] = useState<Adjustment[]>([])
-  const [newFiles, setNewFiles] = useState<File[]>([])
-  const [billingDate, setBillingDate] = useState(new Date().toISOString())
-
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [showSuccessModal, setShowSuccessModal] = useState(false)
-  const [successNextPath, setSuccessNextPath] = useState('/dashboard/foreman/history')
-  const [docNo, setDocNo] = useState<string | number>('')
-  const [existingAttachmentUrls, setExistingAttachmentUrls] = useState<string[]>([])
-
-  useEffect(() => {
-    async function fetchOptions() {
-      const { projects, contractors } = await getBillingOptions()
-      setProjects(projects || [])
-      setContractors(contractors || [])
-    }
-    fetchOptions()
-  }, [])
-
-  useEffect(() => {
-    if (!editId) return
-    async function fetchForEdit() {
-      try {
-        const billingId = editId as string
-        const billing = await getBillingById(billingId)
-        if (!billing) return
-        setSelectedProject(billing.project_id || '')
-        setSelectedContractor(billing.contractor_id || '')
-        setSelectedPlot(billing.plot_id || '')
-        setReason(billing.reason_for_dc || DC_REASONS[0])
-        setNote(billing.note || '')
-        setBillingDate(billing.billing_date || billingDate)
-        setExistingAttachmentUrls(Array.isArray(billing.attachment_urls) ? billing.attachment_urls : [])
-        setAdjustments(
-          (billing.billing_adjustments || []).map((adj: BillingAdjustmentRecord) => ({
-            type: adj.type,
-            description: adj.description || '',
-            plot_name: adj.plot_name || '',
-            unit: adj.unit || '',
-            quantity: Number(adj.quantity || 0),
-            unit_price: Number(adj.unit_price || 0),
-          }))
-        )
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load DC request')
-      }
-    }
-    fetchForEdit()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editId])
-
-  useEffect(() => {
-    if (!selectedProject) {
-      setPlots([])
-      setSelectedPlot('')
-      return
-    }
-    getPlotsByProjectId(selectedProject).then((data) => setPlots(data || []))
-  }, [selectedProject])
-
-  const handleAdjustmentChange = (index: number, field: keyof Adjustment, value: Adjustment[keyof Adjustment]) => {
-    const next = [...adjustments]
-    next[index] = { ...next[index], [field]: value }
-    setAdjustments(next)
+  try {
+    const options = await getBillingOptions()
+    projects = options.projects || []
+    contractors = options.contractors || []
+  } catch {
+    // getBillingOptions never throws today, but fall back quietly rather
+    // than break the page if that changes - the original client fetch had
+    // no error handling here either.
   }
 
-  const addAdjustment = (type: 'addition' | 'deduction') => {
-    setAdjustments([
-      ...adjustments,
-      { type, description: '', plot_name: '', unit: 'หน่วย', quantity: 1, unit_price: 0 },
-    ])
-  }
-
-  const removeAdjustment = (index: number) => {
-    setAdjustments(adjustments.filter((_: Adjustment, i: number) => i !== index))
-  }
-
-  const adjustmentPlotOptions = useMemo(() => {
-    const names = Array.from(new Set((plots || []).map((p) => p.name).filter(Boolean))) as string[]
-    names.sort((a, b) => a.localeCompare(b, 'th', { numeric: true, sensitivity: 'base' }))
-    return names
-  }, [plots])
-
-  const { totalAddAmount, totalDeductAmount, netAmount } = useMemo(() => {
-    const totalAddAmount = adjustments
-      .filter((adj) => adj.type === 'addition')
-      .reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
-    const totalDeductAmount = adjustments
-      .filter((adj) => adj.type === 'deduction')
-      .reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
-    const netAmount = totalAddAmount - totalDeductAmount
-    return { totalAddAmount, totalDeductAmount, netAmount }
-  }, [adjustments])
-
-  const uploadFiles = async () => {
-    if (newFiles.length === 0) return [] as string[]
-    const supabase = createClient()
-    const { data: authData } = await supabase.auth.getUser()
-    const userId = authData.user?.id || 'anonymous'
-    const uploadedUrls: string[] = []
-
-    for (let i = 0; i < newFiles.length; i += 1) {
-      const file = newFiles[i]
-      const ext = file.name.split('.').pop()
-      const path = `billing-attachments/${userId}/${Date.now()}-${i}.${ext}`
-      const { error: uploadError } = await supabase.storage.from('assets').upload(path, file)
-      if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`)
-      const { data: urlData } = supabase.storage.from('assets').getPublicUrl(path)
-      uploadedUrls.push(urlData.publicUrl)
-    }
-
-    return uploadedUrls
-  }
-
-  const handleSubmit = async () => {
-    setError(null)
-    if (!selectedProject || !selectedContractor) {
-      setError('กรุณาเลือกโครงการและผู้รับเหมา')
-      return
-    }
-    if (!reason) {
-      setError('กรุณาเลือกเหตุผลของงานเพิ่ม')
-      return
-    }
-    if (adjustments.length === 0) {
-      setError('กรุณาเพิ่มรายการงานเพิ่มหรืองานหักอย่างน้อย 1 รายการ')
-      return
-    }
-    if (adjustments.some((adj) => !adj.plot_name?.trim())) {
-      setError('กรุณาระบุแปลงให้ครบทุกรายการ')
-      return
-    }
-
-    setIsSubmitting(true)
+  if (editId) {
     try {
-      const attachment_urls = [...existingAttachmentUrls, ...(await uploadFiles())]
-      const adjustmentsPayload: BillingAdjustmentInput[] = adjustments.map((adj) => ({
-        type: adj.type,
-        description: adj.description,
-        plot_name: adj.plot_name,
-        unit: adj.unit,
-        quantity: adj.quantity,
-        unit_price: adj.unit_price,
-      }))
-
-      const payload: BillingPayload = {
-        project_id: selectedProject,
-        contractor_id: selectedContractor,
-        plot_id: selectedPlot,
-        billing_date: billingDate,
-        type: 'extra_work' as const,
-        note,
-        reason_for_dc: reason,
-        attachment_urls,
-        selected_jobs: [],
-        adjustments: adjustmentsPayload,
-        total_work_amount: 0,
-        total_add_amount: totalAddAmount,
-        total_deduct_amount: totalDeductAmount,
-        net_amount: netAmount,
+      const billing = await getBillingById(editId)
+      if (billing) {
+        initialSelectedProject = billing.project_id || ''
+        initialSelectedContractor = billing.contractor_id || ''
+        initialSelectedPlot = billing.plot_id || ''
+        initialReason = billing.reason_for_dc || DC_REASONS[0]
+        initialNote = billing.note || ''
+        initialBillingDate = billing.billing_date || initialBillingDate
+        initialExistingAttachmentUrls = Array.isArray(billing.attachment_urls) ? billing.attachment_urls : []
+        initialAdjustments = (billing.billing_adjustments || []).map((adj: BillingAdjustmentRecord) => ({
+          type: adj.type,
+          description: adj.description || '',
+          plot_name: adj.plot_name || '',
+          unit: adj.unit || '',
+          quantity: Number(adj.quantity || 0),
+          unit_price: Number(adj.unit_price || 0),
+        }))
       }
-
-      const result = editId
-        ? await updateBillingRequest(editId, payload)
-        : await createBillingRequest(payload)
-
-      if (!result.success) {
-        setError(result.error)
-        return
-      }
-      setSuccessNextPath(result.nextPath)
-      setDocNo(result.doc_no || '-')
-      setShowSuccessModal(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save DC request')
-    } finally {
-      setIsSubmitting(false)
+    } catch (error) {
+      initialError = error instanceof Error ? error.message : 'Failed to load DC request'
     }
   }
 
   return (
-    <div className="container mx-auto p-4">
-      {showSuccessModal && (
-        <Modal
-          isOpen={showSuccessModal}
-          onClose={() => {
-            router.push(successNextPath)
-          }}
-        >
-          <div className="p-4 text-center">
-            <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold mb-2">ส่งคำขอสำเร็จ</h2>
-            <p className="text-gray-600 mb-4">ใบขอเบิกเลขที่ #{docNo} ถูกส่งเพื่อตรวจสอบแล้ว</p>
-            <Button
-              onClick={() => {
-                router.push(successNextPath)
-              }}
-              className="w-full"
-            >
-              ไปที่หน้าถัดไป
-            </Button>
-          </div>
-        </Modal>
-      )}
-
-      <PageHeader title="สร้างใบงานเพิ่ม (Extra Work / DC)" className="mb-4" />
-      <Card className="p-5 border-amber-200 bg-amber-50/40">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">โครงการ</label>
-            <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
-              <option value="">เลือกโครงการ</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">ผู้รับเหมา</label>
-            <select value={selectedContractor} onChange={(e) => setSelectedContractor(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
-              <option value="">เลือกผู้รับเหมา</option>
-              {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">แปลงหลัก (ถ้ามี)</label>
-            <select value={selectedPlot} onChange={(e) => setSelectedPlot(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
-              <option value="">เลือกแปลง</option>
-              {plots.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">เหตุผล</label>
-            <select value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
-              {DC_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">รูปถ่าย</label>
-            <label className="mt-1 inline-flex items-center gap-2 px-3 py-2 border rounded-md cursor-pointer bg-white">
-              <Camera className="h-4 w-4 text-amber-700" />
-              <span className="text-sm">เลือกไฟล์</span>
-              <input type="file" className="hidden" multiple accept="image/*" onChange={(e) => setNewFiles(Array.from(e.target.files || []))} />
-            </label>
-            <p className="text-xs text-slate-500 mt-1">ไฟล์ใหม่ {newFiles.length} ไฟล์</p>
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <h2 className="text-xl font-semibold mb-2">รายการเพิ่มเติม (งานเพิ่ม/งานหัก)</h2>
-          <AdjustmentLineItems
-            adjustments={adjustments}
-            plotOptions={adjustmentPlotOptions}
-            onChange={handleAdjustmentChange}
-            onAdd={addAdjustment}
-            onRemove={removeAdjustment}
-            totalAddAmount={totalAddAmount}
-            totalDeductAmount={totalDeductAmount}
-            netValue={netAmount}
-            theme="amber"
-            requirePlot
-          />
-        </div>
-
-        <div className="mt-6 bg-white p-4 rounded-lg border border-amber-200">
-          <h2 className="text-xl font-semibold mb-4">สรุปยอด</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">หมายเหตุ (ถึง PM)</label>
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={3}
-                className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
-                placeholder="ใส่ข้อความเพิ่มเติมถึงผู้ตรวจสอบ..."
-              />
-            </div>
-            <div className="space-y-1">
-              {/* Summary breakdown table */}
-              <div className="rounded-lg border border-amber-200 bg-amber-50/40 overflow-hidden">
-                <table className="w-full text-sm">
-                  <tbody>
-                    <tr className="border-b border-amber-100 bg-green-50/50">
-                      <td className="px-4 py-2 text-slate-600">+ งานเพิ่ม ({adjustments.filter(a => a.type === 'addition').length} รายการ)</td>
-                      <td className="px-4 py-2 text-right font-semibold text-green-700">+{formatCurrency(totalAddAmount)}</td>
-                    </tr>
-                    <tr className="border-b border-amber-100 bg-red-50/50">
-                      <td className="px-4 py-2 text-slate-600">− งานหัก ({adjustments.filter(a => a.type === 'deduction').length} รายการ)</td>
-                      <td className="px-4 py-2 text-right font-semibold text-red-600">-{formatCurrency(totalDeductAmount)}</td>
-                    </tr>
-                    <tr className="bg-amber-100">
-                      <td className="px-4 py-3 text-base font-bold text-amber-900">ยอดสุทธิ</td>
-                      <td className="px-4 py-3 text-right text-2xl font-bold text-amber-800">{formatCurrency(netAmount)} บาท</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-          <div className="mt-6 flex justify-end">
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? 'กำลังส่ง...' : 'ส่งคำขอเพื่อพิจารณา'}
-            </Button>
-          </div>
-          {error && <p className="mt-2 text-red-500">{error}</p>}
-        </div>
-      </Card>
-    </div>
+    <CreateExtraWorkPageClient
+      editId={editId ?? null}
+      initialProjects={projects}
+      initialContractors={contractors}
+      initialSelectedProject={initialSelectedProject}
+      initialSelectedContractor={initialSelectedContractor}
+      initialSelectedPlot={initialSelectedPlot}
+      initialReason={initialReason}
+      initialNote={initialNote}
+      initialBillingDate={initialBillingDate}
+      initialExistingAttachmentUrls={initialExistingAttachmentUrls}
+      initialAdjustments={initialAdjustments}
+      initialError={initialError}
+    />
   )
 }

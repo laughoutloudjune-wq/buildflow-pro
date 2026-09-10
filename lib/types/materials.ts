@@ -38,6 +38,11 @@ export type MaterialPickerOption = {
   category: string | null
 }
 
+/** Narrow projection of MaterialType for the materials settings page table -
+ * drops created_at and price_updated_by, which that table never renders. On
+ * a 1000+ row catalog this meaningfully shrinks the query and payload. */
+export type MaterialCatalogRow = Omit<MaterialType, 'created_at' | 'price_updated_by'>
+
 export type BoqMaterialItem = {
   id: string
   boq_id: string

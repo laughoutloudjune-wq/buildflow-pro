@@ -8,6 +8,7 @@ import { getCurrentUser, getCurrentUserRole, requireAuthRole } from '@/actions/_
 import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
 import type {
   BoqMaterialItem,
+  MaterialCatalogRow,
   MaterialPickerOption,
   MaterialType,
   MaterialUsageLogEntry,
@@ -51,6 +52,24 @@ export async function getMaterialPickerOptions(): Promise<MaterialPickerOption[]
   return fetchAllRows<MaterialPickerOption>((from, to) =>
     supabase.from('material_types').select('id, name, unit, category').eq('is_active', true).order('name').range(from, to)
   )
+}
+
+/** Same rows as getMaterialTypes, trimmed to the columns the materials
+ * settings page table actually renders - see MaterialCatalogRow. This is the
+ * only caller that needs both active and inactive rows, which on a 1000+ row
+ * catalog makes the narrower select worth having as its own query. */
+export async function getMaterialCatalog(activeOnly = false): Promise<MaterialCatalogRow[]> {
+  await requireModuleAccess('materials')
+  const supabase = await createClient()
+  return fetchAllRows<MaterialCatalogRow>((from, to) => {
+    let query = supabase
+      .from('material_types')
+      .select('id, name, unit, category, current_price, price_updated_at, is_active, reorder_point, is_requestable, lead_time_days')
+      .order('name')
+      .range(from, to)
+    if (activeOnly) query = query.eq('is_active', true)
+    return query
+  })
 }
 
 // Each mutation below returns the affected row so the settings page can

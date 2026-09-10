@@ -1,0 +1,199 @@
+'use client'
+
+import { useEffect, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { ArrowLeft, XCircle, PackageCheck, ChevronDown, Undo2 } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { useToast } from '@/components/ui/Toast'
+import PurchaseOrderForm from '@/components/procurement/PurchaseOrderForm'
+import PurchaseOrderDocActions from '@/components/procurement/PurchaseOrderDocActions'
+import GoodsReceiptModal from '@/components/procurement/GoodsReceiptModal'
+import { cancelPurchaseOrder, setPurchaseOrderStatus, unmarkPurchaseOrderReceived } from '@/actions/procurement-actions'
+import type { PurchaseOrder, PurchaseOrderStatus } from '@/lib/types/procurement'
+
+const STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
+  draft: 'ร่าง',
+  sent: 'ยืนยันสั่งซื้อ',
+  partially_received: 'รับของบางส่วน',
+  received: 'รับของแล้ว',
+  paid: 'ชำระแล้ว',
+  cancelled: 'ยกเลิก',
+}
+
+const STATUS_TONE: Record<PurchaseOrderStatus, string> = {
+  draft: 'bg-slate-100 text-slate-500',
+  sent: 'bg-indigo-50 text-indigo-700',
+  partially_received: 'bg-amber-50 text-amber-700',
+  received: 'bg-emerald-50 text-emerald-700',
+  paid: 'bg-violet-50 text-violet-700',
+  cancelled: 'bg-red-50 text-red-700',
+}
+
+function formatDate(value: string | null) {
+  if (!value) return null
+  return new Date(value).toLocaleDateString('th-TH')
+}
+
+export default function PurchaseOrderDetailPageClient({
+  id,
+  order,
+  initialError,
+}: {
+  id: string
+  order: PurchaseOrder | null
+  initialError?: string | null
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false)
+  const toast = useToast()
+
+  useEffect(() => {
+    if (initialError) toast.error(initialError)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialError])
+
+  function handleCancel() {
+    const reason = prompt('เหตุผลที่ยกเลิก:')
+    if (reason === null) return
+    startTransition(async () => {
+      try {
+        await cancelPurchaseOrder(id, reason)
+        router.refresh()
+        toast.success('ยกเลิกใบสั่งซื้อแล้ว')
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'ยกเลิกไม่สำเร็จ')
+      }
+    })
+  }
+
+  function handleStatusChange(status: 'draft' | 'sent') {
+    if (!order || order.status === status) return
+    startTransition(async () => {
+      try {
+        await setPurchaseOrderStatus(id, status)
+        router.refresh()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'เปลี่ยนสถานะไม่สำเร็จ')
+      }
+    })
+  }
+
+  function handleUnmarkReceived() {
+    if (!confirm('ยกเลิกการรับของ และย้อนกลับไปสถานะยืนยันสั่งซื้อ?')) return
+    startTransition(async () => {
+      try {
+        await unmarkPurchaseOrderReceived(id)
+        router.refresh()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'ยกเลิกการรับของไม่สำเร็จ')
+      }
+    })
+  }
+
+  if (!order) {
+    return <div className="py-16 text-center text-slate-400">ไม่พบใบสั่งซื้อนี้</div>
+  }
+
+  const canEditStatus = order.status === 'draft' || order.status === 'sent'
+  const canCancel = order.status === 'draft' || order.status === 'sent'
+  const canReceive = order.status === 'sent' || order.status === 'partially_received'
+  const canUnmarkReceived = order.status === 'received'
+  const isFormReadOnly = order.status !== 'draft' && order.status !== 'partially_received'
+
+  const milestones = [
+    { label: 'สร้างเมื่อ', value: formatDate(order.created_at) },
+    { label: 'ยืนยันเมื่อ', value: formatDate(order.confirmed_at) },
+    { label: 'รับของเมื่อ', value: formatDate(order.received_at), by: order.receiver?.full_name },
+    { label: 'ชำระเมื่อ', value: formatDate(order.paid_at), by: order.payer?.full_name },
+  ].filter((m) => m.value)
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-5 pb-10">
+      <div>
+        <Link
+          href="/dashboard/procurement/orders"
+          className="mb-2 flex w-fit items-center gap-1 text-sm text-slate-500 transition hover:text-indigo-600"
+        >
+          <ArrowLeft className="h-4 w-4" /> กลับไปใบสั่งซื้อ
+        </Link>
+        <PageHeader
+          title={`ใบสั่งซื้อ ${order.po_no}`}
+          subtitle={order.projects?.name || '-'}
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              {canEditStatus ? (
+                <div className={`relative inline-flex items-center rounded-full ${STATUS_TONE[order.status]}`}>
+                  <select
+                    value={order.status}
+                    onChange={(e) => handleStatusChange(e.target.value as 'draft' | 'sent')}
+                    disabled={isPending}
+                    className="appearance-none rounded-full bg-transparent px-3 py-1 pr-7 text-sm font-medium outline-none"
+                  >
+                    <option value="draft">{STATUS_LABEL.draft}</option>
+                    <option value="sent">{STATUS_LABEL.sent}</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5" />
+                </div>
+              ) : (
+                <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_TONE[order.status]}`}>{STATUS_LABEL[order.status]}</span>
+              )}
+
+              <PurchaseOrderDocActions orderId={order.id} poNo={order.po_no} />
+
+              {canReceive && (
+                <Button type="button" size="sm" onClick={() => setIsReceiveModalOpen(true)}>
+                  <PackageCheck className="h-3.5 w-3.5" /> รับของ
+                </Button>
+              )}
+              {canUnmarkReceived && (
+                <Button type="button" variant="secondary" size="sm" onClick={handleUnmarkReceived} disabled={isPending}>
+                  <Undo2 className="h-3.5 w-3.5" /> ยกเลิกการรับของ
+                </Button>
+              )}
+              {order.status === 'paid' && (
+                <Link
+                  href="/dashboard/procurement/payments"
+                  className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-indigo-600 hover:underline"
+                >
+                  ดูใบสำคัญจ่าย →
+                </Link>
+              )}
+              {canCancel && (
+                <Button type="button" variant="danger" size="sm" onClick={handleCancel} disabled={isPending}>
+                  <XCircle className="h-3.5 w-3.5" /> ยกเลิก
+                </Button>
+              )}
+            </div>
+          }
+        />
+
+        {milestones.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {milestones.map((m) => (
+              <span key={m.label} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600">
+                <span className="font-medium text-slate-500">{m.label}</span> {m.value}
+                {m.by ? ` โดย ${m.by}` : ''}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+
+      <PurchaseOrderForm mode="edit" orderId={id} initialOrder={order} readOnly={isFormReadOnly} />
+
+      <GoodsReceiptModal
+        isOpen={isReceiveModalOpen}
+        onClose={() => setIsReceiveModalOpen(false)}
+        order={order}
+        onSuccess={async () => {
+          router.refresh()
+          toast.success('บันทึกการรับของแล้ว')
+        }}
+      />
+    </div>
+  )
+}

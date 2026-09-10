@@ -1,0 +1,137 @@
+'use client'
+
+import { useEffect, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { Plus, Trash2, Pencil, Loader2 } from 'lucide-react'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
+import Modal from '@/components/ui/Modal'
+import { useToast } from '@/components/ui/Toast'
+import { createContractorType, updateContractorType, deleteContractorType } from '@/actions/contractor-type-actions'
+
+type ContractorType = {
+  id: number;
+  name: string;
+};
+
+export default function ContractorTypesPageClient({
+  types,
+  initialError,
+}: {
+  types: ContractorType[]
+  initialError?: string | null
+}) {
+  const router = useRouter()
+  const toast = useToast()
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isEditing, setIsEditing] = useState<ContractorType | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  useEffect(() => {
+    if (initialError) toast.error(initialError)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialError])
+
+  const handleOpenModal = (type: ContractorType | null = null) => {
+    setIsEditing(type)
+    setIsModalOpen(true)
+  }
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false)
+    setIsEditing(null)
+  }
+
+  const handleSubmit = (formData: FormData) => {
+    startTransition(async () => {
+      if (isEditing) {
+        await updateContractorType(isEditing.id, formData)
+      } else {
+        await createContractorType(formData)
+      }
+      router.refresh()
+      handleCloseModal()
+    })
+  }
+
+  const handleDelete = (id: number) => {
+    if (!confirm('ยืนยันการลบประเภทช่างนี้?')) return
+    startTransition(async () => {
+      await deleteContractorType(id)
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="จัดการประเภทช่าง"
+        actions={
+          <Button onClick={() => handleOpenModal()}>
+            <Plus className="h-4 w-4" />
+            เพิ่มประเภทใหม่
+          </Button>
+        }
+      />
+
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-700 border-b">
+              <tr>
+                <th className="px-4 py-3 font-semibold">#ID</th>
+                <th className="px-4 py-3 font-semibold">ชื่อประเภท</th>
+                <th className="px-4 py-3 font-semibold text-center w-[120px]">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {types.map((type) => (
+                <tr key={type.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 text-slate-500">{type.id}</td>
+                  <td className="px-4 py-3 font-medium text-slate-800">{type.name}</td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <button onClick={() => handleOpenModal(type)} className="p-1.5 rounded text-slate-500 hover:text-indigo-600 hover:bg-indigo-50">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => handleDelete(type.id)} className="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-red-50" disabled={isPending}>
+                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Modal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        title={isEditing ? 'แก้ไขประเภทช่าง' : 'เพิ่มประเภทช่างใหม่'}
+      >
+        <form action={handleSubmit} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">ชื่อประเภท</label>
+            <input
+              name="name"
+              required
+              className="w-full"
+              placeholder="เช่น ช่างไฟฟ้า, ช่างประปา"
+              defaultValue={isEditing?.name || ''}
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button type="button" variant="secondary" onClick={handleCloseModal}>ยกเลิก</Button>
+            <Button type="submit" disabled={isPending}>
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'บันทึก'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+    </div>
+  )
+}
