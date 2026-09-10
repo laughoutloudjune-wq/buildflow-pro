@@ -249,7 +249,7 @@ export default function PurchaseRequestForm({
             {lines.map((line, i) => (
               <div key={i} className="rounded-lg border border-slate-200 p-2">
                 <div className="flex items-center gap-2">
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <SearchableSelect
                       options={materialOptions}
                       value={line.material_type_id ? String(line.material_type_id) : ''}

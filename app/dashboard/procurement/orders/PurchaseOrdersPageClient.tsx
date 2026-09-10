@@ -51,6 +51,8 @@ function materialSummary(order: PurchaseOrder): { label: string; extra: number }
   return { label: items[0].material_types?.name || '-', extra: items.length - 1 }
 }
 
+const PAGE_SIZE = 25
+
 type SortKey = 'po_no' | 'status' | 'supplier' | 'company' | 'project' | 'date' | 'total'
 
 function SortableHeader({
@@ -109,7 +111,12 @@ export default function PurchaseOrdersPageClient({
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' })
+  const [page, setPage] = useState(1)
   const collator = useMemo(() => new Intl.Collator('th', { numeric: true, sensitivity: 'base' }), [])
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, supplierFilter, projectFilter, companyFilter, dateFrom, dateTo])
 
   function toggleSort(key: SortKey) {
     setSort((prev) => (prev.key === key ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' }))
@@ -186,6 +193,13 @@ export default function PurchaseOrdersPageClient({
       }
     })
   }, [orders, search, supplierFilter, projectFilter, companyFilter, dateFrom, dateTo, sort, collator])
+
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const pagedRows = useMemo(
+    () => rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [rows, currentPage]
+  )
 
   const grandTotal = useMemo(() => rows.reduce((sum, o) => sum + o.total_amount, 0), [rows])
   const selectedTotal = useMemo(
@@ -349,7 +363,7 @@ export default function PurchaseOrdersPageClient({
                   </td>
                 </tr>
               ) : (
-                rows.map((o) => {
+                pagedRows.map((o) => {
                   const dateValue = o.order_date
                   const { label: materialLabel, extra: materialExtra } = materialSummary(o)
                   return (
@@ -357,12 +371,12 @@ export default function PurchaseOrdersPageClient({
                       <td className="px-4 py-3">
                         <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggleOne(o.id)} />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="whitespace-nowrap px-4 py-3">
                         <Link href={`/dashboard/procurement/orders/${o.id}`} className="font-mono font-medium text-indigo-600 hover:underline">
                           {o.po_no}
                         </Link>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="whitespace-nowrap px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${STATUS_TEXT[o.status]}`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[o.status]}`} />
                           {STATUS_LABEL[o.status]}
@@ -376,7 +390,7 @@ export default function PurchaseOrdersPageClient({
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{o.projects?.name || '-'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH') : '-'}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(o.total_amount)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(o.total_amount)}</td>
                     </tr>
                   )
                 })
@@ -384,6 +398,34 @@ export default function PurchaseOrdersPageClient({
             </tbody>
           </table>
         </div>
+
+        {pageCount > 1 && (
+          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm">
+            <span className="text-slate-500">
+              หน้า <span className="font-semibold text-slate-700">{currentPage}</span> จาก {pageCount}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+              >
+                ก่อนหน้า
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                disabled={currentPage >= pageCount}
+              >
+                ถัดไป
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   )

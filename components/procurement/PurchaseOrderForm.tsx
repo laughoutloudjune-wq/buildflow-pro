@@ -948,7 +948,7 @@ export default function PurchaseOrderForm({
           </p>
         ) : (
           <div className={`overflow-hidden ${appleCard}`}>
-            <table className="w-full text-left text-sm">
+            <table className="w-full table-fixed text-left text-sm">
               <thead style={{ backgroundColor: '#f5f5f7' }}>
                 <tr>
                   <th className="w-10 px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">#</th>
@@ -969,7 +969,7 @@ export default function PurchaseOrderForm({
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
                           <SearchableSelect
-                            className="flex-1"
+                            className="min-w-0 flex-1"
                             options={materialOptions}
                             value={line.material_type_id ? String(line.material_type_id) : ''}
                             onChange={(v) => updateLine(i, { material_type_id: Number(v) })}

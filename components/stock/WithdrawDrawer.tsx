@@ -308,7 +308,7 @@ export default function WithdrawDrawer({
                   const isShort = line.material_type_id !== null && Number(line.quantity) > onHand
                   return (
                     <div key={index} className="flex items-start gap-2 rounded-lg border border-slate-200 p-2">
-                      <div className="flex-1">
+                      <div className="min-w-0 flex-1">
                         <SearchableSelect
                           options={materialOptions.filter(
                             (o) => Number(o.value) === line.material_type_id || !usedIds.has(Number(o.value))
