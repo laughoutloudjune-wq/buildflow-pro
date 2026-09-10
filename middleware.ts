@@ -25,10 +25,17 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // IMPORTANT: must be getUser (not getSession) for trustworthy server-side auth.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Verify the session locally instead of asking the Auth server to do it.
+  // This project signs JWTs with an asymmetric key (ES256), so getClaims()
+  // checks the signature against the cached JWKS with no network call -
+  // unlike getSession(), which trusts the cookie blindly, and getUser(),
+  // which was a full round trip to Supabase on *every* request this matcher
+  // touches - measured at 145-306ms, added to each navigation and each RSC
+  // prefetch.
+  // getClaims() reads through getSession(), so an expiring token is still
+  // refreshed and the rotated cookies are still written back below.
+  const { data: claimsData } = await supabase.auth.getClaims()
+  const user = claimsData?.claims ?? null
 
   const url = request.nextUrl.clone()
   const { pathname } = url
