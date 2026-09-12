@@ -10,6 +10,11 @@ import {
   updateCompany as updateCompanyImpl,
   deactivateCompany as deactivateCompanyImpl,
   uploadCompanyAsset as uploadCompanyAssetImpl,
+  getSuppliersWithBranches as getSuppliersWithBranchesImpl,
+  getSupplierBranches as getSupplierBranchesImpl,
+  createSupplierBranch as createSupplierBranchImpl,
+  updateSupplierBranch as updateSupplierBranchImpl,
+  deactivateSupplierBranch as deactivateSupplierBranchImpl,
 } from '@/actions/procurement/vendors'
 import {
   getPurchaseRequests as getPurchaseRequestsImpl,
@@ -69,6 +74,26 @@ export async function updateSupplier(id: string, input: Parameters<typeof update
 
 export async function deactivateSupplier(id: string) {
   return deactivateSupplierImpl(id)
+}
+
+export async function getSuppliersWithBranches(activeOnly = true) {
+  return getSuppliersWithBranchesImpl(activeOnly)
+}
+
+export async function getSupplierBranches(supplierId: string) {
+  return getSupplierBranchesImpl(supplierId)
+}
+
+export async function createSupplierBranch(input: Parameters<typeof createSupplierBranchImpl>[0]) {
+  return createSupplierBranchImpl(input)
+}
+
+export async function updateSupplierBranch(id: string, input: Parameters<typeof updateSupplierBranchImpl>[1]) {
+  return updateSupplierBranchImpl(id, input)
+}
+
+export async function deactivateSupplierBranch(id: string) {
+  return deactivateSupplierBranchImpl(id)
 }
 
 export async function getCompanies(activeOnly = true) {

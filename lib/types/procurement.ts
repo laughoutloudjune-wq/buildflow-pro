@@ -27,6 +27,36 @@ export type Supplier = {
   payment_terms: string | null
   is_active: boolean
   created_at: string
+  /** Populated only where the caller asks for them (the PO form). Absent or
+   * empty means this supplier has no branches and the picker stays hidden. */
+  supplier_branches?: SupplierBranch[]
+}
+
+/** One branch (สาขา) of a supplier. Same juristic person and tax id as its
+ * parent - what differs is the revenue-department branch code and the address
+ * the tax invoice must carry. A supplier with no branch rows is a plain
+ * single-location vendor and behaves exactly as before. */
+export type SupplierBranch = {
+  id: string
+  supplier_id: string
+  /** '00000' is สำนักงานใหญ่; anything else is สาขาที่ NNNNN. Text, because the
+   * leading zeros are significant. */
+  branch_code: string
+  name: string
+  address: string | null
+  phone: string | null
+  contact_name: string | null
+  is_active: boolean
+  created_at: string
+}
+
+export type SupplierBranchInput = {
+  supplier_id: string
+  branch_code: string
+  name: string
+  address?: string
+  phone?: string
+  contact_name?: string
 }
 
 export type Company = {
@@ -112,6 +142,9 @@ export type PurchaseOrder = {
   plot_id: string | null
   plot_group_id: string | null
   purchase_request_id: string | null
+  /** Which branch of the supplier billed this order. Null for a supplier with
+   * no branches, and for every order placed before branches existed. */
+  supplier_branch_id: string | null
   status: PurchaseOrderStatus
   order_date: string
   expected_delivery_date: string | null
@@ -134,6 +167,7 @@ export type PurchaseOrder = {
   paid_at: string | null
   paid_by: string | null
   suppliers?: Supplier | null
+  supplier_branches?: SupplierBranch | null
   companies?: Company | null
   projects?: { name: string; location: string | null } | null
   plots?: { name: string } | null
@@ -166,6 +200,8 @@ export type PurchaseOrderItemInput = {
 
 export type PurchaseOrderInput = {
   supplier_id: string
+  /** Only suppliers that actually have branches offer one. */
+  supplier_branch_id?: string | null
   company_id: string
   project_id: string
   plot_id?: string | null

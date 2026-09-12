@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole } from '@/actions/_shared/user-role'
-import type { Company, Supplier, SupplierInput } from '@/lib/types/procurement'
+import type { Company, Supplier, SupplierBranch, SupplierBranchInput, SupplierInput } from '@/lib/types/procurement'
 
 // ---------------------------------------------------------------------------
 // Suppliers (material vendors, distinct from `contractors` which are labor
@@ -88,6 +88,121 @@ export async function deactivateSupplier(id: string) {
   const { error } = await supabase.from('suppliers').update({ is_active: false }).eq('id', id)
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/settings/suppliers')
+}
+
+// ---------------------------------------------------------------------------
+// Supplier branches. A vendor with several สาขา shares one tax id but each
+// branch has its own branch code and address, and a Thai tax invoice must
+// name the branch that actually sold the goods. Opt-in per supplier: most
+// have none, and those keep behaving as plain single-location vendors.
+// ---------------------------------------------------------------------------
+
+/** Suppliers with their active branches attached, for the PO form's picker.
+ * One query rather than a branch lookup per supplier selection - the whole
+ * list is small and it keeps the picker instant when switching suppliers. */
+export async function getSuppliersWithBranches(activeOnly = true): Promise<Supplier[]> {
+  await requireModuleAccess('procurement')
+  const supabase = await createClient()
+  let query = supabase
+    .from('suppliers')
+    .select('*, supplier_branches (*)')
+    .order('name')
+  if (activeOnly) query = query.eq('is_active', true)
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  // Inactive branches stay selectable on orders that already cite them, but
+  // must not be offered for new ones.
+  return ((data as unknown as Supplier[]) || []).map((supplier) => ({
+    ...supplier,
+    supplier_branches: (supplier.supplier_branches || [])
+      .filter((branch) => branch.is_active)
+      .sort((a, b) => a.branch_code.localeCompare(b.branch_code)),
+  }))
+}
+
+export async function getSupplierBranches(supplierId: string): Promise<SupplierBranch[]> {
+  await requireModuleAccess('procurement')
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('supplier_branches')
+    .select('*')
+    .eq('supplier_id', supplierId)
+    .order('branch_code')
+  if (error) throw new Error(error.message)
+  return data || []
+}
+
+// Same reasoning as createSupplier: a PM adding a branch mid-order shouldn't
+// have to go find an admin. Editing and deactivating stay admin-only.
+export async function createSupplierBranch(input: SupplierBranchInput): Promise<SupplierBranch> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+
+  const name = input.name.trim()
+  const branchCode = input.branch_code.trim()
+  if (!name) throw new Error('Branch name is required')
+  if (!branchCode) throw new Error('Branch code is required')
+
+  const { data, error } = await supabase
+    .from('supplier_branches')
+    .insert([
+      {
+        supplier_id: input.supplier_id,
+        branch_code: branchCode,
+        name,
+        address: input.address?.trim() || null,
+        phone: input.phone?.trim() || null,
+        contact_name: input.contact_name?.trim() || null,
+      },
+    ])
+    .select()
+    .single()
+
+  if (error) throw new Error(translateBranchError(error.message))
+  revalidatePath('/dashboard/settings/suppliers')
+  return data
+}
+
+export async function updateSupplierBranch(id: string, input: Omit<SupplierBranchInput, 'supplier_id'>) {
+  await requireAuthRole(['admin'])
+  const supabase = await createClient()
+
+  const name = input.name.trim()
+  const branchCode = input.branch_code.trim()
+  if (!name) throw new Error('Branch name is required')
+  if (!branchCode) throw new Error('Branch code is required')
+
+  const { error } = await supabase
+    .from('supplier_branches')
+    .update({
+      branch_code: branchCode,
+      name,
+      address: input.address?.trim() || null,
+      phone: input.phone?.trim() || null,
+      contact_name: input.contact_name?.trim() || null,
+    })
+    .eq('id', id)
+
+  if (error) throw new Error(translateBranchError(error.message))
+  revalidatePath('/dashboard/settings/suppliers')
+}
+
+/** Deactivate rather than delete: orders already issued against this branch
+ * keep pointing at it, and the FK has no ON DELETE action precisely so a
+ * cited branch cannot be removed out from under them. */
+export async function deactivateSupplierBranch(id: string) {
+  await requireAuthRole(['admin'])
+  const supabase = await createClient()
+  const { error } = await supabase.from('supplier_branches').update({ is_active: false }).eq('id', id)
+  if (error) throw new Error(error.message)
+  revalidatePath('/dashboard/settings/suppliers')
+}
+
+function translateBranchError(message: string): string {
+  if (message.includes('supplier_branches_supplier_id_branch_code_key')) {
+    return 'รหัสสาขานี้มีอยู่แล้วสำหรับผู้จำหน่ายรายนี้'
+  }
+  return message
 }
 
 // ---------------------------------------------------------------------------

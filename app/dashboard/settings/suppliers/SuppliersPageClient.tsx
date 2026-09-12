@@ -3,11 +3,12 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Building2, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import SupplierBranchesModal from '@/components/procurement/SupplierBranchesModal'
 import { useToast } from '@/components/ui/Toast'
 import SupplierFormFields from '@/components/procurement/SupplierFormFields'
 import { createSupplier, deactivateSupplier, updateSupplier } from '@/actions/procurement-actions'
@@ -38,6 +39,8 @@ export default function SuppliersPageClient({
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Supplier | null>(null)
+  /** Which supplier's สาขา list is open, if any. */
+  const [branchesFor, setBranchesFor] = useState<Supplier | null>(null)
   const [draft, setDraft] = useState<SupplierInput>(emptyDraft)
 
   useEffect(() => {
@@ -165,6 +168,14 @@ export default function SuppliersPageClient({
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button
+                        onClick={() => setBranchesFor(supplier)}
+                        disabled={isPending}
+                        className="rounded p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                        title="จัดการสาขา"
+                      >
+                        <Building2 className="h-4 w-4" />
+                      </button>
+                      <button
                         onClick={() => openEditModal(supplier)}
                         disabled={isPending}
                         className="rounded p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
@@ -190,6 +201,10 @@ export default function SuppliersPageClient({
           </table>
         </div>
       </Card>
+
+      {branchesFor && (
+        <SupplierBranchesModal supplier={branchesFor} onClose={() => setBranchesFor(null)} />
+      )}
 
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editing ? 'แก้ไขผู้จำหน่าย' : 'เพิ่มผู้จำหน่ายใหม่'}>
         <div className="space-y-4">
