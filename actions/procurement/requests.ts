@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { getCurrentUser, requireAuthRole } from '@/actions/_shared/user-role'
-import type { PurchaseRequest, PurchaseRequestStatus } from '@/lib/types/procurement'
+import type { PurchaseRequest, PurchaseRequestStatus, SettlementReason } from '@/lib/types/procurement'
 
 const SELECT_WITH_RELATIONS = `
   *,
@@ -14,7 +14,14 @@ const SELECT_WITH_RELATIONS = `
   purchase_request_plots (plot_id, plots (name)),
   requester:profiles!purchase_requests_requested_by_fkey (full_name, email),
   reviewer:profiles!purchase_requests_reviewed_by_fkey (full_name, email),
-  purchase_request_items (*, material_types (*)),
+  purchase_request_items (
+    *,
+    material_types (*),
+    purchase_request_item_settlements (
+      *,
+      settler:profiles!purchase_request_item_settlements_settled_by_fkey (full_name, email)
+    )
+  ),
   purchase_orders (po_no, status)
 `
 
@@ -84,6 +91,13 @@ const PR_ERROR_TRANSLATIONS: [string, string][] = [
   ['Choose either a single plot or a plot group, not both', 'กรุณาเลือกแปลงเดียวหรือกลุ่มแปลงอย่างใดอย่างหนึ่งเท่านั้น'],
   ['Purchase request not found', 'ไม่พบคำขอซื้อนี้'],
   ['No permission to edit this purchase request', 'ไม่มีสิทธิ์แก้ไขคำขอซื้อนี้'],
+  ['Only an approved purchase request can be settled by hand', 'ปิดรายการด้วยตนเองได้เฉพาะคำขอซื้อที่อนุมัติแล้วเท่านั้น กรุณาโหลดหน้าใหม่เพื่อดูข้อมูลล่าสุด'],
+  ['Settled quantity exceeds what is still outstanding', 'จำนวนที่ระบุมากกว่าจำนวนคงเหลือของรายการ'],
+  ['Select at least one line to settle', 'กรุณาเลือกอย่างน้อย 1 รายการ'],
+  ['Only PM/Admin can settle a purchase request line', 'เฉพาะ PM/Admin เท่านั้นที่ปิดรายการได้'],
+  ['Only PM/Admin can undo a settlement', 'เฉพาะ PM/Admin เท่านั้นที่ยกเลิกการปิดรายการได้'],
+  ['Settlement not found', 'ไม่พบรายการที่ปิดไว้ อาจถูกยกเลิกไปแล้ว'],
+  ['Cannot undo a settlement once the request has been received or closed', 'ยกเลิกไม่ได้ เนื่องจากคำขอซื้อนี้รับของหรือปิดไปแล้ว'],
   ['Not authenticated', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง'],
 ]
 
@@ -149,6 +163,65 @@ export async function rejectPurchaseRequest(id: string, note?: string) {
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/procurement/requests')
   revalidatePath(`/dashboard/procurement/requests/${id}`)
+}
+
+/** Close out quantity on request lines by hand, for material that was bought
+ * outside this request's PO flow (a different brand, or a PO raised
+ * standalone) or that isn't being bought at all. Settled quantity stops
+ * counting as outstanding exactly like a PO's would, so the request can reach
+ * 'ordered' instead of hanging on lines no PO will ever reference. */
+export async function settlePurchaseRequestItems(input: {
+  purchase_request_id: string
+  reason: SettlementReason
+  po_ref?: string
+  note?: string
+  items: { purchase_request_item_id: string; quantity: number }[]
+}): Promise<{ settled: number } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can settle a purchase request line')
+    const supabase = await createClient()
+
+    const items = input.items.filter((i) => i.purchase_request_item_id && Number(i.quantity) > 0)
+    if (items.length === 0) throw new Error('Select at least one line to settle')
+
+    const { data, error } = await supabase.rpc('pr_item_settle', {
+      p_payload: {
+        purchase_request_id: input.purchase_request_id,
+        reason: input.reason,
+        po_ref: input.po_ref?.trim() || null,
+        note: input.note?.trim() || null,
+        items,
+      },
+    })
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/procurement/requests')
+    revalidatePath(`/dashboard/procurement/requests/${input.purchase_request_id}`)
+    return { settled: (data as { settled: number }).settled }
+  } catch (error) {
+    return { error: translatePrError(error instanceof Error ? error.message : 'Failed to settle purchase request lines') }
+  }
+}
+
+/** Give one manual settlement's quantity back to its line, re-opening the
+ * request if closing that line had been what finished it off. */
+export async function undoPurchaseRequestItemSettlement(
+  settlementId: string,
+  requestId: string
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can undo a settlement')
+    const supabase = await createClient()
+
+    const { error } = await supabase.rpc('pr_item_settle_undo', { p_id: settlementId })
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/procurement/requests')
+    revalidatePath(`/dashboard/procurement/requests/${requestId}`)
+    return { ok: true }
+  } catch (error) {
+    return { error: translatePrError(error instanceof Error ? error.message : 'Failed to undo settlement') }
+  }
 }
 
 export async function getApprovedRequestsForOrder(projectId?: string): Promise<PurchaseRequest[]> {
