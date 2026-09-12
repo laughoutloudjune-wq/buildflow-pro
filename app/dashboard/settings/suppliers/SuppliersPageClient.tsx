@@ -140,7 +140,7 @@ export default function SuppliersPageClient({
                 <th className="px-4 py-3 font-semibold">ผู้ติดต่อ</th>
                 <th className="px-4 py-3 font-semibold">เงื่อนไขชำระเงิน</th>
                 <th className="px-4 py-3 font-semibold">สถานะ</th>
-                <th className="px-4 py-3 w-[80px] text-center font-semibold">จัดการ</th>
+                <th className="px-4 py-3 w-[120px] text-center font-semibold">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -166,33 +166,35 @@ export default function SuppliersPageClient({
                         {supplier.is_active ? 'ใช้งาน' : 'ปิดใช้งาน'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => setBranchesFor(supplier)}
-                        disabled={isPending}
-                        className="rounded p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
-                        title="จัดการสาขา"
-                      >
-                        <Building2 className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => openEditModal(supplier)}
-                        disabled={isPending}
-                        className="rounded p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
-                        title="แก้ไข"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      {supplier.is_active && (
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-0.5">
                         <button
-                          onClick={() => handleDeactivate(supplier)}
+                          onClick={() => setBranchesFor(supplier)}
                           disabled={isPending}
-                          className="rounded p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
-                          title="ปิดใช้งาน"
+                          className="rounded p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                          title="จัดการสาขา"
                         >
-                          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          <Building2 className="h-4 w-4" />
                         </button>
-                      )}
+                        <button
+                          onClick={() => openEditModal(supplier)}
+                          disabled={isPending}
+                          className="rounded p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                          title="แก้ไข"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        {supplier.is_active && (
+                          <button
+                            onClick={() => handleDeactivate(supplier)}
+                            disabled={isPending}
+                            className="rounded p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                            title="ปิดใช้งาน"
+                          >
+                            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
