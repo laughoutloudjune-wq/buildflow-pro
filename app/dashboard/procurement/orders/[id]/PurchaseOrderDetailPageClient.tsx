@@ -103,7 +103,7 @@ export default function PurchaseOrderDetailPageClient({
   const canCancel = order.status === 'draft' || order.status === 'sent'
   const canReceive = order.status === 'sent' || order.status === 'partially_received'
   const canUnmarkReceived = order.status === 'received'
-  const isFormReadOnly = order.status !== 'draft' && order.status !== 'partially_received'
+  const isFormReadOnly = order.status === 'paid' || order.status === 'cancelled'
 
   const milestones = [
     { label: 'สร้างเมื่อ', value: formatDate(order.created_at) },
