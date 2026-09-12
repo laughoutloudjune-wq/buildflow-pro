@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import InlineMaterialCreate from '@/components/procurement/InlineMaterialCreate'
 import SupplierFormFields from '@/components/procurement/SupplierFormFields'
 import { appleCard, appleCardLabel, appleDivider } from '@/components/procurement/appleTheme'
 import { getProjects } from '@/actions/project-actions'
@@ -569,6 +570,16 @@ export default function PurchaseOrderForm({
     } finally {
       setIsSavingMaterial(false)
     }
+  }
+
+  /** A material created from inside a line's picker: fold it into the loaded
+   * catalog so the option exists, and select it on that line straight away -
+   * the whole point is not having to go back and find it. */
+  function handleInlineMaterialCreated(lineIndex: number, created: MaterialPickerOption) {
+    setMaterials((prev) =>
+      [...prev, created].sort((a, b) => a.name.localeCompare(b.name, 'th'))
+    )
+    updateLine(lineIndex, { material_type_id: created.id })
   }
 
   function addLine() {
@@ -1141,6 +1152,17 @@ export default function PurchaseOrderForm({
                             onChange={(v) => updateLine(i, { material_type_id: Number(v) })}
                             placeholder={isMaterialsLoading ? 'กำลังโหลดรายการวัสดุ...' : 'เลือกวัสดุ'}
                             disabled={readOnly || isMaterialsLoading}
+                            renderCreate={
+                              readOnly
+                                ? undefined
+                                : ({ query, close }) => (
+                                    <InlineMaterialCreate
+                                      query={query}
+                                      close={close}
+                                      onCreated={(created) => handleInlineMaterialCreated(i, created)}
+                                    />
+                                  )
+                            }
                           />
                           {!readOnly && (
                             <button

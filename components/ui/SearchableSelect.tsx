@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 
@@ -18,6 +18,13 @@ type Props = {
   placeholder?: string
   disabled?: boolean
   className?: string
+  /** Optional slot rendered under the option list, for pickers that can also
+   * create the thing being picked. Receives whatever has been typed (so the
+   * caller can offer to create it by that name without the user retyping)
+   * and a way to dismiss the dropdown once it has. Opt-in: pickers that
+   * don't pass it render exactly as before, including the plain
+   * "ไม่พบรายการ" empty state. */
+  renderCreate?: (args: { query: string; close: () => void }) => ReactNode
 }
 
 /** A `<select>` replacement that filters by typing instead of scrolling a long
@@ -29,7 +36,7 @@ type Props = {
  * instead of being clipped by a scrollable ancestor (e.g. a Modal body) -
  * without this, opening the dropdown near the top of a scrolling container
  * would force that container itself to scroll just to reveal the options. */
-export default function SearchableSelect({ options, value, onChange, placeholder, disabled, className }: Props) {
+export default function SearchableSelect({ options, value, onChange, placeholder, disabled, className, renderCreate }: Props) {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null)
@@ -113,7 +120,9 @@ export default function SearchableSelect({ options, value, onChange, placeholder
             />
             <div className="max-h-56 overflow-y-auto">
               {filtered.length === 0 ? (
-                <div className="px-2 py-2 text-sm text-slate-400">ไม่พบรายการ</div>
+                renderCreate ? null : (
+                  <div className="px-2 py-2 text-sm text-slate-400">ไม่พบรายการ</div>
+                )
               ) : (
                 filtered.map((option) => (
                   <button
@@ -134,6 +143,13 @@ export default function SearchableSelect({ options, value, onChange, placeholder
                 ))
               )}
             </div>
+            {renderCreate?.({
+              query,
+              close: () => {
+                setIsOpen(false)
+                setQuery('')
+              },
+            })}
           </div>,
           document.body
         )}
