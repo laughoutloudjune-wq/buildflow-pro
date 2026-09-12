@@ -2,15 +2,20 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Loader2, PackageCheck, Pencil, ShoppingCart } from 'lucide-react'
+import { CheckCircle2, ListChecks, Loader2, PackageCheck, Pencil, ShoppingCart, Undo2, XCircle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import { approvePurchaseRequest, rejectPurchaseRequest } from '@/actions/procurement-actions'
+import {
+  approvePurchaseRequest,
+  rejectPurchaseRequest,
+  undoPurchaseRequestItemSettlement,
+} from '@/actions/procurement-actions'
 import PurchaseRequestDocActions from '@/components/procurement/PurchaseRequestDocActions'
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
-import type { PurchaseRequest, PurchaseRequestStatus } from '@/lib/types/procurement'
+import PurchaseRequestSettleModal from '@/components/procurement/PurchaseRequestSettleModal'
+import type { PurchaseRequest, PurchaseRequestItem, PurchaseRequestStatus } from '@/lib/types/procurement'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -52,15 +57,50 @@ function orderByDate(request: PurchaseRequest): Date | null {
   return new Date(new Date(request.needed_by_date).getTime() - leadTime * DAY_MS)
 }
 
-/** True once at least one PO has been placed against this request but it
- * hasn't reached 'ordered' yet - i.e. some material was bought, some is
- * still outstanding (po_create/po_update settle a fully-covered line at 0
- * remaining rather than removing it, and only flip status to 'ordered'
- * once every line hits 0). A request no PO has ever touched has no
- * purchase_orders at all, so this stays false for the common "nothing
- * ordered yet" case. */
-function isPartiallyOrdered(request: PurchaseRequest): boolean {
-  return request.status === 'approved' && (request.purchase_orders?.length ?? 0) > 0
+/** True once part of this request has been handled but it hasn't reached
+ * 'ordered' yet - i.e. some material is settled, some is still outstanding.
+ * Both routes count: a PO raised from the request (po_create/po_update settle
+ * a fully-covered line at 0 remaining rather than removing it, and only flip
+ * status to 'ordered' once every line hits 0), and a manual settlement for
+ * material bought outside that flow. A request nothing has touched has
+ * neither, so this stays false for the common "nothing ordered yet" case. */
+export function isPartiallyOrdered(request: PurchaseRequest): boolean {
+  const touched =
+    (request.purchase_orders?.length ?? 0) > 0 ||
+    (request.purchase_request_items || []).some((item) => (item.purchase_request_item_settlements?.length ?? 0) > 0)
+  return request.status === 'approved' && touched
+}
+
+/** Tooltip for the "partially ordered" badge, naming both the POs raised from
+ * the request and any quantity closed out by hand - otherwise a request
+ * settled purely by hand shows the badge with nothing to explain it. */
+export function partiallyOrderedHint(request: PurchaseRequest): string {
+  const parts: string[] = []
+  const poNos = (request.purchase_orders || []).map((po) => po.po_no)
+  if (poNos.length > 0) parts.push(`สั่งซื้อแล้วจาก: ${poNos.join(', ')}`)
+
+  const settlements = (request.purchase_request_items || []).flatMap(
+    (item) => item.purchase_request_item_settlements || []
+  )
+  const ordered = settlements.filter((s) => s.reason === 'ordered').length
+  const cancelled = settlements.filter((s) => s.reason === 'cancelled').length
+  if (ordered > 0) parts.push(`บันทึกว่าสั่งซื้อนอกคำขอ ${ordered} รายการ`)
+  if (cancelled > 0) parts.push(`ตัดออก ${cancelled} รายการ`)
+
+  return parts.join(' • ')
+}
+
+/** How a line with nothing outstanding left got that way, so the row can say
+ * "ordered" or "dropped" rather than guessing. A line closed purely by
+ * 'cancelled' settlements was never bought - calling that สั่งซื้อครบแล้ว
+ * would be a lie the PM can't correct. */
+function closedState(request: PurchaseRequest, item: PurchaseRequestItem): 'open' | 'ordered' | 'cancelled' {
+  if (item.quantity_requested > 0) return 'open'
+  const settlements = item.purchase_request_item_settlements || []
+  const fromPo = (request.purchase_orders?.length ?? 0) > 0
+  if (settlements.length === 0) return fromPo ? 'ordered' : 'open'
+  const anyOrdered = fromPo || settlements.some((s) => s.reason === 'ordered')
+  return anyOrdered ? 'ordered' : 'cancelled'
 }
 
 /** Plot scope is one of three mutually exclusive shapes (single plot, saved
@@ -94,6 +134,7 @@ export default function PurchaseRequestDetail({
   const [rejectNote, setRejectNote] = useState('')
   const [showRejectBox, setShowRejectBox] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isSettleModalOpen, setIsSettleModalOpen] = useState(false)
 
   function handleApprove() {
     startTransition(async () => {
@@ -120,6 +161,18 @@ export default function PurchaseRequestDetail({
     })
   }
 
+  function handleUndoSettlement(settlementId: string) {
+    startTransition(async () => {
+      const result = await undoPurchaseRequestItemSettlement(settlementId, request.id)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      onChanged()
+      toast.success('คืนจำนวนกลับเข้าคำขอแล้ว')
+    })
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -137,7 +190,7 @@ export default function PurchaseRequestDetail({
           {isPartiallyOrdered(request) && (
             <span
               className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-sm font-medium text-amber-700"
-              title={`สั่งซื้อบางส่วนแล้วจาก: ${(request.purchase_orders || []).map((po) => po.po_no).join(', ')}`}
+              title={partiallyOrderedHint(request)}
             >
               <PackageCheck className="h-3.5 w-3.5" /> สั่งซื้อบางส่วนแล้ว
             </span>
@@ -209,19 +262,51 @@ export default function PurchaseRequestDetail({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {(request.purchase_request_items || []).map((item) => {
-                const fullyOrdered = item.quantity_requested <= 0 && (request.purchase_orders?.length ?? 0) > 0
+                const closed = closedState(request, item)
+                const settlements = item.purchase_request_item_settlements || []
                 return (
                   <tr key={item.id}>
                     <td className="px-4 py-2.5 text-slate-800">
                       {item.material_types?.name || '-'}
-                      {fullyOrdered && (
+                      {closed === 'ordered' && (
                         <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
                           <CheckCircle2 className="h-3.5 w-3.5" /> สั่งซื้อครบแล้ว
                         </span>
                       )}
+                      {closed === 'cancelled' && (
+                        <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500">
+                          <XCircle className="h-3.5 w-3.5" /> ตัดออกแล้ว
+                        </span>
+                      )}
+                      {/* Manual settlements are a human judgement call, so each
+                        * one shows what was closed, why, and a way back out -
+                        * unlike a PO-driven settle, nothing else records it. */}
+                      {settlements.map((settlement) => (
+                        <div key={settlement.id} className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                          <span>
+                            {settlement.reason === 'ordered' ? 'สั่งซื้อนอกคำขอ' : 'ตัดออก'} {settlement.quantity}{' '}
+                            {item.material_types?.unit || ''}
+                            {settlement.po_ref ? ` • ${settlement.po_ref}` : ''}
+                          </span>
+                          {settlement.note && <span className="text-slate-400">({settlement.note})</span>}
+                          <span className="text-slate-400">
+                            โดย {settlement.settler?.full_name || settlement.settler?.email || '-'}
+                          </span>
+                          {request.status === 'approved' && (
+                            <button
+                              type="button"
+                              onClick={() => handleUndoSettlement(settlement.id)}
+                              disabled={isPending}
+                              className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+                            >
+                              <Undo2 className="h-3 w-3" /> ยกเลิก
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </td>
                     <td className="px-4 py-2.5 text-right font-medium text-slate-700">
-                      {fullyOrdered ? <span className="text-slate-400">-</span> : item.quantity_requested}
+                      {closed === 'open' ? item.quantity_requested : <span className="text-slate-400">-</span>}
                     </td>
                     <td className="px-4 py-2.5 text-slate-500">{item.material_types?.unit || '-'}</td>
                     <td className="px-4 py-2.5 text-slate-500">
@@ -265,7 +350,10 @@ export default function PurchaseRequestDetail({
       )}
 
       {request.status === 'approved' && (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={() => setIsSettleModalOpen(true)}>
+            <ListChecks className="h-4 w-4" /> เลือกรายการที่จัดการแล้ว
+          </Button>
           <Button type="button" onClick={() => router.push(`/dashboard/procurement/orders/create?fromRequest=${request.id}`)}>
             <ShoppingCart className="h-4 w-4" /> สร้างใบสั่งซื้อจากคำขอนี้
           </Button>
@@ -284,6 +372,20 @@ export default function PurchaseRequestDetail({
           }}
         />
       </Modal>
+
+      {/* Mounted only while open so it always opens against the request's
+        * current outstanding quantities rather than whatever they were the
+        * first time this detail view rendered. */}
+      {isSettleModalOpen && (
+        <PurchaseRequestSettleModal
+          request={request}
+          onClose={() => setIsSettleModalOpen(false)}
+          onSaved={() => {
+            setIsSettleModalOpen(false)
+            onChanged()
+          }}
+        />
+      )}
     </div>
   )
 }

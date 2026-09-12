@@ -18,6 +18,8 @@ import {
   updatePurchaseRequest as updatePurchaseRequestImpl,
   approvePurchaseRequest as approvePurchaseRequestImpl,
   rejectPurchaseRequest as rejectPurchaseRequestImpl,
+  settlePurchaseRequestItems as settlePurchaseRequestItemsImpl,
+  undoPurchaseRequestItemSettlement as undoPurchaseRequestItemSettlementImpl,
   getApprovedRequestsForOrder as getApprovedRequestsForOrderImpl,
   getCurrentRequesterId as getCurrentRequesterIdImpl,
   type PurchaseRequestFilters,
@@ -117,6 +119,14 @@ export async function approvePurchaseRequest(id: string) {
 
 export async function rejectPurchaseRequest(id: string, note?: string) {
   return rejectPurchaseRequestImpl(id, note)
+}
+
+export async function settlePurchaseRequestItems(input: Parameters<typeof settlePurchaseRequestItemsImpl>[0]) {
+  return settlePurchaseRequestItemsImpl(input)
+}
+
+export async function undoPurchaseRequestItemSettlement(settlementId: string, requestId: string) {
+  return undoPurchaseRequestItemSettlementImpl(settlementId, requestId)
 }
 
 export async function getApprovedRequestsForOrder(projectId?: string) {

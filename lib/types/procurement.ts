@@ -43,13 +43,39 @@ export type Company = {
 
 export type PurchaseRequestStatus = 'pending_review' | 'approved' | 'rejected' | 'ordered' | 'received' | 'cancelled'
 
+/** Why a quantity was closed out by hand rather than by a PO raised from the
+ * request: 'ordered' - it was bought, just not through a linked PO (different
+ * brand, or a standalone PO); 'cancelled' - it isn't being bought at all. */
+export type SettlementReason = 'ordered' | 'cancelled'
+
+/** One human decision that some quantity on a request line is handled, so it
+ * should stop counting as outstanding. Kept as its own row (rather than only
+ * decrementing quantity_requested, the way po_create does) so it can be undone
+ * and shows who closed it and why. */
+export type PurchaseRequestItemSettlement = {
+  id: string
+  purchase_request_item_id: string
+  quantity: number
+  reason: SettlementReason
+  /** Free text - may be one of our PO numbers, a supplier's own reference, or
+   * nothing at all. */
+  po_ref: string | null
+  note: string | null
+  settled_by: string
+  settled_at: string
+  settler?: { full_name: string | null; email: string | null } | null
+}
+
 export type PurchaseRequestItem = {
   id: string
   purchase_request_id: string
   material_type_id: number
+  /** What's still OUTSTANDING, not the original ask - both POs raised from the
+   * request and manual settlements subtract from it. */
   quantity_requested: number
   note: string | null
   material_types?: MaterialType | null
+  purchase_request_item_settlements?: PurchaseRequestItemSettlement[]
 }
 
 export type PurchaseRequest = {

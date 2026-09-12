@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Loader2, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Link2, Loader2, Plus, Repeat2, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -25,7 +25,16 @@ import {
   getLastMaterialOrderPrice,
 } from '@/actions/procurement-actions'
 import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
-import type { Supplier, Company, SupplierInput, VatType, DiscountType, PurchaseOrder, LastMaterialOrderPrice } from '@/lib/types/procurement'
+import type {
+  Supplier,
+  Company,
+  SupplierInput,
+  VatType,
+  DiscountType,
+  PurchaseOrder,
+  PurchaseRequest,
+  LastMaterialOrderPrice,
+} from '@/lib/types/procurement'
 
 type PlotScope = 'none' | 'plot' | 'group' | 'multi'
 
@@ -99,6 +108,52 @@ function formatMoney(n: number) {
 function vatOptionFor(percent: number, type: VatType): string {
   if (percent === 0) return 'none'
   return type === 'inclusive' ? 'vat7_inclusive' : 'vat7_exclusive'
+}
+
+/** Says which purchase request line this order line settles - and, more
+ * usefully, when it settles nothing. Only a line carrying a
+ * purchase_request_item_id decrements the request; changing the material on
+ * a prefilled row keeps that link (so a brand substitution still settles the
+ * line it replaced), but deleting the row and adding a fresh one drops it,
+ * leaving the request outstanding forever with no sign on screen. Rendered
+ * only for orders raised from a request. */
+function RequestLinkNote({
+  line,
+  requestLines,
+}: {
+  line: Line
+  requestLines: Record<string, { name: string; materialTypeId: number }>
+}) {
+  if (!line.purchase_request_item_id) {
+    return (
+      <p className="mt-1.5 flex items-start gap-1 text-[11px] leading-tight text-amber-700">
+        <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+        <span>ไม่ได้ตัดยอดจากคำขอซื้อ - รายการนี้จะไม่ลดจำนวนคงเหลือในคำขอ</span>
+      </p>
+    )
+  }
+
+  const source = requestLines[line.purchase_request_item_id]
+  if (!source) return null
+
+  const substituted = line.material_type_id > 0 && line.material_type_id !== source.materialTypeId
+  return (
+    <p
+      className={`mt-1.5 flex items-start gap-1 text-[11px] leading-tight ${
+        substituted ? 'text-indigo-600' : 'text-[#86868b]'
+      }`}
+    >
+      {substituted ? (
+        <Repeat2 className="mt-px h-3 w-3 shrink-0" />
+      ) : (
+        <Link2 className="mt-px h-3 w-3 shrink-0" />
+      )}
+      <span>
+        {substituted ? 'ตัดยอดแทน: ' : 'ตัดยอดจากคำขอ: '}
+        {source.name}
+      </span>
+    </p>
+  )
 }
 
 /** The three small lookups the form needs before it can render anything.
@@ -195,6 +250,17 @@ export default function PurchaseOrderForm({
   const [isCustomMaterialCategory, setIsCustomMaterialCategory] = useState(false)
   const [isSavingMaterial, setIsSavingMaterial] = useState(false)
   const [materialModalLineIndex, setMaterialModalLineIndex] = useState<number | null>(null)
+  /** The source request's lines, keyed by purchase_request_item_id, so each
+   * PO line can say which request line it settles. Only a line carrying that
+   * id decrements the request - swapping the material on a prefilled row
+   * keeps it, but deleting the row and adding a fresh one silently drops it,
+   * which used to be invisible until the request sat at 'approved' forever.
+   * Empty for an order not raised from a request. */
+  const [requestLines, setRequestLines] = useState<Record<string, { name: string; materialTypeId: number }>>({})
+  /** Set only when this order is tied to a request, so the "not settling
+   * anything" hint stays quiet on ordinary standalone orders where an
+   * unlinked line is simply normal. */
+  const [sourceRequestNo, setSourceRequestNo] = useState<number | null>(null)
 
   useEffect(() => {
     void bootstrap()
@@ -211,6 +277,21 @@ export default function PurchaseOrderForm({
     } finally {
       setIsMaterialsLoading(false)
     }
+  }
+
+  /** Remember which request line each id refers to, and what material was
+   * asked for on it - the PO line may well have been swapped to a different
+   * brand, which is exactly the case worth showing. */
+  function indexRequestLines(request: PurchaseRequest) {
+    setSourceRequestNo(request.pr_no)
+    setRequestLines(
+      Object.fromEntries(
+        (request.purchase_request_items || []).map((item) => [
+          item.id,
+          { name: item.material_types?.name || '-', materialTypeId: item.material_type_id },
+        ])
+      )
+    )
   }
 
   async function bootstrap() {
@@ -267,9 +348,17 @@ export default function PurchaseOrderForm({
             discountValue: item.discount_amount ? String(item.discount_amount) : '',
           }))
         )
+
+        // Only for an order raised from a request - otherwise there is no
+        // request line for anything here to settle.
+        if (initialOrder.purchase_request_id) {
+          const pr = await getPurchaseRequestById(initialOrder.purchase_request_id)
+          if (pr) indexRequestLines(pr)
+        }
       } else if (mode === 'create' && fromRequestId) {
         const pr = await getPurchaseRequestById(fromRequestId)
         if (pr) {
+          indexRequestLines(pr)
           setProjectId(pr.project_id)
           if (pr.plot_group_id) {
             setPlotScope('group')
@@ -1012,6 +1101,7 @@ export default function PurchaseOrderForm({
                             </button>
                           )}
                         </div>
+                        {sourceRequestNo != null && <RequestLinkNote line={line} requestLines={requestLines} />}
                         <input
                           value={line.description}
                           onChange={(e) => updateLine(i, { description: e.target.value })}
