@@ -1,4 +1,4 @@
-import { getPurchaseOrderById, getSuppliers, getCompanies } from '@/actions/procurement-actions'
+import { getPurchaseOrderById, getSuppliersWithBranches, getCompanies } from '@/actions/procurement-actions'
 import { getProjects } from '@/actions/project-actions'
 import type { PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
 import PurchaseOrderDetailPageClient from './PurchaseOrderDetailPageClient'
@@ -16,7 +16,7 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
     const [loadedOrder, projects, suppliers, companies] = await Promise.all([
       getPurchaseOrderById(id),
       getProjects({ includeCentralStock: true }),
-      getSuppliers(),
+      getSuppliersWithBranches(),
       getCompanies(),
     ])
     order = loadedOrder

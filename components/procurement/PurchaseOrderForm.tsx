@@ -15,7 +15,7 @@ import { getProjects } from '@/actions/project-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
 import { getMaterialPickerOptions, getPlotGroups, createMaterialType } from '@/actions/material-actions'
 import {
-  getSuppliers,
+  getSuppliersWithBranches,
   getCompanies,
   createSupplier,
   createCompany,
@@ -218,6 +218,10 @@ export default function PurchaseOrderForm({
   // project's plots, not limited to a pre-saved plot_groups batch.
   const [plotIds, setPlotIds] = useState<string[]>([])
   const [supplierId, setSupplierId] = useState('')
+  /** Which สาขา of the supplier is billing this order. Only ever set for
+   * suppliers that actually have branches; '' means the supplier's own
+   * record supplies the branch code and address, exactly as before. */
+  const [supplierBranchId, setSupplierBranchId] = useState('')
   const [companyId, setCompanyId] = useState('')
   const [vatOption, setVatOption] = useState('vat7_exclusive')
   const [orderDate, setOrderDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -299,7 +303,7 @@ export default function PurchaseOrderForm({
     try {
       // Already seeded from server props - skip the round trip entirely.
       if (!initialOptions) {
-        const [p, s, c] = await Promise.all([getProjects({ includeCentralStock: true }), getSuppliers(), getCompanies()])
+        const [p, s, c] = await Promise.all([getProjects({ includeCentralStock: true }), getSuppliersWithBranches(), getCompanies()])
         setProjects(p as PurchaseOrderFormOptions['projects'])
         setSuppliers(s)
         setCompanies(c)
@@ -318,6 +322,7 @@ export default function PurchaseOrderForm({
           setPlotIds(initialOrder.purchase_order_plots.map((p) => p.plot_id))
         }
         setSupplierId(initialOrder.supplier_id)
+        setSupplierBranchId(initialOrder.supplier_branch_id || '')
         setCompanyId(initialOrder.company_id)
         setOrderDate(initialOrder.order_date)
         setExpectedDeliveryDate(initialOrder.expected_delivery_date || '')
@@ -451,6 +456,14 @@ export default function PurchaseOrderForm({
   }, [materialIdsKey])
 
   const selectedSupplier = useMemo(() => suppliers.find((s) => s.id === supplierId) || null, [suppliers, supplierId])
+  const supplierBranches = useMemo(
+    () => selectedSupplier?.supplier_branches || [],
+    [selectedSupplier]
+  )
+  const selectedBranch = useMemo(
+    () => supplierBranches.find((b) => b.id === supplierBranchId) || null,
+    [supplierBranches, supplierBranchId]
+  )
   const selectedCompany = useMemo(() => companies.find((c) => c.id === companyId) || null, [companies, companyId])
   // Picking from what's already in the catalog (instead of free text) keeps
   // it from accumulating near-duplicate spellings of the same category.
@@ -463,6 +476,12 @@ export default function PurchaseOrderForm({
     setSupplierId(id)
     const supplier = suppliers.find((s) => s.id === id)
     setPaymentTerms(supplier?.payment_terms || '')
+    // A branch belongs to exactly one supplier, and po_create rejects a
+    // mismatch - so changing supplier has to clear it rather than carry a
+    // now-invalid id into the payload. Auto-select when there's only one
+    // real choice, since leaving it blank would just be a required click.
+    const branches = supplier?.supplier_branches || []
+    setSupplierBranchId(branches.length === 1 ? branches[0].id : '')
   }
 
   function handleStatusPillClick(next: 'draft' | 'sent') {
@@ -627,6 +646,7 @@ export default function PurchaseOrderForm({
 
     const payload = {
       supplier_id: supplierId,
+      supplier_branch_id: supplierBranchId || null,
       company_id: companyId,
       project_id: projectId,
       plot_id: plotScope === 'plot' ? plotId : null,
@@ -783,25 +803,58 @@ export default function PurchaseOrderForm({
                 disabled={readOnly}
               />
             </div>
+            {/* Only vendors that actually have branches get a picker - for the
+              * single-location majority this row never appears. */}
+            {selectedSupplier && supplierBranches.length > 0 && (
+              <div>
+                <label className={fieldLabel}>สาขาที่ออกบิล</label>
+                <SearchableSelect
+                  options={supplierBranches.map((branch) => ({
+                    value: branch.id,
+                    label:
+                      branch.branch_code === '00000'
+                        ? `${branch.name} (สำนักงานใหญ่)`
+                        : `${branch.name} (สาขา ${branch.branch_code})`,
+                  }))}
+                  value={supplierBranchId}
+                  onChange={setSupplierBranchId}
+                  placeholder="เลือกสาขา"
+                  disabled={readOnly}
+                />
+              </div>
+            )}
             {selectedSupplier ? (
               <div className="space-y-1.5 rounded-[14px] border border-[#f0f0f2] bg-[#f5f5f7] p-3 text-sm">
                 <div className={readOnlyRow}>
                   <span className="text-[#86868b]">ที่อยู่</span>
-                  <span className="text-right text-[#1d1d1f]">{selectedSupplier.address || '-'}</span>
+                  {/* The branch's address is the one the tax invoice carries,
+                    * so show that rather than the parent's when one is picked. */}
+                  <span className="text-right text-[#1d1d1f]">
+                    {selectedBranch?.address || selectedSupplier.address || '-'}
+                  </span>
                 </div>
                 <div className={readOnlyRow}>
                   <span className="text-[#86868b]">เลขผู้เสียภาษี</span>
                   <span className="text-[#1d1d1f]">{selectedSupplier.tax_id || '-'}</span>
                 </div>
-                {selectedSupplier.branch_code && (
+                {(selectedBranch?.branch_code || selectedSupplier.branch_code) && (
                   <div className={readOnlyRow}>
                     <span className="text-[#86868b]">สาขาเลขที่</span>
-                    <span className="text-[#1d1d1f]">{selectedSupplier.branch_code}</span>
+                    <span className="text-[#1d1d1f]">
+                      {selectedBranch?.branch_code || selectedSupplier.branch_code}
+                    </span>
                   </div>
                 )}
                 <div className={readOnlyRow}>
                   <span className="text-[#86868b]">ผู้ติดต่อ</span>
-                  <span className="text-[#1d1d1f]">{[selectedSupplier.contact_name, selectedSupplier.phone].filter(Boolean).join(' • ') || '-'}</span>
+                  <span className="text-[#1d1d1f]">
+                    {[
+                      selectedBranch?.contact_name || selectedSupplier.contact_name,
+                      selectedBranch?.phone || selectedSupplier.phone,
+                    ]
+                      .filter(Boolean)
+                      .join(' • ') || '-'}
+                  </span>
                 </div>
               </div>
             ) : (

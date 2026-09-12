@@ -9,6 +9,7 @@ import type { LastMaterialOrderPrice, PurchaseOrder, PurchaseOrderInput, Purchas
 const SELECT_WITH_RELATIONS = `
   *,
   suppliers (*),
+  supplier_branches (*),
   companies (*),
   projects (name, location),
   plots!purchase_orders_plot_id_fkey (name),
@@ -32,6 +33,7 @@ function buildPayload(input: PurchaseOrderInput) {
   return {
     payload: {
       supplier_id: input.supplier_id,
+      supplier_branch_id: input.supplier_branch_id || null,
       company_id: input.company_id,
       project_id: input.project_id,
       plot_id: input.plot_id || null,
@@ -138,6 +140,7 @@ const PO_ERROR_TRANSLATIONS: [string, string][] = [
   ['Cannot edit a purchase order that has already been paid or cancelled', 'ไม่สามารถแก้ไขใบสั่งซื้อนี้ได้ เนื่องจากชำระเงินแล้วหรือถูกยกเลิกไปแล้ว'],
   ['Cannot remove a line that already has goods received - reduce its quantity instead', 'ลบรายการนี้ไม่ได้ เนื่องจากมีการรับของแล้ว กรุณาลดจำนวนแทนการลบ'],
   ['Cannot set ordered quantity below the quantity already received', 'ระบุจำนวนสั่งซื้อน้อยกว่าจำนวนที่รับแล้วไม่ได้'],
+  ['Branch does not belong to this supplier', 'สาขาที่เลือกไม่ได้อยู่กับผู้จำหน่ายรายนี้ กรุณาเลือกสาขาใหม่'],
   ['Choose either a single plot or a plot group, not both', 'กรุณาเลือกแปลงเดียวหรือกลุ่มแปลงอย่างใดอย่างหนึ่งเท่านั้น'],
   ['Purchase order not found', 'ไม่พบใบสั่งซื้อนี้'],
   ['Only PM/Admin can edit a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถแก้ไขใบสั่งซื้อได้'],
@@ -267,6 +270,7 @@ export async function duplicatePurchaseOrder(id: string): Promise<{ id: string; 
 
   const result = await createPurchaseOrder({
     supplier_id: source.supplier_id,
+    supplier_branch_id: source.supplier_branch_id,
     company_id: source.company_id,
     project_id: source.project_id,
     plot_id: source.plot_id,

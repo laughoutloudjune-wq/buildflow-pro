@@ -1,4 +1,4 @@
-import { getSuppliers, getCompanies } from '@/actions/procurement-actions'
+import { getSuppliersWithBranches, getCompanies } from '@/actions/procurement-actions'
 import { getProjects } from '@/actions/project-actions'
 import PurchaseOrderForm, { type PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
 
@@ -14,7 +14,7 @@ export default async function CreatePurchaseOrderPage({
   const [{ fromRequest }, projects, suppliers, companies] = await Promise.all([
     searchParams,
     getProjects({ includeCentralStock: true }),
-    getSuppliers(),
+    getSuppliersWithBranches(),
     getCompanies(),
   ])
 

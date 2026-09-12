@@ -166,8 +166,21 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
   const supplier = order.suppliers
   const company = order.companies
 
-  // สำนักงานใหญ่ is the correct designation when no branch code is recorded.
-  const supplierBranch = supplier?.branch_code ? `สาขา ${esc(supplier.branch_code)}` : 'สำนักงานใหญ่'
+  // A branch chosen on the order wins over the supplier's own single
+  // branch_code: it is the สาขา that actually sold the goods, and a Thai tax
+  // invoice has to name that one. Falls back to the supplier record for every
+  // order placed before branches existed, and for vendors that have none.
+  // สำนักงานใหญ่ is the correct designation when nothing is recorded, and also
+  // what branch code '00000' means.
+  const branch = order.supplier_branches
+  const branchCode = branch?.branch_code || supplier?.branch_code
+  const supplierBranch =
+    branchCode && branchCode !== '00000' ? `สาขา ${esc(branchCode)}` : 'สำนักงานใหญ่'
+
+  // Likewise the address and contact: the branch's own, when it has them.
+  const supplierAddress = branch?.address || supplier?.address
+  const supplierContact = branch?.contact_name || supplier?.contact_name
+  const supplierPhone = branch?.phone || supplier?.phone
 
   // No longer derived from the project's location - a plain note the buyer
   // types per order, not an address the system guesses at.
@@ -395,10 +408,10 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
       <div class="card">
         <div class="card-label">ผู้จำหน่าย / Supplier</div>
         <div class="card-line name">${esc(supplier?.name) || '-'}</div>
-        <div class="card-line muted">${esc(supplier?.address) || '-'}</div>
+        <div class="card-line muted">${esc(supplierAddress) || '-'}</div>
         <div class="card-line muted">เลขประจำตัวผู้เสียภาษี: ${esc(supplier?.tax_id) || '-'} &nbsp;·&nbsp; ${supplierBranch}</div>
         <div class="card-line muted">
-          ผู้ติดต่อ: ${esc(supplier?.contact_name) || '-'}${supplier?.phone ? ` &nbsp;·&nbsp; โทร. ${esc(supplier.phone)}` : ''}
+          ผู้ติดต่อ: ${esc(supplierContact) || '-'}${supplierPhone ? ` &nbsp;·&nbsp; โทร. ${esc(supplierPhone)}` : ''}
         </div>
       </div>
       <div class="card">
