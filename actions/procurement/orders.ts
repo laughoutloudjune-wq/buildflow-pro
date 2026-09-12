@@ -135,8 +135,9 @@ export async function getLastMaterialOrderPrice(
 // is in - same convention as the plot-group-member conflict message in
 // material-actions.ts.
 const PO_ERROR_TRANSLATIONS: [string, string][] = [
-  ['Cannot edit a purchase order that already has goods received', 'ไม่สามารถแก้ไขใบสั่งซื้อนี้ได้ เนื่องจากมีการรับของแล้วบางส่วน กรุณากลับไปหน้ารายละเอียดเพื่อดูข้อมูลล่าสุด'],
-  ['Cannot edit a purchase order that has already been received or cancelled', 'ไม่สามารถแก้ไขใบสั่งซื้อนี้ได้ เนื่องจากรับของครบแล้วหรือถูกยกเลิกไปแล้ว'],
+  ['Cannot edit a purchase order that has already been paid or cancelled', 'ไม่สามารถแก้ไขใบสั่งซื้อนี้ได้ เนื่องจากชำระเงินแล้วหรือถูกยกเลิกไปแล้ว'],
+  ['Cannot remove a line that already has goods received - reduce its quantity instead', 'ลบรายการนี้ไม่ได้ เนื่องจากมีการรับของแล้ว กรุณาลดจำนวนแทนการลบ'],
+  ['Cannot set ordered quantity below the quantity already received', 'ระบุจำนวนสั่งซื้อน้อยกว่าจำนวนที่รับแล้วไม่ได้'],
   ['Choose either a single plot or a plot group, not both', 'กรุณาเลือกแปลงเดียวหรือกลุ่มแปลงอย่างใดอย่างหนึ่งเท่านั้น'],
   ['Purchase order not found', 'ไม่พบใบสั่งซื้อนี้'],
   ['Only PM/Admin can edit a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถแก้ไขใบสั่งซื้อได้'],
