@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowDown, ArrowUp, ArrowUpDown, Copy, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
@@ -194,12 +195,7 @@ export default function PurchaseOrdersPageClient({
     })
   }, [orders, search, supplierFilter, projectFilter, companyFilter, dateFrom, dateTo, sort, collator])
 
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
-  const currentPage = Math.min(page, pageCount)
-  const pagedRows = useMemo(
-    () => rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [rows, currentPage]
-  )
+  const { pageCount, currentPage, pagedRows } = usePagedRows(rows, page, PAGE_SIZE)
 
   const grandTotal = useMemo(() => rows.reduce((sum, o) => sum + o.total_amount, 0), [rows])
   const selectedTotal = useMemo(
@@ -399,33 +395,7 @@ export default function PurchaseOrdersPageClient({
           </table>
         </div>
 
-        {pageCount > 1 && (
-          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm">
-            <span className="text-slate-500">
-              หน้า <span className="font-semibold text-slate-700">{currentPage}</span> จาก {pageCount}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage <= 1}
-              >
-                ก่อนหน้า
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                disabled={currentPage >= pageCount}
-              >
-                ถัดไป
-              </Button>
-            </div>
-          </div>
-        )}
+        <Pagination currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} />
       </Card>
     </div>
   )

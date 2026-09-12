@@ -8,11 +8,14 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import SupplierBranchesModal from '@/components/procurement/SupplierBranchesModal'
 import { useToast } from '@/components/ui/Toast'
 import SupplierFormFields from '@/components/procurement/SupplierFormFields'
 import { createSupplier, deactivateSupplier, updateSupplier } from '@/actions/procurement-actions'
 import type { Supplier, SupplierInput } from '@/lib/types/procurement'
+
+const PAGE_SIZE = 25
 
 const emptyDraft: SupplierInput = {
   name: '',
@@ -41,12 +44,15 @@ export default function SuppliersPageClient({
   const [editing, setEditing] = useState<Supplier | null>(null)
   /** Which supplier's สาขา list is open, if any. */
   const [branchesFor, setBranchesFor] = useState<Supplier | null>(null)
+  const [page, setPage] = useState(1)
   const [draft, setDraft] = useState<SupplierInput>(emptyDraft)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialError])
+
+  const { pageCount, currentPage, pagedRows: pagedSuppliers } = usePagedRows(suppliers, page, PAGE_SIZE)
 
   function openCreateModal() {
     setEditing(null)
@@ -151,7 +157,7 @@ export default function SuppliersPageClient({
                   </td>
                 </tr>
               ) : (
-                suppliers.map((supplier) => (
+                pagedSuppliers.map((supplier) => (
                   <tr key={supplier.id} className="transition-colors hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium text-slate-800">{supplier.name}</td>
                     <td className="px-4 py-3 text-slate-500">{supplier.supplier_type === 'individual' ? 'บุคคลทั่วไป' : 'บริษัท/ห้างร้าน'}</td>
@@ -202,6 +208,7 @@ export default function SuppliersPageClient({
             </tbody>
           </table>
         </div>
+        <Pagination currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} />
       </Card>
 
       {branchesFor && (

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Tags, Trash2, Upload, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
@@ -25,6 +26,8 @@ import {
 import MaterialImportModal from '@/components/materials/MaterialImportModal'
 import type { MaterialCatalogRow, MaterialType } from '@/lib/types/materials'
 
+const PAGE_SIZE = 25
+
 const ALL_CATEGORIES = 'ทั้งหมด'
 const UNCATEGORIZED = 'ไม่ระบุหมวดหมู่'
 const CUSTOM_CATEGORY = 'อื่นๆ (ระบุใหม่)...'
@@ -43,6 +46,7 @@ export default function MaterialTypesPageClient({
   const [showInactive, setShowInactive] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
@@ -106,19 +110,31 @@ export default function MaterialTypesPageClient({
     })
   }, [materials, showInactive, categoryFilter, search])
 
-  // Selection is scoped to what's currently visible - changing a filter
-  // while rows are selected would otherwise let a bulk action silently touch
-  // rows the user can no longer see and didn't mean to include.
+  const { pageCount, currentPage, pagedRows } = usePagedRows(filtered, page, PAGE_SIZE)
+
+  // Narrowing the list should put the user back at the start of it, not on
+  // whatever page number they happened to be on.
   useEffect(() => {
-    setSelected(new Set())
+    setPage(1)
   }, [showInactive, categoryFilter, search])
 
-  const filteredIds = useMemo(() => filtered.map((m) => m.id), [filtered])
-  const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id))
-  const someFilteredSelected = filteredIds.some((id) => selected.has(id))
+  // Selection is scoped to what's currently visible - changing a filter, or
+  // turning the page, while rows are selected would otherwise let a bulk
+  // action silently touch rows the user can no longer see and didn't mean to
+  // include. Paging clears it for the same reason a filter change does.
+  useEffect(() => {
+    setSelected(new Set())
+  }, [showInactive, categoryFilter, search, currentPage])
+
+  // Scoped to the page on screen, not the whole filtered set: with a paged
+  // list, a header checkbox that reached across pages would select rows the
+  // user cannot see - the exact thing the reset above exists to prevent.
+  const pageIds = useMemo(() => pagedRows.map((m) => m.id), [pagedRows])
+  const allFilteredSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id))
+  const someFilteredSelected = pageIds.some((id) => selected.has(id))
 
   function toggleSelectAll() {
-    setSelected(allFilteredSelected ? new Set() : new Set(filteredIds))
+    setSelected(allFilteredSelected ? new Set() : new Set(pageIds))
   }
 
   function toggleSelectOne(id: number) {
@@ -453,7 +469,7 @@ export default function MaterialTypesPageClient({
                   </td>
                 </tr>
               ) : (
-                filtered.map((material) => (
+                pagedRows.map((material) => (
                   <tr key={material.id} className={`transition-colors hover:bg-slate-50 ${!material.is_active ? 'opacity-50' : ''} ${selected.has(material.id) ? 'bg-indigo-50/50' : ''}`}>
                     <td className="px-4 py-3">
                       <input type="checkbox" checked={selected.has(material.id)} onChange={() => toggleSelectOne(material.id)} />
@@ -523,6 +539,7 @@ export default function MaterialTypesPageClient({
             </tbody>
           </table>
         </div>
+        <Pagination currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} />
       </Card>
 
       <Modal
