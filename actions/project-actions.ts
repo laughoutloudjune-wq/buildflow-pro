@@ -87,12 +87,16 @@ export async function updateProject(id: string, formData: FormData) {
   const supabase = await createClient()
   const name = formData.get('name') as string
   const location = formData.get('location') as string
+  // Empty textarea means "no preset" rather than an empty note, so it's
+  // stored as null - the PO form treats null and '' the same, but null keeps
+  // "never set" distinguishable in the data.
+  const deliveryAddress = ((formData.get('delivery_address') as string) || '').trim()
 
   if (!name) return
 
   const { error } = await supabase
     .from('projects')
-    .update({ name, location })
+    .update({ name, location, delivery_address: deliveryAddress || null })
     .match({ id })
 
   if (error) {
@@ -101,4 +105,7 @@ export async function updateProject(id: string, formData: FormData) {
 
   revalidatePath('/dashboard/projects')
   revalidatePath(`/dashboard/projects/${id}`)
+  // The PO form reads this preset from its project list, so a stale cache
+  // there would keep prefilling the old address.
+  revalidatePath('/dashboard/procurement/orders/create')
 }

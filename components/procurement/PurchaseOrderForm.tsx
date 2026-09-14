@@ -166,7 +166,7 @@ function RequestLinkNote({
  * deliberately NOT part of this: it is ~1000 rows / ~200KB and isn't needed
  * until the user opens a line-item picker, so it stays a client fetch. */
 export type PurchaseOrderFormOptions = {
-  projects: { id: string; name: string; location: string | null }[]
+  projects: { id: string; name: string; location: string | null; delivery_address: string | null }[]
   suppliers: Supplier[]
   companies: Company[]
 }
@@ -195,9 +195,9 @@ export default function PurchaseOrderForm({
   const [isPending, startTransition] = useTransition()
   const toast = useToast()
 
-  const [projects, setProjects] = useState<{ id: string; name: string; location: string | null }[]>(
-    initialOptions?.projects ?? []
-  )
+  const [projects, setProjects] = useState<
+    { id: string; name: string; location: string | null; delivery_address: string | null }[]
+  >(initialOptions?.projects ?? [])
   const [plots, setPlots] = useState<{ id: string; name: string }[]>([])
   const [plotGroups, setPlotGroups] = useState<PlotGroup[]>([])
   const [isPlotsLoading, setIsPlotsLoading] = useState(false)
@@ -366,6 +366,12 @@ export default function PurchaseOrderForm({
         if (pr) {
           indexRequestLines(pr)
           setProjectId(pr.project_id)
+          // Same prefill as picking the site by hand - this path sets the
+          // project directly, so it would otherwise skip it. Nothing has been
+          // typed yet on a fresh create-from-request, so there's nothing to
+          // preserve here.
+          const requestProject = (initialOptions?.projects ?? []).find((p) => p.id === pr.project_id)
+          if (requestProject?.delivery_address) setDeliveryAddress(requestProject.delivery_address)
           if (pr.plot_group_id) {
             setPlotScope('group')
             setPlotGroupId(pr.plot_group_id)
@@ -708,6 +714,20 @@ export default function PurchaseOrderForm({
     })
   }
 
+  /** Picking a job site fills in the delivery note saved on that site
+   * (projects.delivery_address), so the same drop-off point / site contact
+   * doesn't get retyped on every order. Anything typed by hand is left alone:
+   * only an empty box, or one still holding the previously selected site's
+   * preset, gets replaced - which also means editing an existing PO keeps its
+   * own saved instructions when the site is changed. */
+  function handleProjectChange(nextProjectId: string) {
+    const presetFor = (id: string) => projects.find((p) => p.id === id)?.delivery_address || ''
+    const previousPreset = presetFor(projectId)
+    const nextPreset = presetFor(nextProjectId)
+    setProjectId(nextProjectId)
+    setDeliveryAddress((current) => (current.trim() === '' || current === previousPreset ? nextPreset : current))
+  }
+
   const materialOptions = materials.map((m) => ({ value: String(m.id), label: `${m.name} (${m.unit})` }))
   const projectOptions = projects.map((p) => ({ value: p.id, label: p.name, sublabel: p.location || undefined }))
   const plotOptions = plots.map((p) => ({ value: p.id, label: p.name }))
@@ -931,7 +951,7 @@ export default function PurchaseOrderForm({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={fieldLabel}>โครงการ</label>
-            <SearchableSelect options={projectOptions} value={projectId} onChange={setProjectId} placeholder="เลือกโครงการ" disabled={readOnly} />
+            <SearchableSelect options={projectOptions} value={projectId} onChange={handleProjectChange} placeholder="เลือกโครงการ" disabled={readOnly} />
           </div>
           <div>
             <label className={fieldLabel}>โครงการย่อย / แปลง</label>

@@ -255,6 +255,19 @@ export default function ProjectDetailPageClient({
             <label className="mb-1 block text-sm font-medium text-slate-700">ทำเล / ที่ตั้ง</label>
             <input name="location" className="w-full" defaultValue={project.location} />
           </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">ที่อยู่จัดส่งประจำ</label>
+            <textarea
+              name="delivery_address"
+              className="w-full"
+              rows={3}
+              defaultValue={project.delivery_address || ''}
+              placeholder="เช่น จุดส่งของ ผู้ติดต่อหน้างาน เบอร์โทร เวลาที่สะดวก"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              ใช้เติมช่อง &ldquo;หมายเหตุการจัดส่ง&rdquo; ให้อัตโนมัติเมื่อสร้างใบสั่งซื้อของโครงการนี้ และยังแก้ไขรายใบได้
+            </p>
+          </div>
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button type="button" variant="secondary" onClick={() => setIsEditModalOpen(false)}>ยกเลิก</Button>
             <Button type="submit">บันทึก</Button>
