@@ -1,0 +1,30 @@
+-- Security fix: billings, billing_jobs and billing_adjustments each carry a
+-- permissive "Allow all" policy (cmd ALL, roles {public}, qual true) next to
+-- their real *_select policies. Permissive policies OR together, so "Allow
+-- all" nullifies the row filtering the *_select policies were written to do.
+-- On top of that, anon held full table grants (SELECT/INSERT/UPDATE/DELETE/
+-- TRUNCATE/REFERENCES/TRIGGER) on all three, so the publishable anon key -
+-- which ships inside the browser bundle - was enough to read or destroy every
+-- billing row (287 billings, 267 billing_jobs, 630 billing_adjustments).
+--
+-- This revokes anon only. It is deliberately the safe half of the fix:
+--   - Logged-in users are role `authenticated`, not `anon` (every billing
+--     query goes through lib/supabase/server.ts, the cookie-backed client),
+--     and authenticated keeps its grants and still matches "Allow all", so
+--     nothing changes for a foreman or PM using the app.
+--   - Nothing legitimate reads these tables without a session: all billing UI
+--     lives under /dashboard, which middleware.ts redirects to /login when
+--     getClaims() returns no user, and no API route or service-role path
+--     touches them.
+--
+-- What is NOT fixed here: "Allow all" itself still defeats the *_select row
+-- filtering for authenticated users. It cannot simply be dropped - these
+-- tables have no INSERT/UPDATE/DELETE policies at all, so removing it would
+-- leave every write with no policy and break the whole billing workflow.
+-- Replacing it needs real write policies plus testing with a foreman account.
+--
+-- Rollback, if this ever turns out to break something:
+--   grant select, insert, update, delete on public.billings,
+--     public.billing_jobs, public.billing_adjustments to anon;
+revoke all on public.billings, public.billing_jobs, public.billing_adjustments
+  from anon;
