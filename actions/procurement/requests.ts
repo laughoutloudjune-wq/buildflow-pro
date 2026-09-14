@@ -20,7 +20,8 @@ const SELECT_WITH_RELATIONS = `
     purchase_request_item_settlements (
       *,
       settler:profiles!purchase_request_item_settlements_settled_by_fkey (full_name, email)
-    )
+    ),
+    purchase_order_items!purchase_order_items_purchase_request_item_id_fkey (quantity_ordered)
   ),
   purchase_orders (po_no, status)
 `
@@ -49,6 +50,22 @@ export async function getPurchaseRequestById(id: string): Promise<PurchaseReques
   const { data, error } = await supabase.from('purchase_requests').select(SELECT_WITH_RELATIONS).eq('id', id).maybeSingle()
   if (error) throw new Error(error.message)
   return data as unknown as PurchaseRequest | null
+}
+
+/** For printing several requests as one combined PDF - one round trip for
+ * the whole batch rather than one per request. Ordered by pr_no so the
+ * combined document reads the same regardless of selection order. */
+export async function getPurchaseRequestsByIds(ids: string[]): Promise<PurchaseRequest[]> {
+  await requireModuleAccess('procurement')
+  if (ids.length === 0) return []
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('purchase_requests')
+    .select(SELECT_WITH_RELATIONS)
+    .in('id', ids)
+    .order('pr_no', { ascending: true })
+  if (error) throw new Error(error.message)
+  return (data as unknown as PurchaseRequest[]) || []
 }
 
 export async function createPurchaseRequest(input: {

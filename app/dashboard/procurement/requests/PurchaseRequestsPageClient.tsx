@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { PackageCheck, Plus } from 'lucide-react'
+import { PackageCheck, Plus, Printer } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -68,6 +68,11 @@ export default function PurchaseRequestsPageClient({
   // current filter doesn't yank the modal's content out from under it.
   const selectedRequest = requests.find((r) => r.id === selectedRequestId) ?? null
 
+  // Checkbox multi-select, for printing several requests as one combined PDF
+  // instead of one at a time - separate from `selectedRequestId` above, which
+  // is the single request open in the detail modal.
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+
   useEffect(() => {
     if (initialError) toast.error(initialError)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -77,6 +82,23 @@ export default function PurchaseRequestsPageClient({
     () => (filter === 'all' ? requests : requests.filter((r) => r.status === filter)),
     [requests, filter]
   )
+
+  const allChecked = filtered.length > 0 && filtered.every((r) => checked.has(r.id))
+
+  function toggleAll() {
+    setChecked(allChecked ? new Set() : new Set(filtered.map((r) => r.id)))
+  }
+
+  function toggleOne(id: string) {
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const printSelectedUrl = `/api/procurement/requests/pdf?ids=${Array.from(checked).join(',')}`
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -104,11 +126,27 @@ export default function PurchaseRequestsPageClient({
         ))}
       </div>
 
+      {checked.size > 0 && (
+        <Card className="flex flex-wrap items-center justify-between gap-3 border-indigo-100 bg-indigo-50/60 px-4 py-3">
+          <span className="text-sm text-indigo-800">
+            เลือกแล้ว <span className="font-semibold">{checked.size}</span> รายการ
+          </span>
+          <a href={printSelectedUrl} target="_blank" rel="noreferrer">
+            <Button type="button" size="sm" variant="secondary">
+              <Printer className="h-3.5 w-3.5" /> พิมพ์ที่เลือก (รวมหลายใบต่อแผ่น)
+            </Button>
+          </a>
+        </Card>
+      )}
+
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b bg-slate-50 text-slate-700">
               <tr>
+                <th className="w-10 px-4 py-3">
+                  <input type="checkbox" checked={allChecked} onChange={toggleAll} disabled={filtered.length === 0} />
+                </th>
                 <th className="px-4 py-3 font-semibold">เลขที่</th>
                 <th className="px-4 py-3 font-semibold">โครงการ</th>
                 <th className="px-4 py-3 font-semibold">ผู้ขอซื้อ</th>
@@ -120,7 +158,7 @@ export default function PurchaseRequestsPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center italic text-slate-400">
+                  <td colSpan={7} className="px-4 py-8 text-center italic text-slate-400">
                     ไม่มีคำขอซื้อในสถานะนี้
                   </td>
                 </tr>
@@ -131,6 +169,9 @@ export default function PurchaseRequestsPageClient({
                     className="cursor-pointer transition-colors hover:bg-slate-50"
                     onClick={() => setSelectedRequestId(r.id)}
                   >
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={checked.has(r.id)} onChange={() => toggleOne(r.id)} />
+                    </td>
                     <td className="px-4 py-3">
                       <span className="font-mono font-medium text-indigo-600 hover:underline">
                         #{String(r.pr_no).padStart(4, '0')}

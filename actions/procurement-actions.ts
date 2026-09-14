@@ -19,6 +19,7 @@ import {
 import {
   getPurchaseRequests as getPurchaseRequestsImpl,
   getPurchaseRequestById as getPurchaseRequestByIdImpl,
+  getPurchaseRequestsByIds as getPurchaseRequestsByIdsImpl,
   createPurchaseRequest as createPurchaseRequestImpl,
   updatePurchaseRequest as updatePurchaseRequestImpl,
   approvePurchaseRequest as approvePurchaseRequestImpl,
@@ -128,6 +129,10 @@ export async function getPurchaseRequests(filters: PurchaseRequestFilters = {}) 
 
 export async function getPurchaseRequestById(id: string) {
   return getPurchaseRequestByIdImpl(id)
+}
+
+export async function getPurchaseRequestsByIds(ids: string[]) {
+  return getPurchaseRequestsByIdsImpl(ids)
 }
 
 export async function createPurchaseRequest(input: Parameters<typeof createPurchaseRequestImpl>[0]) {

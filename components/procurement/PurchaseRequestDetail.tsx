@@ -16,6 +16,7 @@ import PurchaseRequestDocActions from '@/components/procurement/PurchaseRequestD
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import PurchaseRequestSettleModal from '@/components/procurement/PurchaseRequestSettleModal'
 import type { PurchaseRequest, PurchaseRequestItem, PurchaseRequestStatus } from '@/lib/types/procurement'
+import { orderedQuantity, originalQuantityRequested } from '@/lib/procurement/requestQuantities'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -135,6 +136,12 @@ export default function PurchaseRequestDetail({
   const [showRejectBox, setShowRejectBox] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isSettleModalOpen, setIsSettleModalOpen] = useState(false)
+  // The clock is read once here rather than during render: the compiler
+  // caches render output against the inputs it can see, and the clock isn't
+  // one of them, so a Date.now() read while rendering can leave the "overdue"
+  // highlight below frozen at whatever it was on the first render. A lazy
+  // initializer runs exactly once per mount, which is an input it can track.
+  const [now] = useState(() => Date.now())
 
   function handleApprove() {
     startTransition(async () => {
@@ -217,7 +224,7 @@ export default function PurchaseRequestDetail({
             const leadTime = maxLeadTimeDays(request)
             if (leadTime == null) return null
             const byDate = orderByDate(request)
-            const isUrgent = byDate ? byDate.getTime() <= Date.now() : false
+            const isUrgent = byDate != null && now != null && byDate.getTime() <= now
             return (
               <div className="col-span-2">
                 <div className="text-xs text-slate-400">ระยะเวลาสั่งของ (นานสุดในรายการ {leadTime} วัน)</div>
@@ -254,7 +261,9 @@ export default function PurchaseRequestDetail({
             <thead className="border-b bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-2 font-medium">วัสดุ</th>
-                <th className="px-4 py-2 text-right font-medium">จำนวน</th>
+                <th className="whitespace-nowrap px-4 py-2 text-right font-medium">ขอซื้อ</th>
+                <th className="whitespace-nowrap px-4 py-2 text-right font-medium">สั่งแล้ว</th>
+                <th className="whitespace-nowrap px-4 py-2 text-right font-medium">คงเหลือ</th>
                 <th className="px-4 py-2 font-medium">หน่วย</th>
                 <th className="px-4 py-2 font-medium">เวลาที่ต้องสั่ง</th>
                 <th className="px-4 py-2 font-medium">หมายเหตุ</th>
@@ -305,8 +314,17 @@ export default function PurchaseRequestDetail({
                         </div>
                       ))}
                     </td>
+                    {/* The ask never moves; the other two are what's happened
+                      * to it since. quantity_requested is the outstanding
+                      * remainder, not the ask - see requestQuantities.ts. */}
                     <td className="px-4 py-2.5 text-right font-medium text-slate-700">
-                      {closed === 'open' ? item.quantity_requested : <span className="text-slate-400">-</span>}
+                      {originalQuantityRequested(item)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-slate-600">
+                      {orderedQuantity(item) || <span className="text-slate-300">-</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-slate-600">
+                      {closed === 'open' ? item.quantity_requested : <span className="text-slate-300">-</span>}
                     </td>
                     <td className="px-4 py-2.5 text-slate-500">{item.material_types?.unit || '-'}</td>
                     <td className="px-4 py-2.5 text-slate-500">

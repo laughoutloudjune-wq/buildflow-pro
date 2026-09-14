@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import type { PurchaseRequest, PurchaseRequestStatus } from '@/lib/types/procurement'
 import type { SignatureSlot } from '@/lib/types/signatures'
+import { originalQuantityRequested } from '@/lib/procurement/requestQuantities'
 
 // Fonts are embedded as base64 data URIs rather than linked - Puppeteer's
 // headless page has no guarantee of network access to either a third-party
@@ -103,6 +104,27 @@ export function buildPurchaseRequestHtml(request: PurchaseRequest, slots: Signat
   if (!cachedRegular) cachedRegular = fontBase64('Sarabun-Regular.ttf')
   if (!cachedBold) cachedBold = fontBase64('Sarabun-Bold.ttf')
 
+  return documentShell(renderPage(request, slots))
+}
+
+/** Several requests on as few sheets as they'll fit on, for printing a batch
+ * without spending a sheet of paper per request. Each request becomes a
+ * condensed block that flows down the page and is only pushed to the next
+ * sheet when it doesn't fit whole (`page-break-inside: avoid`), so a handful
+ * of short requests share one sheet.
+ *
+ * A single request still gets the full-page document - a lone compact block
+ * stranded on an otherwise empty sheet just looks like a broken printout. */
+export function buildPurchaseRequestsHtml(requests: PurchaseRequest[], slots: SignatureSlot[]): string {
+  if (!cachedRegular) cachedRegular = fontBase64('Sarabun-Regular.ttf')
+  if (!cachedBold) cachedBold = fontBase64('Sarabun-Bold.ttf')
+
+  if (requests.length === 1) return documentShell(renderPage(requests[0], slots))
+
+  return compactShell(requests.map((request) => renderCompactBlock(request, slots)).join(''), requests.length)
+}
+
+function renderPage(request: PurchaseRequest, slots: SignatureSlot[]): string {
   const items = request.purchase_request_items || []
 
   const itemRows = items
@@ -115,7 +137,7 @@ export function buildPurchaseRequestHtml(request: PurchaseRequest, slots: Signat
             <div class="item-name">${esc(item.material_types?.name) || '-'}</div>
             ${item.note ? `<div class="item-desc">${esc(item.note)}</div>` : ''}
           </td>
-          <td class="right nowrap">${qty(item.quantity_requested)}</td>
+          <td class="right nowrap">${qty(originalQuantityRequested(item))}</td>
           <td class="unit">${esc(item.material_types?.unit) || '-'}</td>
           <td class="right muted nowrap">${leadTime != null ? `${leadTime} วัน` : '-'}</td>
         </tr>`
@@ -167,13 +189,242 @@ export function buildPurchaseRequestHtml(request: PurchaseRequest, slots: Signat
     })
     .join('')
 
+  return `
+  <div class="page">
+    <div class="header">
+      <div>
+        <div class="project-name">${esc(request.projects?.name) || '-'}</div>
+        ${plotScopeLine ? `<div class="project-sub">${plotScopeLine}</div>` : ''}
+      </div>
+      <div>
+        <div class="title">Purchase Request</div>
+        <div class="title-th">ใบขอซื้อ</div>
+        <div class="doc-info">
+          <div class="doc-row"><span class="doc-label">เลขที่</span><span class="doc-value">PR-${String(request.pr_no).padStart(4, '0')}</span></div>
+          <div class="doc-row"><span class="doc-label">วันที่</span><span class="doc-value">${thaiDate(request.created_at)}</span></div>
+        </div>
+        ${stampBlock}
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="card-row">
+      <div class="card">
+        <div class="card-label">รายละเอียดคำขอซื้อ</div>
+        ${kv('ผู้ขอซื้อ', requesterName)}
+        ${kv('ต้องการภายในวันที่', request.needed_by_date ? thaiDate(request.needed_by_date) : 'ไม่ระบุ')}
+        ${orderByLine}
+      </div>
+      ${
+        request.review_note
+          ? `<div class="card"><div class="card-label">เหตุผลที่ปฏิเสธ</div><div class="kv"><span>${esc(request.review_note)}</span></div></div>`
+          : ''
+      }
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th class="idx">ลำดับ</th>
+            <th>รายการ</th>
+            <th class="right">จำนวน</th>
+            <th class="unit">หน่วย</th>
+            <th class="right">เวลาที่ต้องสั่ง</th>
+          </tr>
+        </thead>
+        <tbody>${itemRows}</tbody>
+      </table>
+    </div>
+
+    ${noteBlock}
+
+    <div class="signature-row">${signatureBoxes}</div>
+  </div>`
+}
+
+/** One request condensed into a block that shares a sheet with others: the
+ * same facts as the full-page document (who asked, for what, by when, who
+ * signs) at roughly a fifth of the height. The full document's one-per-sheet
+ * layout is what it is because it's a standalone form - a batch printout
+ * isn't, so everything that only existed to fill an A4 (the tall stamp, the
+ * full-height table card, the 48px signature boxes) collapses here. */
+function renderCompactBlock(request: PurchaseRequest, slots: SignatureSlot[]): string {
+  const items = request.purchase_request_items || []
+
+  const itemRows = items
+    .map((item, index) => {
+      const leadTime = item.material_types?.lead_time_days
+      return `
+        <tr>
+          <td class="idx">${index + 1}</td>
+          <td>${esc(item.material_types?.name) || '-'}${item.note ? ` <span class="muted">(${esc(item.note)})</span>` : ''}</td>
+          <td class="right nowrap">${qty(originalQuantityRequested(item))}</td>
+          <td class="unit">${esc(item.material_types?.unit) || '-'}</td>
+          <td class="right muted nowrap">${leadTime != null ? `${leadTime} วัน` : '-'}</td>
+        </tr>`
+    })
+    .join('')
+
+  const stamp = STATUS_STAMP[request.status]
+  const stampPill = stamp
+    ? `<span class="pill" style="color:${stamp.color};border-color:${stamp.color}">${stamp.label}</span>`
+    : ''
+
+  const plotScopeLine = (() => {
+    if (request.plots?.name) return `แปลง ${esc(request.plots.name)}`
+    if (request.plot_groups?.name) return `กลุ่มแปลง ${esc(request.plot_groups.name)}`
+    const names = (request.purchase_request_plots || []).map((p) => p.plots?.name).filter((n): n is string => !!n)
+    if (names.length > 0) return `แปลง ${esc(names.join(', '))}`
+    return ''
+  })()
+
+  const byDate = orderByDate(request)
+  const isUrgent = byDate ? byDate.getTime() <= Date.now() : false
+  const orderByLine = byDate
+    ? `<div${isUrgent ? ' class="discount"' : ''}>ควรสั่งภายใน ${thaiDate(byDate.toISOString())}${isUrgent ? ' (เลยกำหนด)' : ''}</div>`
+    : ''
+
+  const signatureBoxes = slots
+    .map((slot) => {
+      const { name, dateLine } = slotContent(request, slot)
+      const image = slot.signature_url
+        ? `<img src="${esc(slot.signature_url)}" class="sig-img" />`
+        : '<div class="sig-spacer"></div>'
+      return `
+        <div class="sig">
+          ${image}
+          <div class="sig-line"></div>
+          <div class="sig-label">${esc(slot.label)}</div>
+          <div class="sig-name">${name || '&nbsp;'}</div>
+          ${dateLine ? `<div class="sig-date">${dateLine}</div>` : ''}
+        </div>`
+    })
+    .join('')
+
+  return `
+  <div class="pr-block">
+    <div class="pr-head">
+      <div>
+        <span class="pr-no">PR-${String(request.pr_no).padStart(4, '0')}</span>
+        ${stampPill}
+        <div class="pr-project">${esc(request.projects?.name) || '-'}</div>
+        ${plotScopeLine ? `<div class="pr-scope">${plotScopeLine}</div>` : ''}
+      </div>
+      <div class="pr-meta">
+        <div>ผู้ขอซื้อ ${esc(request.requester?.full_name || request.requester?.email) || '-'}</div>
+        <div>วันที่ ${thaiDate(request.created_at)}${request.needed_by_date ? ` · ต้องการภายใน ${thaiDate(request.needed_by_date)}` : ''}</div>
+        ${orderByLine}
+      </div>
+    </div>
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="idx">ลำดับ</th>
+          <th>รายการ</th>
+          <th class="right">จำนวน</th>
+          <th class="unit">หน่วย</th>
+          <th class="right">เวลาที่ต้องสั่ง</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+
+    ${request.note ? `<div class="pr-note">หมายเหตุ: ${esc(request.note)}</div>` : ''}
+    ${request.review_note ? `<div class="pr-note discount">เหตุผลที่ปฏิเสธ: ${esc(request.review_note)}</div>` : ''}
+
+    <div class="sig-row">${signatureBoxes}</div>
+  </div>`
+}
+
+/** Page margins live in `@page` here, not in a wrapper's padding the way the
+ * single-request document does it: this content flows across however many
+ * sheets it needs, and only `@page` margins repeat on every one of them. */
+function compactShell(blocksHtml: string, count: number): string {
   return `<!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="utf-8" />
 <style>
-  @page { size: A4; margin: 0; }
-  @font-face {
+  @page { size: A4; margin: 0.4in 0.45in 0.5in; }
+  ${fontFaces()}
+  * { box-sizing: border-box; }
+  html, body { width: 100%; }
+  body {
+    margin: 0;
+    font-family: 'Sarabun', -apple-system, sans-serif;
+    font-size: 9.5px;
+    color: ${c.text};
+    background: ${c.bg};
+    -webkit-text-stroke: 0.3px currentColor;
+  }
+  .muted { color: ${c.muted}; }
+  .discount { color: #dc2626; }
+  .right { text-align: right; }
+  .nowrap { white-space: nowrap; }
+
+  .doc-title {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1.5px solid ${c.text}; padding-bottom: 5px; margin-bottom: 9px;
+  }
+  .doc-title-main { font-size: 12.5px; font-weight: 700; }
+  .doc-title-sub { font-size: 8.5px; color: ${c.muted}; }
+
+  /* The one rule this whole layout exists for: a request is never split
+     across two sheets, so the printer fits as many whole blocks per sheet as
+     the tallest one allows. */
+  .pr-block {
+    border: 1px solid ${c.divider}; border-radius: 9px; padding: 8px 10px; margin-bottom: 8px;
+    page-break-inside: avoid;
+  }
+
+  .pr-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 5px; }
+  .pr-no { font-size: 11.5px; font-weight: 700; letter-spacing: -0.01em; }
+  .pill {
+    display: inline-block; border: 1px solid; border-radius: 20px; padding: 0 6px; margin-left: 5px;
+    font-size: 7.5px; font-weight: 700; letter-spacing: 0.03em; vertical-align: 1.5px;
+  }
+  .pr-project { font-size: 10px; font-weight: 700; margin-top: 1px; }
+  .pr-scope { font-size: 8.5px; color: ${c.muted}; margin-top: 1px; }
+  .pr-meta { text-align: right; font-size: 8.5px; color: ${c.muted}; line-height: 1.5; white-space: nowrap; }
+
+  table.items { width: 100%; border-collapse: collapse; }
+  table.items th {
+    text-align: left; padding: 3px 6px; font-size: 7.5px; font-weight: 700; color: ${c.muted};
+    text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid ${c.divider};
+  }
+  table.items th.right, table.items td.right { text-align: right; }
+  table.items td { padding: 3px 6px; font-size: 9px; border-top: 1px solid ${c.cardBorder}; vertical-align: top; }
+  table.items tr { page-break-inside: avoid; }
+  .idx { color: ${c.muted}; width: 26px; }
+  .unit { color: ${c.muted}; font-size: 8.5px; width: 46px; }
+
+  .pr-note { font-size: 8.5px; color: ${c.muted}; margin-top: 4px; line-height: 1.45; }
+
+  .sig-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 14px; margin-top: 7px; }
+  .sig { flex: 0 0 128px; text-align: center; }
+  .sig-img { height: 22px; object-fit: contain; object-position: bottom; display: block; margin: 0 auto 1px; }
+  .sig-spacer { height: 16px; }
+  .sig-line { border-top: 1px dotted #b8b8bf; margin-bottom: 2px; }
+  .sig-label { font-size: 8px; font-weight: 700; }
+  .sig-name { font-size: 7.5px; color: ${c.muted}; }
+  .sig-date { font-size: 7px; color: ${c.muted}; }
+</style>
+</head>
+<body>
+  <div class="doc-title">
+    <span class="doc-title-main">ใบขอซื้อ / Purchase Requests</span>
+    <span class="doc-title-sub">รวม ${count} ใบ · พิมพ์เมื่อ ${thaiDate(new Date().toISOString())}</span>
+  </div>
+  ${blocksHtml}
+</body>
+</html>`
+}
+
+function fontFaces(): string {
+  return `@font-face {
     font-family: 'Sarabun';
     src: url(data:font/ttf;base64,${cachedRegular}) format('truetype');
     font-weight: 400;
@@ -182,7 +433,17 @@ export function buildPurchaseRequestHtml(request: PurchaseRequest, slots: Signat
     font-family: 'Sarabun';
     src: url(data:font/ttf;base64,${cachedBold}) format('truetype');
     font-weight: 700;
-  }
+  }`
+}
+
+function documentShell(pagesHtml: string): string {
+  return `<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<style>
+  @page { size: A4; margin: 0; }
+  ${fontFaces()}
   * { box-sizing: border-box; }
   html, body { width: 100%; }
   body {
@@ -260,59 +521,6 @@ export function buildPurchaseRequestHtml(request: PurchaseRequest, slots: Signat
   .signature-date { font-size: 8px; color: ${c.muted}; margin-top: 4px; }
 </style>
 </head>
-<body>
-  <div class="page">
-    <div class="header">
-      <div>
-        <div class="project-name">${esc(request.projects?.name) || '-'}</div>
-        ${plotScopeLine ? `<div class="project-sub">${plotScopeLine}</div>` : ''}
-      </div>
-      <div>
-        <div class="title">Purchase Request</div>
-        <div class="title-th">ใบขอซื้อ</div>
-        <div class="doc-info">
-          <div class="doc-row"><span class="doc-label">เลขที่</span><span class="doc-value">PR-${String(request.pr_no).padStart(4, '0')}</span></div>
-          <div class="doc-row"><span class="doc-label">วันที่</span><span class="doc-value">${thaiDate(request.created_at)}</span></div>
-        </div>
-        ${stampBlock}
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="card-row">
-      <div class="card">
-        <div class="card-label">รายละเอียดคำขอซื้อ</div>
-        ${kv('ผู้ขอซื้อ', requesterName)}
-        ${kv('ต้องการภายในวันที่', request.needed_by_date ? thaiDate(request.needed_by_date) : 'ไม่ระบุ')}
-        ${orderByLine}
-      </div>
-      ${
-        request.review_note
-          ? `<div class="card"><div class="card-label">เหตุผลที่ปฏิเสธ</div><div class="kv"><span>${esc(request.review_note)}</span></div></div>`
-          : ''
-      }
-    </div>
-
-    <div class="table-card">
-      <table>
-        <thead>
-          <tr>
-            <th class="idx">ลำดับ</th>
-            <th>รายการ</th>
-            <th class="right">จำนวน</th>
-            <th class="unit">หน่วย</th>
-            <th class="right">เวลาที่ต้องสั่ง</th>
-          </tr>
-        </thead>
-        <tbody>${itemRows}</tbody>
-      </table>
-    </div>
-
-    ${noteBlock}
-
-    <div class="signature-row">${signatureBoxes}</div>
-  </div>
-</body>
+<body>${pagesHtml}</body>
 </html>`
 }

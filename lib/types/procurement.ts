@@ -101,11 +101,17 @@ export type PurchaseRequestItem = {
   purchase_request_id: string
   material_type_id: number
   /** What's still OUTSTANDING, not the original ask - both POs raised from the
-   * request and manual settlements subtract from it. */
+   * request and manual settlements subtract from it. Use
+   * `originalQuantityRequested` (lib/procurement/requestedQuantity) wherever
+   * the question is "what did they ask for". */
   quantity_requested: number
   note: string | null
   material_types?: MaterialType | null
   purchase_request_item_settlements?: PurchaseRequestItemSettlement[]
+  /** Every PO line raised against this request line, cancelled POs included -
+   * po_cancel doesn't hand the quantity back, so these all count towards
+   * reconstructing the original ask. */
+  purchase_order_items?: { quantity_ordered: number }[]
 }
 
 export type PurchaseRequest = {
