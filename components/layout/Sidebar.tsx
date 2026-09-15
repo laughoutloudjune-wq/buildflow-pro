@@ -17,6 +17,7 @@ import {
   Package,
   PackageCheck,
   Wallet,
+  GaugeCircle,
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -67,6 +68,10 @@ const menuSections: SidebarSection[] = [
   {
     title: 'สต็อก',
     items: [{ icon: Package, label: 'สต็อกวัสดุ', href: '/dashboard/stock', permission: 'materials' as const }],
+  },
+  {
+    title: 'ควบคุมต้นทุน',
+    items: [{ icon: GaugeCircle, label: 'คุม BOQ & ต้นทุน', href: '/dashboard/cost-control', permission: 'cost_control' as const }],
   },
   {
     title: 'รายงาน',

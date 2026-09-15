@@ -49,6 +49,8 @@ function buildPayload(input: PurchaseOrderInput) {
       discount_type: input.discount_type || 'none',
       discount_value: Math.max(0, Number(input.discount_value) || 0),
       note: input.note?.trim() || null,
+      is_outside_boq: Boolean(input.is_outside_boq),
+      outside_boq_reason: input.outside_boq_reason?.trim() || null,
       items: items.map((i) => ({
         id: i.id || null,
         material_type_id: i.material_type_id,
@@ -142,6 +144,7 @@ const PO_ERROR_TRANSLATIONS: [string, string][] = [
   ['Cannot set ordered quantity below the quantity already received', 'ระบุจำนวนสั่งซื้อน้อยกว่าจำนวนที่รับแล้วไม่ได้'],
   ['Branch does not belong to this supplier', 'สาขาที่เลือกไม่ได้อยู่กับผู้จำหน่ายรายนี้ กรุณาเลือกสาขาใหม่'],
   ['Choose either a single plot or a plot group, not both', 'กรุณาเลือกแปลงเดียวหรือกลุ่มแปลงอย่างใดอย่างหนึ่งเท่านั้น'],
+  ['A reason is required when marking a purchase order outside BOQ', 'กรุณาระบุเหตุผลเมื่อทำเครื่องหมายว่าเป็นการซื้อนอก BOQ'],
   ['Purchase order not found', 'ไม่พบใบสั่งซื้อนี้'],
   ['Only PM/Admin can edit a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถแก้ไขใบสั่งซื้อได้'],
   ['Only PM/Admin can create a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถสร้างใบสั่งซื้อได้'],

@@ -25,6 +25,7 @@ const moduleLabels: Record<PermissionModule, { title: string; description: strin
   settings: { title: 'ตั้งค่าระบบ', description: 'หน้าตั้งค่าและสิทธิ์' },
   materials: { title: 'วัสดุ (Material Log)', description: 'บันทึกและดูการใช้วัสดุเทียบกับ BOQ' },
   procurement: { title: 'จัดซื้อ', description: 'คำขอซื้อ ใบสั่งซื้อ ผู้จำหน่าย และการรับของ' },
+  cost_control: { title: 'ควบคุมต้นทุน', description: 'เทียบ BOQ กับของที่ซื้อจริง และรายงานต้นทุนโครงการ' },
 }
 
 const permissionModules = Object.keys(moduleLabels) as PermissionModule[]

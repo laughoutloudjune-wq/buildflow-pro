@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { createGoodsReceipt } from '@/actions/procurement-actions'
+import { getBoqCheckForGoodsReceiptDraft } from '@/actions/procurement/boq-control'
+import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
 import type { PurchaseOrder } from '@/lib/types/procurement'
 
 // Every line with anything left to receive starts pre-selected at its full
@@ -31,6 +33,7 @@ export default function GoodsReceiptModal({
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   const [deliveryNoteNo, setDeliveryNoteNo] = useState('')
   const [receivedAt, setReceivedAt] = useState(() => new Date().toISOString().slice(0, 10))
+  const [boqLines, setBoqLines] = useState<BoqCheckLine[]>([])
 
   const receivableItems = (order.purchase_order_items || [])
     .map((item) => ({ item, remaining: Math.max(0, item.quantity_ordered - item.quantity_received) }))
@@ -52,6 +55,44 @@ export default function GoodsReceiptModal({
   }, [isOpen, order.id])
 
   const selectedCount = Object.values(selected).filter(Boolean).length
+
+  // Stable key so the check below only re-fires when a checked quantity
+  // actually changes, not on every unrelated re-render.
+  const boqDraftKey = useMemo(
+    () =>
+      receivableItems
+        .filter(({ item }) => selected[item.id] && Number(quantities[item.id]) > 0)
+        .map(({ item }) => `${item.material_type_id}:${Number(quantities[item.id])}`)
+        .sort()
+        .join(','),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selected, quantities]
+  )
+
+  useEffect(() => {
+    if (!isOpen || !boqDraftKey) {
+      setBoqLines([])
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      const items = boqDraftKey.split(',').map((pair) => {
+        const [materialTypeId, quantity] = pair.split(':').map(Number)
+        return { materialTypeId, quantity }
+      })
+      getBoqCheckForGoodsReceiptDraft(order.id, items)
+        .then((result) => {
+          if (!cancelled) setBoqLines(result.isOutsideBoq ? [] : result.lines)
+        })
+        .catch(() => {
+          // Best-effort early warning - never blocks receiving goods.
+        })
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [isOpen, order.id, boqDraftKey])
 
   function handleSubmit() {
     const items = receivableItems
@@ -85,7 +126,7 @@ export default function GoodsReceiptModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="สร้างใบรับสินค้า" panelClassName="max-w-lg">
+    <Modal isOpen={isOpen} onClose={onClose} title="สร้างใบรับสินค้า" panelClassName="max-w-2xl">
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-slate-500">เลือกสินค้าที่ได้รับหรือต้องการระบุในใบรับสินค้า</p>
@@ -146,6 +187,8 @@ export default function GoodsReceiptModal({
             </table>
           </div>
         )}
+
+        {boqLines.length > 0 && <BoqCheckPanel lines={boqLines} scopeLabel="รับของครั้งนี้" />}
 
         <div className="grid grid-cols-2 gap-3">
           <div>

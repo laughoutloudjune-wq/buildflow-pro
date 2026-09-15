@@ -17,6 +17,7 @@ const PREFIX_TITLES: [string, string][] = [
   ['/dashboard/reports/house-history', 'ประวัติบ้านเลขที่'],
   ['/dashboard/reports/labor-budget', 'สมุดบัญชีค่าแรง'],
   ['/dashboard/reports', 'รายงาน'],
+  ['/dashboard/cost-control', 'ควบคุมต้นทุน'],
   ['/dashboard/settings/permissions', 'สิทธิ์ตามบทบาท'],
   ['/dashboard/settings/contractor-types', 'ประเภทผู้รับเหมา'],
   ['/dashboard/settings', 'ตั้งค่า'],

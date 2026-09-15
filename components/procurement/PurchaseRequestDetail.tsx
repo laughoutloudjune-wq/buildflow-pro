@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, ListChecks, Loader2, PackageCheck, Pencil, ShoppingCart, Undo2, XCircle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -15,6 +15,8 @@ import {
 import PurchaseRequestDocActions from '@/components/procurement/PurchaseRequestDocActions'
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import PurchaseRequestSettleModal from '@/components/procurement/PurchaseRequestSettleModal'
+import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
+import { getBoqCheckForPurchaseRequest } from '@/actions/procurement/boq-control'
 import type { PurchaseRequest, PurchaseRequestItem, PurchaseRequestStatus } from '@/lib/types/procurement'
 import { orderedQuantity, originalQuantityRequested } from '@/lib/procurement/requestQuantities'
 
@@ -142,6 +144,21 @@ export default function PurchaseRequestDetail({
   // highlight below frozen at whatever it was on the first render. A lazy
   // initializer runs exactly once per mount, which is an input it can track.
   const [now] = useState(() => Date.now())
+  const [boqCheck, setBoqCheck] = useState<Awaited<ReturnType<typeof getBoqCheckForPurchaseRequest>> | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getBoqCheckForPurchaseRequest(request.id)
+      .then((result) => {
+        if (!cancelled) setBoqCheck(result)
+      })
+      .catch(() => {
+        // Non-fatal: the request still opens and works without the check.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [request.id])
 
   function handleApprove() {
     startTransition(async () => {
@@ -277,6 +294,9 @@ export default function PurchaseRequestDetail({
                   <tr key={item.id}>
                     <td className="px-4 py-2.5 text-slate-800">
                       {item.material_types?.name || '-'}
+                      {item.boq_master?.item_name && (
+                        <span className="ml-2 text-xs text-slate-400">สำหรับงาน: {item.boq_master.item_name}</span>
+                      )}
                       {closed === 'ordered' && (
                         <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
                           <CheckCircle2 className="h-3.5 w-3.5" /> สั่งซื้อครบแล้ว
@@ -338,6 +358,8 @@ export default function PurchaseRequestDetail({
           </table>
         </div>
       </Card>
+
+      {boqCheck && boqCheck.lines.length > 0 && <BoqCheckPanel lines={boqCheck.lines} scopeLabel={boqCheck.scopeLabel} />}
 
       {request.status === 'pending_review' && (
         <Card className="p-5">

@@ -2,15 +2,14 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, Loader2, MapPin, AlertCircle, Pencil, Users, Package } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, Loader2, MapPin, AlertCircle, Pencil, Users, GaugeCircle } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
+import { Button, ButtonLink } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import PlotGroupManager from '@/components/plots/PlotGroupManager'
-import ProjectCostReportModal from '@/components/reports/ProjectCostReportModal'
 import { getProjectById, updateProject } from '@/actions/project-actions'
 import { getPlotsByProjectId, createPlot, deletePlot } from '@/actions/plot-actions'
 import { getHouseModels } from '@/actions/boq-actions'
@@ -42,7 +41,6 @@ export default function ProjectDetailPageClient({
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isGroupManagerOpen, setIsGroupManagerOpen] = useState(false)
-  const [isCostReportOpen, setIsCostReportOpen] = useState(false)
 
   const [selectedHouseModelId, setSelectedHouseModelId] = useState('')
 
@@ -174,10 +172,10 @@ export default function ProjectDetailPageClient({
           }
           actions={
             <>
-              <Button variant="secondary" onClick={() => setIsCostReportOpen(true)}>
-                <Package className="h-4 w-4" />
-                รายงานต้นทุนโครงการ
-              </Button>
+              <ButtonLink href={`/dashboard/cost-control?project=${projectId}`} variant="secondary">
+                <GaugeCircle className="h-4 w-4" />
+                คุม BOQ & ต้นทุน
+              </ButtonLink>
               <Button variant="secondary" onClick={() => setIsGroupManagerOpen(true)}>
                 <Users className="h-4 w-4" />
                 จัดกลุ่มแปลง
@@ -328,13 +326,6 @@ export default function ProjectDetailPageClient({
         projectId={projectId}
         plots={sortedPlots.map((plot) => ({ id: plot.id, name: plot.name }))}
         onChanged={refreshGroups}
-      />
-
-      <ProjectCostReportModal
-        isOpen={isCostReportOpen}
-        onClose={() => setIsCostReportOpen(false)}
-        projectId={projectId}
-        scopeLabel="ทั้งโครงการ"
       />
 
     </div>

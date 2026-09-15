@@ -94,7 +94,9 @@ type BillingJobRow = {
  * down, and it already has its own report at `/dashboard/reports/dc-history`.
  */
 export async function getLaborLedger(filters: LaborLedgerFilters = {}): Promise<LaborLedgerResult> {
-  await requireModuleAccess('reports')
+  // Also reachable from the cost-control page (BOQ_CONTROL_PLAN.md 8.3),
+  // which gates on 'cost_control' rather than 'reports'.
+  await requireModuleAccess(['reports', 'cost_control'])
   const supabase = await createClient()
 
   let jobsQuery = supabase
@@ -264,7 +266,7 @@ export async function getLaborLedger(filters: LaborLedgerFilters = {}): Promise<
 }
 
 export async function getLaborLedgerOptions() {
-  await requireModuleAccess('reports')
+  await requireModuleAccess(['reports', 'cost_control'])
   const supabase = await createClient()
 
   const [projects, contractors, plotGroups] = await Promise.all([

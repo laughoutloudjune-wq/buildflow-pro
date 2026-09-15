@@ -135,6 +135,7 @@ function renderPage(request: PurchaseRequest, slots: SignatureSlot[]): string {
           <td class="idx">${index + 1}</td>
           <td>
             <div class="item-name">${esc(item.material_types?.name) || '-'}</div>
+            ${item.boq_master?.item_name ? `<div class="item-desc">สำหรับงาน: ${esc(item.boq_master.item_name)}</div>` : ''}
             ${item.note ? `<div class="item-desc">${esc(item.note)}</div>` : ''}
           </td>
           <td class="right nowrap">${qty(originalQuantityRequested(item))}</td>

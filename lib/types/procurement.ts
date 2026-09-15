@@ -106,7 +106,12 @@ export type PurchaseRequestItem = {
    * the question is "what did they ask for". */
   quantity_requested: number
   note: string | null
+  /** Which BOQ job this line is for, e.g. "เทคอนกรีตฐานราก" - optional,
+   * traceability only. Null for requests with no single job (office
+   * supplies, common area). */
+  boq_id: string | null
   material_types?: MaterialType | null
+  boq_master?: { item_name: string } | null
   purchase_request_item_settlements?: PurchaseRequestItemSettlement[]
   /** Every PO line raised against this request line, cancelled POs included -
    * po_cancel doesn't hand the quantity back, so these all count towards
@@ -198,6 +203,10 @@ export type PurchaseOrder = {
   received_by: string | null
   paid_at: string | null
   paid_by: string | null
+  /** Common area, office supplies, machinery - purchases with no BOQ line.
+   * Excluded from the BOQ control rollup when true (BOQ_CONTROL_PLAN.md 5.4). */
+  is_outside_boq: boolean
+  outside_boq_reason: string | null
   suppliers?: Supplier | null
   supplier_branches?: SupplierBranch | null
   companies?: Company | null
@@ -251,6 +260,8 @@ export type PurchaseOrderInput = {
   discount_type?: DiscountType
   discount_value?: number
   note?: string
+  is_outside_boq?: boolean
+  outside_boq_reason?: string | null
   items: PurchaseOrderItemInput[]
 }
 
@@ -267,7 +278,7 @@ export type GoodsReceiptItem = {
   purchase_order_item_id: string
   quantity_received: number
   unit_price_at_receipt: number
-  purchase_order_items?: { material_types?: { name: string } | null } | null
+  purchase_order_items?: { material_types?: { name: string; unit: string } | null } | null
 }
 
 export type GoodsReceipt = {
@@ -287,6 +298,7 @@ export type GoodsReceipt = {
     companies?: { name: string } | null
   } | null
   payment_voucher_receipts?: { payment_voucher_id: string; amount: number; payment_vouchers?: { pp_no: string } | null }[]
+  receiver?: { full_name: string | null } | null
 }
 
 export type PaymentMethod = 'cash' | 'bank_transfer' | 'director_loan'

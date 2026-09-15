@@ -28,6 +28,7 @@ import {
   undoPurchaseRequestItemSettlement as undoPurchaseRequestItemSettlementImpl,
   getApprovedRequestsForOrder as getApprovedRequestsForOrderImpl,
   getCurrentRequesterId as getCurrentRequesterIdImpl,
+  getBoqJobOptionsForPlots as getBoqJobOptionsForPlotsImpl,
   type PurchaseRequestFilters,
 } from '@/actions/procurement/requests'
 import {
@@ -49,6 +50,7 @@ import {
 import {
   getGoodsReceipts as getGoodsReceiptsImpl,
   getGoodsReceiptsForOrder as getGoodsReceiptsForOrderImpl,
+  getGoodsReceiptById as getGoodsReceiptByIdImpl,
   createGoodsReceipt as createGoodsReceiptImpl,
 } from '@/actions/procurement/receipts'
 import {
@@ -167,6 +169,10 @@ export async function getCurrentRequesterId() {
   return getCurrentRequesterIdImpl()
 }
 
+export async function getBoqJobOptionsForPlots(plotIds: string[]) {
+  return getBoqJobOptionsForPlotsImpl(plotIds)
+}
+
 // ---------------------------------------------------------------------------
 // Purchase Orders
 // ---------------------------------------------------------------------------
@@ -233,6 +239,10 @@ export async function getGoodsReceipts() {
 
 export async function getGoodsReceiptsForOrder(purchaseOrderId: string) {
   return getGoodsReceiptsForOrderImpl(purchaseOrderId)
+}
+
+export async function getGoodsReceiptById(id: string) {
+  return getGoodsReceiptByIdImpl(id)
 }
 
 export async function createGoodsReceipt(input: Parameters<typeof createGoodsReceiptImpl>[0]) {

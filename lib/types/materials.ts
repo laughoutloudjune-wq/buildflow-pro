@@ -48,8 +48,51 @@ export type BoqMaterialItem = {
   boq_id: string
   material_type_id: number
   planned_quantity: number
+  /** Allowed cut-waste on top of planned_quantity, as a percent (e.g. 5 =
+   * 5%). 0 (the column default) means "use the org-wide default" wherever
+   * the BOQ control ceiling is computed - see organization_settings.default_waste_percent
+   * and boq_control_rollup(). */
+  waste_percent: number
   created_at: string
   material_types?: MaterialType | null
+}
+
+/** One row of a house-model-level material grid: every material across one
+ * BOQ job (boq_master row), so a whole house's materials can be entered
+ * without opening a separate modal per job - see BOQ_CONTROL_PLAN.md 7.2. */
+export type BoqMaterialsForHouseModelJob = {
+  boqId: string
+  boqItemName: string
+  items: BoqMaterialItem[]
+}
+
+/** One resolved row of a BOQ material Excel import - see
+ * BOQ_CONTROL_PLAN.md 7.1. Resolution is exact-match-first with a
+ * normalized-name fallback, never a blanket normalize-then-join. */
+export type BoqMaterialImportRow = {
+  line: number
+  houseModelName: string
+  boqJobName: string
+  materialName: string
+  quantity: number
+  wastePercent: number
+  boqId: string
+  materialTypeId: number
+  status: 'insert' | 'update'
+  previousQuantity?: number
+}
+
+export type BoqMaterialImportSkippedRow = {
+  line: number
+  houseModelName: string
+  boqJobName: string
+  materialName: string
+  reason: string
+}
+
+export type BoqMaterialImportPreview = {
+  rows: BoqMaterialImportRow[]
+  skipped: BoqMaterialImportSkippedRow[]
 }
 
 /** A named batch of plots built/supplied together (e.g. "98-102"). Material

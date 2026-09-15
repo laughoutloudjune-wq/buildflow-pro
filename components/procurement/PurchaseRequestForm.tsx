@@ -8,12 +8,12 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
 import { getProjects } from '@/actions/project-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
 import { getMaterialPickerOptions, getPlotGroups } from '@/actions/material-actions'
-import { createPurchaseRequest, updatePurchaseRequest } from '@/actions/procurement-actions'
+import { createPurchaseRequest, updatePurchaseRequest, getBoqJobOptionsForPlots } from '@/actions/procurement-actions'
 import type { PurchaseRequest } from '@/lib/types/procurement'
 import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
 
 type PlotScope = 'none' | 'plot' | 'group' | 'multi'
-type Line = { material_type_id: number; quantity_requested: string; note: string }
+type Line = { material_type_id: number; quantity_requested: string; note: string; boq_id: string | null }
 
 export default function PurchaseRequestForm({
   mode,
@@ -43,6 +43,7 @@ export default function PurchaseRequestForm({
   const [note, setNote] = useState('')
   const [neededByDate, setNeededByDate] = useState('')
   const [lines, setLines] = useState<Line[]>([])
+  const [boqJobOptions, setBoqJobOptions] = useState<{ id: string; item_name: string }[]>([])
 
   useEffect(() => {
     async function bootstrap() {
@@ -69,6 +70,7 @@ export default function PurchaseRequestForm({
             material_type_id: i.material_type_id,
             quantity_requested: String(i.quantity_requested),
             note: i.note || '',
+            boq_id: i.boq_id,
           }))
         )
       }
@@ -95,8 +97,32 @@ export default function PurchaseRequestForm({
   }, [projectId])
 
   function addLine() {
-    setLines((prev) => [...prev, { material_type_id: 0, quantity_requested: '', note: '' }])
+    setLines((prev) => [...prev, { material_type_id: 0, quantity_requested: '', note: '', boq_id: null }])
   }
+
+  // The BOQ job picker's options: every job belonging to any plot currently
+  // in scope's house model. Resolved the same way regardless of which of
+  // the three plot-scope shapes is active, since a saved group's members
+  // aren't otherwise available client-side.
+  const resolvedPlotIds =
+    plotScope === 'plot' && plotId
+      ? [plotId]
+      : plotScope === 'multi'
+        ? plotIds
+        : plotScope === 'group' && plotGroupId
+          ? plotGroups.find((g) => g.id === plotGroupId)?.member_plot_ids || []
+          : []
+
+  useEffect(() => {
+    if (resolvedPlotIds.length === 0) {
+      setBoqJobOptions([])
+      return
+    }
+    getBoqJobOptionsForPlots(resolvedPlotIds)
+      .then(setBoqJobOptions)
+      .catch(() => setBoqJobOptions([]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedPlotIds.join(',')])
 
   function updateLine(index: number, patch: Partial<Line>) {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
@@ -140,6 +166,7 @@ export default function PurchaseRequestForm({
         material_type_id: l.material_type_id,
         quantity_requested: Number(l.quantity_requested),
         note: l.note,
+        boq_id: l.boq_id,
       })),
     }
 
@@ -269,6 +296,18 @@ export default function PurchaseRequestForm({
                   <button type="button" onClick={() => removeLine(i)} className="rounded p-2 text-slate-300 hover:bg-red-50 hover:text-red-500">
                     <Trash2 className="h-4 w-4" />
                   </button>
+                </div>
+                <div className="mt-2">
+                  {boqJobOptions.length > 0 ? (
+                    <SearchableSelect
+                      options={boqJobOptions.map((j) => ({ value: j.id, label: j.item_name }))}
+                      value={line.boq_id || ''}
+                      onChange={(v) => updateLine(i, { boq_id: v || null })}
+                      placeholder="สำหรับงาน (ไม่ระบุก็ได้)"
+                    />
+                  ) : (
+                    <p className="text-xs text-slate-400">เลือกแปลงก่อน จึงจะระบุได้ว่าวัสดุนี้สำหรับงานใด (ไม่บังคับ)</p>
+                  )}
                 </div>
                 <input
                   type="text"

@@ -2,13 +2,15 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes, Upload, PackageSearch } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import BoqMaterialItemsModal from '@/components/materials/BoqMaterialItemsModal'
+import BoqMaterialImportModal from '@/components/materials/BoqMaterialImportModal'
+import BoqHouseModelMaterialsGrid from '@/components/materials/BoqHouseModelMaterialsGrid'
 import { getHouseModelById, getBOQItems, createBOQItem, deleteBOQItem, updateBOQItem, getHouseModels, importBOQItems } from '@/actions/boq-actions'
 import { getContractorTypes } from '@/actions/contractor-type-actions'
 import { formatCurrency } from '@/lib/currency'
@@ -43,6 +45,8 @@ export default function BOQDetailPageClient({
   const [editingItem, setEditingItem] = useState<BOQItem | null>(null)
   const [isPending, startTransition] = useTransition()
   const [materialsBoqItem, setMaterialsBoqItem] = useState<{ id: string; item_name: string } | null>(null)
+  const [isHouseModelMaterialsOpen, setIsHouseModelMaterialsOpen] = useState(false)
+  const [isMaterialExcelImportOpen, setIsMaterialExcelImportOpen] = useState(false)
 
   // Re-fetches just the BOQ item list in place, without a full page reload
   // (which would blank the whole page behind a spinner for a single-row
@@ -209,6 +213,14 @@ export default function BOQDetailPageClient({
                   <div className="text-sm text-slate-500">ราคากลางรวม (BOQ)</div>
                   <div className="text-xl font-bold text-emerald-600">฿{formatCurrency(grandTotal)}</div>
               </div>
+              <Button variant="secondary" onClick={() => setIsHouseModelMaterialsOpen(true)}>
+                <PackageSearch className="h-4 w-4" />
+                วัสดุทั้งแบบบ้าน
+              </Button>
+              <Button variant="secondary" onClick={() => setIsMaterialExcelImportOpen(true)}>
+                <Upload className="h-4 w-4" />
+                นำเข้าวัสดุ BOQ
+              </Button>
               <button
               onClick={openImportModal}
               className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 shadow-sm transition"
@@ -460,6 +472,21 @@ export default function BOQDetailPageClient({
           boqItemName={materialsBoqItem.item_name}
         />
       )}
+
+      <Modal
+        isOpen={isHouseModelMaterialsOpen}
+        onClose={() => setIsHouseModelMaterialsOpen(false)}
+        title={`วัสดุทั้งแบบบ้าน: ${model.name}`}
+        panelClassName="max-w-4xl"
+      >
+        <BoqHouseModelMaterialsGrid houseModelId={id} />
+      </Modal>
+
+      <BoqMaterialImportModal
+        isOpen={isMaterialExcelImportOpen}
+        onClose={() => setIsMaterialExcelImportOpen(false)}
+        onImported={() => setIsHouseModelMaterialsOpen(true)}
+      />
     </div>
   )
 }

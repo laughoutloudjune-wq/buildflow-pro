@@ -9,8 +9,9 @@ import type { GoodsReceipt } from '@/lib/types/procurement'
 const SELECT_WITH_RELATIONS = `
   *,
   purchase_orders (po_no, supplier_id, company_id, suppliers (name), companies (name)),
-  goods_receipt_items (*, purchase_order_items (material_types (name))),
-  payment_voucher_receipts (payment_voucher_id, amount, payment_vouchers (pp_no))
+  goods_receipt_items (*, purchase_order_items (material_types (name, unit))),
+  payment_voucher_receipts (payment_voucher_id, amount, payment_vouchers (pp_no)),
+  receiver:profiles!goods_receipts_received_by_fkey (full_name)
 `
 
 /** Every goods receipt across every PO - the ใบรับสินค้า list page. */
@@ -37,6 +38,17 @@ export async function getGoodsReceiptsForOrder(purchaseOrderId: string): Promise
 
   if (error) throw new Error(error.message)
   return (data as unknown as GoodsReceipt[]) || []
+}
+
+/** One receipt by id - for the printable RI and the detail modal, neither of
+ * which already has the full row the way the list page does. */
+export async function getGoodsReceiptById(id: string): Promise<GoodsReceipt | null> {
+  await requireModuleAccess('procurement')
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('goods_receipts').select(SELECT_WITH_RELATIONS).eq('id', id).maybeSingle()
+
+  if (error) throw new Error(error.message)
+  return (data as unknown as GoodsReceipt) || null
 }
 
 export async function createGoodsReceipt(input: {

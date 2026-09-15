@@ -17,6 +17,7 @@ const SELECT_WITH_RELATIONS = `
   purchase_request_items (
     *,
     material_types (*),
+    boq_master (item_name),
     purchase_request_item_settlements (
       *,
       settler:profiles!purchase_request_item_settlements_settled_by_fkey (full_name, email)
@@ -68,6 +69,31 @@ export async function getPurchaseRequestsByIds(ids: string[]): Promise<PurchaseR
   return (data as unknown as PurchaseRequest[]) || []
 }
 
+/** BOQ job options for the request form's per-line "สำหรับงาน" picker -
+ * every boq_master row belonging to any of the given plots' house models,
+ * deduped. Empty until a plot scope resolving to concrete plots is picked
+ * (no plots -> no house model -> nothing to link to). */
+export async function getBoqJobOptionsForPlots(plotIds: string[]): Promise<{ id: string; item_name: string }[]> {
+  await requireModuleAccess('procurement')
+  if (plotIds.length === 0) return []
+  const supabase = await createClient()
+
+  const { data: plots, error: plotsError } = await supabase.from('plots').select('house_model_id').in('id', plotIds)
+  if (plotsError) throw new Error(plotsError.message)
+
+  const houseModelIds = Array.from(new Set((plots || []).map((p) => p.house_model_id).filter((id): id is string => Boolean(id))))
+  if (houseModelIds.length === 0) return []
+
+  const { data: jobs, error: jobsError } = await supabase
+    .from('boq_master')
+    .select('id, item_name')
+    .in('house_model_id', houseModelIds)
+    .order('item_name')
+  if (jobsError) throw new Error(jobsError.message)
+
+  return jobs || []
+}
+
 export async function createPurchaseRequest(input: {
   project_id: string
   plot_id?: string | null
@@ -77,7 +103,7 @@ export async function createPurchaseRequest(input: {
   plot_ids?: string[]
   note?: string
   needed_by_date?: string
-  items: { material_type_id: number; quantity_requested: number; note?: string }[]
+  items: { material_type_id: number; quantity_requested: number; note?: string; boq_id?: string | null }[]
 }) {
   await requireModuleAccess('procurement')
   const supabase = await createClient()
@@ -131,7 +157,7 @@ export async function updatePurchaseRequest(
     plot_ids?: string[]
     note?: string
     needed_by_date?: string
-    items: { material_type_id: number; quantity_requested: number; note?: string }[]
+    items: { material_type_id: number; quantity_requested: number; note?: string; boq_id?: string | null }[]
   }
 ): Promise<{ id: string; pr_no: string } | { error: string }> {
   try {

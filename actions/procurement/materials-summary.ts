@@ -49,7 +49,10 @@ export async function getMaterialsSummaryForProject(
   projectId: string,
   opts: { plotGroupId?: string; plotIds?: string[] } = {}
 ): Promise<MaterialsSummaryRow[]> {
-  await requireModuleAccess('procurement')
+  // Also reachable from the cost-control page (BOQ_CONTROL_PLAN.md 8.3),
+  // which gates on 'cost_control' rather than 'procurement' - a user granted
+  // only one of the two must still be able to call this.
+  await requireModuleAccess(['procurement', 'cost_control'])
   const supabase = await createClient()
 
   const { data, error } = await supabase

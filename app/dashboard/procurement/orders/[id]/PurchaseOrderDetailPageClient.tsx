@@ -10,7 +10,9 @@ import { useToast } from '@/components/ui/Toast'
 import PurchaseOrderForm, { type PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
 import PurchaseOrderDocActions from '@/components/procurement/PurchaseOrderDocActions'
 import GoodsReceiptModal from '@/components/procurement/GoodsReceiptModal'
+import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
 import { cancelPurchaseOrder, setPurchaseOrderStatus, unmarkPurchaseOrderReceived } from '@/actions/procurement-actions'
+import { getBoqCheckForPurchaseOrder, setPoBoqOverrides } from '@/actions/procurement/boq-control'
 import type { PurchaseOrder, PurchaseOrderStatus } from '@/lib/types/procurement'
 
 const STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
@@ -52,10 +54,55 @@ export default function PurchaseOrderDetailPageClient({
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false)
   const toast = useToast()
 
+  const [boqCheck, setBoqCheck] = useState<Awaited<ReturnType<typeof getBoqCheckForPurchaseOrder>> | null>(null)
+  const [isBoqCheckSaving, setIsBoqCheckSaving] = useState(false)
+
   useEffect(() => {
     if (initialError) toast.error(initialError)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialError])
+
+  useEffect(() => {
+    let cancelled = false
+    getBoqCheckForPurchaseOrder(id)
+      .then((result) => {
+        if (!cancelled) setBoqCheck(result)
+      })
+      .catch(() => {
+        // Non-fatal: the PO still opens and works without the check panel.
+      })
+    return () => {
+      cancelled = true
+    }
+    // `order` is a fresh object every time the embedded PurchaseOrderForm
+    // saves and pushes back to this same route - re-running on its
+    // reference change is what keeps this panel from showing stale numbers
+    // after an edit, since `id` alone never changes across that navigation.
+  }, [id, order])
+
+  async function handleAcknowledgeBoq(overrides: { materialTypeId: number; reason: string }[]) {
+    if (!boqCheck) return
+    setIsBoqCheckSaving(true)
+    try {
+      const payload = overrides.map((o) => {
+        const line = boqCheck.lines.find((l) => l.materialTypeId === o.materialTypeId)
+        return {
+          materialTypeId: o.materialTypeId,
+          reason: o.reason,
+          plannedQuantity: line?.plannedQty ?? 0,
+          totalAfterThisPo: line?.totalAfter ?? 0,
+        }
+      })
+      await setPoBoqOverrides(id, payload)
+      const refreshed = await getBoqCheckForPurchaseOrder(id)
+      setBoqCheck(refreshed)
+      toast.success('บันทึกการอนุมัติเกิน BOQ แล้ว')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ')
+    } finally {
+      setIsBoqCheckSaving(false)
+    }
+  }
 
   function handleCancel() {
     const reason = prompt('เหตุผลที่ยกเลิก:')
@@ -184,6 +231,20 @@ export default function PurchaseOrderDetailPageClient({
         )}
       </div>
 
+      {boqCheck && !boqCheck.isOutsideBoq && boqCheck.lines.length > 0 && (
+        <BoqCheckPanel
+          lines={boqCheck.lines}
+          scopeLabel={boqCheck.scopeLabel}
+          existingOverrides={boqCheck.existingOverrides}
+          isSaving={isBoqCheckSaving}
+          onAcknowledge={isFormReadOnly ? undefined : handleAcknowledgeBoq}
+        />
+      )}
+      {boqCheck?.isOutsideBoq && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+          ใบสั่งซื้อนี้ทำเครื่องหมายว่า &quot;ซื้อนอก BOQ&quot; - ไม่นำมาเทียบกับ BOQ
+        </div>
+      )}
 
       <PurchaseOrderForm mode="edit" orderId={id} initialOrder={order} initialOptions={formOptions} readOnly={isFormReadOnly} />
 

@@ -25,6 +25,9 @@ import {
   getPurchaseRequestById,
   getLastMaterialOrderPrice,
 } from '@/actions/procurement-actions'
+import { getBoqCheckForDraft } from '@/actions/procurement/boq-control'
+import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
+import type { ControlScope } from '@/lib/procurement/boqControl'
 import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
 import type {
   Supplier,
@@ -235,6 +238,12 @@ export default function PurchaseOrderForm({
   const [discountMode, setDiscountMode] = useState<DiscountMode>('none')
   const [discountValue, setDiscountValue] = useState('')
   const [note, setNote] = useState('')
+  // Common area, office supplies, machinery - purchases with no BOQ line at
+  // all. Flagged explicitly so they're excluded from the BOQ control
+  // rollup instead of quietly inflating every material's variance.
+  const [isOutsideBoq, setIsOutsideBoq] = useState(false)
+  const [outsideBoqReason, setOutsideBoqReason] = useState('')
+  const [draftBoqLines, setDraftBoqLines] = useState<BoqCheckLine[]>([])
   const [lines, setLines] = useState<Line[]>([])
   // Keyed by material_type_id (not line index) so materials repeated across
   // lines share one fetch. A missing key means "not fetched yet"; an
@@ -342,6 +351,8 @@ export default function PurchaseOrderForm({
         }
 
         setNote(initialOrder.note || '')
+        setIsOutsideBoq(initialOrder.is_outside_boq || false)
+        setOutsideBoqReason(initialOrder.outside_boq_reason || '')
         setLines(
           items.map((item) => ({
             id: item.id,
@@ -461,6 +472,66 @@ export default function PurchaseOrderForm({
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materialIdsKey])
+
+  // Same stability trick as materialIdsKey - only re-run the BOQ draft
+  // check when a material or its quantity actually changes.
+  const draftLinesKey = useMemo(
+    () =>
+      lines
+        .filter((l) => l.material_type_id > 0 && Number(l.quantity_ordered) > 0)
+        .map((l) => `${l.material_type_id}:${Number(l.quantity_ordered)}`)
+        .sort()
+        .join(','),
+    [lines]
+  )
+  // What this same PO already contributes today, per material - subtracted
+  // back out server-side so editing an existing PO doesn't double-count the
+  // portion that hasn't changed (BOQ_CONTROL_PLAN.md 10).
+  const excludeQuantitiesByMaterial = useMemo(() => {
+    if (mode !== 'edit' || !initialOrder) return undefined
+    const map: Record<number, number> = {}
+    for (const item of initialOrder.purchase_order_items || []) {
+      map[item.material_type_id] = (map[item.material_type_id] || 0) + Number(item.quantity_ordered || 0)
+    }
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, initialOrder?.id])
+
+  const draftScope: ControlScope | null = !projectId
+    ? null
+    : plotScope === 'plot' && plotId
+      ? { projectId, plotIds: [plotId] }
+      : plotScope === 'group' && plotGroupId
+        ? { projectId, plotGroupId }
+        : plotScope === 'multi' && plotIds.length > 0
+          ? { projectId, plotIds }
+          : null
+
+  useEffect(() => {
+    if (readOnly || isOutsideBoq || !draftScope || !draftLinesKey) {
+      setDraftBoqLines([])
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      const items = draftLinesKey.split(',').map((pair) => {
+        const [materialTypeId, quantity] = pair.split(':').map(Number)
+        return { materialTypeId, quantity }
+      })
+      getBoqCheckForDraft(draftScope, items, excludeQuantitiesByMaterial)
+        .then((result) => {
+          if (!cancelled) setDraftBoqLines(result.lines)
+        })
+        .catch(() => {
+          // Best-effort early warning - never blocks the form.
+        })
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readOnly, isOutsideBoq, draftScope?.projectId, draftScope?.plotGroupId, (draftScope?.plotIds || []).join(','), draftLinesKey])
 
   const selectedSupplier = useMemo(() => suppliers.find((s) => s.id === supplierId) || null, [suppliers, supplierId])
   const supplierBranches = useMemo(
@@ -660,6 +731,7 @@ export default function PurchaseOrderForm({
     if (validLines.length === 0) return toast.error('กรุณาเพิ่มรายการวัสดุอย่างน้อย 1 รายการ')
     const droppedReceivedLine = lines.some((l) => l.quantity_received > 0 && !(l.material_type_id && Number(l.quantity_ordered) >= l.quantity_received))
     if (droppedReceivedLine) return toast.error('มีรายการที่รับของแล้วแต่จำนวนสั่งซื้อน้อยกว่าจำนวนที่รับ กรุณาแก้ไขก่อนบันทึก')
+    if (isOutsideBoq && !outsideBoqReason.trim()) return toast.error('กรุณาระบุเหตุผลที่ซื้อนอก BOQ')
 
     const payload = {
       supplier_id: supplierId,
@@ -679,6 +751,8 @@ export default function PurchaseOrderForm({
       discount_type: (discountMode === 'individual' ? 'none' : discountMode) as DiscountType,
       discount_value: discountMode === 'individual' ? 0 : Number(discountValue) || 0,
       note,
+      is_outside_boq: isOutsideBoq,
+      outside_boq_reason: isOutsideBoq ? outsideBoqReason.trim() : null,
       items: validLines.map((l) => ({
         id: l.id,
         material_type_id: l.material_type_id,
@@ -1028,6 +1102,29 @@ export default function PurchaseOrderForm({
           )}
 
           <div className="col-span-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={isOutsideBoq}
+                onChange={(e) => setIsOutsideBoq(e.target.checked)}
+                disabled={readOnly}
+              />
+              ซื้อนอก BOQ (พื้นที่ส่วนกลาง / ของใช้สำนักงาน / เครื่องจักร ฯลฯ)
+            </label>
+            <p className="mt-0.5 text-xs text-[#86868b]">รายการนี้จะไม่ถูกนำไปเทียบกับ BOQ ในหน้าควบคุมต้นทุน</p>
+            {isOutsideBoq && (
+              <textarea
+                value={outsideBoqReason}
+                onChange={(e) => setOutsideBoqReason(e.target.value)}
+                className="mt-2 w-full"
+                rows={2}
+                placeholder="เหตุผลที่ซื้อนอก BOQ (จำเป็นต้องระบุ)"
+                disabled={readOnly}
+              />
+            )}
+          </div>
+
+          <div className="col-span-2">
             <label className={fieldLabel}>หมายเหตุการจัดส่ง</label>
             <textarea
               value={deliveryAddress}
@@ -1284,6 +1381,12 @@ export default function PurchaseOrderForm({
           <button type="button" onClick={addLine} className="mt-3 flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800">
             <Plus className="h-4 w-4" /> เพิ่มรายการสินค้า
           </button>
+        )}
+
+        {draftBoqLines.length > 0 && (
+          <div className="mt-4">
+            <BoqCheckPanel lines={draftBoqLines} scopeLabel="ตรวจสอบก่อนบันทึก" />
+          </div>
         )}
 
         <div className="mt-5 ml-auto w-full max-w-xs space-y-1.5 border-t border-slate-100 pt-4 text-sm">

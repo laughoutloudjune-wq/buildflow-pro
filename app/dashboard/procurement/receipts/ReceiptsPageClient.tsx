@@ -11,6 +11,10 @@ import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import { createPaymentVoucher } from '@/actions/procurement-actions'
+import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
+import ReceiptDetailModal from '@/components/procurement/ReceiptDetailModal'
+import { getBoqCheckForReceipts, setPoBoqOverrides } from '@/actions/procurement/boq-control'
+import { isBoqCheckLineOver } from '@/lib/procurement/boqControl'
 import type { GoodsReceipt, PaymentMethod } from '@/lib/types/procurement'
 
 const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
@@ -50,11 +54,18 @@ export default function ReceiptsPageClient({
 
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [detailReceipt, setDetailReceipt] = useState<GoodsReceipt | null>(null)
   const [isPayModalOpen, setIsPayModalOpen] = useState(false)
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [note, setNote] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+
+  const [boqCheck, setBoqCheck] = useState<Awaited<ReturnType<typeof getBoqCheckForReceipts>>>({ perPo: [], overCount: 0 })
+  const [isBoqCheckLoading, setIsBoqCheckLoading] = useState(false)
+  // Keyed `${poId}:${materialTypeId}` - a payment can span several POs, and
+  // material ids aren't unique across them.
+  const [boqReasons, setBoqReasons] = useState<Record<string, string>>({})
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -69,6 +80,16 @@ export default function ReceiptsPageClient({
   const selectedReceipts = useMemo(() => receipts.filter((r) => selected.has(r.id)), [receipts, selected])
   const selectedSupplierId = selectedReceipts[0]?.purchase_orders?.supplier_id || null
   const selectedTotal = useMemo(() => selectedReceipts.reduce((sum, r) => sum + receiptAmount(r), 0), [selectedReceipts])
+
+  useEffect(() => {
+    if (!isPayModalOpen || selected.size === 0) return
+    setIsBoqCheckLoading(true)
+    setBoqReasons({})
+    getBoqCheckForReceipts(Array.from(selected))
+      .then(setBoqCheck)
+      .catch(() => setBoqCheck({ perPo: [], overCount: 0 }))
+      .finally(() => setIsBoqCheckLoading(false))
+  }, [isPayModalOpen, selected])
 
   function toggleOne(r: GoodsReceipt) {
     if (isPaid(r)) return
@@ -89,7 +110,7 @@ export default function ReceiptsPageClient({
     })
   }
 
-  function handleCreatePayment() {
+  async function handleCreatePayment() {
     if (selectedReceipts.length === 0 || !selectedSupplierId) return
     const companyId = selectedReceipts[0].purchase_orders?.company_id
     if (!companyId) {
@@ -97,6 +118,24 @@ export default function ReceiptsPageClient({
       return
     }
     setIsSaving(true)
+
+    // Write whatever over-BOQ reasons were typed before creating the
+    // voucher (decision: warn and record, never block - a line left blank
+    // simply stays unacknowledged rather than stopping the payment).
+    try {
+      for (const po of boqCheck.perPo) {
+        const overrides = po.lines
+          .filter(isBoqCheckLineOver)
+          .map((l) => ({ materialTypeId: l.materialTypeId, reason: (boqReasons[`${po.poId}:${l.materialTypeId}`] || '').trim(), plannedQuantity: l.plannedQty, totalAfterThisPo: l.totalAfter }))
+          .filter((o) => o.reason.length > 0)
+        if (overrides.length > 0) await setPoBoqOverrides(po.poId, overrides)
+      }
+    } catch (error) {
+      setIsSaving(false)
+      toast.error(error instanceof Error ? error.message : 'บันทึกการอนุมัติเกิน BOQ ไม่สำเร็จ')
+      return
+    }
+
     createPaymentVoucher({
       supplier_id: selectedSupplierId,
       company_id: companyId,
@@ -194,7 +233,15 @@ export default function ReceiptsPageClient({
                           title={paid ? 'จ่ายแล้ว' : undefined}
                         />
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 font-mono font-medium text-slate-800">{r.ri_no}</td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => setDetailReceipt(r)}
+                          className="font-mono font-medium text-indigo-600 hover:underline"
+                        >
+                          {r.ri_no}
+                        </button>
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{new Date(r.received_at).toLocaleDateString('th-TH')}</td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <Link href={`/dashboard/procurement/orders/${r.purchase_order_id}`} className="font-mono text-indigo-600 hover:underline">
@@ -225,7 +272,7 @@ export default function ReceiptsPageClient({
         </div>
       </Card>
 
-      <Modal isOpen={isPayModalOpen} onClose={() => setIsPayModalOpen(false)} title="สร้างใบสำคัญจ่าย" panelClassName="max-w-lg">
+      <Modal isOpen={isPayModalOpen} onClose={() => setIsPayModalOpen(false)} title="สร้างใบสำคัญจ่าย" panelClassName="max-w-2xl">
         <div className="space-y-4">
           <div className="rounded-lg bg-slate-50 p-3 text-sm">
             <p className="font-medium text-slate-700">{selectedReceipts[0]?.purchase_orders?.suppliers?.name}</p>
@@ -242,6 +289,29 @@ export default function ReceiptsPageClient({
               <span>฿{formatCurrency(selectedTotal)}</span>
             </div>
           </div>
+
+          {isBoqCheckLoading ? (
+            <div className="flex items-center gap-2 py-2 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" /> กำลังตรวจสอบ BOQ...
+            </div>
+          ) : (
+            boqCheck.perPo.length > 0 && (
+              <div className="space-y-2">
+                {boqCheck.perPo.map((po) => (
+                  <div key={po.poId}>
+                    <p className="mb-1 text-xs font-medium text-slate-500">ใบสั่งซื้อ {po.poNo}</p>
+                    <BoqCheckPanel
+                      lines={po.lines}
+                      scopeLabel={po.scopeLabel}
+                      onReasonChange={(materialTypeId, reason) =>
+                        setBoqReasons((prev) => ({ ...prev, [`${po.poId}:${materialTypeId}`]: reason }))
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            )
+          )}
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">วันที่จ่าย</label>
@@ -270,11 +340,19 @@ export default function ReceiptsPageClient({
               ยกเลิก
             </Button>
             <Button type="button" size="sm" onClick={handleCreatePayment} disabled={isSaving}>
-              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'บันทึกการจ่ายเงิน'}
+              {isSaving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : boqCheck.overCount > 0 ? (
+                'บันทึกการจ่ายเงิน (เกิน BOQ)'
+              ) : (
+                'บันทึกการจ่ายเงิน'
+              )}
             </Button>
           </div>
         </div>
       </Modal>
+
+      {detailReceipt && <ReceiptDetailModal receipt={detailReceipt} onClose={() => setDetailReceipt(null)} />}
     </div>
   )
 }

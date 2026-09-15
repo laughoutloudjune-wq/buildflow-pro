@@ -9,6 +9,9 @@ import { useToast } from '@/components/ui/Toast'
 import { getStockOverview, getStockWithdrawPickerOptions, createStockWithdrawal } from '@/actions/stock-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
 import { getPlotGroups } from '@/actions/material-actions'
+import { getBoqCheckForDraft } from '@/actions/procurement/boq-control'
+import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
+import type { ControlScope } from '@/lib/procurement/boqControl'
 import type { StockOverviewRow } from '@/lib/types/stock'
 import type { PlotGroup } from '@/lib/types/materials'
 
@@ -60,6 +63,7 @@ export default function WithdrawDrawer({
   const [plotScope, setPlotScope] = useState<PlotScope>('none')
   const [plotId, setPlotId] = useState('')
   const [plotGroupId, setPlotGroupId] = useState('')
+  const [boqLines, setBoqLines] = useState<BoqCheckLine[]>([])
 
   useEffect(() => {
     if (isOpen) void bootstrap()
@@ -112,6 +116,7 @@ export default function WithdrawDrawer({
     setPlotScope('none')
     setPlotId('')
     setPlotGroupId('')
+    setBoqLines([])
   }
 
   function handleClose() {
@@ -157,6 +162,51 @@ export default function WithdrawDrawer({
   function removeLine(index: number) {
     setLines((prev) => prev.filter((_, i) => i !== index))
   }
+
+  // Stable key so the check below only re-fires when a material or its
+  // quantity actually changes, not on every unrelated re-render (same
+  // trick as PurchaseOrderForm.tsx's draftLinesKey).
+  const boqDraftKey = lines
+    .filter((l) => l.material_type_id !== null && Number(l.quantity) > 0)
+    .map((l) => `${l.material_type_id}:${Number(l.quantity)}`)
+    .sort()
+    .join(',')
+
+  const boqScope: ControlScope | null = !projectId
+    ? null
+    : plotScope === 'plot' && plotId
+      ? { projectId, plotIds: [plotId] }
+      : plotScope === 'group' && plotGroupId
+        ? { projectId, plotGroupId }
+        : plotScope === 'none'
+          ? { projectId }
+          : null
+
+  useEffect(() => {
+    if (!isOpen || !boqScope || !boqDraftKey) {
+      setBoqLines([])
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      const items = boqDraftKey.split(',').map((pair) => {
+        const [materialTypeId, quantity] = pair.split(':').map(Number)
+        return { materialTypeId, quantity }
+      })
+      getBoqCheckForDraft(boqScope, items, undefined, 'issued')
+        .then((result) => {
+          if (!cancelled) setBoqLines(result.lines)
+        })
+        .catch(() => {
+          // Best-effort early warning - never blocks a withdrawal.
+        })
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, boqScope?.projectId, boqScope?.plotGroupId, (boqScope?.plotIds || []).join(','), boqDraftKey])
 
   const usedIds = new Set(lines.map((l) => l.material_type_id).filter((id): id is number => id !== null))
   const shortLines = lines.filter((l) => l.material_type_id !== null && Number(l.quantity) > onHandFor(l.material_type_id))
@@ -346,6 +396,8 @@ export default function WithdrawDrawer({
               </div>
             )}
           </div>
+
+          {boqLines.length > 0 && <BoqCheckPanel lines={boqLines} scopeLabel="เบิกครั้งนี้" />}
 
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">หมายเหตุ</label>

@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, Package, Pencil, Plus, Trash2, Users } from 'lucide-react'
+import Link from 'next/link'
+import { GaugeCircle, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { createPlotGroup, deletePlotGroup, getPlotGroups, updatePlotGroup } from '@/actions/material-actions'
-import ProjectCostReportModal from '@/components/reports/ProjectCostReportModal'
 import type { PlotGroup } from '@/lib/types/materials'
 
 type PlotOption = { id: string; name: string }
@@ -31,7 +31,6 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
   const [editing, setEditing] = useState<string | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const [selectedPlotIds, setSelectedPlotIds] = useState<Set<string>>(new Set())
-  const [costReportGroup, setCostReportGroup] = useState<PlotGroup | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -118,7 +117,6 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
   )
 
   return (
-    <>
     <Modal isOpen={isOpen} onClose={onClose} title="จัดกลุ่มแปลง (สำหรับบันทึกวัสดุแบบรวมกลุ่ม)" panelClassName="max-w-2xl">
       {isLoading ? (
         <div className="flex items-center justify-center py-10 text-slate-400">
@@ -158,15 +156,13 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setCostReportGroup(group)}
-                          disabled={isSaving}
+                        <Link
+                          href={`/dashboard/cost-control?project=${projectId}&group=${group.id}`}
                           className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
-                          title="รายงานต้นทุน"
+                          title="คุม BOQ & ต้นทุน"
                         >
-                          <Package className="h-4 w-4" />
-                        </button>
+                          <GaugeCircle className="h-4 w-4" />
+                        </Link>
                         <button
                           type="button"
                           onClick={() => startEdit(group)}
@@ -265,17 +261,5 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
         </div>
       )}
     </Modal>
-
-    {costReportGroup && (
-      <ProjectCostReportModal
-        isOpen={Boolean(costReportGroup)}
-        onClose={() => setCostReportGroup(null)}
-        projectId={projectId}
-        scopeLabel={`กลุ่มแปลง ${costReportGroup.name}`}
-        plotGroupId={costReportGroup.id}
-        plotIds={costReportGroup.member_plot_ids}
-      />
-    )}
-    </>
   )
 }

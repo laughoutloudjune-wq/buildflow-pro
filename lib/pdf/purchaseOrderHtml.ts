@@ -3,6 +3,7 @@ import path from 'path'
 import { bahtText } from '@/lib/bahtText'
 import type { PurchaseOrder } from '@/lib/types/procurement'
 import type { SignatureSlot } from '@/lib/types/signatures'
+import { isBoqCheckLineOver, type BoqCheckLine, type BoqCheckOverride } from '@/lib/procurement/boqControl'
 
 // Fonts are embedded as base64 data URIs rather than linked - Puppeteer's
 // headless page has no guarantee of network access to either a third-party
@@ -104,7 +105,85 @@ function slotContent(
   return { name: '', dateLine: '', imageUrl: slot.signature_url }
 }
 
-export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUrl: string | null | undefined, slots: SignatureSlot[]): string {
+export type PurchaseOrderBoqCheck = {
+  lines: BoqCheckLine[]
+  scopeLabel: string
+  isOutsideBoq: boolean
+  existingOverrides: BoqCheckOverride[]
+}
+
+/** Same table the on-screen BoqCheckPanel shows, so the paper being signed
+ * carries the same numbers as the screen (BOQ_CONTROL_PLAN.md 9.4). Renders
+ * nothing when there's nothing to check (no plot scope, no BOQ lines) or
+ * when everything is within budget and unremarkable - a printed PO that
+ * only ever shows this section when it matters stays readable. */
+function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsideBoqReason: string | null): string {
+  if (!boqCheck) return ''
+  if (boqCheck.isOutsideBoq) {
+    return `
+      <div class="table-card" style="padding:8px 10px; font-size:9.5px; color:${c.muted};">
+        ใบสั่งซื้อนี้ทำเครื่องหมายว่า &quot;ซื้อนอก BOQ&quot; (พื้นที่ส่วนกลาง / ของใช้สำนักงาน / เครื่องจักร ฯลฯ) - ไม่นำมาเทียบกับ BOQ
+        ${outsideBoqReason ? `<br /><strong>เหตุผล:</strong> ${esc(outsideBoqReason)}` : ''}
+      </div>`
+  }
+  if (boqCheck.lines.length === 0) return ''
+
+  const overrideByMaterial = new Map(boqCheck.existingOverrides.map((o) => [o.materialTypeId, o]))
+  const overLines = boqCheck.lines.filter(isBoqCheckLineOver)
+  if (overLines.length === 0) return ''
+
+  const rows = overLines
+    .map((line) => {
+      const override = overrideByMaterial.get(line.materialTypeId)
+      const diff = line.totalAfter - line.plannedQty
+      return `
+        <tr>
+          <td>${esc(line.materialName)}</td>
+          <td class="right nowrap">${qty(line.plannedQty)} ${esc(line.unit)}</td>
+          <td class="right nowrap">${qty(line.alreadyQty)} ${esc(line.unit)}</td>
+          <td class="right nowrap">${qty(line.thisDocQty)} ${esc(line.unit)}</td>
+          <td class="right nowrap">${qty(line.totalAfter)} ${esc(line.unit)}</td>
+          <td class="right nowrap" style="color:#dc2626;">+${qty(diff)} ${esc(line.unit)}</td>
+        </tr>
+        <tr>
+          <td colspan="6" style="font-size:8px; color:${c.muted}; padding-top:0;">
+            ${
+              override
+                ? `<strong>อนุมัติเกิน BOQ:</strong> ${esc(override.reason)} — โดย ${esc(override.approvedBy)}, ${thaiDate(override.approvedAt)}`
+                : `<span style="color:#dc2626;">ยังไม่มีการอนุมัติเกิน BOQ</span>`
+            }
+          </td>
+        </tr>`
+    })
+    .join('')
+
+  return `
+    <div class="table-card" style="border-left: 2.5px solid #dc2626;">
+      <div style="padding:8px 10px 0; font-size:9px; font-weight:700; color:#dc2626; text-transform:uppercase;">
+        เกิน BOQ ${overLines.length} รายการ (${esc(boqCheck.scopeLabel)})
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>วัสดุ</th>
+            <th class="right">BOQ ตามแบบ</th>
+            <th class="right">ซื้อไปแล้ว</th>
+            <th class="right">ใบนี้</th>
+            <th class="right">รวมทั้งหมด</th>
+            <th class="right">เกิน</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`
+}
+
+export function buildPurchaseOrderHtml(
+  order: PurchaseOrder,
+  fallbackSignatureUrl: string | null | undefined,
+  slots: SignatureSlot[],
+  boqCheck?: PurchaseOrderBoqCheck | null
+): string {
   if (!cachedRegular) cachedRegular = fontBase64('Sarabun-Regular.ttf')
   if (!cachedBold) cachedBold = fontBase64('Sarabun-Bold.ttf')
 
@@ -454,6 +533,8 @@ export function buildPurchaseOrderHtml(order: PurchaseOrder, fallbackSignatureUr
         <tbody>${itemRows}</tbody>
       </table>
     </div>
+
+    ${boqCheckBlock(boqCheck, order.outside_boq_reason)}
 
     <div class="bottom-row">
       <div class="words-card">

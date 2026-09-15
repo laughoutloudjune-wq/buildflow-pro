@@ -7,7 +7,11 @@ import { requireModuleAccess } from '@/lib/auth/route-access'
 import { getCurrentUser, getCurrentUserRole, requireAuthRole } from '@/actions/_shared/user-role'
 import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
 import type {
+  BoqMaterialImportPreview,
+  BoqMaterialImportRow,
+  BoqMaterialImportSkippedRow,
   BoqMaterialItem,
+  BoqMaterialsForHouseModelJob,
   MaterialCatalogRow,
   MaterialPickerOption,
   MaterialType,
@@ -474,6 +478,226 @@ export async function deleteBoqMaterialItem(id: string, boqId: string) {
   const { error } = await supabase.from('boq_material_items').delete().eq('id', id)
   if (error) throw new Error(error.message)
   revalidatePath(`/dashboard/boq/${boqId}`)
+}
+
+// ---------------------------------------------------------------------------
+// House-model-level material entry (BOQ_CONTROL_PLAN.md 7.2). Opening one
+// BoqMaterialItemsModal per BOQ job to enter a whole house's materials is
+// the reason boq_material_items is still almost empty - this fetches/saves
+// every job's materials in one grid instead.
+// ---------------------------------------------------------------------------
+
+export async function getBoqMaterialsForHouseModel(houseModelId: string): Promise<BoqMaterialsForHouseModelJob[]> {
+  await requireModuleAccess('materials')
+  const supabase = await createClient()
+
+  const { data: boqRows, error: boqError } = await supabase
+    .from('boq_master')
+    .select('id, item_name')
+    .eq('house_model_id', houseModelId)
+    .order('created_at')
+  if (boqError) throw new Error(boqError.message)
+  if (!boqRows || boqRows.length === 0) return []
+
+  const boqIds = boqRows.map((b) => b.id)
+  const { data: itemRows, error: itemError } = await supabase
+    .from('boq_material_items')
+    .select('*, material_types (*)')
+    .in('boq_id', boqIds)
+    .order('created_at')
+  if (itemError) throw new Error(itemError.message)
+
+  const itemsByBoq = new Map<string, BoqMaterialItem[]>()
+  for (const item of itemRows || []) {
+    const list = itemsByBoq.get(item.boq_id) || []
+    list.push(item)
+    itemsByBoq.set(item.boq_id, list)
+  }
+
+  return boqRows.map((b) => ({
+    boqId: b.id,
+    boqItemName: b.item_name,
+    items: itemsByBoq.get(b.id) || [],
+  }))
+}
+
+export async function bulkUpsertBoqMaterialItems(
+  rows: { boqId: string; materialTypeId: number; plannedQuantity: number; wastePercent: number }[]
+): Promise<{ inserted: number; updated: number }> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  if (rows.length === 0) return { inserted: 0, updated: 0 }
+
+  const boqIds = Array.from(new Set(rows.map((r) => r.boqId)))
+  const { data: existing, error: existingError } = await supabase
+    .from('boq_material_items')
+    .select('boq_id, material_type_id')
+    .in('boq_id', boqIds)
+  if (existingError) throw new Error(existingError.message)
+  const existingKeys = new Set((existing || []).map((e) => `${e.boq_id}:${e.material_type_id}`))
+
+  const { error } = await supabase.from('boq_material_items').upsert(
+    rows.map((r) => ({
+      boq_id: r.boqId,
+      material_type_id: r.materialTypeId,
+      planned_quantity: Math.max(0, Number(r.plannedQuantity) || 0),
+      waste_percent: Math.max(0, Number(r.wastePercent) || 0),
+    })),
+    { onConflict: 'boq_id,material_type_id' }
+  )
+  if (error) throw new Error(error.message)
+
+  let inserted = 0
+  let updated = 0
+  for (const r of rows) {
+    if (existingKeys.has(`${r.boqId}:${r.materialTypeId}`)) updated++
+    else inserted++
+  }
+
+  revalidatePath('/dashboard/boq')
+  return { inserted, updated }
+}
+
+// ---------------------------------------------------------------------------
+// BOQ material Excel import (BOQ_CONTROL_PLAN.md 7.1) - preview-then-commit,
+// same shape as parseMaterialImportFile/importMaterialTypes above.
+// Columns (Thai or English header): house model | boq job | material |
+// quantity | waste %.
+// ---------------------------------------------------------------------------
+
+/** Exact match first, normalized match only as a fallback - never a blanket
+ * normalize-then-join. Matches the pattern that avoided nearly duplicating
+ * 850 line items in the PO Excel import: `x`/`X`/`×` are folded together
+ * (both as multiplication signs in dimensions and as literal "x" spelling)
+ * and case/whitespace differences are ignored, but two genuinely different
+ * names never collide. */
+function normalizeMaterialName(name: string): string {
+  return name.trim().toLowerCase().replace(/[×x*]/g, 'x').replace(/\s+/g, ' ')
+}
+
+const BOQ_IMPORT_HEADER_ALIASES: Record<'houseModel' | 'boqJob' | 'material' | 'quantity' | 'wastePercent', string[]> = {
+  houseModel: ['house model', 'แบบบ้าน'],
+  boqJob: ['boq job', 'รายการงาน', 'boq'],
+  material: ['material', 'วัสดุ'],
+  quantity: ['quantity', 'จำนวน', 'ปริมาณ'],
+  wastePercent: ['waste %', 'waste', 'เผื่อ', '% เผื่อ', 'เผื่อ %', 'wastepercent'],
+}
+
+export async function parseBoqMaterialImportFile(formData: FormData): Promise<BoqMaterialImportPreview> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+
+  const file = formData.get('file') as File | null
+  if (!file || file.size === 0) throw new Error('กรุณาเลือกไฟล์')
+
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const workbook = XLSX.read(buffer, { type: 'buffer' })
+  const sheetName = workbook.SheetNames[0]
+  if (!sheetName) throw new Error('ไม่พบชีทข้อมูลในไฟล์')
+
+  const sheet = workbook.Sheets[sheetName]
+  const raw = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, { header: 1, defval: '' })
+  if (raw.length === 0) throw new Error('ไฟล์ว่างเปล่า')
+
+  const headerRow = (raw[0] || []).map((h) => String(h).trim().toLowerCase())
+  const colIndex = {} as Record<keyof typeof BOQ_IMPORT_HEADER_ALIASES, number>
+  for (const key of Object.keys(BOQ_IMPORT_HEADER_ALIASES) as (keyof typeof BOQ_IMPORT_HEADER_ALIASES)[]) {
+    colIndex[key] = headerRow.findIndex((h) => BOQ_IMPORT_HEADER_ALIASES[key].includes(h))
+  }
+  if (colIndex.houseModel < 0 || colIndex.boqJob < 0 || colIndex.material < 0 || colIndex.quantity < 0) {
+    throw new Error('ไม่พบคอลัมน์ที่จำเป็น: house model / boq job / material / quantity (แบบบ้าน / รายการงาน / วัสดุ / จำนวน)')
+  }
+
+  const [{ data: houseModels, error: hmError }, { data: boqRows, error: boqError }, materialTypes, existingItems] =
+    await Promise.all([
+      supabase.from('house_models').select('id, name'),
+      supabase.from('boq_master').select('id, item_name, house_model_id'),
+      fetchAllRows<{ id: number; name: string }>((from, to) =>
+        supabase.from('material_types').select('id, name').eq('is_active', true).order('id').range(from, to)
+      ),
+      fetchAllRows<{ boq_id: string; material_type_id: number; planned_quantity: number }>((from, to) =>
+        supabase.from('boq_material_items').select('boq_id, material_type_id, planned_quantity').order('boq_id').range(from, to)
+      ),
+    ])
+  if (hmError) throw new Error(hmError.message)
+  if (boqError) throw new Error(boqError.message)
+
+  const houseModelByExact = new Map((houseModels || []).map((h) => [h.name.trim(), h] as const))
+  const houseModelByNorm = new Map((houseModels || []).map((h) => [normalizeMaterialName(h.name), h] as const))
+  const boqByExact = new Map((boqRows || []).map((b) => [`${b.house_model_id}:${b.item_name.trim()}`, b] as const))
+  const boqByNorm = new Map((boqRows || []).map((b) => [`${b.house_model_id}:${normalizeMaterialName(b.item_name)}`, b] as const))
+  // coalesce(mt_exact.id, mt_norm.id) - mt_norm is only ever consulted when
+  // no exact name matched, matching the SQL idiom this mirrors.
+  const materialByExact = new Map(materialTypes.map((m) => [m.name.trim(), m] as const))
+  const materialByNorm = new Map(materialTypes.map((m) => [normalizeMaterialName(m.name), m] as const))
+  const existingByKey = new Map(existingItems.map((e) => [`${e.boq_id}:${e.material_type_id}`, e.planned_quantity]))
+
+  const rows: BoqMaterialImportRow[] = []
+  const skipped: BoqMaterialImportSkippedRow[] = []
+
+  raw.slice(1).forEach((row, idx) => {
+    const line = idx + 2 // header is row 1; data starts at row 2
+    const houseModelName = String(row[colIndex.houseModel] ?? '').trim()
+    const boqJobName = String(row[colIndex.boqJob] ?? '').trim()
+    const materialName = String(row[colIndex.material] ?? '').trim()
+
+    if (!houseModelName && !boqJobName && !materialName) return // blank row
+
+    if (!houseModelName || !boqJobName || !materialName) {
+      skipped.push({ line, houseModelName, boqJobName, materialName, reason: 'ข้อมูลไม่ครบ (แบบบ้าน / รายการงาน / วัสดุ)' })
+      return
+    }
+
+    const quantityRaw = row[colIndex.quantity]
+    const quantity = typeof quantityRaw === 'number' ? quantityRaw : parseFloat(String(quantityRaw).replace(/,/g, ''))
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      skipped.push({ line, houseModelName, boqJobName, materialName, reason: 'จำนวนไม่ถูกต้องหรือไม่มากกว่า 0' })
+      return
+    }
+
+    const wasteRaw = colIndex.wastePercent >= 0 ? row[colIndex.wastePercent] : ''
+    const wastePercent =
+      wasteRaw === '' || wasteRaw == null
+        ? 0
+        : typeof wasteRaw === 'number'
+          ? wasteRaw
+          : parseFloat(String(wasteRaw).replace(/[,%]/g, ''))
+
+    const houseModel = houseModelByExact.get(houseModelName) || houseModelByNorm.get(normalizeMaterialName(houseModelName))
+    if (!houseModel) {
+      skipped.push({ line, houseModelName, boqJobName, materialName, reason: `ไม่พบแบบบ้าน "${houseModelName}"` })
+      return
+    }
+
+    const boqJob =
+      boqByExact.get(`${houseModel.id}:${boqJobName}`) || boqByNorm.get(`${houseModel.id}:${normalizeMaterialName(boqJobName)}`)
+    if (!boqJob) {
+      skipped.push({ line, houseModelName, boqJobName, materialName, reason: `ไม่พบรายการงาน "${boqJobName}" ในแบบบ้าน "${houseModel.name}"` })
+      return
+    }
+
+    const material = materialByExact.get(materialName) || materialByNorm.get(normalizeMaterialName(materialName))
+    if (!material) {
+      skipped.push({ line, houseModelName, boqJobName, materialName, reason: `ไม่พบวัสดุ "${materialName}" ในระบบ - เพิ่มวัสดุนี้ก่อนแล้วนำเข้าใหม่` })
+      return
+    }
+
+    const previousQuantity = existingByKey.get(`${boqJob.id}:${material.id}`)
+    rows.push({
+      line,
+      houseModelName: houseModel.name,
+      boqJobName: boqJob.item_name,
+      materialName: material.name,
+      quantity,
+      wastePercent: Math.max(0, Number.isFinite(wastePercent) ? wastePercent : 0),
+      boqId: boqJob.id,
+      materialTypeId: material.id,
+      status: previousQuantity != null ? 'update' : 'insert',
+      previousQuantity,
+    })
+  })
+
+  return { rows, skipped }
 }
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPurchaseOrderById } from '@/actions/procurement-actions'
 import { getOrganizationSettings } from '@/actions/settings-actions'
 import { getSignatureSlots } from '@/actions/signature-slots-actions'
+import { getBoqCheckForPurchaseOrder } from '@/actions/procurement/boq-control'
 import { buildPurchaseOrderHtml } from '@/lib/pdf/purchaseOrderHtml'
 import { respondWithPrintable } from '@/lib/pdf/printableResponse'
 
@@ -26,7 +27,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Purchase order not found' }, { status: 404 })
   }
 
-  const html = buildPurchaseOrderHtml(order, settings?.signature_url, slots)
+  // Best-effort: a BOQ check failure (e.g. no plot scope resolvable) must
+  // never block printing the PO itself.
+  const boqCheck = await getBoqCheckForPurchaseOrder(id).catch(() => null)
+
+  const html = buildPurchaseOrderHtml(order, settings?.signature_url, slots, boqCheck)
 
   return respondWithPrintable({
     request,

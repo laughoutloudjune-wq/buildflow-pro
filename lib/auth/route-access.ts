@@ -89,14 +89,22 @@ export async function requireDashboardRole(allowedRoles: UserRole[]) {
   return { user, role }
 }
 
-export async function requireModuleAccess(moduleKey: PermissionModule) {
+/**
+ * Gates on one module, or - when a server action is genuinely reusable
+ * across pages gated on different modules (e.g. getMaterialsSummaryForProject
+ * is called from both the procurement page and the cost-control page) - on
+ * any of several. A caller with none of the listed modules is redirected;
+ * a single string still works exactly as before for every other call site.
+ */
+export async function requireModuleAccess(moduleKey: PermissionModule | PermissionModule[]) {
   const { user, role, permissions } = await getDashboardSession()
 
   if (!user) {
     redirect('/login')
   }
 
-  if (!canRoleAccessModule(role, moduleKey, permissions)) {
+  const keys = Array.isArray(moduleKey) ? moduleKey : [moduleKey]
+  if (!keys.some((key) => canRoleAccessModule(role, key, permissions))) {
     redirect('/dashboard')
   }
 
