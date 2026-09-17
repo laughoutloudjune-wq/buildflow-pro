@@ -139,7 +139,7 @@ function renderPage(request: PurchaseRequest, slots: SignatureSlot[]): string {
             ${item.note ? `<div class="item-desc">${esc(item.note)}</div>` : ''}
           </td>
           <td class="right nowrap">${qty(originalQuantityRequested(item))}</td>
-          <td class="unit">${esc(item.material_types?.unit) || '-'}</td>
+          <td class="unit">${esc(item.unit || item.material_types?.unit) || '-'}</td>
           <td class="right muted nowrap">${leadTime != null ? `${leadTime} วัน` : '-'}</td>
         </tr>`
     })
@@ -262,7 +262,7 @@ function renderCompactBlock(request: PurchaseRequest, slots: SignatureSlot[]): s
           <td class="idx">${index + 1}</td>
           <td>${esc(item.material_types?.name) || '-'}${item.note ? ` <span class="muted">(${esc(item.note)})</span>` : ''}</td>
           <td class="right nowrap">${qty(originalQuantityRequested(item))}</td>
-          <td class="unit">${esc(item.material_types?.unit) || '-'}</td>
+          <td class="unit">${esc(item.unit || item.material_types?.unit) || '-'}</td>
           <td class="right muted nowrap">${leadTime != null ? `${leadTime} วัน` : '-'}</td>
         </tr>`
     })

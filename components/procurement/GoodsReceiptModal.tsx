@@ -176,7 +176,7 @@ export default function GoodsReceiptModal({
                           />
                         ) : (
                           <span className="text-slate-400">
-                            {remaining.toLocaleString('th-TH')} {item.material_types?.unit}
+                            {remaining.toLocaleString('th-TH')} {item.unit || item.material_types?.unit}
                           </span>
                         )}
                       </td>

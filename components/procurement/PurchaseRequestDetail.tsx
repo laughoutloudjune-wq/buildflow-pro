@@ -18,7 +18,13 @@ import PurchaseRequestSettleModal from '@/components/procurement/PurchaseRequest
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
 import { getBoqCheckForPurchaseRequest } from '@/actions/procurement/boq-control'
 import type { PurchaseRequest, PurchaseRequestItem, PurchaseRequestStatus } from '@/lib/types/procurement'
-import { orderedQuantity, originalQuantityRequested } from '@/lib/procurement/requestQuantities'
+import {
+  isAnsweredByOrder,
+  orderedQuantity,
+  originalQuantityRequested,
+  purchasesInOtherUnits,
+  requestLineUnit,
+} from '@/lib/procurement/requestQuantities'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -98,12 +104,77 @@ export function partiallyOrderedHint(request: PurchaseRequest): string {
  * 'cancelled' settlements was never bought - calling that สั่งซื้อครบแล้ว
  * would be a lie the PM can't correct. */
 function closedState(request: PurchaseRequest, item: PurchaseRequestItem): 'open' | 'ordered' | 'cancelled' {
+  // Purchasing ticking "this order covers it" answers the line outright -
+  // for a line bought in a different unit than it was asked in, it's the only
+  // thing that can, since nothing was subtracted. Mirrors
+  // _pr_recompute_status server-side; keep the two in step.
+  if (isAnsweredByOrder(item)) return 'ordered'
   if (item.quantity_requested > 0) return 'open'
   const settlements = item.purchase_request_item_settlements || []
   const fromPo = (request.purchase_orders?.length ?? 0) > 0
   if (settlements.length === 0) return fromPo ? 'ordered' : 'open'
   const anyOrdered = fromPo || settlements.some((s) => s.reason === 'ordered')
   return anyOrdered ? 'ordered' : 'cancelled'
+}
+
+/** What the quantity column shows: an answered line reports the purchase (in
+ * whatever unit it was really bought in), an open one still reports the ask.
+ * Several units on one line - two POs bought it differently - are listed
+ * rather than added together. */
+function quantityDisplay(item: PurchaseRequestItem, closed: 'open' | 'ordered' | 'cancelled'): string {
+  const unit = requestLineUnit(item)
+  const sameUnit = orderedQuantity(item)
+  const otherUnits = purchasesInOtherUnits(item)
+  if (closed === 'ordered' && (sameUnit > 0 || otherUnits.length > 0)) {
+    return [
+      ...(sameUnit > 0 ? [`${sameUnit.toLocaleString('th-TH')} ${unit}`] : []),
+      ...otherUnits.map((p) => `${p.quantity.toLocaleString('th-TH')} ${p.unit}`),
+    ].join(' + ')
+  }
+  return `${originalQuantityRequested(item).toLocaleString('th-TH')} ${unit}`
+}
+
+/** The orders this line was answered by, deduplicated - usually exactly one. */
+function poRefs(item: PurchaseRequestItem): string[] {
+  const seen = new Set<string>()
+  for (const line of item.purchase_order_items || []) {
+    const poNo = line.purchase_orders?.po_no
+    if (poNo) seen.add(poNo)
+  }
+  return Array.from(seen)
+}
+
+/** Where the line stands, and the order that put it there. Replaces the old
+ * "คงเหลือ" number, which could only ever be stated in the unit the line was
+ * asked in - meaningless once it was bought in a different one. */
+function statusCell(item: PurchaseRequestItem, closed: 'open' | 'ordered' | 'cancelled') {
+  const refs = poRefs(item)
+  const refSuffix = refs.length > 0 ? <span className="font-normal text-slate-400"> · {refs.join(', ')}</span> : null
+
+  if (closed === 'ordered') {
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-emerald-600">
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> ครบ{refSuffix}
+      </span>
+    )
+  }
+  if (closed === 'cancelled') {
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-500">
+        <XCircle className="h-3.5 w-3.5 shrink-0" /> ตัดออก
+      </span>
+    )
+  }
+  const touched = orderedQuantity(item) > 0 || purchasesInOtherUnits(item).length > 0
+  if (touched) {
+    return (
+      <span className="whitespace-nowrap text-xs font-medium text-amber-700">
+        ยังขาด {item.quantity_requested.toLocaleString('th-TH')} {requestLineUnit(item)}
+        {refSuffix}
+      </span>
+    )
+  }
+  return <span className="text-xs text-slate-400">รอสั่งซื้อ</span>
 }
 
 /** Plot scope is one of three mutually exclusive shapes (single plot, saved
@@ -278,10 +349,8 @@ export default function PurchaseRequestDetail({
             <thead className="border-b bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-2 font-medium">วัสดุ</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right font-medium">ขอซื้อ</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right font-medium">สั่งแล้ว</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right font-medium">คงเหลือ</th>
-                <th className="px-4 py-2 font-medium">หน่วย</th>
+                <th className="whitespace-nowrap px-4 py-2 text-right font-medium">จำนวน</th>
+                <th className="px-4 py-2 font-medium">สถานะ</th>
                 <th className="px-4 py-2 font-medium">เวลาที่ต้องสั่ง</th>
                 <th className="px-4 py-2 font-medium">หมายเหตุ</th>
               </tr>
@@ -296,16 +365,6 @@ export default function PurchaseRequestDetail({
                       {item.material_types?.name || '-'}
                       {item.boq_master?.item_name && (
                         <span className="ml-2 text-xs text-slate-400">สำหรับงาน: {item.boq_master.item_name}</span>
-                      )}
-                      {closed === 'ordered' && (
-                        <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> สั่งซื้อครบแล้ว
-                        </span>
-                      )}
-                      {closed === 'cancelled' && (
-                        <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500">
-                          <XCircle className="h-3.5 w-3.5" /> ตัดออกแล้ว
-                        </span>
                       )}
                       {/* Manual settlements are a human judgement call, so each
                         * one shows what was closed, why, and a way back out -
@@ -334,19 +393,19 @@ export default function PurchaseRequestDetail({
                         </div>
                       ))}
                     </td>
-                    {/* The ask never moves; the other two are what's happened
-                      * to it since. quantity_requested is the outstanding
-                      * remainder, not the ask - see requestQuantities.ts. */}
-                    <td className="px-4 py-2.5 text-right font-medium text-slate-700">
-                      {originalQuantityRequested(item)}
+                    {/* An answered line reports what was actually bought, in
+                      * the unit it was really bought in; an open one still
+                      * reports the ask. The ask is never overwritten - it's
+                      * on the hover and on the printed ใบขอซื้อ - but the
+                      * screen follows the order, the same way a material
+                      * substitution already does. */}
+                    <td
+                      className="whitespace-nowrap px-4 py-2.5 text-right font-medium text-slate-700"
+                      title={`ขอไว้ ${originalQuantityRequested(item)} ${requestLineUnit(item)}`}
+                    >
+                      {quantityDisplay(item, closed)}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-slate-600">
-                      {orderedQuantity(item) || <span className="text-slate-300">-</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-slate-600">
-                      {closed === 'open' ? item.quantity_requested : <span className="text-slate-300">-</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-500">{item.material_types?.unit || '-'}</td>
+                    <td className="px-4 py-2.5 text-slate-500">{statusCell(item, closed)}</td>
                     <td className="px-4 py-2.5 text-slate-500">
                       {item.material_types?.lead_time_days != null ? `${item.material_types.lead_time_days} วัน` : '-'}
                     </td>

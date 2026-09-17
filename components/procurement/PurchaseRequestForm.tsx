@@ -13,7 +13,16 @@ import type { PurchaseRequest } from '@/lib/types/procurement'
 import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
 
 type PlotScope = 'none' | 'plot' | 'group' | 'multi'
-type Line = { material_type_id: number; quantity_requested: string; note: string; boq_id: string | null }
+type Line = {
+  material_type_id: number
+  quantity_requested: string
+  /** Prefilled from the picked material's catalog unit, editable - for a
+   * material asked for in a different unit than it's catalogued in (e.g.
+   * counting pieces for something catalogued by the box). */
+  unit: string
+  note: string
+  boq_id: string | null
+}
 
 export default function PurchaseRequestForm({
   mode,
@@ -69,6 +78,10 @@ export default function PurchaseRequestForm({
           (initialRequest.purchase_request_items || []).map((i) => ({
             material_type_id: i.material_type_id,
             quantity_requested: String(i.quantity_requested),
+            // Falls back to the material's current catalog unit for a line
+            // saved before this field existed (unit is null) - same prefill
+            // a brand-new line gets.
+            unit: i.unit || m.find((mat) => mat.id === i.material_type_id)?.unit || '',
             note: i.note || '',
             boq_id: i.boq_id,
           }))
@@ -97,7 +110,7 @@ export default function PurchaseRequestForm({
   }, [projectId])
 
   function addLine() {
-    setLines((prev) => [...prev, { material_type_id: 0, quantity_requested: '', note: '', boq_id: null }])
+    setLines((prev) => [...prev, { material_type_id: 0, quantity_requested: '', unit: '', note: '', boq_id: null }])
   }
 
   // The BOQ job picker's options: every job belonging to any plot currently
@@ -165,6 +178,7 @@ export default function PurchaseRequestForm({
       items: validLines.map((l) => ({
         material_type_id: l.material_type_id,
         quantity_requested: Number(l.quantity_requested),
+        unit: l.unit.trim() || null,
         note: l.note,
         boq_id: l.boq_id,
       })),
@@ -280,7 +294,10 @@ export default function PurchaseRequestForm({
                     <SearchableSelect
                       options={materialOptions}
                       value={line.material_type_id ? String(line.material_type_id) : ''}
-                      onChange={(v) => updateLine(i, { material_type_id: Number(v) })}
+                      onChange={(v) => {
+                        const material = materials.find((m) => m.id === Number(v))
+                        updateLine(i, { material_type_id: Number(v), unit: material?.unit || '' })
+                      }}
                       placeholder="เลือกวัสดุ"
                     />
                   </div>
@@ -292,6 +309,14 @@ export default function PurchaseRequestForm({
                     onChange={(e) => updateLine(i, { quantity_requested: e.target.value })}
                     placeholder="จำนวน"
                     className="w-24"
+                  />
+                  <input
+                    type="text"
+                    value={line.unit}
+                    onChange={(e) => updateLine(i, { unit: e.target.value })}
+                    placeholder="หน่วย"
+                    title="หน่วยนับสำหรับรายการนี้ - แก้ไขได้ถ้าต้องการนับต่างจากหน่วยของวัสดุในระบบ"
+                    className="w-20"
                   />
                   <button type="button" onClick={() => removeLine(i)} className="rounded p-2 text-slate-300 hover:bg-red-50 hover:text-red-500">
                     <Trash2 className="h-4 w-4" />

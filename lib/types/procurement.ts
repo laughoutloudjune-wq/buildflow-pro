@@ -105,6 +105,11 @@ export type PurchaseRequestItem = {
    * `originalQuantityRequested` (lib/procurement/requestedQuantity) wherever
    * the question is "what did they ask for". */
   quantity_requested: number
+  /** This line's own unit, when the requester means something other than the
+   * material's catalog unit (e.g. counting pieces for a material catalogued
+   * by the box). Null means "use material_types.unit" - true for the vast
+   * majority of lines, unaffected by this field existing at all. */
+  unit: string | null
   note: string | null
   /** Which BOQ job this line is for, e.g. "เทคอนกรีตฐานราก" - optional,
    * traceability only. Null for requests with no single job (office
@@ -116,7 +121,16 @@ export type PurchaseRequestItem = {
   /** Every PO line raised against this request line, cancelled POs included -
    * po_cancel doesn't hand the quantity back, so these all count towards
    * reconstructing the original ask. */
-  purchase_order_items?: { quantity_ordered: number }[]
+  purchase_order_items?: {
+    quantity_ordered: number
+    unit: string | null
+    /** Purchasing's answer: this order line covers the request line it came
+     * from, whatever the two quantities happen to say. The only thing that
+     * can close a line bought in a different unit than it was asked for -
+     * see requestQuantities.ts. */
+    closes_request_line: boolean
+    purchase_orders?: { po_no: string } | null
+  }[]
 }
 
 export type PurchaseRequest = {
@@ -161,6 +175,14 @@ export type PurchaseOrderItem = {
   material_type_id: number
   purchase_request_item_id: string | null
   quantity_ordered: number
+  /** This line's own unit, when it differs from the material's catalog unit
+   * (e.g. buying by the box). Null means "use material_types.unit". */
+  unit: string | null
+  /** Purchasing's answer: this line covers the request line it came from.
+   * The system never subtracts across two different units, so for a line
+   * bought in a different unit than it was asked for, this is the only
+   * thing that closes it. */
+  closes_request_line: boolean
   unit_price: number
   quantity_received: number
   description: string | null
@@ -233,6 +255,11 @@ export type PurchaseOrderItemInput = {
   material_type_id: number
   purchase_request_item_id?: string | null
   quantity_ordered: number
+  /** This line's own unit; omitted/null means the material's catalog unit. */
+  unit?: string | null
+  /** Purchasing ticking "this order covers the request line". Only ever
+   * meaningful on a line carrying a purchase_request_item_id. */
+  closes_request_line?: boolean
   unit_price: number
   description?: string
   discount_type?: DiscountType

@@ -460,14 +460,18 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
   const { data: pr, error } = await supabase
     .from('purchase_requests')
     .select(
+      // plots is reachable two ways from a request (its own plot_id, and
+      // through purchase_request_plots), so the embed has to name which -
+      // without the hint PostgREST refuses the whole query, which this
+      // function's caller then swallows, silently hiding the BOQ panel.
       `id, project_id, plot_id, plot_group_id,
-       plots (name),
+       plots!purchase_requests_plot_id_fkey (name),
        plot_groups (name),
        purchase_request_plots (plot_id, plots (name)),
        purchase_request_items (
-         material_type_id, quantity_requested, material_types (name, unit),
+         material_type_id, quantity_requested, unit, material_types (name, unit),
          purchase_request_item_settlements (quantity),
-         purchase_order_items (quantity_ordered)
+         purchase_order_items (quantity_ordered, unit, closes_request_line)
        )`
     )
     .eq('id', prId)

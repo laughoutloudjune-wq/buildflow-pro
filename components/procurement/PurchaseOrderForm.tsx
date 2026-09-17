@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, ArrowLeft, Link2, Loader2, Plus, Repeat2, Trash2 } from 'lucide-react'
@@ -91,6 +91,10 @@ type Line = {
   material_type_id: number
   purchase_request_item_id: string | null
   quantity_ordered: string
+  /** Purchasing's answer: this order covers the request line this came from.
+   * When the order's unit and the request's differ nothing can be
+   * subtracted, so this is the only thing that closes the line. */
+  closes_request_line: boolean
   unit_price: string
   description: string
   discountValue: string
@@ -195,6 +199,11 @@ export default function PurchaseOrderForm({
   // paint - unless this is a create-from-request, which still has to load the
   // source PR to prefill its lines.
   const [isLoading, setIsLoading] = useState(!initialOptions || Boolean(fromRequestId))
+  // Flips true exactly once, after bootstrap()'s fields are fully settled -
+  // including the awaited purchase-request lookup for a PR-linked order - so
+  // the unsaved-changes snapshot below captures real loaded values instead of
+  // the empty pre-load state.
+  const [hasLoadedFields, setHasLoadedFields] = useState(false)
   const [isPending, startTransition] = useTransition()
   const toast = useToast()
 
@@ -270,7 +279,7 @@ export default function PurchaseOrderForm({
    * keeps it, but deleting the row and adding a fresh one silently drops it,
    * which used to be invisible until the request sat at 'approved' forever.
    * Empty for an order not raised from a request. */
-  const [requestLines, setRequestLines] = useState<Record<string, { name: string; materialTypeId: number }>>({})
+  const [requestLines, setRequestLines] = useState<Record<string, { name: string; materialTypeId: number; unit: string }>>({})
   /** Set only when this order is tied to a request, so the "not settling
    * anything" hint stays quiet on ordinary standalone orders where an
    * unlinked line is simply normal. */
@@ -302,7 +311,11 @@ export default function PurchaseOrderForm({
       Object.fromEntries(
         (request.purchase_request_items || []).map((item) => [
           item.id,
-          { name: item.material_types?.name || '-', materialTypeId: item.material_type_id },
+          {
+            name: item.material_types?.name || '-',
+            materialTypeId: item.material_type_id,
+            unit: item.unit || item.material_types?.unit || '',
+          },
         ])
       )
     )
@@ -360,6 +373,7 @@ export default function PurchaseOrderForm({
             material_type_id: item.material_type_id,
             purchase_request_item_id: item.purchase_request_item_id,
             quantity_ordered: String(item.quantity_ordered),
+            closes_request_line: item.closes_request_line,
             unit_price: String(item.unit_price),
             description: item.description || '',
             discountValue: item.discount_amount ? String(item.discount_amount) : '',
@@ -406,6 +420,13 @@ export default function PurchaseOrderForm({
                 material_type_id: item.material_type_id,
                 purchase_request_item_id: item.id,
                 quantity_ordered: String(item.quantity_requested),
+                // Pre-answered when the request asked in a unit this order
+                // can't be placed in - the supplier sells by the material's
+                // own unit, so nothing can be subtracted and only this
+                // closes the line.
+                closes_request_line: Boolean(
+                  item.unit && item.material_types?.unit && item.unit !== item.material_types.unit
+                ),
                 unit_price: String(item.material_types?.current_price ?? 0),
                 description: '',
                 discountValue: '',
@@ -417,6 +438,7 @@ export default function PurchaseOrderForm({
       toast.error(error instanceof Error ? error.message : 'โหลดข้อมูลไม่สำเร็จ')
     } finally {
       setIsLoading(false)
+      setHasLoadedFields(true)
     }
   }
 
@@ -550,6 +572,100 @@ export default function PurchaseOrderForm({
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'))
   }, [materials])
 
+  // Snapshot of every field that ends up in the save payload. Compared on
+  // every render against the value captured just after load (see
+  // hasLoadedFields) to drive the unsaved-changes warning below - a ref, not
+  // state, since taking the snapshot must never itself trigger a re-render.
+  const dirtySnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        projectId,
+        plotScope,
+        plotId,
+        plotGroupId,
+        plotIds,
+        supplierId,
+        supplierBranchId,
+        companyId,
+        vatOption,
+        orderDate,
+        expectedDeliveryDate,
+        deliveryAddress,
+        paymentTerms,
+        discountMode,
+        discountValue,
+        note,
+        isOutsideBoq,
+        outsideBoqReason,
+        lines,
+      }),
+    [
+      projectId,
+      plotScope,
+      plotId,
+      plotGroupId,
+      plotIds,
+      supplierId,
+      supplierBranchId,
+      companyId,
+      vatOption,
+      orderDate,
+      expectedDeliveryDate,
+      deliveryAddress,
+      paymentTerms,
+      discountMode,
+      discountValue,
+      note,
+      isOutsideBoq,
+      outsideBoqReason,
+      lines,
+    ]
+  )
+  const initialSnapshotRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (hasLoadedFields && initialSnapshotRef.current === null) {
+      initialSnapshotRef.current = dirtySnapshot
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasLoadedFields])
+  const isDirty = mode === 'edit' && !readOnly && initialSnapshotRef.current !== null && dirtySnapshot !== initialSnapshotRef.current
+
+  // Editing a PO takes real effort (line items, prices, BOQ scope) that a
+  // stray sidebar click or "กลับ" tap would throw away silently. Native
+  // confirmation for a full unload, and the same question before any in-app
+  // link navigates away, since Next's router has no built-in nav guard. Does
+  // not catch the browser back/forward button - popstate-based traps are
+  // unreliable enough (double-press, corrupted forward history) that they
+  // cost more than the edge case they'd cover.
+  useEffect(() => {
+    if (!isDirty) return
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    function handleDocumentClick(e: MouseEvent) {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+      const anchor = (e.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null
+      if (!anchor) return
+      // Opens a new tab or triggers a file download rather than navigating
+      // this one away - print/download PO links live on this same page.
+      if ((anchor.target && anchor.target !== '_self') || anchor.hasAttribute('download')) return
+      const url = new URL(anchor.href, window.location.href)
+      if (url.origin !== window.location.origin) return
+      if (url.pathname === window.location.pathname && url.search === window.location.search) return
+      if (!window.confirm('มีการแก้ไขที่ยังไม่ได้บันทึก ต้องการออกจากหน้านี้โดยไม่บันทึกหรือไม่?')) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    document.addEventListener('click', handleDocumentClick, true)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      document.removeEventListener('click', handleDocumentClick, true)
+    }
+  }, [isDirty])
+
   function handleSelectSupplier(id: string) {
     setSupplierId(id)
     const supplier = suppliers.find((s) => s.id === id)
@@ -668,11 +784,39 @@ export default function PurchaseOrderForm({
         material_type_id: 0,
         purchase_request_item_id: null,
         quantity_ordered: '',
+        closes_request_line: false,
         unit_price: '',
         description: '',
         discountValue: '',
       },
     ])
+  }
+
+  /** The unit this order line transacts in. Always the material's own unit -
+   * a PO goes to a supplier, who sells in exactly one unit, so there is
+   * nothing here for purchasing to choose. */
+  function materialUnit(materialTypeId: number): string {
+    return materials.find((m) => m.id === materialTypeId)?.unit || ''
+  }
+
+  /** True when the request asked in a different unit than this order can be
+   * placed in - the case where nothing can be subtracted and the tick box is
+   * the only thing that can close the line. False for a standalone line. */
+  function differsFromRequestUnit(line: Line): boolean {
+    if (!line.purchase_request_item_id) return false
+    const source = requestLines[line.purchase_request_item_id]
+    if (!source?.unit) return false
+    const thisUnit = materialUnit(line.material_type_id)
+    return Boolean(thisUnit) && thisUnit !== source.unit
+  }
+
+  /** Swapping the material can change whether the arithmetic is even capable
+   * of closing the line, so the default answer moves with it. Only called
+   * from the material picker, never on every render, so an answer the user
+   * has already given by hand is never overwritten. */
+  function withDefaultAnswer(line: Line, patch: Partial<Line>): Partial<Line> {
+    const next = { ...line, ...patch }
+    return { ...patch, closes_request_line: differsFromRequestUnit(next) }
   }
 
   function updateLine(index: number, patch: Partial<Line>) {
@@ -758,6 +902,7 @@ export default function PurchaseOrderForm({
         material_type_id: l.material_type_id,
         purchase_request_item_id: l.purchase_request_item_id,
         quantity_ordered: Number(l.quantity_ordered),
+        closes_request_line: Boolean(l.purchase_request_item_id) && l.closes_request_line,
         unit_price: Number(l.unit_price) || 0,
         description: l.description,
         discount_type: (discountMode === 'individual' && Number(l.discountValue) > 0 ? 'amount' : 'none') as DiscountType,
@@ -780,6 +925,9 @@ export default function PurchaseOrderForm({
             toast.error(result.error)
             return
           }
+          // Marks the just-saved state clean so the nav guard doesn't fire on
+          // this same redirect.
+          initialSnapshotRef.current = dirtySnapshot
           router.push(`/dashboard/procurement/orders/${orderId}`)
         }
       } catch (error) {
@@ -1266,7 +1414,9 @@ export default function PurchaseOrderForm({
                             className="min-w-0 flex-1"
                             options={materialOptions}
                             value={line.material_type_id ? String(line.material_type_id) : ''}
-                            onChange={(v) => updateLine(i, { material_type_id: Number(v) })}
+                            onChange={(v) => {
+                              updateLine(i, withDefaultAnswer(line, { material_type_id: Number(v) }))
+                            }}
                             placeholder={isMaterialsLoading ? 'กำลังโหลดรายการวัสดุ...' : 'เลือกวัสดุ'}
                             disabled={readOnly || isMaterialsLoading}
                             renderCreate={
@@ -1275,6 +1425,7 @@ export default function PurchaseOrderForm({
                                 : ({ query, close }) => (
                                     <InlineMaterialCreate
                                       query={query}
+                                      categories={existingMaterialCategories}
                                       close={close}
                                       onCreated={(created) => handleInlineMaterialCreated(i, created)}
                                     />
@@ -1294,6 +1445,32 @@ export default function PurchaseOrderForm({
                           )}
                         </div>
                         {sourceRequestNo != null && <RequestLinkNote line={line} requestLines={requestLines} />}
+                        {/* Purchasing's answer to the request line. When the
+                          * two sides count the same way the arithmetic still
+                          * closes the line on its own and this stays
+                          * unticked; when they don't, it's the only thing
+                          * that can - so it arrives ticked and explains why. */}
+                        {line.purchase_request_item_id && requestLines[line.purchase_request_item_id] && (
+                          <label className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-tight text-[#1d1d1f]">
+                            <input
+                              type="checkbox"
+                              checked={line.closes_request_line}
+                              onChange={(e) => updateLine(i, { closes_request_line: e.target.checked })}
+                              disabled={readOnly}
+                              className="mt-px shrink-0"
+                            />
+                            <span>
+                              ใบสั่งซื้อนี้ครบตามรายการที่ขอแล้ว
+                              {differsFromRequestUnit(line) && (
+                                <span className="mt-0.5 block text-[10px] text-amber-700">
+                                  ขอเป็น {requestLines[line.purchase_request_item_id].unit} แต่สั่งเป็น{' '}
+                                  {materialUnit(line.material_type_id)} - ระบบจะไม่หักจำนวนข้ามหน่วยให้
+                                  ติ๊กช่องนี้เพื่อปิดรายการในคำขอ
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        )}
                         <input
                           value={line.description}
                           onChange={(e) => updateLine(i, { description: e.target.value })}
@@ -1315,15 +1492,18 @@ export default function PurchaseOrderForm({
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min={line.quantity_received || 0}
-                          step="any"
-                          value={line.quantity_ordered}
-                          onChange={(e) => updateLine(i, { quantity_ordered: e.target.value })}
-                          className="w-full text-right"
-                          disabled={readOnly}
-                        />
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={line.quantity_received || 0}
+                            step="any"
+                            value={line.quantity_ordered}
+                            onChange={(e) => updateLine(i, { quantity_ordered: e.target.value })}
+                            className="w-full text-right"
+                            disabled={readOnly}
+                          />
+                          <span className="shrink-0 text-xs text-[#86868b]">{materialUnit(line.material_type_id) || '-'}</span>
+                        </div>
                         {line.quantity_received > 0 && (
                           <div className="mt-1 text-right text-[10px] text-emerald-600">
                             รับแล้ว {line.quantity_received.toLocaleString('th-TH')}

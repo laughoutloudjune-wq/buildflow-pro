@@ -22,7 +22,10 @@ const SELECT_WITH_RELATIONS = `
       *,
       settler:profiles!purchase_request_item_settlements_settled_by_fkey (full_name, email)
     ),
-    purchase_order_items!purchase_order_items_purchase_request_item_id_fkey (quantity_ordered)
+    purchase_order_items!purchase_order_items_purchase_request_item_id_fkey (
+      quantity_ordered, unit, closes_request_line,
+      purchase_orders (po_no)
+    )
   ),
   purchase_orders (po_no, status)
 `
@@ -103,7 +106,7 @@ export async function createPurchaseRequest(input: {
   plot_ids?: string[]
   note?: string
   needed_by_date?: string
-  items: { material_type_id: number; quantity_requested: number; note?: string; boq_id?: string | null }[]
+  items: { material_type_id: number; quantity_requested: number; note?: string; boq_id?: string | null; unit?: string | null }[]
 }) {
   await requireModuleAccess('procurement')
   const supabase = await createClient()
@@ -157,7 +160,7 @@ export async function updatePurchaseRequest(
     plot_ids?: string[]
     note?: string
     needed_by_date?: string
-    items: { material_type_id: number; quantity_requested: number; note?: string; boq_id?: string | null }[]
+    items: { material_type_id: number; quantity_requested: number; note?: string; boq_id?: string | null; unit?: string | null }[]
   }
 ): Promise<{ id: string; pr_no: string } | { error: string }> {
   try {

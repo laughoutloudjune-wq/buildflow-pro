@@ -208,7 +208,7 @@ export function buildPurchaseOrderHtml(
             ${discountNote}
           </td>
           <td class="right nowrap">${qty(item.quantity_ordered)}</td>
-          <td class="unit">${esc(item.material_types?.unit) || '-'}</td>
+          <td class="unit">${esc(item.unit || item.material_types?.unit) || '-'}</td>
           <td class="right muted">${money(item.unit_price)}</td>
           <td class="right bold">${money(net)}</td>
         </tr>`

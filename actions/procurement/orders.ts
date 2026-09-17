@@ -56,6 +56,8 @@ function buildPayload(input: PurchaseOrderInput) {
         material_type_id: i.material_type_id,
         purchase_request_item_id: i.purchase_request_item_id || null,
         quantity_ordered: Number(i.quantity_ordered),
+        unit: i.unit?.trim() || null,
+        closes_request_line: Boolean(i.closes_request_line),
         unit_price: Math.max(0, Number(i.unit_price) || 0),
         description: i.description?.trim() || null,
         discount_type: i.discount_type || 'none',
@@ -289,6 +291,10 @@ export async function duplicatePurchaseOrder(id: string): Promise<{ id: string; 
     items: (source.purchase_order_items || []).map((i) => ({
       material_type_id: i.material_type_id,
       quantity_ordered: i.quantity_ordered,
+      unit: i.unit || undefined,
+      // closes_request_line deliberately not copied - it answered the source
+      // order's own (now-dropped) request link, and a fresh unlinked line
+      // has no request to answer.
       unit_price: i.unit_price,
       description: i.description || undefined,
       discount_type: i.discount_type,
