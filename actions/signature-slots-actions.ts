@@ -9,6 +9,7 @@ const REVALIDATE_PATHS: Record<SignatureDocumentType, string[]> = {
   purchase_request: ['/dashboard/procurement/requests'],
   purchase_order: ['/dashboard/procurement/orders'],
   billing: ['/dashboard/billing'],
+  sale_receipt: ['/dashboard/sales'],
 }
 
 /** No permission gate here - this only returns label/image metadata (no

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { DEFAULT_ROLE_PERMISSIONS, normalizeRolePermissions, type RolePermissions } from '@/lib/permissions'
 import { requireAuthRole } from '@/actions/_shared/user-role'
+import { toUserRole, type UserRole } from '@/lib/types/billing'
 
 type SettingsQueryClient = {
   auth: {
@@ -42,10 +43,7 @@ async function getCurrentUserAndRole(supabase: unknown) {
     .select('role')
     .eq('id', user.id)
     .maybeSingle()
-  const role = profile?.role === 'admin' || profile?.role === 'pm' || profile?.role === 'foreman'
-    ? profile.role
-    : 'foreman'
-  return { user, role }
+  return { user, role: toUserRole(profile?.role) }
 }
 
 async function ensureCurrentUserProfile(supabase: unknown) {
@@ -261,7 +259,7 @@ export async function getUsers() {
 /**
  * Updates the role for a specific user.
  */
-export async function updateUserRole(userId: string, newRole: 'admin' | 'pm' | 'foreman') {
+export async function updateUserRole(userId: string, newRole: UserRole) {
   const supabase = await createClient()
   const { role } = await getCurrentUserAndRole(supabase)
   if (role !== 'admin') throw new Error('Only admin can update user roles')

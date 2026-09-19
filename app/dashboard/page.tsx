@@ -1,10 +1,12 @@
 import Link from 'next/link'
-import { Activity, AlertTriangle, BadgeCheck, Building2, CheckCircle2, Clock3, Home, ShieldAlert, Sparkles, TrendingUp, Wallet } from 'lucide-react'
+import { Activity, AlertTriangle, BadgeCheck, Building2, CheckCircle2, Clock3, ClipboardCheck, Home, ShieldAlert, Sparkles, TrendingUp, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge, statusTone } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { ButtonLink } from '@/components/ui/Button'
 import { getDashboardStats } from '@/actions/dashboard-actions'
+import { getWorkRequestCounts } from '@/actions/sales-work-requests'
+import { getDashboardSession, permissionsForRole } from '@/lib/auth/route-access'
 import { formatCurrency } from '@/lib/currency'
 
 function riskLevelTone(level: string) {
@@ -14,7 +16,16 @@ function riskLevelTone(level: string) {
 }
 
 export default async function DashboardPage() {
-  const stats = await getDashboardStats()
+  const [stats, { role, permissions: rolePermissions }] = await Promise.all([
+    getDashboardStats(),
+    getDashboardSession(),
+  ])
+  const perms = permissionsForRole(role, rolePermissions)
+  // Not everyone who lands on /dashboard cares about the work-request queue
+  // (an accountant, say) - only show the card to roles that can actually do
+  // something about it, same set the sidebar item itself is gated on.
+  const showWorkRequests = perms.sales || perms.foreman || perms.projects
+  const workRequestCounts = showWorkRequests ? await getWorkRequestCounts().catch(() => null) : null
 
   const kpis = [
     {
@@ -102,6 +113,34 @@ export default async function DashboardPage() {
           </Link>
         ))}
       </div>
+
+      {workRequestCounts && (
+        <Link href="/dashboard/sales-requests" className="group block">
+          <Card className="flex items-center justify-between gap-4 p-4 transition-shadow group-hover:shadow-md group-hover:border-slate-300">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-violet-50 p-2">
+                <ClipboardCheck className="h-5 w-5 text-violet-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">คำขอจากฝ่ายขาย</p>
+                <p className="text-xs text-slate-500">งานเพิ่มลูกค้า แก้ defect และคำขออื่นๆ ที่รอหน่วยงานก่อสร้าง</p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-4">
+              <div className="text-center">
+                <p className="text-xl font-semibold text-slate-900">{workRequestCounts.newCount}</p>
+                <p className="text-xs text-slate-500">ใหม่</p>
+              </div>
+              <div className="text-center">
+                <p className={`text-xl font-semibold ${workRequestCounts.overdueCount > 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                  {workRequestCounts.overdueCount}
+                </p>
+                <p className="text-xs text-slate-500">เกินกำหนด</p>
+              </div>
+            </div>
+          </Card>
+        </Link>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {stats.projectHealth?.map((project: any) => (

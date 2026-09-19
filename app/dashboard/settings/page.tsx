@@ -10,6 +10,7 @@ import {
   Truck,
   Landmark,
   PenTool,
+  Tag,
   type LucideIcon,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -67,6 +68,13 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
     links: [
       { href: '/dashboard/settings/users', label: 'ผู้ใช้และบทบาท', description: 'กำหนดบทบาท Admin / PM / Foreman ของแต่ละคน', icon: Users, tone: 'indigo' },
       { href: '/dashboard/settings/permissions', label: 'สิทธิ์ตามบทบาท', description: 'กำหนดว่าแต่ละตำแหน่งเข้าโมดูลไหนได้', icon: ShieldCheck, tone: 'indigo' },
+    ],
+  },
+  {
+    title: 'ฝ่ายขาย',
+    description: 'ตั้งค่าที่ใช้ในผังการขาย',
+    links: [
+      { href: '/dashboard/settings/sale-statuses', label: 'สถานะการขาย', description: 'เพิ่ม เปลี่ยนชื่อ และสีของสถานะบนผังการขาย', icon: Tag, tone: 'amber' },
     ],
   },
   {

@@ -1,7 +1,7 @@
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import type { UserRole } from '@/lib/types/billing'
+import { toUserRole, type UserRole } from '@/lib/types/billing'
 import {
   canRoleAccessModule,
   getPermissionsForRole,
@@ -68,8 +68,7 @@ export const getDashboardSession = cache(async () => {
     rawRole = roleFromRpc
   }
 
-  const role: UserRole =
-    rawRole === 'admin' || rawRole === 'pm' || rawRole === 'foreman' ? rawRole : 'foreman'
+  const role: UserRole = toUserRole(rawRole)
   const permissions = normalizeRolePermissions(settings?.role_permissions)
 
   return { user, role, permissions, profile: profile ?? null }

@@ -13,6 +13,8 @@ const roleLabels: Record<UserRole, string> = {
   admin: 'Admin',
   pm: 'Project Manager',
   foreman: 'Foreman',
+  accountant: 'Accountant',
+  sales: 'Sales',
 }
 
 const moduleLabels: Record<PermissionModule, { title: string; description: string }> = {
@@ -26,6 +28,7 @@ const moduleLabels: Record<PermissionModule, { title: string; description: strin
   materials: { title: 'วัสดุ (Material Log)', description: 'บันทึกและดูการใช้วัสดุเทียบกับ BOQ' },
   procurement: { title: 'จัดซื้อ', description: 'คำขอซื้อ ใบสั่งซื้อ ผู้จำหน่าย และการรับของ' },
   cost_control: { title: 'ควบคุมต้นทุน', description: 'เทียบ BOQ กับของที่ซื้อจริง และรายงานต้นทุนโครงการ' },
+  sales: { title: 'ฝ่ายขาย', description: 'บอร์ดขาย ลูกค้า และคำขอจากฝ่ายขายถึงหน่วยงานก่อสร้าง' },
 }
 
 const permissionModules = Object.keys(moduleLabels) as PermissionModule[]

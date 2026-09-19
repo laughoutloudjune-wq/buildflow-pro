@@ -1,4 +1,4 @@
-export type SignatureDocumentType = 'purchase_request' | 'purchase_order' | 'billing'
+export type SignatureDocumentType = 'purchase_request' | 'purchase_order' | 'billing' | 'sale_receipt'
 
 /** A slot tagged with one of these is auto-filled by the document renderer
  * with a real name/date from the document itself, on top of whatever label

@@ -12,13 +12,17 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ShoppingCart,
   Truck,
   Package,
   PackageCheck,
   Wallet,
   GaugeCircle,
+  Tag,
+  ClipboardCheck,
 } from 'lucide-react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -29,7 +33,10 @@ type SidebarItem = {
   icon: typeof LayoutDashboard
   label: string
   href: string
-  permission?: PermissionModule
+  /** A single module, or an array meaning "any of these" - e.g. the work
+   * request queue is relevant to sales (who file them) and foreman/projects
+   * (who work them), three different roles with no one shared module. */
+  permission?: PermissionModule | PermissionModule[]
 }
 type SidebarSection = {
   title: string
@@ -54,6 +61,18 @@ const menuSections: SidebarSection[] = [
     items: [
       { icon: HardHat, label: 'ตรวจหน้างาน (Foreman)', href: '/dashboard/foreman/create-progress', permission: 'foreman' as const },
       { icon: FileText, label: 'รายการเบิกจ่าย (For PM)', href: '/dashboard/billing', permission: 'billing' as const },
+    ],
+  },
+  {
+    title: 'ฝ่ายขาย',
+    items: [
+      { icon: Tag, label: 'ผังการขาย', href: '/dashboard/sales', permission: 'sales' as const },
+      {
+        icon: ClipboardCheck,
+        label: 'คำขอจากฝ่ายขาย',
+        href: '/dashboard/sales-requests',
+        permission: ['sales', 'foreman', 'projects'] as const,
+      },
     ],
   },
   {
@@ -100,10 +119,24 @@ export default function Sidebar({
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+  const toggleSection = (title: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(title)) next.delete(title)
+      else next.add(title)
+      return next
+    })
+  }
+  const hasPermission = (item: SidebarItem) => {
+    if (!item.permission) return true
+    const required = Array.isArray(item.permission) ? item.permission : [item.permission]
+    return required.some((p) => permissions[p])
+  }
   const visibleSections = menuSections
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => (item.permission ? permissions[item.permission] : true)),
+      items: section.items.filter(hasPermission),
     }))
     .filter((section) => section.items.length > 0)
 
@@ -139,40 +172,50 @@ export default function Sidebar({
 
       <nav className="scrollbar-modern h-[calc(100vh-8.5rem)] overflow-y-auto overflow-x-hidden p-3">
         <div className="space-y-5">
-          {visibleSections.map((section) => (
-            <div key={section.title}>
-              {!collapsed && (
-                <div className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                  {section.title}
-                </div>
-              )}
-              <div className="space-y-0.5">
-                {section.items.map((item) => {
-                  const isActive = pathname.startsWith(item.href) && item.href !== '/dashboard'
-                    ? true
-                    : pathname === item.href
+          {visibleSections.map((section) => {
+            const isSectionCollapsed = !collapsed && collapsedSections.has(section.title)
+            return (
+              <div key={section.title}>
+                {!collapsed && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(section.title)}
+                    className="mb-1.5 flex w-full items-center justify-between gap-2 rounded-[8px] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 transition-colors hover:bg-slate-900/[0.04] hover:text-slate-600"
+                  >
+                    <span>{section.title}</span>
+                    <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isSectionCollapsed ? '-rotate-90' : ''}`} />
+                  </button>
+                )}
+                {!isSectionCollapsed && (
+                  <div className="space-y-0.5">
+                    {section.items.map((item) => {
+                      const isActive = pathname.startsWith(item.href) && item.href !== '/dashboard'
+                        ? true
+                        : pathname === item.href
 
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      title={collapsed ? item.label : undefined}
-                      className={`flex items-center gap-3 rounded-[10px] py-2.5 text-[14px] font-medium transition-colors ${
-                        collapsed ? 'justify-center px-0' : 'px-3'
-                      } ${
-                        isActive
-                          ? 'bg-indigo-50 text-indigo-700'
-                          : 'text-slate-600 hover:bg-slate-900/[0.04] hover:text-slate-900'
-                      }`}
-                    >
-                      <item.icon className={`h-[18px] w-[18px] shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
-                      {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
-                    </Link>
-                  )
-                })}
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          title={collapsed ? item.label : undefined}
+                          className={`flex items-center gap-3 rounded-[10px] py-2.5 text-[14px] font-medium transition-colors ${
+                            collapsed ? 'justify-center px-0' : 'px-3'
+                          } ${
+                            isActive
+                              ? 'bg-indigo-50 text-indigo-700'
+                              : 'text-slate-600 hover:bg-slate-900/[0.04] hover:text-slate-900'
+                          }`}
+                        >
+                          <item.icon className={`h-[18px] w-[18px] shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
+                          {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </nav>
 

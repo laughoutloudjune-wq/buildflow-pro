@@ -10,6 +10,8 @@ export type NotificationType =
   | 'pr_pending_review'
   | 'pr_approved'
   | 'pr_rejected'
+  | 'work_request_new'
+  | 'work_request_done'
 
 export type NotificationItem = {
   id: string
@@ -27,6 +29,12 @@ export type NotificationItem = {
     id: string
     pr_no: string | number | null
     project_name: string | null
+  } | null
+  sales_work_request: {
+    id: string
+    request_no: string | null
+    title: string
+    plot_name: string | null
   } | null
 }
 
@@ -63,6 +71,20 @@ type NotificationRow = {
         projects: { name: string | null } | Array<{ name: string | null }> | null
       }>
     | null
+  sales_work_requests:
+    | {
+        id: string
+        request_no: string | null
+        title: string
+        plots: { name: string | null } | Array<{ name: string | null }> | null
+      }
+    | Array<{
+        id: string
+        request_no: string | null
+        title: string
+        plots: { name: string | null } | Array<{ name: string | null }> | null
+      }>
+    | null
 }
 
 function asSingle<T>(value: T | T[] | null | undefined): T | null {
@@ -81,7 +103,8 @@ export async function getMyNotifications(limit = 30): Promise<{ items: Notificat
       .select(`
         id, type, read_at, created_at,
         billings ( id, doc_no, type, contractors (name), projects (name) ),
-        purchase_requests ( id, pr_no, projects (name) )
+        purchase_requests ( id, pr_no, projects (name) ),
+        sales_work_requests ( id, request_no, title, plots (name) )
       `)
       .eq('recipient_id', user.id)
       .order('created_at', { ascending: false })
@@ -99,6 +122,7 @@ export async function getMyNotifications(limit = 30): Promise<{ items: Notificat
   const items: NotificationItem[] = ((listRes.data || []) as NotificationRow[]).map((row) => {
     const billing = asSingle(row.billings)
     const purchaseRequest = asSingle(row.purchase_requests)
+    const salesWorkRequest = asSingle(row.sales_work_requests)
     return {
       id: row.id,
       type: row.type,
@@ -118,6 +142,14 @@ export async function getMyNotifications(limit = 30): Promise<{ items: Notificat
             id: purchaseRequest.id,
             pr_no: purchaseRequest.pr_no,
             project_name: asSingle(purchaseRequest.projects)?.name ?? null,
+          }
+        : null,
+      sales_work_request: salesWorkRequest
+        ? {
+            id: salesWorkRequest.id,
+            request_no: salesWorkRequest.request_no,
+            title: salesWorkRequest.title,
+            plot_name: asSingle(salesWorkRequest.plots)?.name ?? null,
           }
         : null,
     }

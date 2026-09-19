@@ -1,7 +1,7 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { getDashboardSession, type SessionUser } from '@/lib/auth/route-access'
-import type { BillingUserSummary, UserRole } from '@/lib/types/billing'
+import { toUserRole, type BillingUserSummary, type UserRole } from '@/lib/types/billing'
 
 /**
  * Identity for the current request, taken from the memoized dashboard
@@ -46,10 +46,6 @@ type RoleQueryClient = {
   }
 }
 
-function normalizeUserRole(value: unknown): UserRole {
-  return value === 'admin' || value === 'pm' || value === 'foreman' ? value : 'foreman'
-}
-
 export async function getCurrentUserRole(supabase: unknown, userId: string): Promise<UserRole> {
   // The dashboard session already resolved the caller's role for this request
   // and memoized it; reuse that instead of spending another round trip. Only
@@ -62,14 +58,14 @@ export async function getCurrentUserRole(supabase: unknown, userId: string): Pro
   const rpcClient = supabase as RpcRoleClient
   try {
     const { data, error } = await rpcClient.rpc('_billing_current_role')
-    if (!error) return normalizeUserRole(data)
+    if (!error) return toUserRole(data)
   } catch {
     // fall back to direct table read below
   }
 
   const client = supabase as RoleQueryClient
   const { data } = await client.from('profiles').select('role').eq('id', userId).maybeSingle()
-  return normalizeUserRole(data?.role)
+  return toUserRole(data?.role)
 }
 
 export function requireRole(allowed: UserRole[], role: UserRole, message: string) {

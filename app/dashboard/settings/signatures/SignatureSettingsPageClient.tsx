@@ -14,6 +14,7 @@ const TABS: { key: SignatureDocumentType; label: string }[] = [
   { key: 'purchase_request', label: 'ใบขอซื้อ (PR)' },
   { key: 'purchase_order', label: 'ใบสั่งซื้อ (PO)' },
   { key: 'billing', label: 'ใบเบิกงวดงาน / DC' },
+  { key: 'sale_receipt', label: 'ใบเสร็จรับเงิน (ฝ่ายขาย)' },
 ]
 
 const SYSTEM_KEY_LABEL: Record<SignatureSystemKey, string> = {

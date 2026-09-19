@@ -113,6 +113,25 @@ export async function createPlot(formData: FormData): Promise<PlotActionResult> 
   }
 }
 
+// Single-field flip for the plot list's inline toggle - updatePlot() requires
+// re-sending the whole form (name, house_model_id, ...), which is overkill
+// and riskier for a one-click on/off switch.
+export async function setPlotSellable(id: string, projectId: string, isSellable: boolean): Promise<PlotActionResult> {
+  try {
+    await requireModuleAccess('projects')
+    const supabase = await createClient()
+    const { error } = await supabase.from('plots').update({ is_sellable: isSellable }).match({ id })
+    if (error) return { success: false, error: error.message } satisfies PlotActionResult
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    return { success: true } satisfies PlotActionResult
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'อัปเดตไม่สำเร็จ',
+    } satisfies PlotActionResult
+  }
+}
+
 export async function deletePlot(id: string, projectId: string) {
   try {
     await requireModuleAccess('projects')
@@ -129,18 +148,46 @@ export async function deletePlot(id: string, projectId: string) {
   }
 }
 
+// A blank field means "not entered" (null), not zero - distinguishable from
+// an actual 0 เนื้อที่/ราคา that someone typed in deliberately.
+function parseOptionalNumber(raw: FormDataEntryValue | null): { ok: true; value: number | null } | { ok: false } {
+  const trimmed = String(raw ?? '').trim()
+  if (!trimmed) return { ok: true, value: null }
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed) || parsed < 0) return { ok: false }
+  return { ok: true, value: parsed }
+}
+
 export async function updatePlot(id: string, projectId: string, formData: FormData) {
   try {
     await requireModuleAccess('projects')
     const supabase = await createClient()
     const name = String(formData.get('name') || '')
     const house_model_id = String(formData.get('house_model_id') || '')
+    const is_sellable = formData.get('is_sellable') === 'on'
+    const title_deed_no = String(formData.get('title_deed_no') || '').trim() || null
 
     if (!name || !house_model_id) {
       return { success: false, error: 'กรุณากรอกชื่อแปลงและเลือกแบบบ้าน' } satisfies PlotActionResult
     }
 
-    const { error } = await supabase.from('plots').update({ name, house_model_id }).match({ id })
+    const landArea = parseOptionalNumber(formData.get('land_area_sqwa'))
+    if (!landArea.ok) return { success: false, error: 'เนื้อที่ไม่ถูกต้อง' } satisfies PlotActionResult
+
+    const listPrice = parseOptionalNumber(formData.get('list_price'))
+    if (!listPrice.ok) return { success: false, error: 'ราคาตั้งไม่ถูกต้อง' } satisfies PlotActionResult
+
+    const { error } = await supabase
+      .from('plots')
+      .update({
+        name,
+        house_model_id,
+        is_sellable,
+        title_deed_no,
+        land_area_sqwa: landArea.value,
+        list_price: listPrice.value,
+      })
+      .match({ id })
     if (error) return { success: false, error: error.message } satisfies PlotActionResult
 
     revalidatePath(`/dashboard/projects/${projectId}`)

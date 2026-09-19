@@ -1,39 +1,16 @@
-import { getJobAssignments, getPlotById } from '@/actions/job-actions'
-import { getHouseModels } from '@/actions/boq-actions'
-import { getContractors } from '@/actions/contractor-actions'
+import { getPlotDetailBundle } from '@/actions/plot-detail-bundle'
 import PlotDetailPageClient from './PlotDetailPageClient'
 
+/**
+ * Plot detail, both departments (Phase 5, SALES_MODULE_PLAN.md §8.3). All
+ * the fetching, role resolution and cost-stripping lives in
+ * getPlotDetailBundle() now - shared with the map's quick-view modal
+ * (components/plots/PlotDetailModal.tsx) so there's exactly one place that
+ * decides canSeeCost, not two copies that could drift.
+ */
 export default async function PlotDetailPage({ params }: { params: Promise<{ id: string; plotId: string }> }) {
   const { id: projectId, plotId } = await params
+  const bundle = await getPlotDetailBundle(projectId, plotId)
 
-  let plot: Awaited<ReturnType<typeof getPlotById>> = null
-  let jobs: Awaited<ReturnType<typeof getJobAssignments>> = []
-  let contractors: Awaited<ReturnType<typeof getContractors>> = []
-  let houseModels: Awaited<ReturnType<typeof getHouseModels>> = []
-
-  try {
-    const [pData, jData, cData, hmData] = await Promise.all([
-      getPlotById(plotId),
-      getJobAssignments(plotId),
-      getContractors(),
-      getHouseModels(),
-    ])
-    plot = pData
-    jobs = jData || []
-    contractors = cData || []
-    houseModels = hmData || []
-  } catch (error) {
-    console.error(error)
-  }
-
-  return (
-    <PlotDetailPageClient
-      projectId={projectId}
-      plotId={plotId}
-      plot={plot}
-      initialJobs={jobs}
-      contractors={contractors}
-      houseModels={houseModels}
-    />
-  )
+  return <PlotDetailPageClient {...bundle} />
 }

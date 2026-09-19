@@ -1,6 +1,6 @@
 import type { UserRole } from '@/lib/types/billing'
 
-export type PermissionModule = 'projects' | 'boq' | 'contractors' | 'foreman' | 'billing' | 'reports' | 'settings' | 'materials' | 'procurement' | 'cost_control'
+export type PermissionModule = 'projects' | 'boq' | 'contractors' | 'foreman' | 'billing' | 'reports' | 'settings' | 'materials' | 'procurement' | 'cost_control' | 'sales'
 
 export type RolePermissions = Record<UserRole, Record<PermissionModule, boolean>>
 
@@ -16,6 +16,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     materials: true,
     procurement: true,
     cost_control: true,
+    sales: true,
   },
   pm: {
     projects: true,
@@ -28,6 +29,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     materials: true,
     procurement: true,
     cost_control: true,
+    sales: true,
   },
   foreman: {
     projects: true,
@@ -40,6 +42,40 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     materials: true,
     procurement: false,
     cost_control: false,
+    sales: false,
+  },
+  // Bookkeeping/finance - sees the billing queue, cost reports and
+  // procurement (POs/payments), not construction ops. No profile carries
+  // this role yet (checked 2026-09-18); adjust freely from Settings once one
+  // does, this is just a starting default rather than a fixed requirement.
+  accountant: {
+    projects: false,
+    boq: false,
+    contractors: false,
+    foreman: false,
+    billing: true,
+    reports: true,
+    settings: false,
+    materials: false,
+    procurement: true,
+    cost_control: true,
+    sales: false,
+  },
+  // Locked scope, SALES_MODULE_PLAN.md §6/§11 (D2): price, never build cost -
+  // reaches the plot page through the 'sales' module instead of 'projects',
+  // and gets none of the cost-bearing modules.
+  sales: {
+    projects: false,
+    boq: false,
+    contractors: false,
+    foreman: false,
+    billing: false,
+    reports: false,
+    settings: false,
+    materials: false,
+    procurement: false,
+    cost_control: false,
+    sales: true,
   },
 }
 

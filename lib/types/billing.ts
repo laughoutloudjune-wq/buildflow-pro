@@ -1,4 +1,17 @@
-export type UserRole = 'admin' | 'pm' | 'foreman'
+export type UserRole = 'admin' | 'pm' | 'foreman' | 'accountant' | 'sales'
+export const USER_ROLES = ['admin', 'pm', 'foreman', 'accountant', 'sales'] as const
+
+/**
+ * Coerces any DB/JWT value to a known UserRole, defaulting to 'foreman' -
+ * the fallback every call site used inline before this existed. Route through
+ * this everywhere a role is read rather than re-checking the literal union,
+ * so a role added to the DB CHECK constraint can't be silently downgraded
+ * because one of several copies forgot about it (see SALES_MODULE_PLAN.md §6 -
+ * that's exactly how 'accountant' ended up silently treated as 'foreman').
+ */
+export function toUserRole(value: unknown): UserRole {
+  return (USER_ROLES as readonly string[]).includes(value as string) ? (value as UserRole) : 'foreman'
+}
 
 export type BillingStatus = 'draft' | 'pending_review' | 'approved' | 'rejected'
 

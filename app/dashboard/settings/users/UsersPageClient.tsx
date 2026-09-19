@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { updateUserRole, updateUserFullName } from '@/actions/settings-actions'
 import type { getUsers } from '@/actions/settings-actions'
 import { generateInviteLink } from '@/actions/invite-actions'
+import type { UserRole } from '@/lib/types/billing'
 
 type User = Awaited<ReturnType<typeof getUsers>>[0]
 
@@ -41,7 +42,7 @@ export default function UsersPageClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialError])
 
-  function handleRoleChange(userId: string, newRole: 'admin' | 'pm' | 'foreman') {
+  function handleRoleChange(userId: string, newRole: UserRole) {
     startTransition(async () => {
       try {
         await updateUserRole(userId, newRole)
@@ -189,7 +190,7 @@ export default function UsersPageClient({
                       <td className="whitespace-nowrap px-4 py-3.5">
                         <select
                           value={user.role || 'foreman'}
-                          onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'pm' | 'foreman')}
+                          onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
                           disabled={isPending}
                           className={roleSelectClass}
                           aria-label={`บทบาทของ ${user.email || user.full_name || user.id}`}
@@ -197,6 +198,8 @@ export default function UsersPageClient({
                           <option value="admin">Admin</option>
                           <option value="pm">Project Manager</option>
                           <option value="foreman">Foreman</option>
+                          <option value="accountant">Accountant</option>
+                          <option value="sales">Sales</option>
                         </select>
                       </td>
                     </tr>

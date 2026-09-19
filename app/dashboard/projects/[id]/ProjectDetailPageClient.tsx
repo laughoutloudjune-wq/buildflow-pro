@@ -1,17 +1,17 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, Loader2, MapPin, AlertCircle, Pencil, Users, GaugeCircle } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, Loader2, MapPin, AlertCircle, Pencil, Users, GaugeCircle, LayoutList, Map as MapIcon, Search } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import PlotGroupManager from '@/components/plots/PlotGroupManager'
+import SitePlanMap, { type SitePlanMarker } from '@/components/plots/SitePlanMap'
 import { getProjectById, updateProject } from '@/actions/project-actions'
-import { getPlotsByProjectId, createPlot, deletePlot } from '@/actions/plot-actions'
+import { getPlotsByProjectId, createPlot, deletePlot, setPlotSellable } from '@/actions/plot-actions'
 import { getHouseModels } from '@/actions/boq-actions'
 import { getPlotGroups } from '@/actions/material-actions'
 import type { PlotGroup } from '@/lib/types/materials'
@@ -19,6 +19,48 @@ import type { PlotGroup } from '@/lib/types/materials'
 type Project = Awaited<ReturnType<typeof getProjectById>>
 type Plot = Awaited<ReturnType<typeof getPlotsByProjectId>>[number]
 type HouseModelOption = Awaited<ReturnType<typeof getHouseModels>>[number]
+type ViewMode = 'map' | 'list'
+type SellableFilter = 'all' | 'sellable' | 'not_sellable'
+
+function SellableToggle({
+  plotId,
+  projectId,
+  isSellable,
+  onToggled,
+}: {
+  plotId: string
+  projectId: string
+  isSellable: boolean
+  onToggled: (next: boolean) => void
+}) {
+  const [pending, setPending] = useState(false)
+
+  async function handleClick(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (pending) return
+    const next = !isSellable
+    setPending(true)
+    onToggled(next) // optimistic
+    const res = await setPlotSellable(plotId, projectId, next)
+    setPending(false)
+    if (!res.success) onToggled(!next) // revert on failure
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={pending}
+      title={isSellable ? 'เปิดขายอยู่ - คลิกเพื่อปิด' : 'ปิดขายอยู่ - คลิกเพื่อเปิด'}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+        isSellable ? 'bg-emerald-500' : 'bg-slate-300'
+      } ${pending ? 'opacity-60' : ''}`}
+    >
+      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isSellable ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+    </button>
+  )
+}
 
 export default function ProjectDetailPageClient({
   projectId,
@@ -43,6 +85,12 @@ export default function ProjectDetailPageClient({
   const [isGroupManagerOpen, setIsGroupManagerOpen] = useState(false)
 
   const [selectedHouseModelId, setSelectedHouseModelId] = useState('')
+
+  const [viewMode, setViewMode] = useState<ViewMode>('map')
+  const [search, setSearch] = useState('')
+  const [houseModelFilter, setHouseModelFilter] = useState('')
+  const [sellableFilter, setSellableFilter] = useState<SellableFilter>('all')
+  const [groupFilter, setGroupFilter] = useState('')
 
   const [isPending, startTransition] = useTransition()
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
@@ -71,8 +119,12 @@ export default function ProjectDetailPageClient({
   }
 
   const groupNameByPlotId = new Map<string, string>()
+  const groupIdByPlotId = new Map<string, string>()
   for (const group of plotGroups) {
-    for (const plotId of group.member_plot_ids) groupNameByPlotId.set(plotId, group.name)
+    for (const plotId of group.member_plot_ids) {
+      groupNameByPlotId.set(plotId, group.name)
+      groupIdByPlotId.set(plotId, group.id)
+    }
   }
 
   const handleSubmit = async (formData: FormData) => {
@@ -115,11 +167,42 @@ export default function ProjectDetailPageClient({
     })
   }
 
+  const handleSellableToggled = (plotId: string, next: boolean) => {
+    setPlots((prev) => prev.map((p) => (p.id === plotId ? { ...p, is_sellable: next } : p)))
+  }
+
   const sortedPlots = [...plots].sort((a, b) => collator.compare(a?.name || '', b?.name || ''))
 
   const plotsWithSameModel = selectedHouseModelId
     ? sortedPlots.filter((p) => p.house_models?.id === selectedHouseModelId)
     : []
+
+  const matchesFilters = (plot: Plot) => {
+    if (search.trim() && !plot.name.toLowerCase().includes(search.trim().toLowerCase())) return false
+    if (houseModelFilter && plot.house_models?.id !== houseModelFilter) return false
+    if (sellableFilter === 'sellable' && plot.is_sellable === false) return false
+    if (sellableFilter === 'not_sellable' && plot.is_sellable !== false) return false
+    if (groupFilter && groupIdByPlotId.get(plot.id) !== groupFilter) return false
+    return true
+  }
+
+  const filteredPlots = sortedPlots.filter(matchesFilters)
+  const hasActiveFilters = Boolean(search.trim() || houseModelFilter || sellableFilter !== 'all' || groupFilter)
+
+  const markers: SitePlanMarker[] = useMemo(
+    () =>
+      sortedPlots.map((plot) => ({
+        id: plot.id,
+        label: plot.name,
+        colorClass: plot.is_sellable === false ? 'bg-slate-400' : 'bg-emerald-500',
+        meta: plot.house_models?.name || undefined,
+        mapX: plot.map_x,
+        mapY: plot.map_y,
+        dimmed: hasActiveFilters && !matchesFilters(plot),
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sortedPlots, projectId, hasActiveFilters, search, houseModelFilter, sellableFilter, groupFilter]
+  )
 
   // ถ้าโหลดเสร็จแล้ว แต่ไม่มีข้อมูล (หา ID ไม่เจอ หรือ DB บล็อก)
   if (!project) {
@@ -194,51 +277,162 @@ export default function ProjectDetailPageClient({
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
-        {sortedPlots.map((plot) => (
-          <Link key={plot.id} href={`/dashboard/projects/${projectId}/${plot.id}`}>
-             <Card className="group relative overflow-hidden transition-all hover:shadow-md hover:border-indigo-300 cursor-pointer h-full">
-              <div className="p-4 flex flex-col items-center text-center space-y-3">
-                <div className="h-12 w-12 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-lg">
-                  {plot.name.substring(0, 3)}
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-800 text-lg">{plot.name}</h3>
-                  <p className="text-sm text-slate-500">{plot.house_models?.name || 'ไม่ระบุแบบ'}</p>
-                </div>
-                <div className="w-full pt-3 border-t border-slate-50 flex flex-wrap items-center justify-center gap-1.5">
-                    <Badge tone="success">
-                        กำลังก่อสร้าง
-                    </Badge>
-                    {groupNameByPlotId.has(plot.id) && (
-                      <span className="inline-flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">
-                        <Users className="h-3 w-3" />
-                        {groupNameByPlotId.get(plot.id)}
-                      </span>
-                    )}
-                </div>
-              </div>
-              <button
-                onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    handleDelete(plot.id)
-                }}
-                disabled={isPending}
-                className="absolute top-2 right-2 text-slate-300 hover:text-red-500 p-1 hover:bg-red-50 rounded transition z-10"
-              >
-                 {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-              </button>
-            </Card>
-          </Link>
-        ))}
-
-        {plots.length === 0 && (
-          <div className="col-span-full py-12 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">
-            ยังไม่มีแปลงที่ดินในโครงการนี้
+      <Card className="flex flex-wrap items-end gap-3 p-4">
+        <div className="min-w-[200px] flex-1">
+          <label className="mb-1 block text-xs font-medium text-slate-500">ค้นหาแปลง</label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="ชื่อแปลง..."
+              className="w-full pl-8"
+            />
+          </div>
+        </div>
+        <div className="min-w-[180px]">
+          <label className="mb-1 block text-xs font-medium text-slate-500">แบบบ้าน</label>
+          <select value={houseModelFilter} onChange={(e) => setHouseModelFilter(e.target.value)} className="w-full">
+            <option value="">ทั้งหมด</option>
+            {houseModels.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}{m.code ? ` (${m.code})` : ''}</option>
+            ))}
+          </select>
+        </div>
+        <div className="min-w-[150px]">
+          <label className="mb-1 block text-xs font-medium text-slate-500">สถานะขาย</label>
+          <select value={sellableFilter} onChange={(e) => setSellableFilter(e.target.value as SellableFilter)} className="w-full">
+            <option value="all">ทั้งหมด</option>
+            <option value="sellable">เปิดขาย</option>
+            <option value="not_sellable">ไม่ขาย</option>
+          </select>
+        </div>
+        {plotGroups.length > 0 && (
+          <div className="min-w-[160px]">
+            <label className="mb-1 block text-xs font-medium text-slate-500">กลุ่มแปลง</label>
+            <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="w-full">
+              <option value="">ทั้งหมด</option>
+              {plotGroups.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
           </div>
         )}
-      </div>
+        {hasActiveFilters && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setSearch('')
+              setHouseModelFilter('')
+              setSellableFilter('all')
+              setGroupFilter('')
+            }}
+          >
+            ล้างตัวกรอง
+          </Button>
+        )}
+        <div className="ml-auto flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+          <button
+            type="button"
+            onClick={() => setViewMode('map')}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              viewMode === 'map' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <MapIcon className="h-4 w-4" /> ผังโครงการ
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              viewMode === 'list' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <LayoutList className="h-4 w-4" /> รายการ
+          </button>
+        </div>
+        {viewMode === 'list' && (
+          <span className="w-full text-right text-xs text-slate-400">{filteredPlots.length} / {plots.length} แปลง</span>
+        )}
+      </Card>
+
+      {viewMode === 'map' ? (
+        <SitePlanMap
+          key={projectId}
+          projectId={projectId}
+          sitePlanUrl={project.site_plan_url}
+          sitePlanWidth={project.site_plan_width}
+          sitePlanHeight={project.site_plan_height}
+          canEdit
+          markers={markers}
+          unplacedEmptyLabel="วางครบทุกแปลงแล้ว"
+        />
+      ) : (
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b bg-slate-50 text-slate-700">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">แปลง</th>
+                  <th className="px-4 py-3 font-semibold">แบบบ้าน</th>
+                  <th className="px-4 py-3 font-semibold">เนื้อที่ (ตร.ว.)</th>
+                  <th className="px-4 py-3 font-semibold">กลุ่ม</th>
+                  <th className="px-4 py-3 font-semibold">เปิดขาย</th>
+                  <th className="px-4 py-3 font-semibold w-[50px]" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {filteredPlots.map((plot) => (
+                  <tr key={plot.id} className="transition-colors hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <Link href={`/dashboard/projects/${projectId}/${plot.id}`} className="font-medium text-slate-800 hover:text-indigo-600">
+                        {plot.name}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-slate-500">{plot.house_models?.name || 'ไม่ระบุแบบ'}</td>
+                    <td className="px-4 py-3 text-slate-500">{plot.land_area_sqwa ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      {groupNameByPlotId.has(plot.id) ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-1 text-xs text-indigo-700">
+                          <Users className="h-3 w-3" />
+                          {groupNameByPlotId.get(plot.id)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <SellableToggle
+                        plotId={plot.id}
+                        projectId={projectId}
+                        isSellable={plot.is_sellable !== false}
+                        onToggled={(next) => handleSellableToggled(plot.id, next)}
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => handleDelete(plot.id)}
+                        disabled={isPending}
+                        className="rounded p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500"
+                      >
+                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filteredPlots.length === 0 && (
+              <div className="py-12 text-center text-slate-400">
+                {plots.length === 0 ? 'ยังไม่มีแปลงที่ดินในโครงการนี้' : 'ไม่พบแปลงตามตัวกรองนี้'}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}

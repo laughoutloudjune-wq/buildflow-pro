@@ -1,0 +1,134 @@
+'use server'
+
+import { getJobAssignments, getPlotById } from '@/actions/job-actions'
+import { getHouseModels } from '@/actions/boq-actions'
+import { getContractors } from '@/actions/contractor-actions'
+import { getPlotMaterialsSummary, getPlotSaleDetail, getPlotSaleHistory, getSaleStatuses } from '@/actions/sales-actions'
+import { getWorkRequestsForPlot } from '@/actions/sales-work-requests'
+import { getSalePaymentsForSale } from '@/actions/sale-payments-actions'
+import { permissionsForRole, requireModuleAccess } from '@/lib/auth/route-access'
+import type { PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
+
+/**
+ * Everything PlotDetailPageClient needs, gathered and cost-stripped once.
+ * Shared by the full page (app/dashboard/projects/[id]/[plotId]/page.tsx)
+ * and the map's quick-view modal (components/plots/PlotDetailModal.tsx) so
+ * there is exactly one place that decides canSeeCost and strips cost fields
+ * before they leave the server - see that page's own comment for why this
+ * matters (D2: sales sees price, never cost).
+ */
+export async function getPlotDetailBundle(projectId: string, plotId: string) {
+  const { role, permissions: rolePermissions } = await requireModuleAccess(['projects', 'sales'])
+  const perms = permissionsForRole(role, rolePermissions)
+  const canSeeCost = role !== 'sales'
+  const canEditConstruction = perms.projects
+  const canEditSales = perms.sales
+
+  let plot: Awaited<ReturnType<typeof getPlotById>> = null
+  let rawJobs: Awaited<ReturnType<typeof getJobAssignments>> = []
+  let contractors: Awaited<ReturnType<typeof getContractors>> = []
+  let houseModels: Awaited<ReturnType<typeof getHouseModels>> = []
+  let saleDetail: Awaited<ReturnType<typeof getPlotSaleDetail>> = { sale: null, customer: null }
+  let saleStatuses: Awaited<ReturnType<typeof getSaleStatuses>> = []
+  let history: Awaited<ReturnType<typeof getPlotSaleHistory>> = []
+  let rawMaterials: Awaited<ReturnType<typeof getPlotMaterialsSummary>> = []
+  let workRequests: Awaited<ReturnType<typeof getWorkRequestsForPlot>> = []
+  let payments: Awaited<ReturnType<typeof getSalePaymentsForSale>> = []
+
+  try {
+    const [pData, jData, cData, hmData, saleData, statusesData, historyData, materialsData, workRequestsData] = await Promise.all([
+      getPlotById(plotId),
+      getJobAssignments(plotId),
+      getContractors(),
+      getHouseModels(),
+      getPlotSaleDetail(plotId),
+      getSaleStatuses().catch(() => []),
+      getPlotSaleHistory(plotId),
+      getPlotMaterialsSummary(plotId, projectId).catch(() => []),
+      getWorkRequestsForPlot(plotId).catch(() => []),
+    ])
+    plot = pData
+    rawJobs = jData || []
+    contractors = cData || []
+    houseModels = hmData || []
+    saleDetail = saleData
+    saleStatuses = statusesData
+    history = historyData
+    rawMaterials = materialsData
+    workRequests = workRequestsData
+
+    if (saleData.sale) payments = await getSalePaymentsForSale(saleData.sale.id).catch(() => [])
+  } catch (error) {
+    console.error(error)
+  }
+
+  const jobs: PlotJobRow[] = rawJobs.map((job) => {
+    const agreedPrice = job.agreed_price_per_unit as number | null
+    const boqPrice = (job.boq_master?.price_per_unit as number | null) || 0
+    const quantity = (job.boq_master?.quantity as number | null) || 0
+    const effectivePrice = (agreedPrice ?? boqPrice) || 0
+    const totalBoq = quantity * effectivePrice
+    const paid = ((job.payments || []) as Array<{ amount: number | null }>).reduce((s, p) => s + (p.amount || 0), 0)
+
+    return {
+      id: job.id,
+      status: job.status,
+      itemName: job.boq_master?.item_name || '',
+      unit: job.boq_master?.unit || '',
+      quantity,
+      contractorId: job.contractor_id,
+      cost: canSeeCost
+        ? {
+            contractorName: job.contractors?.name || null,
+            agreedPricePerUnit: agreedPrice,
+            boqPricePerUnit: boqPrice,
+            effectivePrice,
+            totalBoq,
+            paid,
+          }
+        : null,
+    }
+  })
+  const jobsDone = jobs.filter((j) => j.status === 'completed').length
+
+  const materials: PlotMaterialRowView[] = rawMaterials.map((m) => ({
+    materialTypeId: m.materialTypeId,
+    name: m.name,
+    unit: m.unit,
+    orderedQty: m.orderedQty,
+    receivedQty: m.receivedQty,
+    orderedValue: canSeeCost ? m.orderedValue : null,
+  }))
+
+  const historyView = history.map((h) => ({
+    ...h,
+    amount: canSeeCost ? h.amount : null,
+    jobs: h.jobs?.map((j) => ({ ...j, amount: canSeeCost ? j.amount : null })),
+  }))
+
+  return {
+    // Changes on every real fetch of this function, regardless of whether
+    // the underlying data changed - used as a remount key for tabs with
+    // uncontrolled (defaultValue) fields, so a save-then-refresh always
+    // shows the new values instead of racing a manually-timed counter.
+    fetchedAt: Date.now(),
+    projectId,
+    plotId,
+    plot,
+    jobs,
+    jobsDone,
+    contractors,
+    houseModels,
+    saleDetail,
+    saleStatuses,
+    history: historyView,
+    materials,
+    workRequests,
+    payments,
+    canSeeCost,
+    canEditConstruction,
+    canEditSales,
+  }
+}
+
+export type PlotDetailBundle = Awaited<ReturnType<typeof getPlotDetailBundle>>
