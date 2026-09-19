@@ -4,8 +4,17 @@ import { User } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { getDashboardPageTitle } from '@/lib/dashboard-page-titles'
 import NotificationBell from '@/components/layout/NotificationBell'
+import ProjectQuickSwitcher from '@/components/layout/ProjectQuickSwitcher'
 
-export default function Header({ userEmail, role }: { userEmail?: string; role?: string }) {
+export default function Header({
+  userEmail,
+  role,
+  canViewProjects,
+}: {
+  userEmail?: string
+  role?: string
+  canViewProjects?: boolean
+}) {
   const pathname = usePathname()
   const pageTitle = getDashboardPageTitle(pathname)
 
@@ -26,6 +35,7 @@ export default function Header({ userEmail, role }: { userEmail?: string; role?:
       </div>
 
       <div className="flex flex-shrink-0 items-center gap-2 sm:gap-4">
+        {canViewProjects && <ProjectQuickSwitcher />}
         <NotificationBell role={role} />
 
         <div className="flex items-center gap-2 border-l border-slate-200/70 pl-3 sm:gap-3 sm:pl-4">

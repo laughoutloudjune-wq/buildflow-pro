@@ -1,7 +1,10 @@
 'use client'
 
 import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
+
+const subscribeNever = () => () => {}
 
 interface ModalProps {
   isOpen: boolean
@@ -10,9 +13,38 @@ interface ModalProps {
   children: React.ReactNode
   panelClassName?: string
   bodyClassName?: string
+  /** Rendered as its own shrink-0 flex row below the scrollable body, not
+   * inside it - for an action bar that must stay visible regardless of
+   * scroll position. A `position: sticky`/`fixed` bar placed inside
+   * `children` can't do this reliably: sticky only pins once its own normal
+   * flow position is scrolled near, and fixed escapes the panel entirely to
+   * the browser viewport. Plain flex layout has neither problem. */
+  footer?: React.ReactNode
 }
 
-export default function Modal({ isOpen, onClose, title, children, panelClassName, bodyClassName }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, panelClassName, bodyClassName, footer }: ModalProps) {
+  // Rendered through a portal straight to <body> - a modal nested inside
+  // another component's tree (e.g. a plot's quick-view opened from inside
+  // the site-plan preview modal) would otherwise inherit whatever stacking
+  // context its ancestors create. In particular this Modal's own panel
+  // carries `animate-in zoom-in-95`, a Tailwind animation that applies a
+  // `transform` - and ANY ancestor with a transform, even `scale(1)` at
+  // rest, establishes a new containing block for `position: fixed`
+  // descendants. A nested Modal's "fixed inset-0" would then cover the
+  // OUTER modal's panel instead of the real viewport, breaking it exactly
+  // the way plain CSS nesting can't fix. Portalling to <body> sidesteps the
+  // whole class of bug regardless of where in the tree Modal is used.
+  // False on the server and on the client's first render (so hydration
+  // matches), true after - the standard way to gate a client-only portal
+  // without a manual effect+setState pair, which the same class of hook
+  // lint that this whole file is being careful about would flag as an
+  // avoidable extra render.
+  const mounted = useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false
+  )
+
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -33,7 +65,7 @@ export default function Modal({ isOpen, onClose, title, children, panelClassName
     }
   }, [isOpen])
 
-  if (!isOpen) return null
+  if (!isOpen || !mounted) return null
 
   const panelExtra = panelClassName || 'max-w-md'
   const hasExplicitHeight =
@@ -49,7 +81,7 @@ export default function Modal({ isOpen, onClose, title, children, panelClassName
 
   const bodyClasses = ['min-h-0 flex-1 overflow-y-auto overscroll-contain', bodyClassName ?? 'p-4'].filter(Boolean).join(' ')
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 overflow-y-auto overscroll-contain"
       aria-modal="true"
@@ -77,8 +109,12 @@ export default function Modal({ isOpen, onClose, title, children, panelClassName
             </div>
           ) : null}
           <div className={bodyClasses}>{children}</div>
+          {footer ? (
+            <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-3 sm:px-6">{footer}</div>
+          ) : null}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

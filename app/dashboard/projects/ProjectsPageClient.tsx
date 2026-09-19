@@ -6,9 +6,8 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { Badge, statusTone } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
-import { createProject, deleteProject } from '@/actions/project-actions'
+import { createProject, deleteProject, setProjectStatus } from '@/actions/project-actions'
 
 type Project = {
   id: string
@@ -17,7 +16,42 @@ type Project = {
   status: string
 }
 
-export default function ProjectsPageClient({ projects }: { projects: Project[] }) {
+function StatusToggle({ projectId, isActive, onToggled }: { projectId: string; isActive: boolean; onToggled: (next: boolean) => void }) {
+  const [pending, setPending] = useState(false)
+
+  async function handleClick(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (pending) return
+    const next = !isActive
+    setPending(true)
+    onToggled(next) // optimistic
+    try {
+      await setProjectStatus(projectId, next ? 'active' : 'completed')
+    } catch {
+      onToggled(!next) // revert on failure
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={pending}
+      title={isActive ? 'กำลังดำเนินการ - คลิกเพื่อปิดโครงการ' : 'ปิดโครงการแล้ว - คลิกเพื่อเปิดดำเนินการต่อ'}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+        isActive ? 'bg-emerald-500' : 'bg-slate-300'
+      } ${pending ? 'opacity-60' : ''}`}
+    >
+      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isActive ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+    </button>
+  )
+}
+
+export default function ProjectsPageClient({ projects: initialProjects }: { projects: Project[] }) {
+  const [projects, setProjects] = useState<Project[]>(initialProjects)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
@@ -36,6 +70,64 @@ export default function ProjectsPageClient({ projects }: { projects: Project[] }
     })
   }
 
+  const handleStatusToggled = (id: string, active: boolean) => {
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, status: active ? 'active' : 'completed' } : p)))
+  }
+
+  const sortByLocationThenName = (list: Project[]) =>
+    list.slice().sort((a, b) => {
+      const byLocation = collator.compare(a.location || '', b.location || '')
+      if (byLocation !== 0) return byLocation
+      return collator.compare(a.name || '', b.name || '')
+    })
+
+  // Only 'completed' counts as closed - a project on 'hold' (a valid status
+  // in the DB check constraint, just with no toggle for it here) still
+  // shows as ongoing, since it's paused, not done.
+  const ongoing = sortByLocationThenName(projects.filter((p) => p.status !== 'completed'))
+  const closed = sortByLocationThenName(projects.filter((p) => p.status === 'completed'))
+
+  function renderCard(project: Project) {
+    const isActive = project.status !== 'completed'
+    return (
+      <Link key={project.id} href={`/dashboard/projects/${project.id}`}>
+        <Card className="group relative overflow-hidden transition-all hover:shadow-md hover:border-indigo-200 cursor-pointer h-full">
+          <div className="p-5">
+            <div className="flex items-start justify-between mb-4">
+              <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+                <Building2 className="h-6 w-6" />
+              </div>
+              <StatusToggle projectId={project.id} isActive={isActive} onToggled={(next) => handleStatusToggled(project.id, next)} />
+            </div>
+
+            <h3 className="text-lg font-bold text-slate-800 mb-1 group-hover:text-indigo-600 transition-colors">
+              {project.name}
+            </h3>
+
+            <div className="flex items-center gap-2 text-sm text-slate-500 mb-4">
+              <MapPin className="h-4 w-4" />
+              {project.location || 'ไม่ระบุทำเล'}
+            </div>
+
+            <div className="flex items-center justify-end border-t pt-3 mt-2">
+               <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleDelete(project.id)
+                  }}
+                  disabled={isPending}
+                  className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition z-10"
+               >
+                  {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
+               </button>
+            </div>
+          </div>
+        </Card>
+      </Link>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -49,64 +141,37 @@ export default function ProjectsPageClient({ projects }: { projects: Project[] }
         }
       />
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {projects
-          .slice()
-          .sort((a, b) => {
-            const byLocation = collator.compare(a.location || '', b.location || '')
-            if (byLocation !== 0) return byLocation
-            return collator.compare(a.name || '', b.name || '')
-          })
-          .map((project) => (
-          <Link key={project.id} href={`/dashboard/projects/${project.id}`}>
-            <Card className="group relative overflow-hidden transition-all hover:shadow-md hover:border-indigo-200 cursor-pointer h-full">
-              <div className="p-5">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
-                    <Building2 className="h-6 w-6" />
-                  </div>
-                  <Badge tone={statusTone(project.status)}>
-                    {project.status === 'active' ? 'กำลังดำเนินการ' : project.status}
-                  </Badge>
-                </div>
-
-                <h3 className="text-lg font-bold text-slate-800 mb-1 group-hover:text-indigo-600 transition-colors">
-                  {project.name}
-                </h3>
-
-                <div className="flex items-center gap-2 text-sm text-slate-500 mb-4">
-                  <MapPin className="h-4 w-4" />
-                  {project.location || 'ไม่ระบุทำเล'}
-                </div>
-
-                <div className="flex items-center justify-end border-t pt-3 mt-2">
-                   <button
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        handleDelete(project.id)
-                      }}
-                      disabled={isPending}
-                      className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition z-10"
-                   >
-                      {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-                   </button>
-                </div>
-              </div>
-            </Card>
-          </Link>
-        ))}
-
-        {projects.length === 0 && (
-          <div className="col-span-full flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 py-16 text-center">
-            <div className="mb-4 rounded-full bg-white p-4 shadow-sm">
-              <Building2 className="h-8 w-8 text-slate-400" />
-            </div>
-            <h3 className="text-lg font-medium text-slate-900">ยังไม่มีโครงการ</h3>
-            <p className="mt-1 text-sm text-slate-500 mb-4">เริ่มต้นด้วยการสร้างโครงการแรกของคุณ</p>
+      {projects.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 py-16 text-center">
+          <div className="mb-4 rounded-full bg-white p-4 shadow-sm">
+            <Building2 className="h-8 w-8 text-slate-400" />
           </div>
-        )}
-      </div>
+          <h3 className="text-lg font-medium text-slate-900">ยังไม่มีโครงการ</h3>
+          <p className="mt-1 text-sm text-slate-500 mb-4">เริ่มต้นด้วยการสร้างโครงการแรกของคุณ</p>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          <div>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+              กำลังดำเนินการ ({ongoing.length})
+            </h2>
+            {ongoing.length === 0 ? (
+              <p className="text-sm text-slate-400">ไม่มีโครงการที่กำลังดำเนินการ</p>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">{ongoing.map(renderCard)}</div>
+            )}
+          </div>
+
+          {closed.length > 0 && (
+            <div>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                ปิดโครงการแล้ว ({closed.length})
+              </h2>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">{closed.map(renderCard)}</div>
+            </div>
+          )}
+        </div>
+      )}
 
       <Modal
         isOpen={isModalOpen}

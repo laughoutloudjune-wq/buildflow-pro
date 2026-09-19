@@ -45,7 +45,7 @@ export default function DashboardShell({
           collapsed ? 'ml-20' : 'ml-64'
         }`}
       >
-        <Header userEmail={userEmail} role={role} />
+        <Header userEmail={userEmail} role={role} canViewProjects={permissions.projects} />
         <main className="w-full grow p-6">
           {children}
         </main>

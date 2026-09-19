@@ -368,6 +368,7 @@ export default function ProjectDetailPageClient({
           canEdit
           markers={markers}
           unplacedEmptyLabel="วางครบทุกแปลงแล้ว"
+          plotDetailTabs={['construction', 'materials', 'requests', 'history']}
         />
       ) : (
         <Card className="overflow-hidden">

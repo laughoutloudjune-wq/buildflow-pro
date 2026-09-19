@@ -69,6 +69,18 @@ export async function createProject(formData: FormData) {
   revalidatePath('/dashboard/projects')
 }
 
+// สลับสถานะโครงการ (กำลังดำเนินการ / ปิดโครงการแล้ว) - ใช้ toggle บนหน้ารายการ
+export async function setProjectStatus(id: string, status: 'active' | 'completed') {
+  await requireModuleAccess('projects')
+  const supabase = await createClient()
+  const { error } = await supabase.from('projects').update({ status }).match({ id })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+  revalidatePath('/dashboard/projects')
+}
+
 // ลบโครงการ
 export async function deleteProject(id: string) {
   await requireModuleAccess('projects')

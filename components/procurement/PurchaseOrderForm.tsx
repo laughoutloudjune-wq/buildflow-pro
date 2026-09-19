@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, ArrowLeft, Link2, Loader2, Plus, Repeat2, Trash2 } from 'lucide-react'
@@ -178,21 +178,38 @@ export type PurchaseOrderFormOptions = {
   companies: Company[]
 }
 
-export default function PurchaseOrderForm({
-  mode,
-  orderId,
-  fromRequestId,
-  initialOrder,
-  initialOptions,
-  readOnly = false,
-}: {
+export type PurchaseOrderFormHandle = { submit: () => void }
+
+const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   mode: 'create' | 'edit'
   orderId?: string
   fromRequestId?: string | null
   initialOrder?: PurchaseOrder | null
   initialOptions?: PurchaseOrderFormOptions
   readOnly?: boolean
-}) {
+  /** Edit mode only: when set (the orders-list quick-view modal), a save
+   * calls this instead of navigating to the order's own page - there's
+   * nowhere to navigate to from inside a dialog that's already showing it. */
+  onSaved?: () => void
+  /** Same modal case: suppresses this form's own bottom action bar (fixed
+   * to the viewport, which escapes the modal's bounds entirely) - the modal
+   * renders its own footer instead, driven by `ref` and `onStateChange`. */
+  onClose?: () => void
+  /** Modal case: reports the live total and pending state up to the modal's
+   * own footer on every change, since that footer is rendered outside this
+   * component (in Modal's `footer` slot) and has no other way to know them. */
+  onStateChange?: (state: { total: number; isPending: boolean }) => void
+}>(function PurchaseOrderForm({
+  mode,
+  orderId,
+  fromRequestId,
+  initialOrder,
+  initialOptions,
+  readOnly = false,
+  onSaved,
+  onClose,
+  onStateChange,
+}, ref) {
   const router = useRouter()
 
   // With options in hand there is nothing left to await before the form can
@@ -926,15 +943,27 @@ export default function PurchaseOrderForm({
             return
           }
           // Marks the just-saved state clean so the nav guard doesn't fire on
-          // this same redirect.
+          // this same redirect (or, in modal mode, on the refetch below).
           initialSnapshotRef.current = dirtySnapshot
-          router.push(`/dashboard/procurement/orders/${orderId}`)
+          if (onSaved) {
+            toast.success('บันทึกใบสั่งซื้อแล้ว')
+            onSaved()
+          } else {
+            router.push(`/dashboard/procurement/orders/${orderId}`)
+          }
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'บันทึกใบสั่งซื้อไม่สำเร็จ')
       }
     })
   }
+
+  useImperativeHandle(ref, () => ({ submit: handleSubmit }), [handleSubmit])
+
+  useEffect(() => {
+    onStateChange?.({ total, isPending })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total, isPending])
 
   /** Picking a job site fills in the delivery note saved on that site
    * (projects.delivery_address), so the same drop-off point / site contact
@@ -973,7 +1002,7 @@ export default function PurchaseOrderForm({
   const backHref = mode === 'edit' && orderId ? `/dashboard/procurement/orders/${orderId}` : '/dashboard/procurement/orders'
 
   return (
-    <div className={`mx-auto max-w-5xl ${readOnly ? 'pb-10' : 'pb-24'}`}>
+    <div className={`mx-auto max-w-5xl ${readOnly || onClose ? 'pb-10' : 'pb-24'}`}>
       {mode === 'create' && (
         <div className="mb-5">
           <Link href={backHref} className="mb-2 flex w-fit items-center gap-1 text-sm text-slate-500 transition hover:text-indigo-600">
@@ -1395,7 +1424,7 @@ export default function PurchaseOrderForm({
                 <tr>
                   <th className="w-10 px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">#</th>
                   <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">สินค้า</th>
-                  <th className="w-28 px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">จำนวน</th>
+                  <th className="w-36 px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">จำนวน</th>
                   <th className="w-32 px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">ราคาต่อหน่วย</th>
                   <th className="w-32 px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">ราคารวม</th>
                   {!readOnly && <th className="w-10 px-2 py-2.5" />}
@@ -1603,8 +1632,15 @@ export default function PurchaseOrderForm({
         <div className="mt-5 flex items-center justify-end gap-2 text-sm text-slate-500">
           ยอดรวมทั้งสิ้น <span className="text-base font-semibold text-slate-800">฿{formatMoney(total)}</span>
         </div>
-      ) : (
-        /* Sticky bottom action bar */
+      ) : onClose ? null : (
+        /* Fixed to the viewport - only reachable on the standalone page.
+           Embedded in PurchaseOrderModal (onClose set), the modal renders
+           this same total/ยกเลิก/save bar itself, in Modal's `footer` slot,
+           driven by this form's ref (submit) and onStateChange (total,
+           isPending) - a fixed or sticky bar placed in the normal render
+           tree here would either escape the dialog to the browser viewport
+           or only pin once scrolled near its own position, neither of
+           which is "always visible at the bottom of this dialog". */
         <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 px-6 py-3 backdrop-blur lg:left-64">
           <div className="mx-auto flex max-w-5xl items-center justify-between">
             <div className="text-sm text-slate-500">
@@ -1767,4 +1803,6 @@ export default function PurchaseOrderForm({
       </Modal>
     </div>
   )
-}
+})
+
+export default PurchaseOrderForm

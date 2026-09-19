@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
+import PurchaseOrderModal from '@/components/procurement/PurchaseOrderModal'
 import {
   duplicatePurchaseOrders,
   deletePurchaseOrders,
@@ -99,6 +100,7 @@ export default function PurchaseOrdersPageClient({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [isDuplicating, setIsDuplicating] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -368,9 +370,13 @@ export default function PurchaseOrdersPageClient({
                         <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggleOne(o.id)} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        <Link href={`/dashboard/procurement/orders/${o.id}`} className="font-mono font-medium text-indigo-600 hover:underline">
+                        <button
+                          type="button"
+                          onClick={() => setViewOrderId(o.id)}
+                          className="font-mono font-medium text-indigo-600 hover:underline"
+                        >
                           {o.po_no}
-                        </Link>
+                        </button>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${STATUS_TEXT[o.status]}`}>
@@ -397,6 +403,14 @@ export default function PurchaseOrdersPageClient({
 
         <Pagination currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} />
       </Card>
+
+      <PurchaseOrderModal
+        orderId={viewOrderId}
+        onClose={() => {
+          setViewOrderId(null)
+          router.refresh()
+        }}
+      />
     </div>
   )
 }

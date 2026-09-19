@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useState, useTransition, type Ref } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, XCircle, PackageCheck, ChevronDown, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
-import PurchaseOrderForm, { type PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
+import PurchaseOrderForm, { type PurchaseOrderFormHandle, type PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
 import PurchaseOrderDocActions from '@/components/procurement/PurchaseOrderDocActions'
 import GoodsReceiptModal from '@/components/procurement/GoodsReceiptModal'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
@@ -39,17 +39,43 @@ function formatDate(value: string | null) {
 }
 
 export default function PurchaseOrderDetailPageClient({
+  fetchedAt,
   id,
   order,
   formOptions,
   initialError,
+  onClose,
+  onRefresh,
+  formRef,
+  onFormStateChange,
 }: {
+  /** From getPurchaseOrderDetailBundle - changes on every real fetch, used
+   * to remount PurchaseOrderForm with fresh data after a save instead of it
+   * quietly keeping pre-save field values (same pattern as the plot detail
+   * modal - see PlotDetailPageClient's fetchedAt). */
+  fetchedAt: number
   id: string
   order: PurchaseOrder | null
   formOptions?: PurchaseOrderFormOptions
   initialError?: string | null
+  /** Set when rendered inside PurchaseOrderModal instead of as its own page
+   * - swaps the "back to list" navigation for just closing the modal. */
+  onClose?: () => void
+  /** How this page gets fresh data after a save/status change. The
+   * standalone page has no server-refetch of its own to call, so it falls
+   * back to router.refresh(); PurchaseOrderModal passes its own bundle
+   * refetch instead, since router.refresh() only re-runs the page behind
+   * the modal, not the modal's independently-fetched data. */
+  onRefresh?: () => void
+  /** Modal case only: PurchaseOrderModal owns the ref and state (it renders
+   * the actual footer via Modal's `footer` slot), threaded down through
+   * here to the actual PurchaseOrderForm instance. Both undefined on the
+   * standalone page, where the form renders its own fixed bottom bar. */
+  formRef?: Ref<PurchaseOrderFormHandle>
+  onFormStateChange?: (state: { total: number; isPending: boolean }) => void
 }) {
   const router = useRouter()
+  const refresh = onRefresh ?? (() => router.refresh())
   const [isPending, startTransition] = useTransition()
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false)
   const toast = useToast()
@@ -110,7 +136,7 @@ export default function PurchaseOrderDetailPageClient({
     startTransition(async () => {
       try {
         await cancelPurchaseOrder(id, reason)
-        router.refresh()
+        refresh()
         toast.success('ยกเลิกใบสั่งซื้อแล้ว')
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'ยกเลิกไม่สำเร็จ')
@@ -123,7 +149,7 @@ export default function PurchaseOrderDetailPageClient({
     startTransition(async () => {
       try {
         await setPurchaseOrderStatus(id, status)
-        router.refresh()
+        refresh()
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'เปลี่ยนสถานะไม่สำเร็จ')
       }
@@ -135,7 +161,7 @@ export default function PurchaseOrderDetailPageClient({
     startTransition(async () => {
       try {
         await unmarkPurchaseOrderReceived(id)
-        router.refresh()
+        refresh()
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'ยกเลิกการรับของไม่สำเร็จ')
       }
@@ -162,12 +188,22 @@ export default function PurchaseOrderDetailPageClient({
   return (
     <div className="mx-auto max-w-5xl space-y-5 pb-10">
       <div>
-        <Link
-          href="/dashboard/procurement/orders"
-          className="mb-2 flex w-fit items-center gap-1 text-sm text-slate-500 transition hover:text-indigo-600"
-        >
-          <ArrowLeft className="h-4 w-4" /> กลับไปใบสั่งซื้อ
-        </Link>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="mb-2 flex w-fit items-center gap-1 text-sm text-slate-500 transition hover:text-indigo-600"
+          >
+            <ArrowLeft className="h-4 w-4" /> ปิด
+          </button>
+        ) : (
+          <Link
+            href="/dashboard/procurement/orders"
+            className="mb-2 flex w-fit items-center gap-1 text-sm text-slate-500 transition hover:text-indigo-600"
+          >
+            <ArrowLeft className="h-4 w-4" /> กลับไปใบสั่งซื้อ
+          </Link>
+        )}
         <PageHeader
           title={`ใบสั่งซื้อ ${order.po_no}`}
           subtitle={order.projects?.name || '-'}
@@ -246,14 +282,25 @@ export default function PurchaseOrderDetailPageClient({
         </div>
       )}
 
-      <PurchaseOrderForm mode="edit" orderId={id} initialOrder={order} initialOptions={formOptions} readOnly={isFormReadOnly} />
+      <PurchaseOrderForm
+        key={fetchedAt}
+        ref={formRef}
+        mode="edit"
+        orderId={id}
+        initialOrder={order}
+        initialOptions={formOptions}
+        readOnly={isFormReadOnly}
+        onSaved={onClose ? refresh : undefined}
+        onClose={onClose}
+        onStateChange={onFormStateChange}
+      />
 
       <GoodsReceiptModal
         isOpen={isReceiveModalOpen}
         onClose={() => setIsReceiveModalOpen(false)}
         order={order}
         onSuccess={async () => {
-          router.refresh()
+          refresh()
           toast.success('บันทึกการรับของแล้ว')
         }}
       />
