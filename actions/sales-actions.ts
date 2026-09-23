@@ -53,7 +53,7 @@ export async function getSalesBoardOptions() {
   const supabase = await createClient()
 
   const [projects, plotGroups, plots] = await Promise.all([
-    supabase.from('projects').select('id, name').eq('is_central_stock', false).order('name'),
+    supabase.from('projects').select('id, name').eq('kind', 'development').order('name'),
     supabase.from('plot_groups').select('id, name, project_id').order('name'),
     supabase.from('plots').select('id, name, project_id').order('name'),
   ])
@@ -1057,59 +1057,96 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
     .maybeSingle()
   const groupId = groupRow?.group_id || null
 
-  const { data, error } = await supabase
-    .from('purchase_orders')
-    .select(
-      `id, status, plot_id, plot_group_id,
-       purchase_order_plots (plot_id),
-       purchase_order_items (material_type_id, quantity_ordered, quantity_received, unit_price, material_types (name, unit))`
-    )
-    .eq('project_id', projectId)
-    .neq('status', 'cancelled')
+  type QueriedItem = {
+    material_type_id: number
+    quantity_ordered: number | string | null
+    quantity_received: number | string | null
+    unit_price: number | string | null
+    project_id: string | null
+    plot_id: string | null
+    plot_group_id: string | null
+    material_types: { name: string; unit: string } | null
+  }
 
-  if (error) throw new Error(error.message)
+  // Two disjoint sets of items can belong to this plot: a line that never
+  // overrode its scope, inheriting the whole order's project/plot (matched
+  // against the ORDER's own plot/group/multi-plot); and a line overridden
+  // straight to this project, matched against its OWN plot/group instead -
+  // regardless of which project the order it lives on was placed under (see
+  // 202609220002_po_item_project_plot_override.sql).
+  const [inheritedRes, overriddenRes] = await Promise.all([
+    supabase
+      .from('purchase_orders')
+      .select(
+        `id, status, plot_id, plot_group_id,
+         purchase_order_plots (plot_id),
+         purchase_order_items (material_type_id, quantity_ordered, quantity_received, unit_price, project_id, plot_id, plot_group_id, material_types (name, unit))`
+      )
+      .eq('project_id', projectId)
+      .neq('status', 'cancelled'),
+    supabase
+      .from('purchase_order_items')
+      .select(
+        `material_type_id, quantity_ordered, quantity_received, unit_price, project_id, plot_id, plot_group_id,
+         material_types (name, unit),
+         purchase_orders!inner (status)`
+      )
+      .eq('project_id', projectId)
+      .neq('purchase_orders.status', 'cancelled'),
+  ])
+  if (inheritedRes.error) throw new Error(inheritedRes.error.message)
+  if (overriddenRes.error) throw new Error(overriddenRes.error.message)
 
   type QueriedOrder = {
     id: string
     plot_id: string | null
     plot_group_id: string | null
     purchase_order_plots: { plot_id: string }[] | null
-    purchase_order_items: {
-      material_type_id: number
-      quantity_ordered: number | string | null
-      quantity_received: number | string | null
-      unit_price: number | string | null
-      material_types: { name: string; unit: string } | null
-    }[] | null
+    purchase_order_items: QueriedItem[] | null
   }
 
-  const orders = ((data as unknown as QueriedOrder[]) || []).filter((order) => {
-    if (order.plot_id === plotId) return true
-    if (groupId && order.plot_group_id === groupId) return true
-    return (order.purchase_order_plots || []).some((p) => p.plot_id === plotId)
-  })
+  const matchingItems: QueriedItem[] = []
+
+  const orders = (inheritedRes.data as unknown as QueriedOrder[]) || []
+  for (const order of orders) {
+    const orderMatchesPlot =
+      order.plot_id === plotId ||
+      (groupId != null && order.plot_group_id === groupId) ||
+      (order.purchase_order_plots || []).some((p) => p.plot_id === plotId)
+    if (!orderMatchesPlot) continue
+    for (const item of order.purchase_order_items || []) {
+      // Overridden away from this order's own scope - belongs elsewhere,
+      // counted (or not) by the second query instead.
+      if (item.project_id != null) continue
+      matchingItems.push(item)
+    }
+  }
+
+  for (const item of (overriddenRes.data as unknown as QueriedItem[]) || []) {
+    const itemMatchesPlot = item.plot_id === plotId || (groupId != null && item.plot_group_id === groupId)
+    if (!itemMatchesPlot) continue
+    matchingItems.push(item)
+  }
 
   const summary = new Map<number, PlotMaterialRow>()
-  for (const order of orders) {
-    for (const item of order.purchase_order_items || []) {
-      let row = summary.get(item.material_type_id)
-      if (!row) {
-        row = {
-          materialTypeId: item.material_type_id,
-          name: item.material_types?.name || '-',
-          unit: item.material_types?.unit || '',
-          orderedQty: 0,
-          receivedQty: 0,
-          orderedValue: 0,
-        }
-        summary.set(item.material_type_id, row)
+  for (const item of matchingItems) {
+    let row = summary.get(item.material_type_id)
+    if (!row) {
+      row = {
+        materialTypeId: item.material_type_id,
+        name: item.material_types?.name || '-',
+        unit: item.material_types?.unit || '',
+        orderedQty: 0,
+        receivedQty: 0,
+        orderedValue: 0,
       }
-      const ordered = Number(item.quantity_ordered) || 0
-      const received = Number(item.quantity_received) || 0
-      row.orderedQty += ordered
-      row.receivedQty += received
-      row.orderedValue += ordered * (Number(item.unit_price) || 0)
+      summary.set(item.material_type_id, row)
     }
+    const ordered = Number(item.quantity_ordered) || 0
+    const received = Number(item.quantity_received) || 0
+    row.orderedQty += ordered
+    row.receivedQty += received
+    row.orderedValue += ordered * (Number(item.unit_price) || 0)
   }
 
   return Array.from(summary.values()).sort((a, b) => a.name.localeCompare(b.name, 'th'))

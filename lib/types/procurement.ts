@@ -189,7 +189,23 @@ export type PurchaseOrderItem = {
   discount_type: DiscountType
   discount_value: number
   discount_amount: number
+  /** This line's own project/plot, when it's ordered for something other
+   * than the PO's own project/plot (e.g. a low-stock top-up for a different
+   * job, thrown in with the main order to the same supplier). Null on all
+   * three means "inherit the PO's own project_id/plot_id/plot_group_id" -
+   * the common case for every line nobody has overridden. */
+  project_id: string | null
+  plot_id: string | null
+  plot_group_id: string | null
+  /** Order-time guess at where this line will physically unload - pre-fills
+   * the goods receipt's destination toggle, nothing more. Null means "not
+   * decided yet"; goods_receipt_create never reads this column, only the
+   * receipt's own destination/default_destination. */
+  intended_destination: 'store' | 'site' | null
   material_types?: MaterialType | null
+  projects?: { name: string } | null
+  plots?: { name: string } | null
+  plot_groups?: { name: string } | null
 }
 
 export type PurchaseOrder = {
@@ -264,6 +280,13 @@ export type PurchaseOrderItemInput = {
   description?: string
   discount_type?: DiscountType
   discount_value?: number
+  /** This line's own project/plot override - see PurchaseOrderItem. Omit/
+   * null on all three to inherit the PO's own scope. */
+  project_id?: string | null
+  plot_id?: string | null
+  plot_group_id?: string | null
+  /** See PurchaseOrderItem.intended_destination. Omit/null for "not decided". */
+  intended_destination?: 'store' | 'site' | null
 }
 
 export type PurchaseOrderInput = {
@@ -305,6 +328,9 @@ export type GoodsReceiptItem = {
   purchase_order_item_id: string
   quantity_received: number
   unit_price_at_receipt: number
+  /** Where this line unloaded. Null means "inherit the receipt's own
+   * default_destination" - see MATERIAL_FLOW_PLAN.md Phase 1. */
+  destination: 'store' | 'site' | null
   purchase_order_items?: { material_types?: { name: string; unit: string } | null } | null
 }
 
@@ -316,6 +342,10 @@ export type GoodsReceipt = {
   received_by: string
   received_at: string
   note: string | null
+  /** Where the delivery unloaded unless a line says otherwise: 'store'
+   * (today's behaviour) or 'site' (posted 'in' then immediately drawn back
+   * out as 'out'/direct_to_site so it never inflates the on-hand count). */
+  default_destination: 'store' | 'site'
   goods_receipt_items?: GoodsReceiptItem[]
   purchase_orders?: {
     po_no: string

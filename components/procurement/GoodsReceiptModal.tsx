@@ -16,6 +16,10 @@ import type { PurchaseOrder } from '@/lib/types/procurement'
 // nothing unchecked is exactly the old one-click "mark whole PO received"
 // shortcut, now going through the same accounting path (goods_receipt_create)
 // as a partial receipt instead of bypassing it.
+type Destination = 'store' | 'site'
+
+const DESTINATION_LABEL: Record<Destination, string> = { store: 'เข้าสโตร์', site: 'ส่งตรงหน้างาน' }
+
 export default function GoodsReceiptModal({
   isOpen,
   onClose,
@@ -34,6 +38,15 @@ export default function GoodsReceiptModal({
   const [deliveryNoteNo, setDeliveryNoteNo] = useState('')
   const [receivedAt, setReceivedAt] = useState(() => new Date().toISOString().slice(0, 10))
   const [boqLines, setBoqLines] = useState<BoqCheckLine[]>([])
+  // Where the delivery unloaded - the fact goods_receipt_create actually
+  // needs (see MATERIAL_FLOW_PLAN.md Phase 1). Defaults from whatever the PO
+  // lines already agreed on at order time (intended_destination); falls back
+  // to 'store' (today's behaviour) when they disagree or said nothing.
+  const [defaultDestination, setDefaultDestination] = useState<Destination>('store')
+  // Per-line override, keyed by purchase_order_item_id - '' means "inherit
+  // the header default above", same NULL-means-inherit convention as the
+  // destination column itself.
+  const [destinations, setDestinations] = useState<Record<string, Destination | ''>>({})
 
   const receivableItems = (order.purchase_order_items || [])
     .map((item) => ({ item, remaining: Math.max(0, item.quantity_ordered - item.quantity_received) }))
@@ -51,6 +64,20 @@ export default function GoodsReceiptModal({
     setQuantities(initialQty)
     setDeliveryNoteNo('')
     setReceivedAt(new Date().toISOString().slice(0, 10))
+
+    // Header default: what every line agrees on, if they agree - otherwise
+    // 'store', same as an order with no opinion at all.
+    const intents = new Set(receivableItems.map(({ item }) => item.intended_destination).filter((d): d is Destination => !!d))
+    const headerDefault: Destination = intents.size === 1 ? [...intents][0] : 'store'
+    setDefaultDestination(headerDefault)
+    // Only lines that actually disagree with the header start pre-filled -
+    // everything else stays '' (inherit), so toggling the header later still
+    // moves the common case with it.
+    const initialDestinations: Record<string, Destination | ''> = {}
+    for (const { item } of receivableItems) {
+      initialDestinations[item.id] = item.intended_destination && item.intended_destination !== headerDefault ? item.intended_destination : ''
+    }
+    setDestinations(initialDestinations)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, order.id])
 
@@ -101,6 +128,7 @@ export default function GoodsReceiptModal({
         purchase_order_item_id: item.id,
         quantity_received: Number(quantities[item.id]) || 0,
         unit_price_at_receipt: item.unit_price,
+        destination: destinations[item.id] || null,
       }))
       .filter((i) => i.quantity_received > 0)
 
@@ -115,6 +143,7 @@ export default function GoodsReceiptModal({
           purchase_order_id: order.id,
           delivery_note_no: deliveryNoteNo,
           received_at: receivedAt,
+          default_destination: defaultDestination,
           items,
         })
         onSuccess()
@@ -133,6 +162,26 @@ export default function GoodsReceiptModal({
           <span className="shrink-0 text-xs font-medium text-slate-400">เลือก {selectedCount} รายการ</span>
         </div>
 
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">
+            ของครั้งนี้ไปที่ไหน (ค่าเริ่มต้นของทั้งใบ - แต่ละรายการเลือกต่างจากนี้ได้)
+          </label>
+          <div className="flex gap-2">
+            {(Object.keys(DESTINATION_LABEL) as Destination[]).map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDefaultDestination(d)}
+                className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                  defaultDestination === d ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                {DESTINATION_LABEL[d]}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {receivableItems.length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
             ไม่มีรายการที่รอรับของแล้ว
@@ -146,6 +195,7 @@ export default function GoodsReceiptModal({
                   <th className="w-8 px-1 py-2 text-xs font-medium">#</th>
                   <th className="px-2 py-2 text-xs font-medium">รายการสินค้า</th>
                   <th className="w-32 px-3 py-2 text-right text-xs font-medium">จำนวนสินค้า</th>
+                  <th className="w-32 px-3 py-2 text-xs font-medium">ปลายทาง</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -179,6 +229,18 @@ export default function GoodsReceiptModal({
                             {remaining.toLocaleString('th-TH')} {item.unit || item.material_types?.unit}
                           </span>
                         )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <select
+                          value={destinations[item.id] || ''}
+                          onChange={(e) => setDestinations((prev) => ({ ...prev, [item.id]: e.target.value as Destination | '' }))}
+                          disabled={!checked}
+                          className="w-full text-xs"
+                        >
+                          <option value="">({DESTINATION_LABEL[defaultDestination]})</option>
+                          <option value="store">{DESTINATION_LABEL.store}</option>
+                          <option value="site">{DESTINATION_LABEL.site}</option>
+                        </select>
                       </td>
                     </tr>
                   )

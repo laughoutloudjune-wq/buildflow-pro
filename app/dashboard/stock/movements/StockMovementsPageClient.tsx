@@ -18,17 +18,28 @@ const SOURCE_LABEL: Record<StockMovement['source_type'], string> = {
   manual_request: 'เบิกให้ผู้รับเหมา',
   opening_balance: 'ยอดยกมา (ย้ายระบบ)',
   count_adjustment: 'ปรับยอดจากนับสต็อก',
+  direct_to_site: 'ส่งตรงหน้างาน',
+}
+
+// goods_receipt_create posts an 'in' immediately followed by an 'out' for any
+// line that never entered the store (see MATERIAL_FLOW_PLAN.md Phase 1) -
+// same source_id (the receipt line), so the pair collapses to just the
+// direct_to_site row rather than reading as two separate deliveries.
+function collapseDirectToSite(movements: StockMovement[]): StockMovement[] {
+  const directSiteSourceIds = new Set(movements.filter((m) => m.source_type === 'direct_to_site').map((m) => m.source_id))
+  return movements.filter((m) => !(m.source_type === 'goods_receipt' && directSiteSourceIds.has(m.source_id)))
 }
 
 const ALL = 'ทั้งหมด'
 
 export default function StockMovementsPageClient({
-  movements,
+  movements: rawMovements,
   initialError,
 }: {
   movements: StockMovement[]
   initialError?: string | null
 }) {
+  const movements = useMemo(() => collapseDirectToSite(rawMovements), [rawMovements])
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>(ALL)
   const [sourceFilter, setSourceFilter] = useState<string>(ALL)
@@ -88,6 +99,7 @@ export default function StockMovementsPageClient({
             <option value="manual_request">เบิกให้ผู้รับเหมา</option>
             <option value="opening_balance">ยอดยกมา (ย้ายระบบ)</option>
             <option value="count_adjustment">ปรับยอดจากนับสต็อก</option>
+            <option value="direct_to_site">ส่งตรงหน้างาน</option>
           </select>
           <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none">
             {projectOptions.map((p) => (

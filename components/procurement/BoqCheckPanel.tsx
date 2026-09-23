@@ -98,14 +98,23 @@ export default function BoqCheckPanel({ lines, scopeLabel, onAcknowledge, onReas
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {lines.map((line) => {
+                {lines.map((line, i) => {
                   const over = isBoqCheckLineOver(line)
                   const diff = line.plannedQty - line.totalAfter
+                  // Acknowledging an over-BOQ material records one reason per
+                  // (PO, material) in po_boq_overrides - not per scope - so a
+                  // material overridden into two different scopes on the same
+                  // PO shares one override either way.
                   const override = overrideByMaterial.get(line.materialTypeId)
                   return (
-                    <tr key={line.materialTypeId} className={over ? 'bg-red-50/40' : undefined}>
+                    <tr key={`${line.materialTypeId}-${line.scopeLabel || i}`} className={over ? 'bg-red-50/40' : undefined}>
                       <td className="px-3 py-2 align-top font-medium text-slate-800">
                         {line.materialName}
+                        {line.scopeLabel && (
+                          <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-normal text-slate-500">
+                            {line.scopeLabel}
+                          </span>
+                        )}
                         {over && (
                           <div className="mt-1.5 max-w-sm">
                             {override ? (

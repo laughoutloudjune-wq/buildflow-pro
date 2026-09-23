@@ -172,10 +172,10 @@ export async function getBoqControlMaterialDetail(scope: ControlScope, materialT
   }))
 }
 
-/** Scope picker options for the page: every project (excluding the central
- * stock pseudo-project, which has no BOQ/house models to compare against),
- * plus every plot group and plot so the client can filter without a round
- * trip per project change. */
+/** Scope picker options for the page: every real development (excluding
+ * overhead buckets and the central stock pseudo-project, none of which have
+ * BOQ/house models to compare against), plus every plot group and plot so
+ * the client can filter without a round trip per project change. */
 export async function getCostControlOptions(): Promise<{
   projects: { id: string; name: string }[]
   plotGroups: { id: string; name: string; project_id: string }[]
@@ -185,7 +185,7 @@ export async function getCostControlOptions(): Promise<{
   const supabase = await createClient()
 
   const [projects, plotGroups, plots] = await Promise.all([
-    supabase.from('projects').select('id, name').eq('is_central_stock', false).order('name'),
+    supabase.from('projects').select('id, name').eq('kind', 'development').order('name'),
     supabase.from('plot_groups').select('id, name, project_id').order('name'),
     supabase.from('plots').select('id, name, project_id').order('name'),
   ])
@@ -217,6 +217,18 @@ type PoForCheck = {
   plots: { name: string } | { name: string }[] | null
   plot_groups: { name: string } | { name: string }[] | null
   purchase_order_plots: { plot_id: string; plots: { name: string } | { name: string }[] | null }[] | null
+}
+
+type PoItemForCheck = {
+  material_type_id: number
+  quantity_ordered: number
+  material_types: { name: string; unit: string } | { name: string; unit: string }[] | null
+  project_id: string | null
+  plot_id: string | null
+  plot_group_id: string | null
+  projects: { name: string } | { name: string }[] | null
+  plots: { name: string } | { name: string }[] | null
+  plot_groups: { name: string } | { name: string }[] | null
 }
 
 /** Derives a PO's (or PR's - same 3-shape scope) own plot scope and a
@@ -271,7 +283,10 @@ export async function getBoqCheckForPurchaseOrder(poId: string): Promise<{
        plots!purchase_orders_plot_id_fkey (name),
        plot_groups (name),
        purchase_order_plots (plot_id, plots (name)),
-       purchase_order_items (material_type_id, quantity_ordered, material_types (name, unit))`
+       purchase_order_items (
+         material_type_id, quantity_ordered, material_types (name, unit),
+         project_id, plot_id, plot_group_id, projects (name), plots (name), plot_groups (name)
+       )`
     )
     .eq('id', poId)
     .maybeSingle()
@@ -287,24 +302,65 @@ export async function getBoqCheckForPurchaseOrder(poId: string): Promise<{
     return { lines: [], scopeLabel: 'ไม่ระบุแปลง', isOutsideBoq: false, existingOverrides: [] }
   }
 
+  // A line overridden to its own project/plot ([[202609220002]]) needs to be
+  // checked against ITS OWN scope, not the PO's - so items are grouped by
+  // effective scope first, and each distinct scope gets its own rollup call.
+  // The single-scope case (the vast majority of POs) collapses back to
+  // exactly today's behavior: one group, one rollup call, no scope labels.
   type ThisDoc = { qty: number; name: string; unit: string }
-  const thisDocByMaterial = new Map<number, ThisDoc>()
-  for (const item of po.purchase_order_items || []) {
+  type Group = { scope: ControlScope; scopeLabel: string; byMaterial: Map<number, ThisDoc> }
+  const groups = new Map<string, Group>()
+
+  for (const item of (po.purchase_order_items as unknown as PoItemForCheck[]) || []) {
     const materialType = asSingle(item.material_types)
-    const existing = thisDocByMaterial.get(item.material_type_id) || {
+    let itemScope: ControlScope
+    let itemScopeLabel: string
+    if (item.project_id) {
+      if (item.plot_id) {
+        itemScope = { projectId: item.project_id, plotIds: [item.plot_id] }
+        itemScopeLabel = `แปลง ${asSingle(item.plots)?.name || ''}`
+      } else if (item.plot_group_id) {
+        itemScope = { projectId: item.project_id, plotGroupId: item.plot_group_id }
+        itemScopeLabel = `กลุ่มแปลง ${asSingle(item.plot_groups)?.name || ''}`
+      } else {
+        // No plot at all under the overridden project (e.g. central stock) -
+        // nothing to weight against, so this line simply never shows up in
+        // any BOQ check. See 202609220002_po_item_project_plot_override.sql.
+        itemScope = { projectId: item.project_id }
+        itemScopeLabel = asSingle(item.projects)?.name || 'ไม่ระบุแปลง'
+      }
+    } else {
+      itemScope = resolved.scope
+      itemScopeLabel = resolved.scopeLabel
+    }
+
+    const key = JSON.stringify({
+      projectId: itemScope.projectId,
+      plotGroupId: itemScope.plotGroupId || null,
+      plotIds: itemScope.plotIds && itemScope.plotIds.length > 0 ? [...itemScope.plotIds].sort() : [],
+    })
+    let group = groups.get(key)
+    if (!group) {
+      group = { scope: itemScope, scopeLabel: itemScopeLabel, byMaterial: new Map() }
+      groups.set(key, group)
+    }
+    const existing = group.byMaterial.get(item.material_type_id) || {
       qty: 0,
       name: materialType?.name || '-',
       unit: materialType?.unit || '',
     }
     existing.qty += Number(item.quantity_ordered) || 0
-    thisDocByMaterial.set(item.material_type_id, existing)
+    group.byMaterial.set(item.material_type_id, existing)
   }
-  if (thisDocByMaterial.size === 0) {
+  if (groups.size === 0) {
     return { lines: [], scopeLabel: resolved.scopeLabel, isOutsideBoq: false, existingOverrides: [] }
   }
 
-  const [rollupRows, overridesRes] = await Promise.all([
-    fetchRollupRows(supabase, resolved.scope),
+  const showScopeLabels = groups.size > 1
+  const groupEntries = Array.from(groups.values())
+
+  const [rollupsPerGroup, overridesRes] = await Promise.all([
+    Promise.all(groupEntries.map((g) => fetchRollupRows(supabase, g.scope))),
     supabase
       .from('po_boq_overrides')
       .select('material_type_id, reason, approved_at, approved_by, profiles:approved_by (full_name)')
@@ -312,19 +368,23 @@ export async function getBoqCheckForPurchaseOrder(poId: string): Promise<{
   ])
   if (overridesRes.error) throw new Error(overridesRes.error.message)
 
-  const rollupByMaterial = new Map(rollupRows.map((r) => [r.materialTypeId, r]))
-  const lines: BoqCheckLine[] = Array.from(thisDocByMaterial.entries()).map(([materialTypeId, doc]) => {
-    const rollup = rollupByMaterial.get(materialTypeId)
-    const plannedQty = rollup ? ceilingQty(rollup) : 0
-    const totalAfter = rollup ? totalUsedQty(rollup) : doc.qty
-    return {
-      materialTypeId,
-      materialName: doc.name,
-      unit: doc.unit,
-      plannedQty,
-      alreadyQty: totalAfter - doc.qty,
-      thisDocQty: doc.qty,
-      totalAfter,
+  const lines: BoqCheckLine[] = []
+  groupEntries.forEach((group, gi) => {
+    const rollupByMaterial = new Map(rollupsPerGroup[gi].map((r) => [r.materialTypeId, r]))
+    for (const [materialTypeId, doc] of group.byMaterial.entries()) {
+      const rollup = rollupByMaterial.get(materialTypeId)
+      const plannedQty = rollup ? ceilingQty(rollup) : 0
+      const totalAfter = rollup ? totalUsedQty(rollup) : doc.qty
+      lines.push({
+        materialTypeId,
+        materialName: doc.name,
+        unit: doc.unit,
+        plannedQty,
+        alreadyQty: totalAfter - doc.qty,
+        thisDocQty: doc.qty,
+        totalAfter,
+        scopeLabel: showScopeLabels ? group.scopeLabel : undefined,
+      })
     }
   })
 
@@ -543,7 +603,24 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
  */
 export async function getBoqCheckForDraft(
   scope: ControlScope,
-  items: { materialTypeId: number; quantity: number }[],
+  items: {
+    materialTypeId: number
+    quantity: number
+    /** This line's own scope override, when it has one (see
+     * 202609220002_po_item_project_plot_override.sql) - falls back to the
+     * main `scope` param when omitted, exactly like every call site did
+     * before this existed. */
+    scope?: ControlScope
+    /** Human label for `scope`, shown as a chip only when the draft's lines
+     * span more than one distinct scope. Ignored when `scope` is omitted. */
+    scopeLabel?: string
+  }[],
+  /** Only ever applied within the MAIN scope group (items with no `scope`
+   * of their own) - a known, accepted gap for the rare case where editing a
+   * PO both keeps an overridden line and reuses the same material under the
+   * main scope; the live check is a best-effort early warning, never a
+   * blocker, so a minor double-count there is an acceptable trade for not
+   * needing a scope-keyed exclusion map. */
   excludeQuantitiesByMaterial?: Record<number, number>,
   /** 'ordered' (default) reads the rollup's ordered+issued total - the
    * right basis while drafting a PO. 'received' reads receivedQty alone -
@@ -563,36 +640,57 @@ export async function getBoqCheckForDraft(
   if (!scope.projectId) return { lines: [] }
   const supabase = await createClient()
 
-  const byMaterial = new Map<number, number>()
+  type Group = { scope: ControlScope; scopeLabel?: string; isMainScope: boolean; byMaterial: Map<number, number> }
+  const groups = new Map<string, Group>()
   for (const item of items) {
     if (!item.materialTypeId || !(item.quantity > 0)) continue
-    byMaterial.set(item.materialTypeId, (byMaterial.get(item.materialTypeId) || 0) + item.quantity)
+    const itemScope = item.scope ?? scope
+    const key = JSON.stringify({
+      projectId: itemScope.projectId,
+      plotGroupId: itemScope.plotGroupId || null,
+      plotIds: itemScope.plotIds && itemScope.plotIds.length > 0 ? [...itemScope.plotIds].sort() : [],
+    })
+    let group = groups.get(key)
+    if (!group) {
+      group = { scope: itemScope, scopeLabel: item.scope ? item.scopeLabel : undefined, isMainScope: !item.scope, byMaterial: new Map() }
+      groups.set(key, group)
+    } else if (!item.scope) {
+      group.isMainScope = true
+    }
+    group.byMaterial.set(item.materialTypeId, (group.byMaterial.get(item.materialTypeId) || 0) + item.quantity)
   }
-  if (byMaterial.size === 0) return { lines: [] }
+  if (groups.size === 0) return { lines: [] }
 
-  const [rollupRows, materialsRes] = await Promise.all([
-    fetchRollupRows(supabase, scope),
-    supabase.from('material_types').select('id, name, unit').in('id', Array.from(byMaterial.keys())),
+  const showScopeLabels = groups.size > 1
+  const groupEntries = Array.from(groups.values())
+  const allMaterialIds = Array.from(new Set(groupEntries.flatMap((g) => Array.from(g.byMaterial.keys()))))
+
+  const [rollupsPerGroup, materialsRes] = await Promise.all([
+    Promise.all(groupEntries.map((g) => fetchRollupRows(supabase, g.scope))),
+    supabase.from('material_types').select('id, name, unit').in('id', allMaterialIds),
   ])
   if (materialsRes.error) throw new Error(materialsRes.error.message)
-
-  const rollupByMaterial = new Map(rollupRows.map((r) => [r.materialTypeId, r]))
   const nameById = new Map((materialsRes.data || []).map((m) => [m.id, m]))
 
-  const lines: BoqCheckLine[] = Array.from(byMaterial.entries()).map(([materialTypeId, thisDocQty]) => {
-    const rollup = rollupByMaterial.get(materialTypeId)
-    const plannedQty = rollup ? ceilingQty(rollup) : 0
-    const excluded = excludeQuantitiesByMaterial?.[materialTypeId] || 0
-    const currentTotal = rollup ? (basis === 'received' ? rollup.receivedQty : basis === 'issued' ? rollup.issuedQty : totalUsedQty(rollup)) : 0
-    const alreadyQty = currentTotal - excluded
-    return {
-      materialTypeId,
-      materialName: nameById.get(materialTypeId)?.name || '-',
-      unit: nameById.get(materialTypeId)?.unit || '',
-      plannedQty,
-      alreadyQty,
-      thisDocQty,
-      totalAfter: alreadyQty + thisDocQty,
+  const lines: BoqCheckLine[] = []
+  groupEntries.forEach((group, gi) => {
+    const rollupByMaterial = new Map(rollupsPerGroup[gi].map((r) => [r.materialTypeId, r]))
+    for (const [materialTypeId, thisDocQty] of group.byMaterial.entries()) {
+      const rollup = rollupByMaterial.get(materialTypeId)
+      const plannedQty = rollup ? ceilingQty(rollup) : 0
+      const excluded = group.isMainScope ? excludeQuantitiesByMaterial?.[materialTypeId] || 0 : 0
+      const currentTotal = rollup ? (basis === 'received' ? rollup.receivedQty : basis === 'issued' ? rollup.issuedQty : totalUsedQty(rollup)) : 0
+      const alreadyQty = currentTotal - excluded
+      lines.push({
+        materialTypeId,
+        materialName: nameById.get(materialTypeId)?.name || '-',
+        unit: nameById.get(materialTypeId)?.unit || '',
+        plannedQty,
+        alreadyQty,
+        thisDocQty,
+        totalAfter: alreadyQty + thisDocQty,
+        scopeLabel: showScopeLabels ? group.scopeLabel : undefined,
+      })
     }
   })
 

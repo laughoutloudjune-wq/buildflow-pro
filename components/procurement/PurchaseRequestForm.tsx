@@ -56,7 +56,7 @@ export default function PurchaseRequestForm({
 
   useEffect(() => {
     async function bootstrap() {
-      const [p, m] = await Promise.all([getProjects({ includeCentralStock: true }), getMaterialPickerOptions()])
+      const [p, m] = await Promise.all([getProjects({ includeOverhead: true }), getMaterialPickerOptions()])
       setProjects(p)
       setMaterials(m)
 

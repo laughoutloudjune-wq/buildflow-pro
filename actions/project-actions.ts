@@ -5,19 +5,20 @@ import { revalidatePath } from 'next/cache'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 
 // ดึงโครงการทั้งหมด
-// includeCentralStock: รวมโครงการพิเศษ "ของเบิกสโตร์" ด้วยหรือไม่ - ค่าเริ่มต้นไม่รวม
-// เพราะหน้าจัดการโครงการ/แดชบอร์ดไม่ควรนับหรือแสดงมันปนกับโครงการจริง มีแค่ฟอร์ม PO/PR
-// ที่ต้องรวมไว้ให้เลือกซื้อเข้าสโตร์กลางได้
+// includeOverhead: รวมหมวดเบิกใช้ภายใน (kind='overhead' - สโตร์กลาง, ของใช้สำนักงาน,
+// อุปกรณ์ช่าง ฯลฯ) ด้วยหรือไม่ - ค่าเริ่มต้นไม่รวม เพราะหน้าจัดการโครงการ/แดชบอร์ด
+// ไม่ควรนับหรือแสดงมันปนกับโครงการพัฒนาจริง มีแค่ฟอร์ม PO/PR ที่ต้องรวมไว้ให้เลือก
+// ซื้อเข้าสโตร์กลาง/หมวดภายในได้
 // onlyProjectsPage: จำกัดเฉพาะโครงการที่ตั้งค่า show_on_projects_page=true (โครงการพัฒนาจริง)
 // ใช้กับหน้ารายการโครงการ/BOQ ที่ไม่ควรปนกับงานเดี่ยว/หมวดเบิกใช้ภายในที่ผูกกับ PO เก่า
-export async function getProjects(opts: { includeCentralStock?: boolean; onlyProjectsPage?: boolean } = {}) {
+export async function getProjects(opts: { includeOverhead?: boolean; onlyProjectsPage?: boolean } = {}) {
   const supabase = await createClient()
   let query = supabase
     .from('projects')
     .select('*')
     .order('location', { ascending: true })
     .order('name', { ascending: true })
-  if (!opts.includeCentralStock) query = query.eq('is_central_stock', false)
+  if (!opts.includeOverhead) query = query.eq('kind', 'development')
   if (opts.onlyProjectsPage) query = query.eq('show_on_projects_page', true)
 
   const { data, error } = await query

@@ -13,7 +13,7 @@ export default async function CreatePurchaseOrderPage({
 }) {
   const [{ fromRequest }, projects, suppliers, companies] = await Promise.all([
     searchParams,
-    getProjects({ includeCentralStock: true }),
+    getProjects({ includeOverhead: true }),
     getSuppliersWithBranches(),
     getCompanies(),
   ])

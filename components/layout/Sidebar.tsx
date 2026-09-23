@@ -66,6 +66,7 @@ const menuSections: SidebarSection[] = [
   {
     title: 'ฝ่ายขาย',
     items: [
+      { icon: BarChart3, label: 'แดชบอร์ดขาย', href: '/dashboard/sales/dashboard', permission: 'sales' as const },
       { icon: Tag, label: 'ผังการขาย', href: '/dashboard/sales', permission: 'sales' as const },
       {
         icon: ClipboardCheck,
@@ -140,6 +141,15 @@ export default function Sidebar({
     }))
     .filter((section) => section.items.length > 0)
 
+  // The single most-specific href match wins, computed once across every
+  // item rather than each item checking independently - otherwise a nested
+  // route like "/dashboard/sales/dashboard" lights up both itself AND its
+  // parent "/dashboard/sales" nav entry at the same time.
+  const activeHref = visibleSections
+    .flatMap((s) => s.items)
+    .filter((item) => pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`)))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/')
@@ -189,9 +199,8 @@ export default function Sidebar({
                 {!isSectionCollapsed && (
                   <div className="space-y-0.5">
                     {section.items.map((item) => {
-                      const isActive = pathname.startsWith(item.href) && item.href !== '/dashboard'
-                        ? true
-                        : pathname === item.href
+                      // Segment-boundary prefix match, not a raw string
+                      const isActive = item.href === activeHref
 
                       return (
                         <Link

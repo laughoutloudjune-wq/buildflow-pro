@@ -58,7 +58,16 @@ export async function createGoodsReceipt(input: {
   /** When the delivery actually happened, if backdating a receipt entered
    * late - defaults to now() server-side when omitted. */
   received_at?: string
-  items: { purchase_order_item_id: string; quantity_received: number; unit_price_at_receipt?: number }[]
+  /** Where this delivery unloaded unless a line says otherwise - 'store'
+   * (today's behaviour) when omitted. See MATERIAL_FLOW_PLAN.md Phase 1. */
+  default_destination?: 'store' | 'site'
+  items: {
+    purchase_order_item_id: string
+    quantity_received: number
+    unit_price_at_receipt?: number
+    /** Overrides default_destination for this one line. Omit/null to inherit it. */
+    destination?: 'store' | 'site' | null
+  }[]
 }) {
   await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can record a goods receipt')
   const supabase = await createClient()
@@ -73,10 +82,12 @@ export async function createGoodsReceipt(input: {
       delivery_note_no: input.delivery_note_no?.trim() || null,
       note: input.note?.trim() || null,
       received_at: input.received_at || null,
+      default_destination: input.default_destination || 'store',
       items: items.map((i) => ({
         purchase_order_item_id: i.purchase_order_item_id,
         quantity_received: Number(i.quantity_received),
         unit_price_at_receipt: Math.max(0, Number(i.unit_price_at_receipt) || 0),
+        destination: i.destination || null,
       })),
     },
   })

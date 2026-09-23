@@ -3,7 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, ArrowLeft, Link2, Loader2, Plus, Repeat2, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Link2, Loader2, MapPin, Plus, Repeat2, Trash2, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -98,6 +98,18 @@ type Line = {
   unit_price: string
   description: string
   discountValue: string
+  /** This line's own project/plot, when it's for something other than the
+   * order's own scope (e.g. a low-stock top-up for a different job, thrown
+   * in with the main order to the same supplier). Null on all three means
+   * "use the order's own project_id/plot_id/plot_group_id" - the default
+   * for every line nobody has overridden. */
+  project_id: string | null
+  plot_id: string | null
+  plot_group_id: string | null
+  /** Order-time guess at where this line will physically unload - pre-fills
+   * the goods receipt's destination toggle later, nothing more. Null means
+   * "not decided yet". */
+  intended_destination: 'store' | 'site' | null
 }
 
 const fieldLabel = 'mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#86868b]'
@@ -230,6 +242,29 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   const [plots, setPlots] = useState<{ id: string; name: string }[]>([])
   const [plotGroups, setPlotGroups] = useState<PlotGroup[]>([])
   const [isPlotsLoading, setIsPlotsLoading] = useState(false)
+  // Per-line scope override picker: plots/groups for whichever OTHER
+  // project a line points at, fetched on demand and cached by project id so
+  // picking the same alternate project on several lines only fetches once.
+  // Keyed separately from `plots`/`plotGroups` above (the main order's own
+  // project) since a line's override project is usually not that one.
+  const [altScopes, setAltScopes] = useState<Record<string, { plots: { id: string; name: string }[]; plotGroups: PlotGroup[] }>>({})
+  const [loadingAltScopes, setLoadingAltScopes] = useState<Record<string, boolean>>({})
+
+  async function loadAltScope(projectIdForLine: string) {
+    if (!projectIdForLine || altScopes[projectIdForLine] || loadingAltScopes[projectIdForLine]) return
+    setLoadingAltScopes((prev) => ({ ...prev, [projectIdForLine]: true }))
+    try {
+      const [p, g] = await Promise.all([getPlotsByProjectId(projectIdForLine), getPlotGroups(projectIdForLine)])
+      setAltScopes((prev) => ({
+        ...prev,
+        [projectIdForLine]: { plots: (p as { id: string; name: string }[]) || [], plotGroups: g || [] },
+      }))
+    } catch {
+      // Best-effort - the picker just shows no options for this project if it fails.
+    } finally {
+      setLoadingAltScopes((prev) => ({ ...prev, [projectIdForLine]: false }))
+    }
+  }
   // Fetched separately from bootstrap() and not gating isLoading: the
   // material catalog is 1000+ rows and was blocking the whole form behind a
   // spinner while everything else (projects/suppliers/companies - a handful
@@ -343,7 +378,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     try {
       // Already seeded from server props - skip the round trip entirely.
       if (!initialOptions) {
-        const [p, s, c] = await Promise.all([getProjects({ includeCentralStock: true }), getSuppliersWithBranches(), getCompanies()])
+        const [p, s, c] = await Promise.all([getProjects({ includeOverhead: true }), getSuppliersWithBranches(), getCompanies()])
         setProjects(p as PurchaseOrderFormOptions['projects'])
         setSuppliers(s)
         setCompanies(c)
@@ -394,8 +429,18 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             unit_price: String(item.unit_price),
             description: item.description || '',
             discountValue: item.discount_amount ? String(item.discount_amount) : '',
+            project_id: item.project_id,
+            plot_id: item.plot_id,
+            plot_group_id: item.plot_group_id,
+            intended_destination: item.intended_destination,
           }))
         )
+        // Pre-warm the alt-scope cache with each overridden line's own
+        // project so its picker doesn't show a blank plot list on first
+        // render (see loadAltScope below).
+        for (const item of items) {
+          if (item.project_id) void loadAltScope(item.project_id)
+        }
 
         // Only for an order raised from a request - otherwise there is no
         // request line for anything here to settle.
@@ -447,6 +492,10 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                 unit_price: String(item.material_types?.current_price ?? 0),
                 description: '',
                 discountValue: '',
+                project_id: null,
+                plot_id: null,
+                plot_group_id: null,
+                intended_destination: null,
               }))
           )
         }
@@ -513,12 +562,15 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   }, [materialIdsKey])
 
   // Same stability trick as materialIdsKey - only re-run the BOQ draft
-  // check when a material or its quantity actually changes.
+  // check when a material, its quantity, or its own scope override changes.
   const draftLinesKey = useMemo(
     () =>
       lines
         .filter((l) => l.material_type_id > 0 && Number(l.quantity_ordered) > 0)
-        .map((l) => `${l.material_type_id}:${Number(l.quantity_ordered)}`)
+        .map(
+          (l) =>
+            `${l.material_type_id}:${Number(l.quantity_ordered)}:${l.project_id || ''}:${l.plot_id || ''}:${l.plot_group_id || ''}`
+        )
         .sort()
         .join(','),
     [lines]
@@ -554,8 +606,18 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     let cancelled = false
     const timer = setTimeout(() => {
       const items = draftLinesKey.split(',').map((pair) => {
-        const [materialTypeId, quantity] = pair.split(':').map(Number)
-        return { materialTypeId, quantity }
+        const [materialTypeId, quantity, lineProjectId, linePlotId, linePlotGroupId] = pair.split(':')
+        const override = lineProjectId
+          ? { project_id: lineProjectId, plot_id: linePlotId || null, plot_group_id: linePlotGroupId || null }
+          : null
+        return {
+          materialTypeId: Number(materialTypeId),
+          quantity: Number(quantity),
+          scope: override
+            ? { projectId: lineProjectId, plotGroupId: linePlotGroupId || null, plotIds: linePlotId ? [linePlotId] : [] }
+            : undefined,
+          scopeLabel: override ? overrideSummary(override) : undefined,
+        }
       })
       getBoqCheckForDraft(draftScope, items, excludeQuantitiesByMaterial)
         .then((result) => {
@@ -805,6 +867,10 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         unit_price: '',
         description: '',
         discountValue: '',
+        project_id: null,
+        plot_id: null,
+        plot_group_id: null,
+        intended_destination: null,
       },
     ])
   }
@@ -924,6 +990,10 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         description: l.description,
         discount_type: (discountMode === 'individual' && Number(l.discountValue) > 0 ? 'amount' : 'none') as DiscountType,
         discount_value: discountMode === 'individual' ? Number(l.discountValue) || 0 : 0,
+        project_id: l.project_id,
+        plot_id: l.plot_id,
+        plot_group_id: l.plot_group_id,
+        intended_destination: l.intended_destination,
       })),
     }
 
@@ -989,6 +1059,30 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   }))
   const supplierOptions = suppliers.map((s) => ({ value: s.id, label: s.name }))
   const companyOptions = companies.map((c) => ({ value: c.id, label: c.name }))
+
+  /** Plot + plot-group options for a LINE's own scope override, flattened
+   * into one searchable list ('plot:<id>' / 'group:<id>') so a single
+   * control covers both - reuses the main scope's already-loaded plots/
+   * groups when the override happens to name the same project as the order
+   * itself (the common "different plot, same project" case needs no extra
+   * fetch at all), falling back to the on-demand altScopes cache otherwise. */
+  function plotOrGroupOptionsFor(projectIdForLine: string): { value: string; label: string }[] {
+    const source = projectIdForLine === projectId ? { plots, plotGroups } : altScopes[projectIdForLine]
+    if (!source) return []
+    return [
+      ...source.plots.map((p) => ({ value: `plot:${p.id}`, label: p.name })),
+      ...source.plotGroups.map((g) => ({ value: `group:${g.id}`, label: `กลุ่ม ${g.name}` })),
+    ]
+  }
+
+  /** The collapsed one-line summary for a line's own override, once set. */
+  function overrideSummary(line: Pick<Line, 'project_id' | 'plot_id' | 'plot_group_id'>): string {
+    const projectLabel = projects.find((p) => p.id === line.project_id)?.name || ''
+    const source = line.project_id === projectId ? { plots, plotGroups } : altScopes[line.project_id || '']
+    if (line.plot_id) return `${projectLabel} · แปลง ${source?.plots.find((p) => p.id === line.plot_id)?.name || ''}`
+    if (line.plot_group_id) return `${projectLabel} · กลุ่ม ${source?.plotGroups.find((g) => g.id === line.plot_group_id)?.name || ''}`
+    return projectLabel
+  }
 
   if (isLoading) {
     return (
@@ -1518,6 +1612,92 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             placeholder="ส่วนลด (บาท)"
                             disabled={readOnly}
                           />
+                        )}
+                        {/* Per-line scope override: this material is for a
+                          * different job (or general stock) than the order's
+                          * own project/plot - see 202609220002. Collapsed to
+                          * nothing for the common case of every line just
+                          * inheriting the order's scope. */}
+                        {line.project_id == null ? (
+                          !readOnly && (
+                            <button
+                              type="button"
+                              onClick={() => updateLine(i, { project_id: projectId || '' })}
+                              className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-800"
+                            >
+                              <MapPin className="h-3 w-3" /> ระบุโครงการ/แปลงอื่น
+                            </button>
+                          )
+                        ) : (
+                          <div className="mt-1.5 rounded-[10px] border border-indigo-100 bg-indigo-50/60 p-1.5">
+                            {readOnly ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-700">
+                                <MapPin className="h-3 w-3 shrink-0" /> {overrideSummary(line)}
+                              </span>
+                            ) : (
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1">
+                                  <SearchableSelect
+                                    className="min-w-0 flex-1"
+                                    options={projectOptions}
+                                    value={line.project_id}
+                                    onChange={(v) => {
+                                      void loadAltScope(v)
+                                      updateLine(i, { project_id: v, plot_id: null, plot_group_id: null })
+                                    }}
+                                    placeholder="โครงการ"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => updateLine(i, { project_id: null, plot_id: null, plot_group_id: null })}
+                                    title="ยกเลิก - ใช้โครงการ/แปลงของใบสั่งซื้อหลัก"
+                                    className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                                {loadingAltScopes[line.project_id] ? (
+                                  <div className="flex items-center gap-1 text-[10px] text-[#86868b]">
+                                    <Loader2 className="h-3 w-3 animate-spin" /> กำลังโหลดแปลง...
+                                  </div>
+                                ) : (
+                                  <SearchableSelect
+                                    options={plotOrGroupOptionsFor(line.project_id)}
+                                    value={line.plot_id ? `plot:${line.plot_id}` : line.plot_group_id ? `group:${line.plot_group_id}` : ''}
+                                    onChange={(v) => {
+                                      if (v.startsWith('plot:')) updateLine(i, { plot_id: v.slice(5), plot_group_id: null })
+                                      else if (v.startsWith('group:')) updateLine(i, { plot_group_id: v.slice(6), plot_id: null })
+                                      else updateLine(i, { plot_id: null, plot_group_id: null })
+                                    }}
+                                    placeholder="แปลง/กลุ่มแปลง (ไม่ระบุ = สต็อกทั่วไปของโครงการ)"
+                                  />
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {/* Order-time guess at where this line unloads - only
+                          * pre-fills the goods receipt's destination toggle
+                          * later, never read at receiving time. Collapsed to
+                          * nothing until picked, same as the scope override
+                          * above. */}
+                        {!readOnly && (
+                          <div className="mt-1.5 flex items-center gap-1">
+                            {(['store', 'site'] as const).map((d) => (
+                              <button
+                                key={d}
+                                type="button"
+                                onClick={() => updateLine(i, { intended_destination: line.intended_destination === d ? null : d })}
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition ${
+                                  line.intended_destination === d
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-white text-[#86868b] ring-1 ring-[#e8e8ed] hover:bg-slate-50'
+                                }`}
+                              >
+                                {d === 'store' ? 'เข้าสโตร์' : 'ส่งตรงหน้างาน'}
+                              </button>
+                            ))}
+                          </div>
                         )}
                       </td>
                       <td className="px-3 py-2">

@@ -4,7 +4,14 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
-import type { ActiveMaterialRow, ConsumptionReport, ConsumptionRow, LowStockRow, StockMovement, StockOverviewRow } from '@/lib/types/stock'
+import type {
+  ActiveMaterialRow,
+  ConsumptionReport,
+  ConsumptionRow,
+  LowStockRow,
+  StockMovement,
+  StockOverviewRow,
+} from '@/lib/types/stock'
 
 // Stock lives under the `materials` permission, not a new module of its own -
 // it's the same catalog, just showing on-hand quantity instead of catalog
@@ -158,7 +165,7 @@ export async function getStockWithdrawPickerOptions(): Promise<{
   const supabase = await createClient()
 
   const [{ data: projects, error: projError }, { data: contractors, error: contError }] = await Promise.all([
-    supabase.from('projects').select('id, name').eq('is_central_stock', false).order('name'),
+    supabase.from('projects').select('id, name').eq('kind', 'development').order('name'),
     supabase.from('contractors').select('id, name').order('name'),
   ])
 

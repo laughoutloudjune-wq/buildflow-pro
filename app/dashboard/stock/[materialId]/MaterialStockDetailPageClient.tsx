@@ -22,6 +22,17 @@ const SOURCE_LABEL: Record<StockMovement['source_type'], string> = {
   manual_request: 'เบิกให้ผู้รับเหมา',
   opening_balance: 'ยอดยกมา (ย้ายระบบ)',
   count_adjustment: 'ปรับยอดจากนับสต็อก',
+  direct_to_site: 'ส่งตรงหน้างาน',
+}
+
+// goods_receipt_create posts an 'in' immediately followed by an 'out' for
+// any line that never entered the store (see MATERIAL_FLOW_PLAN.md Phase 1)
+// - same source_id (the receipt line), so the pair collapses to just the
+// direct_to_site row: it already carries the project/plot/note, and showing
+// both would read as two deliveries instead of one.
+function collapseDirectToSite(movements: StockMovement[]): StockMovement[] {
+  const directSiteSourceIds = new Set(movements.filter((m) => m.source_type === 'direct_to_site').map((m) => m.source_id))
+  return movements.filter((m) => !(m.source_type === 'goods_receipt' && directSiteSourceIds.has(m.source_id)))
 }
 
 function describeSource(m: StockMovement): string {
@@ -55,7 +66,8 @@ export default function MaterialStockDetailPageClient({
     return <div className="mx-auto max-w-3xl py-12 text-center text-slate-400">ไม่พบวัสดุนี้</div>
   }
 
-  const { material, quantity_on_hand: quantityOnHand, movements, canAdjust } = detail
+  const { material, quantity_on_hand: quantityOnHand, movements: rawMovements, canAdjust } = detail
+  const movements = collapseDirectToSite(rawMovements)
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">

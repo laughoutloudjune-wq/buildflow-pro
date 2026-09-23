@@ -224,6 +224,10 @@ export default function PlotDetailPageClient({
     { key: 'history', label: 'ประวัติ', icon: History },
   ]
   const TABS = visibleTabs ? ALL_TABS.filter((t) => visibleTabs.includes(t.key)) : ALL_TABS
+  // The sales map's quick-view has no งานก่อสร้าง tab at all (visibleTabs
+  // excludes it) - "ดึง BOQ" and the job-count badge are meaningless there
+  // regardless of the viewer's own construction permission.
+  const showConstructionTab = !visibleTabs || visibleTabs.includes('construction')
 
   return (
     <div className="space-y-6">
@@ -253,7 +257,7 @@ export default function PlotDetailPageClient({
           }
           subtitle={`แบบบ้าน: ${plot.house_models?.name || ''}`}
           actions={
-            canEditConstruction ? (
+            canEditConstruction && showConstructionTab ? (
               <>
                 <Button variant="secondary" size="sm" onClick={handleSync} disabled={isPending}>
                   ดึง BOQ

@@ -1,5 +1,5 @@
 export type StockMovementType = 'in' | 'out'
-export type StockSourceType = 'goods_receipt' | 'manual_request' | 'opening_balance' | 'count_adjustment'
+export type StockSourceType = 'goods_receipt' | 'manual_request' | 'opening_balance' | 'count_adjustment' | 'direct_to_site'
 
 /** One row of the Stock Overview table. `tracked` is false when the
  * material has never had a stock_balances row written for it (no receipt,

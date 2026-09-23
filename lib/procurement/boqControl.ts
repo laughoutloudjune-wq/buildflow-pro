@@ -141,6 +141,12 @@ export type BoqCheckLine = {
    * unit_price_at_receipt). Omitted where there's no meaningful single
    * price for the line (a live PO draft with mixed/unset unit prices). */
   thisDocValue?: number
+  /** Which project/plot this line was actually checked against - set only
+   * when the document has more than one distinct scope (a line overridden
+   * to a different project/plot than the document's own). Omitted for the
+   * common single-scope case so every existing check keeps looking exactly
+   * as it does today. */
+  scopeLabel?: string
 }
 
 export type BoqCheckOverride = {

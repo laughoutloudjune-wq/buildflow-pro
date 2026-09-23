@@ -19,7 +19,7 @@ const SELECT_WITH_RELATIONS = `
   creator:profiles!purchase_orders_created_by_fkey (full_name),
   receiver:profiles!purchase_orders_received_by_fkey (full_name),
   payer:profiles!purchase_orders_paid_by_fkey (full_name),
-  purchase_order_items (*, material_types (*))
+  purchase_order_items (*, material_types (*), projects (name), plots (name), plot_groups (name))
 `
 
 export type PurchaseOrderFilters = {
@@ -62,6 +62,10 @@ function buildPayload(input: PurchaseOrderInput) {
         description: i.description?.trim() || null,
         discount_type: i.discount_type || 'none',
         discount_value: Math.max(0, Number(i.discount_value) || 0),
+        project_id: i.project_id || null,
+        plot_id: i.plot_id || null,
+        plot_group_id: i.plot_group_id || null,
+        intended_destination: i.intended_destination || null,
       })),
     },
     itemCount: items.length,
@@ -299,6 +303,10 @@ export async function duplicatePurchaseOrder(id: string): Promise<{ id: string; 
       description: i.description || undefined,
       discount_type: i.discount_type,
       discount_value: i.discount_value,
+      project_id: i.project_id,
+      plot_id: i.plot_id,
+      plot_group_id: i.plot_group_id,
+      intended_destination: i.intended_destination,
     })),
   })
   // createPurchaseOrder returns `{ error }` instead of throwing (see its

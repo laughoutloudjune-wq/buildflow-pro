@@ -19,7 +19,7 @@ export async function getPurchaseOrderDetailBundle(id: string) {
   try {
     const [loadedOrder, projects, suppliers, companies] = await Promise.all([
       getPurchaseOrderById(id),
-      getProjects({ includeCentralStock: true }),
+      getProjects({ includeOverhead: true }),
       getSuppliersWithBranches(),
       getCompanies(),
     ])
