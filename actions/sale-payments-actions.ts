@@ -19,6 +19,8 @@ export type SalePaymentRow = {
   receiptNo: string | null
   note: string | null
   createdAt: string
+  voidedAt: string | null
+  voidReason: string | null
 }
 
 function toRow(r: Record<string, unknown>): SalePaymentRow {
@@ -35,6 +37,8 @@ function toRow(r: Record<string, unknown>): SalePaymentRow {
     receiptNo: r.receipt_no as string | null,
     note: r.note as string | null,
     createdAt: r.created_at as string,
+    voidedAt: r.voided_at as string | null,
+    voidReason: r.void_reason as string | null,
   }
 }
 
@@ -117,10 +121,12 @@ export async function markSalePaymentPaid(paymentId: string, formData: FormData)
 
   const { data: existing, error: fetchError } = await supabase
     .from('sale_payments')
-    .select('amount_due, receipt_no')
+    .select('amount_due, receipt_no, paid_at, voided_at')
     .eq('id', paymentId)
     .maybeSingle()
   if (fetchError || !existing) return { success: false, error: fetchError?.message || 'ไม่พบรายการ' }
+  if (existing.voided_at) return { success: false, error: 'รายการนี้ถูกยกเลิกไปแล้ว' }
+  if (existing.paid_at) return { success: false, error: 'รายการนี้ชำระแล้ว ไม่สามารถบันทึกการชำระซ้ำได้' }
 
   const receiptNo = existing.receipt_no || (await nextReceiptNo(supabase))
 
@@ -212,7 +218,56 @@ export type DeletePaymentResult = { success: true } | { success: false; error: s
 export async function deleteSalePayment(paymentId: string): Promise<DeletePaymentResult> {
   await requireModuleAccess('sales')
   const supabase = await createClient()
+
+  const { data: existing, error: fetchError } = await supabase
+    .from('sale_payments')
+    .select('receipt_no')
+    .eq('id', paymentId)
+    .maybeSingle()
+  if (fetchError || !existing) return { success: false, error: fetchError?.message || 'ไม่พบรายการ' }
+  if (existing.receipt_no) {
+    return { success: false, error: 'รายการนี้ออกใบเสร็จแล้ว ลบไม่ได้ กรุณาใช้การยกเลิกใบเสร็จแทน' }
+  }
+
   const { error } = await supabase.from('sale_payments').delete().eq('id', paymentId)
+  if (error) return { success: false, error: error.message }
+  revalidatePath('/dashboard/projects')
+  revalidatePath('/dashboard/sales')
+  return { success: true }
+}
+
+export type VoidPaymentResult = { success: true } | { success: false; error: string }
+
+/** Keeps the row and its receipt number so the numbering sequence and the
+ * paid history stay intact (an audit/tax requirement) - only marks it
+ * cancelled instead of deleting or re-marking it, unlike deleteSalePayment/
+ * markSalePaymentPaid above (H-07). */
+export async function voidSalePayment(paymentId: string, reason: string): Promise<VoidPaymentResult> {
+  await requireModuleAccess('sales')
+  const supabase = await createClient()
+  const user = (await supabase.auth.getUser()).data.user
+
+  const trimmedReason = reason.trim()
+  if (!trimmedReason) return { success: false, error: 'กรุณาระบุเหตุผลที่ยกเลิก' }
+
+  const { data: existing, error: fetchError } = await supabase
+    .from('sale_payments')
+    .select('receipt_no, voided_at')
+    .eq('id', paymentId)
+    .maybeSingle()
+  if (fetchError || !existing) return { success: false, error: fetchError?.message || 'ไม่พบรายการ' }
+  if (!existing.receipt_no) return { success: false, error: 'รายการนี้ยังไม่ได้ออกใบเสร็จ' }
+  if (existing.voided_at) return { success: false, error: 'รายการนี้ถูกยกเลิกไปแล้ว' }
+
+  const { error } = await supabase
+    .from('sale_payments')
+    .update({
+      voided_at: new Date().toISOString(),
+      voided_by: user?.id ?? null,
+      void_reason: trimmedReason,
+    })
+    .eq('id', paymentId)
+
   if (error) return { success: false, error: error.message }
   revalidatePath('/dashboard/projects')
   revalidatePath('/dashboard/sales')
@@ -239,6 +294,7 @@ export async function getOverdueSalePayments(): Promise<OverdueSalePayment[]> {
       plot_sales ( plot_id, plots ( name, project_id, projects ( name ) ), customers ( full_name ) )
     `)
     .is('paid_at', null)
+    .is('voided_at', null)
     .lt('due_date', today)
     .order('due_date', { ascending: true })
 

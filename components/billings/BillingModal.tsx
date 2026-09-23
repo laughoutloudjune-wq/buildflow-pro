@@ -58,14 +58,15 @@ export default function BillingModal({ billingId, onClose, onDeleted, onStatus }
     setIsDeleting(true)
     setLocalError(null)
     try {
-      await deleteBilling(billingId)
+      const result = await deleteBilling(billingId)
+      if ('error' in result) {
+        setLocalError(result.error)
+        onStatus?.({ tone: 'error', message: result.error })
+        return
+      }
       onClose()
       onDeleted?.()
       onStatus?.({ tone: 'success', message: 'ลบใบเบิกเรียบร้อยแล้ว' })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'ลบรายการไม่สำเร็จ'
-      setLocalError(message)
-      onStatus?.({ tone: 'error', message })
     } finally {
       setIsDeleting(false)
       setShowDeleteConfirm(false)

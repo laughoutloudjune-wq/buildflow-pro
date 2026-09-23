@@ -138,19 +138,19 @@ export default function GoodsReceiptModal({
     }
 
     startTransition(async () => {
-      try {
-        await createGoodsReceipt({
-          purchase_order_id: order.id,
-          delivery_note_no: deliveryNoteNo,
-          received_at: receivedAt,
-          default_destination: defaultDestination,
-          items,
-        })
-        onSuccess()
-        onClose()
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'บันทึกการรับของไม่สำเร็จ')
+      const result = await createGoodsReceipt({
+        purchase_order_id: order.id,
+        delivery_note_no: deliveryNoteNo,
+        received_at: receivedAt,
+        default_destination: defaultDestination,
+        items,
+      })
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      onSuccess()
+      onClose()
     })
   }
 
@@ -201,6 +201,8 @@ export default function GoodsReceiptModal({
               <tbody className="divide-y divide-slate-100">
                 {receivableItems.map(({ item, remaining }, i) => {
                   const checked = !!selected[item.id]
+                  const enteredQty = Number(quantities[item.id]) || 0
+                  const overRemaining = checked && enteredQty > remaining
                   return (
                     <tr key={item.id}>
                       <td className="px-3 py-2">
@@ -215,15 +217,21 @@ export default function GoodsReceiptModal({
                       <td className="px-2 py-2 text-slate-800">{item.material_types?.name || '-'}</td>
                       <td className="px-3 py-2 text-right">
                         {checked ? (
-                          <input
-                            type="number"
-                            min="0"
-                            max={remaining}
-                            step="any"
-                            value={quantities[item.id] ?? ''}
-                            onChange={(e) => setQuantities((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                            className="w-24 text-right"
-                          />
+                          <>
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={quantities[item.id] ?? ''}
+                              onChange={(e) => setQuantities((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                              className={`w-24 text-right ${overRemaining ? 'border-amber-400 focus:border-amber-500' : ''}`}
+                            />
+                            {overRemaining && (
+                              <div className="mt-1 text-[11px] font-medium text-amber-600">
+                                มากกว่าจำนวนคงเหลือ {remaining.toLocaleString('th-TH')} {item.unit || item.material_types?.unit}
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <span className="text-slate-400">
                             {remaining.toLocaleString('th-TH')} {item.unit || item.material_types?.unit}

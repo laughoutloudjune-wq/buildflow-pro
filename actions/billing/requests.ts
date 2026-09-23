@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { BillingJobInput, BillingPayload } from '@/lib/billing'
 import { validateBillingPayload } from '@/lib/billing'
 import { encodeAdjustmentDescription } from '@/actions/_shared/billing-adjustments'
+import { translateBillingError } from '@/actions/_shared/billing-errors'
 import {
   getCurrentUser,
   getCurrentUserProfile,
@@ -233,11 +234,16 @@ export async function updateBillingRequest(id: string, data: BillingPayload): Pr
   }
 }
 
-export async function deleteBilling(id: string) {
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('billing_delete', { p_id: id })
-  if (error) throw new Error(error.message)
+export async function deleteBilling(id: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('billing_delete', { p_id: id })
+    if (error) return { error: translateBillingError(error.message) }
 
-  revalidatePath('/dashboard/billing')
-  revalidatePath('/dashboard/foreman/history')
+    revalidatePath('/dashboard/billing')
+    revalidatePath('/dashboard/foreman/history')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateBillingError(error instanceof Error ? error.message : 'ลบใบขอเบิกไม่สำเร็จ') }
+  }
 }

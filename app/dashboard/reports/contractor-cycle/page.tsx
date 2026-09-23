@@ -143,14 +143,14 @@ export default function ContractorCycleReportPage() {
   }, [])
 
   const handleUndoApprove = async (billId: string) => {
-    const ok = window.confirm('ต้องการ Undo Approve ใบเบิกนี้ใช่หรือไม่? ระบบจะย้ายกลับไปรอตรวจสอบและลบรายการจ่ายที่สร้างจากการอนุมัติ')
+    const ok = window.confirm('ต้องการย้อนสถานะอนุมัติใบเบิกนี้ใช่หรือไม่? ระบบจะย้ายกลับไปรอตรวจสอบและลบรายการจ่ายที่สร้างจากการอนุมัติ')
     if (!ok) return
-    try {
-      await undoApproveBilling(billId)
-      await runReport()
-    } catch (e: any) {
-      alert(e.message || 'Undo approve failed')
+    const result = await undoApproveBilling(billId)
+    if ('error' in result) {
+      alert(result.error)
+      return
     }
+    await runReport()
   }
 
   // Seeds the editable payout maps for a set of bills. For a fresh payment,
@@ -194,12 +194,14 @@ export default function ContractorCycleReportPage() {
     setPayOutLoading(true)
     try {
       const billIds = payOutConfirm.bills.map((b: any) => b.id)
-      await markBillingsAsPaidOut(billIds, payOutDate, whtAppliedMap, retentionAppliedMap, deductAppliedMap, retentionAmountMap, whtAmountMap)
+      const result = await markBillingsAsPaidOut(billIds, payOutDate, whtAppliedMap, retentionAppliedMap, deductAppliedMap, retentionAmountMap, whtAmountMap)
+      if ('error' in result) {
+        alert(result.error)
+        return
+      }
       setPayOutConfirm(null)
       resetPayoutMaps()
       await runReport()
-    } catch (e: any) {
-      alert(e.message || 'Mark as paid failed')
     } finally {
       setPayOutLoading(false)
     }
@@ -208,12 +210,12 @@ export default function ContractorCycleReportPage() {
   const handleUnmarkPaidOut = async (billIds: string[], contractorName: string) => {
     const ok = window.confirm(`ต้องการยกเลิกสถานะ "จ่ายแล้ว" ของ ${contractorName} ใช่หรือไม่?`)
     if (!ok) return
-    try {
-      await unmarkBillingsAsPaidOut(billIds)
-      await runReport()
-    } catch (e: any) {
-      alert(e.message || 'Unmark paid out failed')
+    const result = await unmarkBillingsAsPaidOut(billIds)
+    if ('error' in result) {
+      alert(result.error)
+      return
     }
+    await runReport()
   }
 
   // Reopens the same pay-out modal for a single already-paid bill, pre-filled

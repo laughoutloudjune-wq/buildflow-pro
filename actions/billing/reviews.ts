@@ -1,8 +1,9 @@
-﻿'use server'
+'use server'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { encodeAdjustmentDescription } from '@/actions/_shared/billing-adjustments'
+import { translateBillingError } from '@/actions/_shared/billing-errors'
 import {
   getCurrentUser,
   getCurrentUserProfile,
@@ -19,6 +20,8 @@ import { computeBillingTotals } from '@/lib/billing'
 // migration 202604240001_billing_rpcs. TS still normalizes/validates the
 // payload, recomputes monetary totals, and encodes adjustment signatures.
 
+export type BillingActionResult = { ok: true } | { error: string }
+
 function clampPercent(value: unknown) {
   const n = Number(value)
   if (!Number.isFinite(n)) return 0
@@ -27,116 +30,134 @@ function clampPercent(value: unknown) {
   return n
 }
 
-export async function approveBilling(id: string, data: BillingApprovalPayload) {
-  const supabase = await createClient()
-  const user = await getCurrentUser()
+export async function approveBilling(id: string, data: BillingApprovalPayload): Promise<BillingActionResult> {
+  try {
+    const supabase = await createClient()
+    const user = await getCurrentUser()
 
-  if (!user) throw new Error('User not found')
-  const role = await getCurrentUserRole(supabase, user.id)
-  requireRole(['pm', 'admin'], role, 'Only PM/Admin can approve billing')
-  const profile = await getCurrentUserProfile(supabase, user.id)
+    if (!user) return { error: 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง' }
+    const role = await getCurrentUserRole(supabase, user.id)
+    requireRole(['pm', 'admin'], role, 'Only PM/Admin can approve billing')
+    const profile = await getCurrentUserProfile(supabase, user.id)
 
-  // SECURITY: always recompute totals server-side from the submitted line
-  // items. The client's numeric totals are never trusted.
-  const approvalType = data.type === 'extra_work' ? 'extra_work' : 'progress'
-  const normalizedJobs = (data.selected_jobs || [])
-    .map((job) => ({
-      id: String(job.job_assignment_id || job.id || '').trim(),
-      request_amount: Math.max(0, Number(job.request_amount) || 0),
-      progress_percent: job.progress_percent ?? null,
+    // SECURITY: always recompute totals server-side from the submitted line
+    // items. The client's numeric totals are never trusted.
+    const approvalType = data.type === 'extra_work' ? 'extra_work' : 'progress'
+    const normalizedJobs = (data.selected_jobs || [])
+      .map((job) => ({
+        id: String(job.job_assignment_id || job.id || '').trim(),
+        request_amount: Math.max(0, Number(job.request_amount) || 0),
+        progress_percent: job.progress_percent ?? null,
+      }))
+      .filter((job) => job.id)
+
+    const normalizedAdjustments = (data.adjustments || []).map((adj) => ({
+      type: (adj.type === 'deduction' ? 'deduction' : 'addition') as 'addition' | 'deduction',
+      description: String(adj.description || '').trim(),
+      plot_name: String(adj.plot_name || '').trim(),
+      unit: String(adj.unit || '').trim() || 'unit',
+      quantity: Math.max(0, Number(adj.quantity) || 0),
+      unit_price: Math.max(0, Number(adj.unit_price) || 0),
     }))
-    .filter((job) => job.id)
 
-  const normalizedAdjustments = (data.adjustments || []).map((adj) => ({
-    type: (adj.type === 'deduction' ? 'deduction' : 'addition') as 'addition' | 'deduction',
-    description: String(adj.description || '').trim(),
-    plot_name: String(adj.plot_name || '').trim(),
-    unit: String(adj.unit || '').trim() || 'unit',
-    quantity: Math.max(0, Number(adj.quantity) || 0),
-    unit_price: Math.max(0, Number(adj.unit_price) || 0),
-  }))
+    const totals = computeBillingTotals(approvalType, normalizedJobs, normalizedAdjustments)
 
-  const totals = computeBillingTotals(approvalType, normalizedJobs, normalizedAdjustments)
+    const signature: BillingActionSignature = {
+      user_id: user.id,
+      full_name: profile?.full_name || '',
+      role: profile?.role || 'pm',
+      action: 'approve_edit',
+      at: new Date().toISOString(),
+    }
 
-  const signature: BillingActionSignature = {
-    user_id: user.id,
-    full_name: profile?.full_name || '',
-    role: profile?.role || 'pm',
-    action: 'approve_edit',
-    at: new Date().toISOString(),
+    const adjustmentsForRpc = normalizedAdjustments.map((adj) => ({
+      type: adj.type,
+      description: encodeAdjustmentDescription(adj.description, adj.plot_name, signature),
+      unit: adj.unit,
+      quantity: adj.quantity,
+      unit_price: adj.unit_price,
+    }))
+
+    const { error } = await supabase.rpc('billing_approve', {
+      p_id: id,
+      p_payload: {
+        billing_date: data.billing_date,
+        type: approvalType,
+        total_work_amount: totals.total_work_amount,
+        total_add_amount: totals.total_add_amount,
+        total_deduct_amount: totals.total_deduct_amount,
+        net_amount: totals.net_amount,
+        wht_percent: clampPercent(data.wht_percent),
+        retention_percent: clampPercent(data.retention_percent),
+        selected_jobs: normalizedJobs,
+        adjustments: adjustmentsForRpc,
+      },
+    })
+
+    if (error) return { error: translateBillingError(error.message) }
+
+    revalidatePath('/dashboard/billing')
+    revalidatePath(`/dashboard/billing/${id}`)
+    revalidatePath('/dashboard/foreman/history')
+    revalidatePath('/dashboard/reports/dc-history')
+    revalidatePath('/dashboard/reports/contractor-cycle')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateBillingError(error instanceof Error ? error.message : 'อนุมัติใบเบิกไม่สำเร็จ') }
   }
-
-  const adjustmentsForRpc = normalizedAdjustments.map((adj) => ({
-    type: adj.type,
-    description: encodeAdjustmentDescription(adj.description, adj.plot_name, signature),
-    unit: adj.unit,
-    quantity: adj.quantity,
-    unit_price: adj.unit_price,
-  }))
-
-  const { error } = await supabase.rpc('billing_approve', {
-    p_id: id,
-    p_payload: {
-      billing_date: data.billing_date,
-      type: approvalType,
-      total_work_amount: totals.total_work_amount,
-      total_add_amount: totals.total_add_amount,
-      total_deduct_amount: totals.total_deduct_amount,
-      net_amount: totals.net_amount,
-      wht_percent: clampPercent(data.wht_percent),
-      retention_percent: clampPercent(data.retention_percent),
-      selected_jobs: normalizedJobs,
-      adjustments: adjustmentsForRpc,
-    },
-  })
-
-  if (error) throw new Error(error.message)
-
-  revalidatePath('/dashboard/billing')
-  revalidatePath(`/dashboard/billing/${id}`)
-  revalidatePath('/dashboard/foreman/history')
-  revalidatePath('/dashboard/reports/dc-history')
-  revalidatePath('/dashboard/reports/contractor-cycle')
 }
 
-export async function rejectBilling(id: string, note?: string) {
-  const supabase = await createClient()
-  const user = await getCurrentUser()
+export async function rejectBilling(id: string, note?: string): Promise<BillingActionResult> {
+  try {
+    const supabase = await createClient()
+    const user = await getCurrentUser()
 
-  if (!user) throw new Error('User not found')
-  const role = await getCurrentUserRole(supabase, user.id)
-  requireRole(['pm', 'admin'], role, 'Only PM/Admin can reject billing')
+    if (!user) return { error: 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง' }
+    const role = await getCurrentUserRole(supabase, user.id)
+    requireRole(['pm', 'admin'], role, 'Only PM/Admin can reject billing')
 
-  // RPC (not a plain UPDATE) so the status change and the "notify the
-  // submitter" insert can't get out of sync with each other.
-  const { error } = await supabase.rpc('billing_reject', { p_id: id, p_note: note ?? null })
+    // RPC (not a plain UPDATE) so the status change and the "notify the
+    // submitter" insert can't get out of sync with each other.
+    const { error } = await supabase.rpc('billing_reject', { p_id: id, p_note: note ?? null })
 
-  if (error) throw new Error(error.message)
+    if (error) return { error: translateBillingError(error.message) }
 
-  revalidatePath('/dashboard/billing')
-  revalidatePath(`/dashboard/billing/${id}`)
-  revalidatePath('/dashboard/foreman/history')
-  revalidatePath('/dashboard/reports/dc-history')
-  revalidatePath('/dashboard/reports/contractor-cycle')
+    revalidatePath('/dashboard/billing')
+    revalidatePath(`/dashboard/billing/${id}`)
+    revalidatePath('/dashboard/foreman/history')
+    revalidatePath('/dashboard/reports/dc-history')
+    revalidatePath('/dashboard/reports/contractor-cycle')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateBillingError(error instanceof Error ? error.message : 'ปฏิเสธใบเบิกไม่สำเร็จ') }
+  }
 }
 
-export async function undoApproveBilling(id: string) {
-  const supabase = await createClient()
-  const user = await getCurrentUser()
-  if (!user) throw new Error('User not found')
-  const role = await getCurrentUserRole(supabase, user.id)
-  requireRole(['pm', 'admin'], role, 'Only PM/Admin can undo approve')
+export async function undoApproveBilling(id: string): Promise<BillingActionResult> {
+  try {
+    const supabase = await createClient()
+    const user = await getCurrentUser()
+    if (!user) return { error: 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง' }
+    const role = await getCurrentUserRole(supabase, user.id)
+    requireRole(['pm', 'admin'], role, 'Only PM/Admin can undo approve')
 
-  const { error } = await supabase.rpc('billing_undo_approve', { p_id: id })
-  if (error) throw new Error(error.message)
+    const { error } = await supabase.rpc('billing_undo_approve', { p_id: id })
+    if (error) return { error: translateBillingError(error.message) }
 
-  revalidatePath('/dashboard/billing')
-  revalidatePath(`/dashboard/billing/${id}/review`)
-  revalidatePath('/dashboard/foreman/history')
-  revalidatePath('/dashboard/reports/dc-history')
-  revalidatePath('/dashboard/reports/contractor-cycle')
+    revalidatePath('/dashboard/billing')
+    revalidatePath(`/dashboard/billing/${id}/review`)
+    revalidatePath('/dashboard/foreman/history')
+    revalidatePath('/dashboard/reports/dc-history')
+    revalidatePath('/dashboard/reports/contractor-cycle')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateBillingError(error instanceof Error ? error.message : 'ย้อนสถานะอนุมัติไม่สำเร็จ') }
+  }
 }
 
+/** One all-or-nothing RPC call (billing_mark_paid_out) instead of a separate
+ * update per bill - see 202609230005_billing_status_rules_and_payout.sql for
+ * why the old Promise.all-of-independent-updates version wasn't safe. */
 export async function markBillingsAsPaidOut(
   billingIds: string[],
   paidAt: string,
@@ -150,55 +171,51 @@ export async function markBillingsAsPaidOut(
   // formula can never produce since it's based on total_work_amount).
   retentionAmountMap: Record<string, number> = {},
   whtAmountMap: Record<string, number> = {}
-) {
-  const supabase = await createClient()
-  const user = await getCurrentUser()
-  if (!user) throw new Error('User not found')
-  const role = await getCurrentUserRole(supabase, user.id)
-  requireRole(['pm', 'admin'], role, 'Only PM/Admin can mark billings as paid out')
+): Promise<BillingActionResult> {
+  try {
+    const supabase = await createClient()
+    const user = await getCurrentUser()
+    if (!user) return { error: 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง' }
+    const role = await getCurrentUserRole(supabase, user.id)
+    requireRole(['pm', 'admin', 'accountant'], role, 'Only PM/Admin/Accountant can mark billings as paid out')
 
-  if (!billingIds || billingIds.length === 0) throw new Error('No billing IDs provided')
+    if (!billingIds || billingIds.length === 0) return { error: 'กรุณาเลือกรายการ' }
 
-  const updates = billingIds.map((id) =>
-    supabase
-      .from('billings')
-      .update({
-        paid_out_at: paidAt,
-        paid_out_by: user.id,
-        wht_applied: whtAppliedMap[id] ?? false,
-        retention_applied: retentionAppliedMap[id] ?? true,
-        deduct_applied: deductAppliedMap[id] ?? true,
-        retention_amount: retentionAmountMap[id] ?? null,
-        wht_amount: whtAmountMap[id] ?? null,
-      })
-      .eq('id', id)
-      .eq('status', 'approved')
-  )
+    const items = billingIds.map((id) => ({
+      id,
+      wht_applied: whtAppliedMap[id] ?? false,
+      retention_applied: retentionAppliedMap[id] ?? true,
+      deduct_applied: deductAppliedMap[id] ?? true,
+      retention_amount: retentionAmountMap[id] ?? null,
+      wht_amount: whtAmountMap[id] ?? null,
+    }))
 
-  const results = await Promise.all(updates)
-  const firstError = results.find((r) => r.error)
-  if (firstError?.error) throw new Error(firstError.error.message)
+    const { error } = await supabase.rpc('billing_mark_paid_out', { p_items: items, p_paid_at: paidAt })
+    if (error) return { error: translateBillingError(error.message) }
 
-  revalidatePath('/dashboard/reports/contractor-cycle')
+    revalidatePath('/dashboard/reports/contractor-cycle')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateBillingError(error instanceof Error ? error.message : 'บันทึกการจ่ายเงินไม่สำเร็จ') }
+  }
 }
 
-export async function unmarkBillingsAsPaidOut(billingIds: string[]) {
-  const supabase = await createClient()
-  const user = await getCurrentUser()
-  if (!user) throw new Error('User not found')
-  const role = await getCurrentUserRole(supabase, user.id)
-  requireRole(['pm', 'admin'], role, 'Only PM/Admin can unmark paid out')
+export async function unmarkBillingsAsPaidOut(billingIds: string[]): Promise<BillingActionResult> {
+  try {
+    const supabase = await createClient()
+    const user = await getCurrentUser()
+    if (!user) return { error: 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง' }
+    const role = await getCurrentUserRole(supabase, user.id)
+    requireRole(['pm', 'admin', 'accountant'], role, 'Only PM/Admin/Accountant can unmark paid out')
 
-  if (!billingIds || billingIds.length === 0) throw new Error('No billing IDs provided')
+    if (!billingIds || billingIds.length === 0) return { error: 'กรุณาเลือกรายการ' }
 
-  const { error } = await supabase
-    .from('billings')
-    .update({
-      paid_out_at: null,
-      paid_out_by: null,
-    })
-    .in('id', billingIds)
+    const { error } = await supabase.rpc('billing_unmark_paid_out', { p_ids: billingIds })
+    if (error) return { error: translateBillingError(error.message) }
 
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/reports/contractor-cycle')
+    revalidatePath('/dashboard/reports/contractor-cycle')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateBillingError(error instanceof Error ? error.message : 'ยกเลิกการจ่ายเงินไม่สำเร็จ') }
+  }
 }

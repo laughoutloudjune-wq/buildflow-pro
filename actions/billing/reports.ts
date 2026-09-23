@@ -27,6 +27,9 @@ type BillingReportRow = {
   submitted_by?: string | null
   approved_by?: string | null
   approved_at?: string | null
+  review_note?: string | null
+  reviewed_by?: string | null
+  reviewed_at?: string | null
   paid_out_at?: string | null
   paid_out_by?: string | null
   wht_applied?: boolean | null

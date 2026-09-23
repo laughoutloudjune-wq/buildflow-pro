@@ -137,7 +137,16 @@ export async function deletePlot(id: string, projectId: string) {
     await requireModuleAccess('projects')
     const supabase = await createClient()
     const { error } = await supabase.from('plots').delete().match({ id })
-    if (error) return { success: false, error: error.message } satisfies PlotActionResult
+    if (error) {
+      // 23503 = foreign_key_violation - a sale (or billed jobs, etc.) still
+      // references this plot. plot_sales.plot_id is RESTRICT, not CASCADE
+      // (H-06), specifically so this can't silently wipe a sale's payment
+      // and receipt history.
+      if (error.code === '23503') {
+        return { success: false, error: 'แปลงนี้มีข้อมูลการขายหรือรายการอื่นผูกอยู่ ต้องยกเลิกการขาย/รายการเหล่านั้นก่อนจึงจะลบแปลงได้' } satisfies PlotActionResult
+      }
+      return { success: false, error: error.message } satisfies PlotActionResult
+    }
     revalidatePath(`/dashboard/projects/${projectId}`)
     return { success: true } satisfies PlotActionResult
   } catch (err) {

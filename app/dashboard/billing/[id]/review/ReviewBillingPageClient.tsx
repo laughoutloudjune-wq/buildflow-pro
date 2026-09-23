@@ -223,10 +223,12 @@ export default function ReviewBillingPageClient({
         attachment_urls: billing?.attachment_urls,
         reason_for_dc: billing?.reason_for_dc,
       }
-      await approveBilling(id, approvalData)
+      const result = await approveBilling(id, approvalData)
+      if ('error' in result) {
+        setError(result.error)
+        return
+      }
       router.push('/dashboard/billing?type=success&message=อนุมัติใบเบิกเรียบร้อยแล้ว')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Approve failed')
     } finally {
       setIsSubmitting(false)
     }
@@ -236,10 +238,12 @@ export default function ReviewBillingPageClient({
     setError(null)
     setIsSubmitting(true)
     try {
-      await rejectBilling(id, rejectNote.trim() || undefined)
+      const result = await rejectBilling(id, rejectNote.trim() || undefined)
+      if ('error' in result) {
+        setError(result.error)
+        return
+      }
       router.push('/dashboard/billing?type=success&message=ปฏิเสธใบเบิกเรียบร้อยแล้ว')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Reject failed')
     } finally {
       setIsSubmitting(false)
       setRejectModalOpen(false)
@@ -250,10 +254,12 @@ export default function ReviewBillingPageClient({
   const handleDelete = async () => {
     setIsSubmitting(true)
     try {
-      await deleteBilling(id)
+      const result = await deleteBilling(id)
+      if ('error' in result) {
+        setError(result.error)
+        return
+      }
       router.push('/dashboard/billing?type=success&message=ลบใบขอเบิกเรียบร้อยแล้ว')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Delete failed')
     } finally {
       setIsSubmitting(false)
       setConfirmAction(null)
@@ -264,10 +270,12 @@ export default function ReviewBillingPageClient({
     setError(null)
     setIsSubmitting(true)
     try {
-      await undoApproveBilling(id)
+      const result = await undoApproveBilling(id)
+      if ('error' in result) {
+        setError(result.error)
+        return
+      }
       router.push('/dashboard/billing?type=success&message=ยกเลิกการอนุมัติเรียบร้อยแล้ว')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Undo approve failed')
     } finally {
       setIsSubmitting(false)
       setConfirmAction(null)
@@ -322,14 +330,16 @@ export default function ReviewBillingPageClient({
         title={`ตรวจสอบใบขอเบิก #${billing.doc_no}`}
         actions={
           <>
-            {billing.status === 'approved' && (
+            {billing.status === 'approved' && !billing.paid_out_at && (
               <Button variant="ghost" size="sm" onClick={() => setConfirmAction('undoApprove')} disabled={isSubmitting}>
-                <Edit className="h-4 w-4" /> Undo Approve
+                <Edit className="h-4 w-4" /> ย้อนสถานะอนุมัติ
               </Button>
             )}
-            <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setConfirmAction('delete')}>
-              <Trash2 className="h-4 w-4" /> ลบใบคำขอ
-            </Button>
+            {!billing.paid_out_at && (
+              <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setConfirmAction('delete')}>
+                <Trash2 className="h-4 w-4" /> ลบใบคำขอ
+              </Button>
+            )}
           </>
         }
       />
@@ -359,6 +369,11 @@ export default function ReviewBillingPageClient({
               <p><span className="font-semibold">วันที่ส่ง:</span> {billing.created_at ? new Date(billing.created_at).toLocaleString('th-TH') : '-'}</p>
             </div>
             {billing.note && <p className="mt-4"><span className="font-semibold">หมายเหตุ:</span> {billing.note}</p>}
+            {billing.status === 'rejected' && billing.review_note && (
+              <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-red-800">
+                <span className="font-semibold">เหตุผลที่ปฏิเสธ:</span> {billing.review_note}
+              </p>
+            )}
           </Card>
 
           {isExtraWork && (
@@ -565,14 +580,16 @@ export default function ReviewBillingPageClient({
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-4">
-              <Button variant="danger" onClick={() => setRejectModalOpen(true)} disabled={isSubmitting}>
-                {isSubmitting ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}
-              </Button>
-              <Button onClick={handleApprove} disabled={isSubmitting}>
-                {isSubmitting ? 'กำลังอนุมัติ...' : 'อนุมัติและจบงาน'}
-              </Button>
-            </div>
+            {billing.status === 'pending_review' && (
+              <div className="mt-6 flex justify-end gap-4">
+                <Button variant="danger" onClick={() => setRejectModalOpen(true)} disabled={isSubmitting}>
+                  {isSubmitting ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}
+                </Button>
+                <Button onClick={handleApprove} disabled={isSubmitting}>
+                  {isSubmitting ? 'กำลังอนุมัติ...' : 'อนุมัติและจบงาน'}
+                </Button>
+              </div>
+            )}
           </Card>
         </>
       )}

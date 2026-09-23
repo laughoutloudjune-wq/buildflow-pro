@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { CalendarClock, CheckCircle2, Loader2, Plus, Printer, Trash2 } from 'lucide-react'
+import { Ban, CalendarClock, CheckCircle2, Loader2, Plus, Printer, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -13,6 +13,7 @@ import {
   deleteSalePayment,
   generateDownPaymentSchedule,
   markSalePaymentPaid,
+  voidSalePayment,
   type SalePaymentRow,
 } from '@/actions/sale-payments-actions'
 
@@ -54,6 +55,8 @@ export default function PlotPaymentsSection({
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [markPayingId, setMarkPayingId] = useState<string | null>(null)
   const [installmentCount, setInstallmentCount] = useState('12')
+  const [voidingId, setVoidingId] = useState<string | null>(null)
+  const [voidReason, setVoidReason] = useState('')
 
   const hasDownSchedule = payments.some((p) => p.kind === 'down')
   const canGenerateSchedule = canEdit && !hasDownSchedule && downTotal && downTotal > 0 && contractAt
@@ -115,7 +118,28 @@ export default function PlotPaymentsSection({
     })
   }
 
+  function handleVoid() {
+    if (!voidingId) return
+    const reason = voidReason.trim()
+    if (!reason) {
+      toast.error('กรุณาระบุเหตุผลที่ยกเลิก')
+      return
+    }
+    startTransition(async () => {
+      const res = await voidSalePayment(voidingId, reason)
+      if (!res.success) {
+        toast.error(res.error)
+        return
+      }
+      toast.success('ยกเลิกใบเสร็จแล้ว')
+      setVoidingId(null)
+      setVoidReason('')
+      onRefresh()
+    })
+  }
+
   const markingPayment = markPayingId ? payments.find((p) => p.id === markPayingId) || null : null
+  const voidingPayment = voidingId ? payments.find((p) => p.id === voidingId) || null : null
 
   return (
     <Card className="p-5">
@@ -173,7 +197,9 @@ export default function PlotPaymentsSection({
                       ฿{formatCurrency(p.amountPaid ?? p.amountDue)}
                     </td>
                     <td className="py-2 pr-2">
-                      {p.paidAt ? (
+                      {p.voidedAt ? (
+                        <Badge tone="danger">ยกเลิกแล้ว</Badge>
+                      ) : p.paidAt ? (
                         <Badge tone="success">ชำระแล้ว</Badge>
                       ) : overdue ? (
                         <Badge tone="danger">เกินกำหนด</Badge>
@@ -205,6 +231,16 @@ export default function PlotPaymentsSection({
                           {!p.paidAt && (
                             <button type="button" onClick={() => handleDelete(p)} className="text-slate-300 hover:text-red-500">
                               <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          {p.paidAt && p.receiptNo && !p.voidedAt && (
+                            <button
+                              type="button"
+                              onClick={() => setVoidingId(p.id)}
+                              title="ยกเลิกใบเสร็จ"
+                              className="text-slate-300 hover:text-red-500"
+                            >
+                              <Ban className="h-3.5 w-3.5" />
                             </button>
                           )}
                         </div>
@@ -303,6 +339,49 @@ export default function PlotPaymentsSection({
               </Button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(voidingPayment)}
+        onClose={() => {
+          setVoidingId(null)
+          setVoidReason('')
+        }}
+        title={voidingPayment ? `ยกเลิกใบเสร็จ ${voidingPayment.receiptNo || ''}` : ''}
+      >
+        {voidingPayment && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              ใบเสร็จจะยังอยู่ในระบบแต่จะพิมพ์เป็น &quot;ยกเลิก&quot; รายการนี้ไม่สามารถกู้คืนได้
+            </p>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">เหตุผลที่ยกเลิก</label>
+              <textarea
+                rows={3}
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+                className="w-full rounded-md border border-slate-300 p-2"
+                placeholder="เช่น กรอกจำนวนเงินผิด, ลูกค้าขอเปลี่ยนวิธีชำระ"
+              />
+            </div>
+            <div className="flex justify-end gap-3 border-t pt-4">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setVoidingId(null)
+                  setVoidReason('')
+                }}
+              >
+                ยกเลิก
+              </Button>
+              <Button type="button" variant="danger" onClick={handleVoid} disabled={isPending}>
+                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                ยืนยันยกเลิกใบเสร็จ
+              </Button>
+            </div>
+          </div>
         )}
       </Modal>
     </Card>

@@ -107,7 +107,11 @@ export default function ForemanHistoryPageClient({
 
   const handleDelete = async (billId: string) => {
     if (!confirm('ต้องการลบคำขอนี้ใช่หรือไม่?')) return
-    await deleteBilling(billId)
+    const result = await deleteBilling(billId)
+    if ('error' in result) {
+      setLoadError(result.error)
+      return
+    }
     await load()
   }
 
@@ -161,7 +165,14 @@ export default function ForemanHistoryPageClient({
                     </div>
                   </div>
                   <div className="text-right font-semibold text-emerald-600">฿{formatCurrency(bill.net_amount ?? 0)}</div>
-                  <div className="flex lg:justify-center">{getStatusChip(bill.status || '')}</div>
+                  <div className="flex flex-col items-start gap-1 lg:items-center">
+                    {getStatusChip(bill.status || '')}
+                    {bill.status === 'rejected' && bill.review_note && (
+                      <div className="text-[11px] text-red-600 lg:text-center" title={bill.review_note}>
+                        {bill.review_note}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex lg:justify-center">
                     {bill.status === 'pending_review' ? (
                       <div className="flex items-center gap-2">

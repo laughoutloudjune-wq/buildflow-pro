@@ -31,8 +31,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     alignItems: 'center',
   },
+  amountBoxVoided: { border: '1px solid #dc2626', backgroundColor: '#fef2f2' },
   amountLabel: { fontSize: 10, color: '#065f46' },
   amountValue: { fontSize: 26, fontWeight: 'bold', color: '#059669', marginTop: 4 },
+  voidedBanner: {
+    border: '2px solid #dc2626',
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 15,
+    alignItems: 'center',
+  },
+  voidedText: { fontSize: 18, fontWeight: 'bold', color: '#dc2626' },
+  voidedReason: { fontSize: 9, color: '#991b1b', marginTop: 3 },
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottom: '1px solid #f3f4f6' },
   footer: { position: 'absolute', bottom: 30, left: 30, right: 30, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 20, rowGap: 10 },
   signatureBox: { width: 140, borderTop: '1px solid #ccc', paddingTop: 8, textAlign: 'center', fontSize: 9 },
@@ -61,6 +71,7 @@ export function SaleReceiptPdf({
   const companyTaxId = settings?.tax_id || 'Your Tax ID'
   const kindLabel = KIND_LABEL[payment.kind] || payment.kind
   const installmentSuffix = payment.installmentNo ? ` งวดที่ ${payment.installmentNo}` : ''
+  const isVoided = Boolean(payment.voidedAt)
 
   return (
     <Document>
@@ -80,6 +91,13 @@ export function SaleReceiptPdf({
           </View>
         </View>
 
+        {isVoided && (
+          <View style={styles.voidedBanner}>
+            <Text style={styles.voidedText}>ยกเลิก / VOID</Text>
+            {payment.voidReason && <Text style={styles.voidedReason}>เหตุผล: {payment.voidReason}</Text>}
+          </View>
+        )}
+
         <View style={styles.box}>
           <Text style={styles.label}>ได้รับเงินจาก</Text>
           <Text style={styles.value}>{data.customerName || '-'}</Text>
@@ -88,7 +106,7 @@ export function SaleReceiptPdf({
           <Text style={{ marginTop: 6 }}>สำหรับแปลง: {data.plotName}</Text>
         </View>
 
-        <View style={styles.amountBox}>
+        <View style={isVoided ? { ...styles.amountBox, ...styles.amountBoxVoided } : styles.amountBox}>
           <Text style={styles.amountLabel}>{kindLabel}{installmentSuffix}</Text>
           <Text style={styles.amountValue}>
             ฿{(payment.amountPaid ?? payment.amountDue).toLocaleString(undefined, { minimumFractionDigits: 2 })}

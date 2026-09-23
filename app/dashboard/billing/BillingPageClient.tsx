@@ -276,7 +276,14 @@ export default function BillingPageClient({
                     </div>
                   </div>
                   <div className="text-right font-bold text-emerald-600">฿{formatCurrency(bill.net_amount)}</div>
-                  <div className="flex lg:justify-center">{getStatusChip(bill.status)}</div>
+                  <div className="flex flex-col items-start gap-1 lg:items-center">
+                    {getStatusChip(bill.status)}
+                    {bill.status === 'rejected' && bill.review_note && (
+                      <div className="text-[11px] text-red-600 lg:text-center" title={bill.review_note}>
+                        {bill.review_note}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex lg:justify-center">
                     <button
                       onClick={(e) => {

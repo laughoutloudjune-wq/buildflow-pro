@@ -6,6 +6,19 @@ import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole } from '@/actions/_shared/user-role'
 import type { GoodsReceipt } from '@/lib/types/procurement'
 
+// Same reasoning as PO_ERROR_TRANSLATIONS in actions/procurement/orders.ts.
+const RECEIPT_ERROR_TRANSLATIONS: [string, string][] = [
+  ['Not authenticated', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง'],
+  ['Only PM/Admin can record a goods receipt', 'เฉพาะ PM/Admin เท่านั้นที่สามารถบันทึกการรับของได้'],
+  ['Purchase order not found', 'ไม่พบใบสั่งซื้อนี้'],
+  ['Can only receive against a purchase order that is sent or partially received', 'รับของได้เฉพาะใบสั่งซื้อที่อยู่ในสถานะส่งแล้วหรือรับของบางส่วนเท่านั้น'],
+  ['One or more receipt lines do not belong to this purchase order', 'มีรายการที่ไม่ได้อยู่ในใบสั่งซื้อนี้'],
+]
+
+function translateReceiptError(message: string): string {
+  return RECEIPT_ERROR_TRANSLATIONS.find(([needle]) => message.includes(needle))?.[1] || message
+}
+
 const SELECT_WITH_RELATIONS = `
   *,
   purchase_orders (po_no, supplier_id, company_id, suppliers (name), companies (name)),
@@ -68,34 +81,38 @@ export async function createGoodsReceipt(input: {
     /** Overrides default_destination for this one line. Omit/null to inherit it. */
     destination?: 'store' | 'site' | null
   }[]
-}) {
-  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can record a goods receipt')
-  const supabase = await createClient()
+}): Promise<{ id: string; ri_no: string; po_status: string } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can record a goods receipt')
+    const supabase = await createClient()
 
-  if (!input.purchase_order_id) throw new Error('Purchase order is required')
-  const items = input.items.filter((i) => i.purchase_order_item_id && Number(i.quantity_received) > 0)
-  if (items.length === 0) throw new Error('Enter a received quantity for at least one line')
+    if (!input.purchase_order_id) throw new Error('Purchase order is required')
+    const items = input.items.filter((i) => i.purchase_order_item_id && Number(i.quantity_received) > 0)
+    if (items.length === 0) throw new Error('Enter a received quantity for at least one line')
 
-  const { data, error } = await supabase.rpc('goods_receipt_create', {
-    p_payload: {
-      purchase_order_id: input.purchase_order_id,
-      delivery_note_no: input.delivery_note_no?.trim() || null,
-      note: input.note?.trim() || null,
-      received_at: input.received_at || null,
-      default_destination: input.default_destination || 'store',
-      items: items.map((i) => ({
-        purchase_order_item_id: i.purchase_order_item_id,
-        quantity_received: Number(i.quantity_received),
-        unit_price_at_receipt: Math.max(0, Number(i.unit_price_at_receipt) || 0),
-        destination: i.destination || null,
-      })),
-    },
-  })
+    const { data, error } = await supabase.rpc('goods_receipt_create', {
+      p_payload: {
+        purchase_order_id: input.purchase_order_id,
+        delivery_note_no: input.delivery_note_no?.trim() || null,
+        note: input.note?.trim() || null,
+        received_at: input.received_at || null,
+        default_destination: input.default_destination || 'store',
+        items: items.map((i) => ({
+          purchase_order_item_id: i.purchase_order_item_id,
+          quantity_received: Number(i.quantity_received),
+          unit_price_at_receipt: Math.max(0, Number(i.unit_price_at_receipt) || 0),
+          destination: i.destination || null,
+        })),
+      },
+    })
 
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/procurement/orders')
-  revalidatePath(`/dashboard/procurement/orders/${input.purchase_order_id}`)
-  revalidatePath('/dashboard/procurement/requests')
-  revalidatePath('/dashboard/procurement/receipts')
-  return data as { id: string; ri_no: string; po_status: string }
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/procurement/orders')
+    revalidatePath(`/dashboard/procurement/orders/${input.purchase_order_id}`)
+    revalidatePath('/dashboard/procurement/requests')
+    revalidatePath('/dashboard/procurement/receipts')
+    return data as { id: string; ri_no: string; po_status: string }
+  } catch (error) {
+    return { error: translateReceiptError(error instanceof Error ? error.message : 'บันทึกการรับของไม่สำเร็จ') }
+  }
 }
