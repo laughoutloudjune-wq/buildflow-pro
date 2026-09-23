@@ -2,6 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { computeActualPayout } from '@/lib/billing'
+import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
+import { monthRangeInBangkok } from '@/lib/utils'
 
 const COMPLETED_STATUSES = new Set(['completed', 'done', 'approved'])
 
@@ -18,12 +20,7 @@ function getBillingNetAmount(bill: any): number {
 export async function getDashboardStats() {
   const supabase = await createClient()
 
-  const [projectsRes, plotsRes, jobsRes, paymentsRes, billingsRes, contractorsRes, profilesRes] = await Promise.all([
-    supabase.from('projects').select('id, name, location, status').eq('kind', 'development'),
-    supabase.from('plots').select('id, name, project_id'),
-    supabase.from('job_assignments').select('id, plot_id, contractor_id, status'),
-    supabase.from('payments').select('id, amount, created_at, note, job_assignment_id').order('created_at', { ascending: false }).limit(20),
-    supabase.from('billings').select(`
+  const BILLINGS_SELECT = `
       id,
       doc_no,
       project_id,
@@ -49,24 +46,35 @@ export async function getDashboardStats() {
       deduct_applied,
       retention_amount,
       wht_amount
-    `).order('created_at', { ascending: false }).limit(500),
+    `
+
+  // job_assignments (1,376 live rows) and billings (307 live rows, growing)
+  // both cross PostgREST's silent 1,000-row cap eventually - fetchAllRows
+  // pages through instead of the plain .limit(500)/no-limit queries this
+  // used to run, which is what made "Active Jobs" and every money KPI below
+  // quietly undercount once the tables grew (H-03). `payments` stays capped
+  // at 20: it now only feeds the "recent activity" list, not a total.
+  const [projectsRes, plotsRes, jobs, paymentsRes, billings, contractorsRes, profilesRes] = await Promise.all([
+    supabase.from('projects').select('id, name, location, status').eq('kind', 'development'),
+    supabase.from('plots').select('id, name, project_id'),
+    fetchAllRows<any>((from, to) =>
+      supabase.from('job_assignments').select('id, plot_id, contractor_id, status').range(from, to)
+    ),
+    supabase.from('payments').select('id, amount, created_at, note, job_assignment_id').order('created_at', { ascending: false }).limit(20),
+    fetchAllRows<any>((from, to) => supabase.from('billings').select(BILLINGS_SELECT).order('created_at', { ascending: false }).range(from, to)),
     supabase.from('contractors').select('id, name'),
     supabase.from('profiles').select('id, full_name, email, role'),
   ])
 
   if (projectsRes.error) throw new Error(projectsRes.error.message)
   if (plotsRes.error) throw new Error(plotsRes.error.message)
-  if (jobsRes.error) throw new Error(jobsRes.error.message)
   if (paymentsRes.error) throw new Error(paymentsRes.error.message)
-  if (billingsRes.error) throw new Error(billingsRes.error.message)
   if (contractorsRes.error) throw new Error(contractorsRes.error.message)
   if (profilesRes.error) throw new Error(profilesRes.error.message)
 
   const projects = projectsRes.data || []
   const plots = plotsRes.data || []
-  const jobs = jobsRes.data || []
   const payments = paymentsRes.data || []
-  const billings = billingsRes.data || []
   const contractors = contractorsRes.data || []
   const profiles = profilesRes.data || []
 
@@ -76,12 +84,22 @@ export async function getDashboardStats() {
   const plotById = new Map((plots || []).map((p: any) => [String(p.id), p]))
   const jobById = new Map((jobs || []).map((j: any) => [String(j.id), j]))
 
-  const totalPaid = payments.reduce((sum: number, p: any) => sum + toNumber(p.amount), 0)
+  // "จ่ายผู้รับเหมาแล้ว" (Paid Out) is money actually transferred to
+  // contractors (Q-07/H-02), not the `payments` table (posted at approval
+  // time, not payout, and missing DC/deductions/WHT) - the sum every bill
+  // ever marked paid_out_at, valued with the exact WHT/retention/deduction
+  // formula markBillingsAsPaidOut applied at payout time.
+  const paidOutTotal = billings
+    .filter((b: any) => !!b.paid_out_at)
+    .reduce((sum: number, b: any) => sum + computeActualPayout(b), 0)
   const activeJobs = jobs.filter((j: any) => j.status === 'in_progress').length
 
+  // Bangkok calendar month, not the server's (UUTC) one - before 07:00 local
+  // time this used to still count as "last month" (M-01).
+  const { start: monthStartStr, end: monthEndStr } = monthRangeInBangkok()
   const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const monthStart = new Date(`${monthStartStr}T00:00:00+07:00`)
+  const monthEnd = new Date(`${monthEndStr}T00:00:00+07:00`)
   const dayMs = 24 * 60 * 60 * 1000
   const staleLimit = new Date(now.getTime() - 3 * dayMs)
   const riskLimit = new Date(now.getTime() - 7 * dayMs)
@@ -283,8 +301,8 @@ export async function getDashboardStats() {
       id: `bill-${bill.id}`,
       type: 'billing',
       at: String(bill.created_at || bill.billing_date || new Date(0).toISOString()),
-      title: `Billing ${bill.doc_no ? `#${bill.doc_no}` : ''}`.trim(),
-      subtitle: `${contractor?.name || 'Unknown contractor'} • ${project?.name || 'Unknown project'}${plot?.name ? ` • Plot ${plot.name}` : ''}`,
+      title: `ใบเบิก ${bill.doc_no ? `#${bill.doc_no}` : ''}`.trim(),
+      subtitle: `${contractor?.name || 'ไม่ระบุผู้รับเหมา'} • ${project?.name || 'ไม่ระบุโครงการ'}${plot?.name ? ` • แปลง ${plot.name}` : ''}`,
       amount: getBillingNetAmount(bill),
       status: String(bill.status || 'unknown'),
     })
@@ -299,8 +317,8 @@ export async function getDashboardStats() {
       id: `pay-${payment.id}`,
       type: 'payment',
       at: String(payment.created_at || new Date(0).toISOString()),
-      title: 'Payment posted',
-      subtitle: `${contractor?.name || 'Unknown contractor'} • ${project?.name || 'Unknown project'}${plot?.name ? ` • Plot ${plot.name}` : ''}`,
+      title: 'บันทึกการจ่ายเงิน',
+      subtitle: `${contractor?.name || 'ไม่ระบุผู้รับเหมา'} • ${project?.name || 'ไม่ระบุโครงการ'}${plot?.name ? ` • แปลง ${plot.name}` : ''}`,
       amount: toNumber(payment.amount),
       status: 'paid',
     })
@@ -330,7 +348,7 @@ export async function getDashboardStats() {
   return {
     projectCount: projects.length,
     plotCount: plots.length,
-    totalPaid,
+    paidOutTotal,
     activeJobs,
     pendingApprovals,
     approvedThisMonth,

@@ -58,7 +58,12 @@ export type LowStockRow = {
   reorder_point: number
 }
 
-export type ConsumptionRow = { name: string; quantity: number; movement_count: number }
+export type ConsumptionMaterialBreakdown = { material_type_id: number; name: string; unit: string; quantity: number }
+
+// No single `quantity` total (M-09) - bags of cement and metres of pipe
+// can't be added together meaningfully, so this stays broken out per
+// material; `materials` is sorted by quantity descending.
+export type ConsumptionRow = { name: string; movement_count: number; materials: ConsumptionMaterialBreakdown[] }
 
 export type ActiveMaterialRow = {
   material_type_id: number

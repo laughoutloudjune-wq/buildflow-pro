@@ -103,11 +103,18 @@ export default function StockReportsPageClient({
           ) : (
             <ul className="divide-y divide-slate-100">
               {consumption.byProject.map((row) => (
-                <li key={row.name} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                  <span className="text-slate-700">{row.name}</span>
-                  <span className="font-mono text-slate-500">
-                    {numberFormat.format(row.quantity)} <span className="text-xs text-slate-400">({row.movement_count} รายการ)</span>
-                  </span>
+                <li key={row.name} className="px-4 py-2.5 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-slate-700">{row.name}</span>
+                    <span className="text-xs text-slate-400">{row.movement_count} รายการ</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                    {row.materials.map((m) => (
+                      <span key={m.material_type_id} className="font-mono">
+                        {m.name} {numberFormat.format(m.quantity)} {m.unit}
+                      </span>
+                    ))}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -123,11 +130,18 @@ export default function StockReportsPageClient({
           ) : (
             <ul className="divide-y divide-slate-100">
               {consumption.byContractor.map((row) => (
-                <li key={row.name} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                  <span className="text-slate-700">{row.name}</span>
-                  <span className="font-mono text-slate-500">
-                    {numberFormat.format(row.quantity)} <span className="text-xs text-slate-400">({row.movement_count} รายการ)</span>
-                  </span>
+                <li key={row.name} className="px-4 py-2.5 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-slate-700">{row.name}</span>
+                    <span className="text-xs text-slate-400">{row.movement_count} รายการ</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                    {row.materials.map((m) => (
+                      <span key={m.material_type_id} className="font-mono">
+                        {m.name} {numberFormat.format(m.quantity)} {m.unit}
+                      </span>
+                    ))}
+                  </div>
                 </li>
               ))}
             </ul>

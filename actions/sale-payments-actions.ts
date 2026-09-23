@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireModuleAccess } from '@/lib/auth/route-access'
+import { todayInBangkok } from '@/lib/utils'
 
 export type SalePaymentKind = 'booking' | 'contract' | 'down' | 'transfer' | 'extra'
 
@@ -95,7 +96,7 @@ export async function createSalePayment(formData: FormData): Promise<CreateSaleP
   }
 
   if (markPaidNow) {
-    insert.paid_at = new Date().toISOString().slice(0, 10)
+    insert.paid_at = todayInBangkok()
     insert.amount_paid = amountPaidRaw ? Number(amountPaidRaw) : amountDue
     insert.method = method
     insert.receipt_no = await nextReceiptNo(supabase)
@@ -117,7 +118,7 @@ export async function markSalePaymentPaid(paymentId: string, formData: FormData)
 
   const method = String(formData.get('method') || '').trim() || null
   const amountPaidRaw = String(formData.get('amount_paid') || '').trim()
-  const paidAt = String(formData.get('paid_at') || '').trim() || new Date().toISOString().slice(0, 10)
+  const paidAt = String(formData.get('paid_at') || '').trim() || todayInBangkok()
 
   const { data: existing, error: fetchError } = await supabase
     .from('sale_payments')
@@ -285,7 +286,7 @@ export type OverdueSalePayment = SalePaymentRow & {
 
 export async function getOverdueSalePayments(): Promise<OverdueSalePayment[]> {
   const supabase = await createClient()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayInBangkok()
 
   const { data, error } = await supabase
     .from('sale_payments')

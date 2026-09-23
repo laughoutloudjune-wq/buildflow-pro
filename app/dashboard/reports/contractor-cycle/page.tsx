@@ -10,6 +10,7 @@ import { getApprovedContractorCycleReport, getBillingOptions, undoApproveBilling
 import { BadgeCheck, ChevronDown, ChevronRight, Loader2, Pencil, Printer, Undo2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import { computeActualPayout } from '@/lib/billing'
+import { todayInBangkok } from '@/lib/utils'
 
 type Project = { id: string; name: string }
 type Contractor = { id: string; name: string }
@@ -18,10 +19,6 @@ type Filters = {
   projectId?: string
   contractorId?: string
   month?: string
-}
-
-function todayISO() {
-  return new Date().toISOString().split('T')[0]
 }
 
 function compareByDocNo(a: any, b: any) {
@@ -67,7 +64,7 @@ export default function ContractorCycleReportPage() {
   const [excludedBillIds, setExcludedBillIds] = useState<Set<string>>(new Set())
   const [expandedPaidBillIds, setExpandedPaidBillIds] = useState<Set<string>>(new Set())
   const [payOutConfirm, setPayOutConfirm] = useState<{ contractorId: string; contractorName: string; bills: any[]; total: number; isEdit?: boolean } | null>(null)
-  const [payOutDate, setPayOutDate] = useState(todayISO())
+  const [payOutDate, setPayOutDate] = useState(todayInBangkok())
   const [payOutLoading, setPayOutLoading] = useState(false)
   const [whtAppliedMap, setWhtAppliedMap] = useState<Record<string, boolean>>({})
   const [retentionAppliedMap, setRetentionAppliedMap] = useState<Record<string, boolean>>({})
@@ -223,7 +220,7 @@ export default function ContractorCycleReportPage() {
   // retention checkbox can be corrected in place instead of forcing a full
   // Undo → re-pay cycle for the whole batch.
   const openEditPayout = (bill: any, contractorName: string) => {
-    setPayOutDate(bill.paid_out_at ? String(bill.paid_out_at).slice(0, 10) : todayISO())
+    setPayOutDate(bill.paid_out_at ? String(bill.paid_out_at).slice(0, 10) : todayInBangkok())
     seedPayoutMaps([bill], true)
     setPayOutConfirm({
       contractorId: bill.contractor_id || 'unknown',
@@ -1525,7 +1522,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     <button
                       disabled={selectedUnpaidBills.length === 0}
                       onClick={() => {
-                        setPayOutDate(todayISO())
+                        setPayOutDate(todayInBangkok())
                         seedPayoutMaps(selectedUnpaidBills, false)
                         const total = selectedUnpaidBills.reduce((s: number, b: any) => s + Number(b.net_amount || 0), 0)
                         setPayOutConfirm({ contractorId: group.contractorId, contractorName: group.contractor?.name || '-', bills: selectedUnpaidBills, total })

@@ -26,7 +26,10 @@ export default async function SalesRequestsPage() {
       getSalesBoardOptions().catch(() => ({ projects: [], plotGroups: [], plots: [] })),
     ])
     requests = requestsData
-    contractors = contractorsData
+    // getContractors() carries total_paid/total_retention (construction
+    // money, M-03) - this page is reachable by sales, and only needs
+    // contractor names for the assign-to picker here.
+    contractors = contractorsData.map((c) => ({ ...c, total_paid: 0, total_retention: 0 }))
     projects = optionsData.projects
   } catch (error) {
     initialError = error instanceof Error ? error.message : 'โหลดข้อมูลไม่สำเร็จ'

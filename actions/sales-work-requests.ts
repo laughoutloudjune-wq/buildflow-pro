@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireModuleAccess } from '@/lib/auth/route-access'
+import { todayInBangkok } from '@/lib/utils'
 
 export type WorkRequestCategory = 'extra_work' | 'defect' | 'expedite' | 'handover_prep' | 'other'
 export type WorkRequestPriority = 'low' | 'normal' | 'urgent'
@@ -134,7 +135,7 @@ export type WorkRequestCounts = { newCount: number; overdueCount: number }
 
 export async function getWorkRequestCounts(): Promise<WorkRequestCounts> {
   const supabase = await createClient()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayInBangkok()
 
   const [newRes, overdueRes] = await Promise.all([
     supabase.from('sales_work_requests').select('id', { count: 'exact', head: true }).eq('status', 'new'),

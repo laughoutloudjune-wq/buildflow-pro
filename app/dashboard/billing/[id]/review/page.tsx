@@ -2,6 +2,7 @@ import { getBillingById, getJobProgressHistory } from '@/actions/billing-actions
 import { getOrganizationSettings } from '@/actions/settings-actions'
 import { getSignatureSlots } from '@/actions/signature-slots-actions'
 import type { BillingAdjustmentForm, ProgressHistoryItem } from '@/lib/types/billing'
+import { todayInBangkok } from '@/lib/utils'
 import ReviewBillingPageClient from './ReviewBillingPageClient'
 
 type BillingData = Awaited<ReturnType<typeof getBillingById>>
@@ -16,7 +17,7 @@ export default async function ReviewBillingPage({ params }: { params: Promise<{ 
   let signatureSlots: Awaited<ReturnType<typeof getSignatureSlots>> = []
   let jobs: Job[] = []
   let adjustments: Adjustment[] = []
-  let billingDate = new Date().toISOString().split('T')[0]
+  let billingDate = todayInBangkok()
   let whtPercent = 0
   let retentionPercent = 0
   let progressHistoryByJob: Record<string, ProgressHistoryItem[]> = {}

@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
+import { todayInBangkok } from '@/lib/utils'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import InlineMaterialCreate from '@/components/procurement/InlineMaterialCreate'
 import SupplierFormFields from '@/components/procurement/SupplierFormFields'
@@ -289,7 +290,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   const [supplierBranchId, setSupplierBranchId] = useState('')
   const [companyId, setCompanyId] = useState('')
   const [vatOption, setVatOption] = useState('vat7_exclusive')
-  const [orderDate, setOrderDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [orderDate, setOrderDate] = useState(() => todayInBangkok())
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('')
   // Free-form delivery note, typed per order - not derived from the
   // project's address.

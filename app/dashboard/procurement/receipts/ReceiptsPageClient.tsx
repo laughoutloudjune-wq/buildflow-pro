@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
+import { todayInBangkok } from '@/lib/utils'
 import { createPaymentVoucher } from '@/actions/procurement-actions'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
 import ReceiptDetailModal from '@/components/procurement/ReceiptDetailModal'
@@ -56,7 +57,7 @@ export default function ReceiptsPageClient({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [detailReceipt, setDetailReceipt] = useState<GoodsReceipt | null>(null)
   const [isPayModalOpen, setIsPayModalOpen] = useState(false)
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [paymentDate, setPaymentDate] = useState(() => todayInBangkok())
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [note, setNote] = useState('')
   const [isSaving, setIsSaving] = useState(false)

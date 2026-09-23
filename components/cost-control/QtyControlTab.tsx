@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronRight, Download, Loader2, Search } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
+import { todayInBangkok } from '@/lib/utils'
 import { getBoqControlMaterialDetail } from '@/actions/procurement/boq-control'
 import {
   STATUS_LABEL_TH,
@@ -135,7 +136,7 @@ export default function QtyControlTab({
       const sheet = XLSX.utils.json_to_sheet(data)
       const workbook = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(workbook, sheet, 'BOQ Control')
-      XLSX.writeFile(workbook, `boq-control-${new Date().toISOString().slice(0, 10)}.xlsx`)
+      XLSX.writeFile(workbook, `boq-control-${todayInBangkok()}.xlsx`)
     } catch {
       toast.error('ส่งออกไฟล์ไม่สำเร็จ')
     } finally {

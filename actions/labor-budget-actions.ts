@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
+import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
 import {
   UNASSIGNED_CONTRACTOR_ID,
   computeJobBudget,
@@ -99,22 +100,31 @@ export async function getLaborLedger(filters: LaborLedgerFilters = {}): Promise<
   await requireModuleAccess(['reports', 'cost_control'])
   const supabase = await createClient()
 
-  let jobsQuery = supabase
-    .from('job_assignments')
-    .select(`
-      id,
-      status,
-      contractor_id,
-      agreed_price_per_unit,
-      boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, unit, quantity, price_per_unit),
-      plots!inner (id, name, project_id, projects (name), house_models (name, code)),
-      contractors (id, name),
-      payments (id, amount, payment_date, billing_id)
-    `)
-
-  if (filters.projectId) jobsQuery = jobsQuery.eq('plots.project_id', filters.projectId)
-  if (filters.contractorId) jobsQuery = jobsQuery.eq('contractor_id', filters.contractorId)
-  if (filters.plotId) jobsQuery = jobsQuery.eq('plots.id', filters.plotId)
+  // job_assignments has no row cap of its own here, but PostgREST silently
+  // caps any unpaged response at 1,000 - Arada Vela alone already has 1,058
+  // job rows (H-03), so a plain .select() was quietly dropping the tail.
+  // fetchAllRows needs a fresh query builder per page, so this is a function
+  // rather than the `let jobsQuery = ...; jobsQuery = jobsQuery.eq(...)`
+  // pattern the other two queries below still use (small tables, in no
+  // danger of the same cap).
+  function buildJobsQuery() {
+    let q = supabase
+      .from('job_assignments')
+      .select(`
+        id,
+        status,
+        contractor_id,
+        agreed_price_per_unit,
+        boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, unit, quantity, price_per_unit),
+        plots!inner (id, name, project_id, projects (name), house_models (name, code)),
+        contractors (id, name),
+        payments (id, amount, payment_date, billing_id)
+      `)
+    if (filters.projectId) q = q.eq('plots.project_id', filters.projectId)
+    if (filters.contractorId) q = q.eq('contractor_id', filters.contractorId)
+    if (filters.plotId) q = q.eq('plots.id', filters.plotId)
+    return q
+  }
 
   let groupsQuery = supabase
     .from('plot_groups')
@@ -133,13 +143,18 @@ export async function getLaborLedger(filters: LaborLedgerFilters = {}): Promise<
   if (filters.projectId) billingsQuery = billingsQuery.eq('project_id', filters.projectId)
   if (filters.contractorId) billingsQuery = billingsQuery.eq('contractor_id', filters.contractorId)
 
-  const [jobsRes, groupsRes, billingsRes] = await Promise.all([jobsQuery, groupsQuery, billingsQuery])
+  const [jobRowsRaw, groupsRes, billingsRes] = await Promise.all([
+    fetchAllRows<unknown>((from, to) =>
+      buildJobsQuery().range(from, to) as unknown as PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>
+    ),
+    groupsQuery,
+    billingsQuery,
+  ])
 
-  if (jobsRes.error) throw new Error(jobsRes.error.message)
   if (groupsRes.error) throw new Error(groupsRes.error.message)
   if (billingsRes.error) throw new Error(billingsRes.error.message)
 
-  const jobRows = (jobsRes.data || []) as unknown as JobRow[]
+  const jobRows = jobRowsRaw as unknown as JobRow[]
   const groupRows = (groupsRes.data || []) as unknown as PlotGroupRow[]
   const billingRows = (billingsRes.data || []) as unknown as LedgerBillingRow[]
 

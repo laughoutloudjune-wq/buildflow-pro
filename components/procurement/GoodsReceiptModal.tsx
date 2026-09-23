@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
+import { todayInBangkok } from '@/lib/utils'
 import { createGoodsReceipt } from '@/actions/procurement-actions'
 import { getBoqCheckForGoodsReceiptDraft } from '@/actions/procurement/boq-control'
 import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
@@ -36,7 +37,7 @@ export default function GoodsReceiptModal({
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   const [deliveryNoteNo, setDeliveryNoteNo] = useState('')
-  const [receivedAt, setReceivedAt] = useState(() => new Date().toISOString().slice(0, 10))
+  const [receivedAt, setReceivedAt] = useState(() => todayInBangkok())
   const [boqLines, setBoqLines] = useState<BoqCheckLine[]>([])
   // Where the delivery unloaded - the fact goods_receipt_create actually
   // needs (see MATERIAL_FLOW_PLAN.md Phase 1). Defaults from whatever the PO
@@ -63,7 +64,7 @@ export default function GoodsReceiptModal({
     setSelected(initialSelected)
     setQuantities(initialQty)
     setDeliveryNoteNo('')
-    setReceivedAt(new Date().toISOString().slice(0, 10))
+    setReceivedAt(todayInBangkok())
 
     // Header default: what every line agrees on, if they agree - otherwise
     // 'store', same as an order with no opinion at all.

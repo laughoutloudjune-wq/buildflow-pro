@@ -137,24 +137,23 @@ export async function createStockAdjustment(input: {
   return data as StockAdjustmentResult
 }
 
-/** Capped at 500 rows - the whole ledger is 117 rows today, all from one
- * migration. The page filters this client-side (material, type, source,
- * project, contractor, date all ride along on each row already via the
- * joins above) rather than round-tripping per filter change. If this ever
- * needs real server-side filtering/pagination, that's a sign contractor
- * withdrawals actually took off, which is the point. */
+/** Used to cap at 500 rows, which silently hid everything older than that
+ * once the ledger passed 500 moves (H-03 - filtering to an older date would
+ * show nothing, even though the row existed). fetchAllRows pages through the
+ * whole table instead; the page paginates the result 50/page for display
+ * (material, type, source, project, contractor all ride along on each row
+ * already via the joins above, so filtering stays client-side). */
 export async function getStockMovements(): Promise<StockMovement[]> {
   await requireModuleAccess('materials')
   const supabase = await createClient()
 
-  const { data, error } = await supabase
-    .from('stock_movements')
-    .select(MOVEMENT_SELECT)
-    .order('created_at', { ascending: false })
-    .limit(500)
-
-  if (error) throw new Error(error.message)
-  return (data as unknown as StockMovement[]) || []
+  return fetchAllRows<StockMovement>((from, to) =>
+    supabase
+      .from('stock_movements')
+      .select(MOVEMENT_SELECT)
+      .order('created_at', { ascending: false })
+      .range(from, to) as unknown as PromiseLike<{ data: StockMovement[] | null; error: { message: string } | null }>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -268,6 +267,7 @@ type ConsumptionSourceRow = {
   quantity: number
   projects: { name: string } | null
   contractors: { name: string } | null
+  material_types: { name: string; unit: string } | null
 }
 
 type ActiveMaterialSourceRow = {
@@ -276,50 +276,68 @@ type ActiveMaterialSourceRow = {
   material_types: { name: string; unit: string } | null
 }
 
+function addToConsumptionMap(map: Map<string, ConsumptionRow>, groupName: string, row: ConsumptionSourceRow) {
+  if (!row.material_types) return
+  const qty = Number(row.quantity)
+  const existing = map.get(groupName) || { name: groupName, movement_count: 0, materials: [] }
+  existing.movement_count += 1
+  const material = existing.materials.find((m) => m.material_type_id === row.material_type_id)
+  if (material) {
+    material.quantity += qty
+  } else {
+    existing.materials.push({
+      material_type_id: row.material_type_id,
+      name: row.material_types.name,
+      unit: row.material_types.unit,
+      quantity: qty,
+    })
+  }
+  map.set(groupName, existing)
+}
+
 export async function getConsumptionReport(): Promise<ConsumptionReport> {
   await requireModuleAccess('materials')
   const supabase = await createClient()
 
-  const [{ data: outRows, error: outError }, { data: allRows, error: allError }] = await Promise.all([
+  // Both queries used to have no paging at all, which meant PostgREST's
+  // silent 1,000-row cap applied once stock_movements grew past it (H-03) -
+  // fetchAllRows pages through the whole table instead.
+  const [outRows, allRows] = await Promise.all([
     // 'out' only - what got consumed, and by whom/where.
-    supabase
-      .from('stock_movements')
-      .select('material_type_id, quantity, projects (name), contractors (name)')
-      .eq('type', 'out'),
+    fetchAllRows<ConsumptionSourceRow>((from, to) =>
+      supabase
+        .from('stock_movements')
+        .select('material_type_id, quantity, projects (name), contractors (name), material_types (name, unit)')
+        .eq('type', 'out')
+        .range(from, to) as unknown as PromiseLike<{ data: ConsumptionSourceRow[] | null; error: { message: string } | null }>
+    ),
     // 'in' + 'out' - a material that's only ever been received isn't
     // "inactive," it's just early. Excludes the opening-balance migration
     // itself so it doesn't dominate the ranking as fake "activity."
-    supabase
-      .from('stock_movements')
-      .select('material_type_id, quantity, material_types (name, unit)')
-      .neq('source_type', 'opening_balance'),
+    fetchAllRows<ActiveMaterialSourceRow>((from, to) =>
+      supabase
+        .from('stock_movements')
+        .select('material_type_id, quantity, material_types (name, unit)')
+        .neq('source_type', 'opening_balance')
+        .range(from, to) as unknown as PromiseLike<{ data: ActiveMaterialSourceRow[] | null; error: { message: string } | null }>
+    ),
   ])
-
-  if (outError) throw new Error(outError.message)
-  if (allError) throw new Error(allError.message)
 
   const byProjectMap = new Map<string, ConsumptionRow>()
   const byContractorMap = new Map<string, ConsumptionRow>()
 
-  for (const row of (outRows as unknown as ConsumptionSourceRow[]) || []) {
-    const qty = Number(row.quantity)
-    if (row.projects?.name) {
-      const existing = byProjectMap.get(row.projects.name) || { name: row.projects.name, quantity: 0, movement_count: 0 }
-      existing.quantity += qty
-      existing.movement_count += 1
-      byProjectMap.set(row.projects.name, existing)
-    }
-    if (row.contractors?.name) {
-      const existing =
-        byContractorMap.get(row.contractors.name) || { name: row.contractors.name, quantity: 0, movement_count: 0 }
-      existing.quantity += qty
-      existing.movement_count += 1
-      byContractorMap.set(row.contractors.name, existing)
-    }
+  for (const row of outRows) {
+    if (row.projects?.name) addToConsumptionMap(byProjectMap, row.projects.name, row)
+    if (row.contractors?.name) addToConsumptionMap(byContractorMap, row.contractors.name, row)
   }
 
+  const sortRows = (rows: ConsumptionRow[]) =>
+    rows
+      .map((row) => ({ ...row, materials: [...row.materials].sort((a, b) => b.quantity - a.quantity) }))
+      .sort((a, b) => b.movement_count - a.movement_count)
+
   const byMaterialMap = new Map<number, ActiveMaterialRow>()
-  for (const row of (allRows as unknown as ActiveMaterialSourceRow[]) || []) {
+  for (const row of allRows) {
     if (!row.material_types) continue
     const existing = byMaterialMap.get(row.material_type_id) || {
       material_type_id: row.material_type_id,
@@ -334,8 +352,8 @@ export async function getConsumptionReport(): Promise<ConsumptionReport> {
   }
 
   return {
-    byProject: Array.from(byProjectMap.values()).sort((a, b) => b.quantity - a.quantity),
-    byContractor: Array.from(byContractorMap.values()).sort((a, b) => b.quantity - a.quantity),
+    byProject: sortRows(Array.from(byProjectMap.values())),
+    byContractor: sortRows(Array.from(byContractorMap.values())),
     mostActiveMaterials: Array.from(byMaterialMap.values())
       .sort((a, b) => b.movement_count - a.movement_count)
       .slice(0, 10),

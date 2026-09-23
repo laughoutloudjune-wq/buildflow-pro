@@ -1,7 +1,12 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { requireModuleAccess } from '@/lib/auth/route-access'
 import type { ProgressHistoryItem } from '@/lib/types/billing'
+
+// Contractor rates, job payments and billing history are construction money
+// (M-03) - sales must never reach these, foreman/PM/admin/accountant may.
+const MONEY_MODULES = ['billing', 'reports', 'foreman', 'projects', 'cost_control'] as const
 
 type BillingHistoryRow = {
   id: string
@@ -83,6 +88,7 @@ type ResolvedBillableJobRow = {
 }
 
 export async function getJobProgressHistory(jobAssignmentIds: string[]) {
+  await requireModuleAccess([...MONEY_MODULES])
   const supabase = await createClient()
   const ids = Array.from(new Set((jobAssignmentIds || []).filter(Boolean)))
   if (ids.length === 0) return {}
@@ -133,6 +139,7 @@ export async function getJobProgressHistory(jobAssignmentIds: string[]) {
 }
 
 export async function getBillingOptions() {
+  await requireModuleAccess([...MONEY_MODULES])
   const supabase = await createClient()
 
   const [projects, contractors] = await Promise.all([
@@ -147,6 +154,7 @@ export async function getBillingOptions() {
 }
 
 export async function getBillableJobs(projectId: string, contractorId: string, plotId?: string) {
+  await requireModuleAccess([...MONEY_MODULES])
   const supabase = await createClient()
 
   let query = supabase

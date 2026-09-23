@@ -49,7 +49,12 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     ])
     plot = pData
     rawJobs = jData || []
-    contractors = cData || []
+    // getContractors() carries total_paid/total_retention (construction
+    // money, M-03) - strip those for sales same as jobs/materials/history
+    // below. Only names/type are needed here (contractor picker).
+    contractors = canSeeCost
+      ? cData || []
+      : (cData || []).map((c) => ({ ...c, total_paid: 0, total_retention: 0 }))
     houseModels = hmData || []
     saleDetail = saleData
     saleStatuses = statusesData

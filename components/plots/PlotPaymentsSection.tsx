@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
+import { todayInBangkok } from '@/lib/utils'
 import {
   createSalePayment,
   deleteSalePayment,
@@ -318,7 +319,7 @@ export default function PlotPaymentsSection({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">วันที่ชำระ</label>
-                <input type="date" name="paid_at" defaultValue={new Date().toISOString().slice(0, 10)} className="w-full" />
+                <input type="date" name="paid_at" defaultValue={todayInBangkok()} className="w-full" />
               </div>
             </div>
             <div>

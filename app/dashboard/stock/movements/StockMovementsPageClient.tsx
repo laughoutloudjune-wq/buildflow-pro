@@ -7,7 +7,10 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
+import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import type { StockMovement } from '@/lib/types/stock'
+
+const PAGE_SIZE = 50
 
 const numberFormat = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 })
 
@@ -45,7 +48,14 @@ export default function StockMovementsPageClient({
   const [sourceFilter, setSourceFilter] = useState<string>(ALL)
   const [projectFilter, setProjectFilter] = useState<string>(ALL)
   const [contractorFilter, setContractorFilter] = useState<string>(ALL)
+  const [page, setPage] = useState(1)
   const toast = useToast()
+
+  // Any filter change can shrink the result set below the page the user was
+  // on - back to page 1 rather than showing an empty table.
+  useEffect(() => {
+    setPage(1)
+  }, [search, typeFilter, sourceFilter, projectFilter, contractorFilter])
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -70,6 +80,8 @@ export default function StockMovementsPageClient({
       .filter((m) => projectFilter === ALL || m.projects?.name === projectFilter)
       .filter((m) => contractorFilter === ALL || m.contractors?.name === contractorFilter)
   }, [movements, search, typeFilter, sourceFilter, projectFilter, contractorFilter])
+
+  const { pageCount, currentPage, pagedRows } = usePagedRows(filtered, page, PAGE_SIZE)
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -136,14 +148,14 @@ export default function StockMovementsPageClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {filtered.length === 0 ? (
+              {pagedRows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center italic text-slate-400">
                     ไม่พบรายการที่ตรงกับเงื่อนไข
                   </td>
                 </tr>
               ) : (
-                filtered.map((m) => (
+                pagedRows.map((m) => (
                   <tr key={m.id} className="transition-colors hover:bg-slate-50">
                     <td className="px-4 py-3 whitespace-nowrap text-slate-500">
                       {new Date(m.created_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
@@ -174,6 +186,7 @@ export default function StockMovementsPageClient({
             </tbody>
           </table>
         </div>
+        <Pagination currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} />
       </Card>
     </div>
   )

@@ -1,10 +1,15 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { requireModuleAccess } from '@/lib/auth/route-access'
 import { normalizeAdjustmentsWithPlot } from '@/actions/_shared/billing-adjustments'
 import { derivePlotLabelFromJobs, getPlotDetailMap, getPlotNameMap } from '@/actions/_shared/plot-maps'
 import { getCurrentUser } from '@/actions/_shared/user-role'
 import type { BillingAdjustmentRecord, BillingUserSummary } from '@/lib/types/billing'
+
+// Contractor rates, job payments and billing history are construction money
+// (M-03) - sales must never reach these, foreman/PM/admin/accountant may.
+const MONEY_MODULES = ['billing', 'reports', 'foreman', 'projects', 'cost_control'] as const
 
 type BillingReportRow = {
   id: string
@@ -75,6 +80,7 @@ function withPlotNames(rows: BillingReportRow[], plotMap: Map<string, string>) {
 }
 
 export async function getBillingsByCreator() {
+  await requireModuleAccess([...MONEY_MODULES])
   const supabase = await createClient()
   const user = await getCurrentUser()
   if (!user) throw new Error('User not found')
@@ -112,6 +118,7 @@ export async function getExtraWorkReport(
     dateTo?: string
   } = {}
 ) {
+  await requireModuleAccess([...MONEY_MODULES])
   const supabase = await createClient()
   let query = supabase
     .from('billings')
@@ -156,6 +163,7 @@ export async function getApprovedContractorCycleReport(
     paymentState?: 'all' | 'unpaid' | 'paid'
   } = {}
 ) {
+  await requireModuleAccess([...MONEY_MODULES])
   const supabase = await createClient()
   let query = supabase
     .from('billings')
@@ -231,6 +239,7 @@ export async function getPlotHistoryReport(
     dateTo?: string
   } = {}
 ) {
+  await requireModuleAccess([...MONEY_MODULES])
   const supabase = await createClient()
   let query = supabase
     .from('billings')
@@ -279,6 +288,7 @@ export async function getPlotHistoryReport(
 }
 
 export async function getBillings() {
+  await requireModuleAccess([...MONEY_MODULES])
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('billings')
@@ -303,6 +313,7 @@ export async function getBillings() {
 }
 
 export async function getBillingById(id: string) {
+  await requireModuleAccess([...MONEY_MODULES])
   const supabase = await createClient()
 
   const { data, error } = await supabase
