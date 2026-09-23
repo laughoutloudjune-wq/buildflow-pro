@@ -17,6 +17,8 @@ const TYPE_LABEL: Record<NotificationItem['type'], string> = {
   pr_pending_review: 'มีใบขอซื้อใหม่รอตรวจสอบ',
   pr_approved: 'ใบขอซื้อได้รับการอนุมัติ',
   pr_rejected: 'ใบขอซื้อถูกปฏิเสธ',
+  pr_ordered: 'คำขอซื้อของคุณถูกสั่งซื้อแล้ว',
+  pr_received: 'ของที่คุณขอซื้อมาถึงแล้ว',
   work_request_new: 'มีคำขอจากฝ่ายขายใหม่',
   work_request_done: 'คำขอจากฝ่ายขายเสร็จสิ้นแล้ว',
 }
@@ -97,7 +99,12 @@ export default function NotificationBell({ role }: { role?: string }) {
   }, [open])
 
   const linkFor = (item: NotificationItem): string | null => {
-    if (item.purchase_request) return `/dashboard/procurement/requests/${item.purchase_request.id}`
+    // Foreman has no 'procurement' access - its purchase-request
+    // notifications (pr_ordered/pr_received, plus the review ones it
+    // already got before W-01) go to its own list instead.
+    if (item.purchase_request) {
+      return role === 'foreman' ? '/dashboard/foreman/purchase-request' : `/dashboard/procurement/requests/${item.purchase_request.id}`
+    }
     if (item.sales_work_request) return '/dashboard/sales-requests'
     if (!item.billing) return null
     return role === 'foreman' ? '/dashboard/foreman/history' : `/dashboard/billing/${item.billing.id}/review`

@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { HardHat, ClipboardCheck, ClipboardPlus, History } from 'lucide-react'
+import { HardHat, ClipboardCheck, ClipboardPlus, History, ShoppingCart } from 'lucide-react'
 
 const navItems = [
   { href: '/dashboard/foreman/create-progress', label: 'เบิกงวดงานหลัก', icon: ClipboardCheck },
   { href: '/dashboard/foreman/create-dc', label: 'งานเพิ่ม / DC', icon: ClipboardPlus },
+  { href: '/dashboard/foreman/purchase-request', label: 'ขอซื้อวัสดุ', icon: ShoppingCart },
   { href: '/dashboard/foreman/history', label: 'ประวัติคำขอ', icon: History },
 ]
 

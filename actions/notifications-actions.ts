@@ -10,6 +10,8 @@ export type NotificationType =
   | 'pr_pending_review'
   | 'pr_approved'
   | 'pr_rejected'
+  | 'pr_ordered'
+  | 'pr_received'
   | 'work_request_new'
   | 'work_request_done'
 

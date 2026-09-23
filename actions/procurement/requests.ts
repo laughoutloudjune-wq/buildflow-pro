@@ -77,7 +77,9 @@ export async function getPurchaseRequestsByIds(ids: string[]): Promise<PurchaseR
  * deduped. Empty until a plot scope resolving to concrete plots is picked
  * (no plots -> no house model -> nothing to link to). */
 export async function getBoqJobOptionsForPlots(plotIds: string[]): Promise<{ id: string; item_name: string }[]> {
-  await requireModuleAccess('procurement')
+  // Shared with the foreman purchase-request form (W-01) - just BOQ item
+  // names, no prices, so 'foreman' is safe to let through too.
+  await requireModuleAccess(['procurement', 'foreman'])
   if (plotIds.length === 0) return []
   const supabase = await createClient()
 

@@ -24,18 +24,32 @@ type Line = {
   boq_id: string | null
 }
 
+type SubmitResult = { id: string; pr_no: string } | { error: string }
+type CreateFn = (payload: Parameters<typeof createPurchaseRequest>[0]) => Promise<SubmitResult>
+type UpdateFn = (id: string, payload: Parameters<typeof createPurchaseRequest>[0]) => Promise<SubmitResult>
+
 export default function PurchaseRequestForm({
   mode,
   requestId,
   initialRequest,
   onSaved,
   onCancel,
+  // No prices/suppliers/POs ever appear in this component - only the
+  // create/update call itself differs by caller. Defaults to the
+  // procurement-gated actions; the foreman purchase-request page (which
+  // can't reach the procurement module) passes its own foreman-gated
+  // create action instead (W-01) - same form, same validation, different
+  // permission check server-side.
+  createAction = createPurchaseRequest,
+  updateAction = updatePurchaseRequest,
 }: {
   mode: 'create' | 'edit'
   requestId?: string
   initialRequest?: PurchaseRequest | null
   onSaved: (result: { id: string; pr_no: string }) => void
   onCancel: () => void
+  createAction?: CreateFn
+  updateAction?: UpdateFn
 }) {
   const toast = useToast()
   const [isPending, startTransition] = useTransition()
@@ -187,7 +201,7 @@ export default function PurchaseRequestForm({
     startTransition(async () => {
       try {
         const result =
-          mode === 'edit' && requestId ? await updatePurchaseRequest(requestId, payload) : await createPurchaseRequest(payload)
+          mode === 'edit' && requestId ? await updateAction(requestId, payload) : await createAction(payload)
         if ('error' in result) {
           toast.error(result.error)
           return
