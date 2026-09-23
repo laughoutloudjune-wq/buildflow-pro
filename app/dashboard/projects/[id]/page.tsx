@@ -2,10 +2,14 @@ import { getProjectById } from '@/actions/project-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
 import { getHouseModels } from '@/actions/boq-actions'
 import { getPlotGroups } from '@/actions/material-actions'
+import { requireModuleAccess } from '@/lib/auth/route-access'
 import type { PlotGroup } from '@/lib/types/materials'
 import ProjectDetailPageClient from './ProjectDetailPageClient'
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  // The layout allows sales through too (for the plot detail page) - this
+  // page itself is construction-only.
+  await requireModuleAccess('projects')
   const { id: projectId } = await params
 
   let project: Awaited<ReturnType<typeof getProjectById>> = null

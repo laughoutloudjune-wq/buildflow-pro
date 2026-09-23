@@ -3,17 +3,26 @@
 import { useEffect, useState, useTransition, type Ref } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, XCircle, PackageCheck, ChevronDown, Undo2 } from 'lucide-react'
+import { ArrowLeft, XCircle, PackageCheck, ChevronDown, Undo2, PackageX, Receipt } from 'lucide-react'
+import { Card } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
+import { formatCurrency } from '@/lib/currency'
 import PurchaseOrderForm, { type PurchaseOrderFormHandle, type PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
 import PurchaseOrderDocActions from '@/components/procurement/PurchaseOrderDocActions'
 import GoodsReceiptModal from '@/components/procurement/GoodsReceiptModal'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
-import { cancelPurchaseOrder, setPurchaseOrderStatus, unmarkPurchaseOrderReceived } from '@/actions/procurement-actions'
+import {
+  cancelPurchaseOrder,
+  closePurchaseOrderShort,
+  getGoodsReceiptsForOrder,
+  setPurchaseOrderStatus,
+  unmarkPurchaseOrderReceived,
+} from '@/actions/procurement-actions'
 import { getBoqCheckForPurchaseOrder, setPoBoqOverrides } from '@/actions/procurement/boq-control'
-import type { PurchaseOrder, PurchaseOrderStatus } from '@/lib/types/procurement'
+import type { GoodsReceipt, PurchaseOrder, PurchaseOrderStatus } from '@/lib/types/procurement'
 
 const STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
   draft: 'ร่าง',
@@ -82,11 +91,29 @@ export default function PurchaseOrderDetailPageClient({
 
   const [boqCheck, setBoqCheck] = useState<Awaited<ReturnType<typeof getBoqCheckForPurchaseOrder>> | null>(null)
   const [isBoqCheckSaving, setIsBoqCheckSaving] = useState(false)
+  const [receipts, setReceipts] = useState<GoodsReceipt[]>([])
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialError])
+
+  // M-13: the PO page never showed which receipts it already has - re-fetch
+  // whenever `order` changes (a fresh receive/undo/close-short all push a
+  // new `order` reference the same way boqCheck's effect below reacts to).
+  useEffect(() => {
+    let cancelled = false
+    getGoodsReceiptsForOrder(id)
+      .then((rows) => {
+        if (!cancelled) setReceipts(rows)
+      })
+      .catch(() => {
+        // Non-fatal: the PO still opens and works without the receipts list.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, order])
 
   useEffect(() => {
     let cancelled = false
@@ -173,6 +200,24 @@ export default function PurchaseOrderDetailPageClient({
     })
   }
 
+  function handleCloseShort() {
+    const reason = prompt('เหตุผลที่ปิดใบสั่งซื้อทั้งที่ส่งไม่ครบ:')
+    if (reason === null) return
+    if (!reason.trim()) {
+      toast.error('กรุณาระบุเหตุผล')
+      return
+    }
+    startTransition(async () => {
+      const result = await closePurchaseOrderShort(id, reason)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      refresh()
+      toast.success('ปิดใบสั่งซื้อแล้ว')
+    })
+  }
+
   if (!order) {
     return <div className="py-16 text-center text-slate-400">ไม่พบใบสั่งซื้อนี้</div>
   }
@@ -181,6 +226,7 @@ export default function PurchaseOrderDetailPageClient({
   const canCancel = order.status === 'draft' || order.status === 'sent'
   const canReceive = order.status === 'sent' || order.status === 'partially_received'
   const canUnmarkReceived = order.status === 'received' || order.status === 'partially_received'
+  const canCloseShort = order.status === 'partially_received'
   const isFormReadOnly = order.status === 'paid' || order.status === 'cancelled'
 
   const milestones = [
@@ -243,6 +289,11 @@ export default function PurchaseOrderDetailPageClient({
                   <Undo2 className="h-3.5 w-3.5" /> ยกเลิกการรับของ
                 </Button>
               )}
+              {canCloseShort && (
+                <Button type="button" variant="secondary" size="sm" onClick={handleCloseShort} disabled={isPending}>
+                  <PackageX className="h-3.5 w-3.5" /> ปิดใบสั่งซื้อ (ส่งไม่ครบ)
+                </Button>
+              )}
               {order.status === 'paid' && (
                 <Link
                   href="/dashboard/procurement/payments"
@@ -285,6 +336,51 @@ export default function PurchaseOrderDetailPageClient({
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
           ใบสั่งซื้อนี้ทำเครื่องหมายว่า &quot;ซื้อนอก BOQ&quot; - ไม่นำมาเทียบกับ BOQ
         </div>
+      )}
+
+      {receipts.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+            <Receipt className="h-4 w-4 text-slate-500" />
+            <h3 className="text-sm font-semibold text-slate-800">ใบรับสินค้า</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-2">เลขที่</th>
+                  <th className="px-4 py-2">วันที่รับ</th>
+                  <th className="px-4 py-2">เลขที่ใบส่งของ</th>
+                  <th className="px-4 py-2 text-right">มูลค่า</th>
+                  <th className="px-4 py-2">สถานะจ่าย</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {receipts.map((r) => {
+                  const amount = (r.goods_receipt_items || []).reduce(
+                    (sum, item) => sum + item.quantity_received * item.unit_price_at_receipt,
+                    0
+                  )
+                  const paidAmount = (r.payment_voucher_receipts || []).reduce((sum, pv) => sum + pv.amount, 0)
+                  const isPaid = (r.payment_voucher_receipts || []).length > 0
+                  return (
+                    <tr key={r.id}>
+                      <td className="px-4 py-2 font-medium text-slate-700">{r.ri_no}</td>
+                      <td className="px-4 py-2 text-slate-500">{formatDate(r.received_at)}</td>
+                      <td className="px-4 py-2 text-slate-500">{r.delivery_note_no || '-'}</td>
+                      <td className="px-4 py-2 text-right font-mono text-slate-700">
+                        ฿{formatCurrency(isPaid ? paidAmount : amount)}
+                      </td>
+                      <td className="px-4 py-2">
+                        {isPaid ? <Badge tone="success">จ่ายแล้ว</Badge> : <Badge tone="neutral">ยังไม่จ่าย</Badge>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       <PurchaseOrderForm

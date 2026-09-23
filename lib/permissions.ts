@@ -44,21 +44,24 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     cost_control: false,
     sales: false,
   },
-  // Bookkeeping/finance - sees the billing queue, cost reports and
-  // procurement (POs/payments), not construction ops. No profile carries
-  // this role yet (checked 2026-09-18); adjust freely from Settings once one
-  // does, this is just a starting default rather than a fixed requirement.
+  // Contractor payments only (W-02/M-02, June's answer 2026-09-23): the
+  // payment cycle page (reads/pays via `billing`) and the billing list
+  // read-only. No procurement, no cost control, no other reports - `reports`
+  // stays false so dc-history/house-history/labor-budget don't open for
+  // this role; the reports layout also allows `billing` through so
+  // contractor-cycle specifically still does. Adjust freely from Settings if
+  // a real accountant profile needs something different.
   accountant: {
     projects: false,
     boq: false,
     contractors: false,
     foreman: false,
     billing: true,
-    reports: true,
+    reports: false,
     settings: false,
     materials: false,
-    procurement: true,
-    cost_control: true,
+    procurement: false,
+    cost_control: false,
     sales: false,
   },
   // Locked scope, SALES_MODULE_PLAN.md §6/§11 (D2): price, never build cost -

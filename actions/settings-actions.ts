@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { DEFAULT_ROLE_PERMISSIONS, normalizeRolePermissions, type RolePermissions } from '@/lib/permissions'
 import { requireAuthRole } from '@/actions/_shared/user-role'
 import { toUserRole, type UserRole } from '@/lib/types/billing'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 type SettingsQueryClient = {
   auth: {
@@ -216,6 +217,24 @@ export async function updateRolePermissions(nextPermissions: RolePermissions) {
 /**
  * Retrieves all users and their associated roles from the 'profiles' table.
  */
+/** Best-effort - banned_until lives on auth.users, not profiles, so this
+ * needs the service-role client. If it fails for any reason, everyone just
+ * shows as active rather than breaking the whole user list. */
+async function getDisabledUserIds(): Promise<Set<string>> {
+  try {
+    const admin = createAdminClient()
+    const { data } = await admin.auth.admin.listUsers({ perPage: 1000 })
+    const now = Date.now()
+    return new Set(
+      (data?.users || [])
+        .filter((u) => u.banned_until && new Date(u.banned_until).getTime() > now)
+        .map((u) => u.id)
+    )
+  } catch {
+    return new Set()
+  }
+}
+
 export async function getUsers() {
     const supabase = await createClient()
     await ensureCurrentUserProfile(supabase)
@@ -229,7 +248,7 @@ export async function getUsers() {
         .select('id, full_name, email, role')
         .eq('id', user.id)
         .maybeSingle()
-      return me ? [me] : []
+      return me ? [{ ...me, disabled: false }] : []
     }
 
     const { data, error } = await supabase
@@ -250,9 +269,11 @@ export async function getUsers() {
           .select('id, full_name, email, role')
           .eq('id', user.id)
           .maybeSingle()
-        return me ? [me] : []
+        return me ? [{ ...me, disabled: false }] : []
     }
-    return data;
+
+    const disabledIds = await getDisabledUserIds()
+    return (data || []).map((u) => ({ ...u, disabled: disabledIds.has(u.id) }))
 }
 
 
@@ -261,8 +282,24 @@ export async function getUsers() {
  */
 export async function updateUserRole(userId: string, newRole: UserRole) {
   const supabase = await createClient()
-  const { role } = await getCurrentUserAndRole(supabase)
+  const { user, role } = await getCurrentUserAndRole(supabase)
   if (role !== 'admin') throw new Error('Only admin can update user roles')
+
+  // M-10: an admin who demotes themself (or the last other admin) leaves no
+  // one who can fix it. Self-demotion is refused outright, even with other
+  // admins around - it's always the wrong click to make on your own account.
+  if (newRole !== 'admin') {
+    const { data: target } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle()
+    if (target?.role === 'admin') {
+      if (user?.id === userId) {
+        throw new Error('ไม่สามารถเปลี่ยนบทบาทของตัวเองออกจาก Admin ได้ ให้ผู้ดูแลระบบคนอื่นเปลี่ยนแทน')
+      }
+      const { count } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')
+      if ((count || 0) <= 1) {
+        throw new Error('ต้องมีผู้ดูแลระบบ (Admin) อย่างน้อย 1 คนเสมอ')
+      }
+    }
+  }
 
   const { error } = await supabase
     .from('profiles')
@@ -273,6 +310,38 @@ export async function updateUserRole(userId: string, newRole: UserRole) {
     console.error('Error updating user role:', error)
     throw new Error(error.message)
   }
+
+  revalidatePath('/dashboard/settings')
+  return { success: true }
+}
+
+/**
+ * Bans/unbans a user in Supabase Auth (M-10) - a departed foreman keeps a
+ * working login otherwise, and with the open-rules cleanup in Phase 1/6 that
+ * means real data access. ban_duration '876000h' (~100 years) is Supabase's
+ * own convention for "indefinite"; 'none' clears it.
+ */
+export async function setUserDisabled(userId: string, disabled: boolean) {
+  const supabase = await createClient()
+  const { user, role } = await getCurrentUserAndRole(supabase)
+  if (role !== 'admin') throw new Error('เฉพาะ Admin เท่านั้นที่สามารถปิด/เปิดการใช้งานผู้ใช้ได้')
+
+  if (disabled) {
+    if (user?.id === userId) {
+      throw new Error('ไม่สามารถปิดการใช้งานบัญชีตัวเองได้')
+    }
+    const { data: target } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle()
+    if (target?.role === 'admin') {
+      const { count } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')
+      if ((count || 0) <= 1) {
+        throw new Error('ต้องมีผู้ดูแลระบบ (Admin) อย่างน้อย 1 คนเสมอ')
+      }
+    }
+  }
+
+  const admin = createAdminClient()
+  const { error } = await admin.auth.admin.updateUserById(userId, { ban_duration: disabled ? '876000h' : 'none' })
+  if (error) throw new Error(error.message)
 
   revalidatePath('/dashboard/settings')
   return { success: true }

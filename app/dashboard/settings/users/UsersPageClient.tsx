@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { ArrowLeft, Users } from 'lucide-react'
+import { ArrowLeft, Ban, CheckCircle2, Users } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
-import { updateUserRole, updateUserFullName } from '@/actions/settings-actions'
+import { updateUserRole, updateUserFullName, setUserDisabled } from '@/actions/settings-actions'
 import type { getUsers } from '@/actions/settings-actions'
 import { generateInviteLink } from '@/actions/invite-actions'
 import type { UserRole } from '@/lib/types/billing'
@@ -51,6 +52,20 @@ export default function UsersPageClient({
         toast.success(`อัปเดตบทบาทแล้ว: ${target?.email || target?.full_name || userId}`)
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'อัปเดตบทบาทไม่สำเร็จ')
+      }
+    })
+  }
+
+  function handleToggleDisabled(user: User) {
+    const next = !user.disabled
+    if (next && !confirm(`ต้องการปิดการใช้งาน ${user.email || user.full_name || user.id} ใช่หรือไม่?`)) return
+    startTransition(async () => {
+      try {
+        await setUserDisabled(user.id, next)
+        setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, disabled: next } : u)))
+        toast.success(next ? 'ปิดการใช้งานแล้ว' : 'เปิดใช้งานแล้ว')
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'ดำเนินการไม่สำเร็จ')
       }
     })
   }
@@ -160,18 +175,20 @@ export default function UsersPageClient({
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">ชื่อ</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">อีเมล</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">บทบาท</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">สถานะ</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {users.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
                       ยังไม่พบผู้ใช้ในระบบ
                     </td>
                   </tr>
                 ) : (
                   users.map((user) => (
-                    <tr key={user.id} className="transition hover:bg-slate-50/80">
+                    <tr key={user.id} className={`transition hover:bg-slate-50/80 ${user.disabled ? 'opacity-60' : ''}`}>
                       <td className="px-2 py-1.5">
                         <input
                           value={nameDrafts[user.id] ?? user.full_name ?? ''}
@@ -201,6 +218,28 @@ export default function UsersPageClient({
                           <option value="accountant">Accountant</option>
                           <option value="sales">Sales</option>
                         </select>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3.5">
+                        {user.disabled ? <Badge tone="danger">ปิดการใช้งาน</Badge> : <Badge tone="success">ใช้งานอยู่</Badge>}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3.5 text-right">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={isPending}
+                          onClick={() => handleToggleDisabled(user)}
+                        >
+                          {user.disabled ? (
+                            <>
+                              <CheckCircle2 className="h-3.5 w-3.5" /> เปิดใช้งาน
+                            </>
+                          ) : (
+                            <>
+                              <Ban className="h-3.5 w-3.5" /> ปิดการใช้งาน
+                            </>
+                          )}
+                        </Button>
                       </td>
                     </tr>
                   ))

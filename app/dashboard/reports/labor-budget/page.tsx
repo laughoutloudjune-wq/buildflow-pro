@@ -1,7 +1,11 @@
 import { getLaborLedger, getLaborLedgerOptions } from '@/actions/labor-budget-actions'
+import { requireModuleAccess } from '@/lib/auth/route-access'
 import LaborBudgetLedgerPageClient from './LaborBudgetLedgerPageClient'
 
 export default async function LaborBudgetLedgerPage() {
+  // The layout also allows `billing`-only accountant through (for
+  // contractor-cycle) - this report isn't part of that (W-02).
+  await requireModuleAccess(['reports', 'cost_control'])
   let projects: Awaited<ReturnType<typeof getLaborLedgerOptions>>['projects'] = []
   let contractors: Awaited<ReturnType<typeof getLaborLedgerOptions>>['contractors'] = []
   let plotGroups: Awaited<ReturnType<typeof getLaborLedgerOptions>>['plotGroups'] = []

@@ -164,6 +164,12 @@ const PO_ERROR_TRANSLATIONS: [string, string][] = [
     'Cannot undo receiving - some of the received material has already been withdrawn or used elsewhere',
     'ยกเลิกการรับของไม่ได้ เนื่องจากวัสดุบางส่วนถูกเบิกใช้ไปแล้ว กรุณายกเลิกการเบิกนั้นก่อน',
   ],
+  ['Only PM/Admin can close a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถปิดใบสั่งซื้อได้'],
+  ['A reason is required to close a purchase order short', 'กรุณาระบุเหตุผลที่ปิดใบสั่งซื้อ'],
+  [
+    'Can only close short a partially received purchase order',
+    'ปิดใบสั่งซื้อแบบส่งไม่ครบได้เฉพาะใบสั่งซื้อที่มีสถานะรับของบางส่วนเท่านั้น',
+  ],
 ]
 
 function translatePoError(message: string): string {
@@ -237,6 +243,25 @@ export async function cancelPurchaseOrder(id: string, reason?: string) {
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/procurement/orders')
   revalidatePath(`/dashboard/procurement/orders/${id}`)
+}
+
+/** From partially_received: shrinks every short line's ordered quantity
+ * down to what arrived, recomputes totals, gives the un-ordered remainder
+ * back to the linked purchase request, and closes the PO as 'received' -
+ * see 202609230008_po_close_short.sql (M-04). */
+export async function closePurchaseOrderShort(id: string, reason: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can close a purchase order')
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('po_close_short', { p_id: id, p_reason: reason.trim() })
+    if (error) return { error: translatePoError(error.message) }
+    revalidatePath('/dashboard/procurement/orders')
+    revalidatePath(`/dashboard/procurement/orders/${id}`)
+    revalidatePath('/dashboard/procurement/requests')
+    return { ok: true }
+  } catch (error) {
+    return { error: translatePoError(error instanceof Error ? error.message : 'ปิดใบสั่งซื้อไม่สำเร็จ') }
+  }
 }
 
 export async function markPurchaseOrderReceived(id: string, receivedAt: string) {

@@ -1,7 +1,11 @@
 import { getBillingOptions, getPlotHistoryReport } from '@/actions/billing-actions'
+import { requireModuleAccess } from '@/lib/auth/route-access'
 import HouseHistoryReportPageClient from './HouseHistoryReportPageClient'
 
 export default async function HouseHistoryReportPage() {
+  // The layout also allows `billing`-only accountant through (for
+  // contractor-cycle) - this report isn't part of that (W-02).
+  await requireModuleAccess('reports')
   let projects: Awaited<ReturnType<typeof getBillingOptions>>['projects'] = []
   let rows: Awaited<ReturnType<typeof getPlotHistoryReport>> = []
 

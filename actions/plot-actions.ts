@@ -38,6 +38,26 @@ export async function createPlot(formData: FormData): Promise<PlotActionResult> 
       return { success: false, error: 'กรุณากรอกชื่อแปลงและเลือกแบบบ้าน' }
     }
 
+    // M-07 guard (future only): the screen already filters the source-plot
+    // list to the same project + house model, but the server has to check
+    // too - this is exactly how the 43 mismatched Arada Vela/Prime rows
+    // happened (a plot from the wrong project got picked). Checked before
+    // the plot itself is created, so a bad source plot never leaves behind
+    // an empty plot with no jobs.
+    if (source_plot_id) {
+      const { data: sourcePlot, error: sourcePlotError } = await supabase
+        .from('plots')
+        .select('id, project_id, house_model_id')
+        .eq('id', source_plot_id)
+        .maybeSingle()
+
+      if (sourcePlotError) return { success: false, error: sourcePlotError.message }
+      if (!sourcePlot) return { success: false, error: 'ไม่พบแปลงต้นทางที่เลือก' }
+      if (sourcePlot.project_id !== project_id || sourcePlot.house_model_id !== house_model_id) {
+        return { success: false, error: 'คัดลอกงานได้เฉพาะจากแปลงในโครงการเดียวกันที่ใช้แบบบ้านเดียวกันเท่านั้น' }
+      }
+    }
+
     // 1. สร้างแปลง (Plot)
     const { data: plot, error: plotError } = await supabase
       .from('plots')
@@ -185,6 +205,28 @@ export async function updatePlot(id: string, projectId: string, formData: FormDa
 
     const listPrice = parseOptionalNumber(formData.get('list_price'))
     if (!listPrice.ok) return { success: false, error: 'ราคาตั้งไม่ถูกต้อง' } satisfies PlotActionResult
+
+    // M-07 guard (future only): changing the house model out from under jobs
+    // that were generated for the old one is exactly how the Arada Vela 93
+    // mismatch happened. Block it once the plot has any job row - the plot's
+    // jobs have to be cleared (or the plot recreated) before switching models.
+    const { data: existingPlot, error: existingPlotError } = await supabase
+      .from('plots')
+      .select('house_model_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (existingPlotError) return { success: false, error: existingPlotError.message } satisfies PlotActionResult
+
+    if (existingPlot && existingPlot.house_model_id !== house_model_id) {
+      const { count, error: jobsCountError } = await supabase
+        .from('job_assignments')
+        .select('id', { count: 'exact', head: true })
+        .eq('plot_id', id)
+      if (jobsCountError) return { success: false, error: jobsCountError.message } satisfies PlotActionResult
+      if (count && count > 0) {
+        return { success: false, error: 'แปลงนี้มีรายการงานของแบบบ้านเดิมแล้ว เปลี่ยนแบบบ้านไม่ได้' } satisfies PlotActionResult
+      }
+    }
 
     const { error } = await supabase
       .from('plots')

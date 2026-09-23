@@ -39,6 +39,7 @@ import {
   updatePurchaseOrder as updatePurchaseOrderImpl,
   setPurchaseOrderStatus as setPurchaseOrderStatusImpl,
   cancelPurchaseOrder as cancelPurchaseOrderImpl,
+  closePurchaseOrderShort as closePurchaseOrderShortImpl,
   markPurchaseOrderReceived as markPurchaseOrderReceivedImpl,
   unmarkPurchaseOrderReceived as unmarkPurchaseOrderReceivedImpl,
   deletePurchaseOrder as deletePurchaseOrderImpl,
@@ -203,6 +204,10 @@ export async function setPurchaseOrderStatus(id: string, status: 'draft' | 'sent
 
 export async function cancelPurchaseOrder(id: string, reason?: string) {
   return cancelPurchaseOrderImpl(id, reason)
+}
+
+export async function closePurchaseOrderShort(id: string, reason: string) {
+  return closePurchaseOrderShortImpl(id, reason)
 }
 
 export async function markPurchaseOrderReceived(id: string, receivedAt: string) {

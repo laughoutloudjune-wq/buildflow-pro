@@ -49,6 +49,7 @@ export default function ReviewBillingPageClient({
   initialRetentionPercent,
   initialProgressHistoryByJob,
   initialError,
+  canApprove,
 }: {
   id: string
   initialBilling: BillingData
@@ -61,6 +62,7 @@ export default function ReviewBillingPageClient({
   initialRetentionPercent: number
   initialProgressHistoryByJob: Record<string, ProgressHistoryItem[]>
   initialError: string | null
+  canApprove: boolean
 }) {
   const router = useRouter()
 
@@ -330,7 +332,7 @@ export default function ReviewBillingPageClient({
         title={`ตรวจสอบใบขอเบิก #${billing.doc_no}`}
         actions={
           <>
-            {billing.status === 'approved' && !billing.paid_out_at && (
+            {canApprove && billing.status === 'approved' && !billing.paid_out_at && (
               <Button variant="ghost" size="sm" onClick={() => setConfirmAction('undoApprove')} disabled={isSubmitting}>
                 <Edit className="h-4 w-4" /> ย้อนสถานะอนุมัติ
               </Button>
@@ -580,7 +582,7 @@ export default function ReviewBillingPageClient({
               </div>
             </div>
 
-            {billing.status === 'pending_review' && (
+            {canApprove && billing.status === 'pending_review' && (
               <div className="mt-6 flex justify-end gap-4">
                 <Button variant="danger" onClick={() => setRejectModalOpen(true)} disabled={isSubmitting}>
                   {isSubmitting ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}

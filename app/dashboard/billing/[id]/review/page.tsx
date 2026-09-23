@@ -1,6 +1,7 @@
 import { getBillingById, getJobProgressHistory } from '@/actions/billing-actions'
 import { getOrganizationSettings } from '@/actions/settings-actions'
 import { getSignatureSlots } from '@/actions/signature-slots-actions'
+import { getDashboardSession } from '@/lib/auth/route-access'
 import type { BillingAdjustmentForm, ProgressHistoryItem } from '@/lib/types/billing'
 import { todayInBangkok } from '@/lib/utils'
 import ReviewBillingPageClient from './ReviewBillingPageClient'
@@ -22,6 +23,13 @@ export default async function ReviewBillingPage({ params }: { params: Promise<{ 
   let retentionPercent = 0
   let progressHistoryByJob: Record<string, ProgressHistoryItem[]> = {}
   let error: string | null = null
+
+  // billing_approve/reject/undo_approve all refuse anyone but PM/Admin at
+  // the database layer already (W-02) - this just keeps accountant (who
+  // still reads billing for the payment cycle) from seeing buttons that
+  // would only come back with a Thai refusal.
+  const { role } = await getDashboardSession()
+  const canApprove = role === 'pm' || role === 'admin'
 
   try {
     const [billingData, settingsData, slotsData] = await Promise.all([
@@ -78,6 +86,7 @@ export default async function ReviewBillingPage({ params }: { params: Promise<{ 
       initialRetentionPercent={retentionPercent}
       initialProgressHistoryByJob={progressHistoryByJob}
       initialError={error}
+      canApprove={canApprove}
     />
   )
 }
