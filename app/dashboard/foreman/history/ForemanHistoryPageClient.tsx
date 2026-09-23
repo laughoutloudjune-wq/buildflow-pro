@@ -24,6 +24,14 @@ const getStatusChip = (status: string) => (
   </Badge>
 )
 
+type Tab = 'pending_review' | 'rejected' | 'approved'
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'pending_review', label: 'รอตรวจสอบ' },
+  { key: 'rejected', label: 'ถูกปฏิเสธ' },
+  { key: 'approved', label: 'อนุมัติแล้ว' },
+]
+
 export default function ForemanHistoryPageClient({
   initialBillings,
   initialError,
@@ -35,6 +43,7 @@ export default function ForemanHistoryPageClient({
   const [billings, setBillings] = useState<Billing[]>(initialBillings)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(initialError ?? null)
+  const [tab, setTab] = useState<Tab>('pending_review')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -115,6 +124,9 @@ export default function ForemanHistoryPageClient({
     await load()
   }
 
+  const filteredBillings = billings.filter((bill) => bill.status === tab)
+  const tabCount = (key: Tab) => billings.filter((bill) => bill.status === key).length
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -132,6 +144,21 @@ export default function ForemanHistoryPageClient({
         }
       />
 
+      <div className="flex border-b border-slate-200">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2.5 text-sm font-semibold transition ${
+              tab === t.key ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {t.label} <span className="text-xs font-normal text-slate-400">({tabCount(t.key)})</span>
+          </button>
+        ))}
+      </div>
+
       <Card className="p-4 bg-slate-50/60 border-slate-200">
         {loading ? (
           <div className="p-8 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto"/></div>
@@ -142,11 +169,11 @@ export default function ForemanHistoryPageClient({
               ลองโหลดใหม่
             </Button>
           </div>
-        ) : billings.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">ยังไม่มีคำขอ</div>
+        ) : filteredBillings.length === 0 ? (
+          <div className="p-8 text-center text-slate-400">ไม่มีคำขอในหมวดนี้</div>
         ) : (
           <div className="space-y-3">
-            {billings.map((bill) => (
+            {filteredBillings.map((bill) => (
               <div key={bill.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-blue-300 transition">
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-[130px_160px_1fr_150px_120px_130px]">
                   <div className="text-slate-500 text-sm">{new Date(bill.created_at || bill.billing_date || '').toLocaleDateString('th-TH')}</div>
@@ -179,6 +206,10 @@ export default function ForemanHistoryPageClient({
                         <button onClick={() => handleEdit(bill)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-100"><Pencil className="h-4 w-4"/></button>
                         <button onClick={() => handleDelete(bill.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-100"><Trash2 className="h-4 w-4"/></button>
                       </div>
+                    ) : bill.status === 'rejected' ? (
+                      <Button size="sm" variant="secondary" onClick={() => handleEdit(bill)}>
+                        <Pencil className="h-3.5 w-3.5" /> แก้ไขแล้วส่งใหม่
+                      </Button>
                     ) : <span className="text-xs text-slate-400">-</span>}
                   </div>
                 </div>

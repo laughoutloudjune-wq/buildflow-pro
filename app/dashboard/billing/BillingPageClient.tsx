@@ -171,6 +171,30 @@ export default function BillingPageClient({
         />
       ) : null}
 
+      <div className="flex border-b border-slate-200">
+        {[
+          { key: undefined, label: 'ทั้งหมด' },
+          { key: 'pending_review', label: 'รอตรวจสอบ' },
+          { key: 'rejected', label: 'ถูกปฏิเสธ' },
+          { key: 'approved', label: 'อนุมัติแล้ว' },
+        ].map((t) => {
+          const count = t.key ? billings.filter((b) => b.status === t.key).length : billings.length
+          const isActive = (filters.status || undefined) === t.key
+          return (
+            <button
+              key={t.label}
+              type="button"
+              onClick={() => setFilters((p) => ({ ...p, status: t.key }))}
+              className={`px-4 py-2.5 text-sm font-semibold transition ${
+                isActive ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t.label} <span className="text-xs font-normal text-slate-400">({count})</span>
+            </button>
+          )
+        })}
+      </div>
+
       <Card className="p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <div>
