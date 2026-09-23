@@ -98,7 +98,7 @@ export default function WithdrawDrawer({
     setIsLoading(true)
     try {
       const [overview, options] = await Promise.all([getStockOverview(), getStockWithdrawPickerOptions()])
-      setMaterials(overview)
+      setMaterials(overview.rows)
       setProjects(options.projects)
       setContractors(options.contractors)
     } catch (error) {

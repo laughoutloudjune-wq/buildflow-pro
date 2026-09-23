@@ -3,22 +3,27 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ListTree, PackageMinus, BarChart3 } from 'lucide-react'
+import { ListTree, PackageMinus, BarChart3, ClipboardEdit } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
 import WithdrawDrawer from '@/components/stock/WithdrawDrawer'
+import AdjustStockModal from '@/components/stock/AdjustStockModal'
 import type { StockOverviewRow } from '@/lib/types/stock'
 
 const numberFormat = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 })
 
 export default function StockOverviewPageClient({
   rows,
+  canAdjust,
   initialError,
 }: {
   rows: StockOverviewRow[]
+  /** Stock count adjustment is pm/admin only - hides the quick-adjust
+   * column instead of showing it and failing on submit. */
+  canAdjust: boolean
   initialError?: string | null
 }) {
   const router = useRouter()
@@ -27,6 +32,11 @@ export default function StockOverviewPageClient({
   const [category, setCategory] = useState('ทั้งหมด')
   const [showAll, setShowAll] = useState(false)
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
+  // Row being adjusted from the list - lets the Phase 5 yard-count cutover
+  // (MATERIAL_FLOW_PLAN.md) walk the whole list without a page navigation
+  // per material, the same AdjustStockModal the per-material detail page
+  // already uses.
+  const [adjustingRow, setAdjustingRow] = useState<StockOverviewRow | null>(null)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -131,12 +141,13 @@ export default function StockOverviewPageClient({
                 <th className="px-4 py-3">หมวดหมู่</th>
                 <th className="px-4 py-3">หน่วย</th>
                 <th className="px-4 py-3 text-right">คงเหลือ</th>
+                {canAdjust && <th className="w-10 px-2 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center italic text-slate-400">
+                  <td colSpan={canAdjust ? 5 : 4} className="px-4 py-8 text-center italic text-slate-400">
                     ไม่พบวัสดุที่ตรงกับเงื่อนไข
                   </td>
                 </tr>
@@ -182,6 +193,18 @@ export default function StockOverviewPageClient({
                         </span>
                       )}
                     </td>
+                    {canAdjust && (
+                      <td className="px-2 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setAdjustingRow(r)}
+                          title="ปรับยอดสต็อก"
+                          className="rounded p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition"
+                        >
+                          <ClipboardEdit className="h-4 w-4" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -189,6 +212,21 @@ export default function StockOverviewPageClient({
           </table>
         </div>
       </Card>
+
+      {adjustingRow && (
+        <AdjustStockModal
+          isOpen={Boolean(adjustingRow)}
+          onClose={() => setAdjustingRow(null)}
+          onSuccess={() => {
+            setAdjustingRow(null)
+            router.refresh()
+          }}
+          materialId={adjustingRow.material_type_id}
+          materialName={adjustingRow.name}
+          unit={adjustingRow.unit}
+          currentQty={adjustingRow.quantity_on_hand}
+        />
+      )}
     </div>
   )
 }

@@ -24,8 +24,14 @@ import type {
 type StockOverviewMaterialRow = { id: number; name: string; unit: string; category: string | null; is_requestable: boolean }
 type StockBalanceRow = { material_type_id: number; quantity_on_hand: number }
 
-export async function getStockOverview(): Promise<StockOverviewRow[]> {
-  await requireModuleAccess('materials')
+export async function getStockOverview(): Promise<{
+  rows: StockOverviewRow[]
+  /** Stock count adjustment is pm/admin only, same as the per-material
+   * detail page's canAdjust - lets the list hide the quick-adjust button
+   * instead of showing it and failing on submit. */
+  canAdjust: boolean
+}> {
+  const { role } = await requireModuleAccess('materials')
   const supabase = await createClient()
 
   // Both tables are read in full here, unpaginated by any filter narrow
@@ -44,15 +50,18 @@ export async function getStockOverview(): Promise<StockOverviewRow[]> {
 
   const balanceByMaterial = new Map(balances.map((b) => [b.material_type_id, Number(b.quantity_on_hand)]))
 
-  return materials.map((m) => ({
-    material_type_id: m.id,
-    name: m.name,
-    unit: m.unit,
-    category: m.category,
-    quantity_on_hand: balanceByMaterial.get(m.id) ?? 0,
-    tracked: balanceByMaterial.has(m.id),
-    is_requestable: m.is_requestable,
-  }))
+  return {
+    rows: materials.map((m) => ({
+      material_type_id: m.id,
+      name: m.name,
+      unit: m.unit,
+      category: m.category,
+      quantity_on_hand: balanceByMaterial.get(m.id) ?? 0,
+      tracked: balanceByMaterial.has(m.id),
+      is_requestable: m.is_requestable,
+    })),
+    canAdjust: role === 'pm' || role === 'admin',
+  }
 }
 
 const MOVEMENT_SELECT =
