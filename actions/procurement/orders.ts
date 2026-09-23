@@ -155,6 +155,15 @@ const PO_ERROR_TRANSLATIONS: [string, string][] = [
   ['Only PM/Admin can edit a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถแก้ไขใบสั่งซื้อได้'],
   ['Only PM/Admin can create a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถสร้างใบสั่งซื้อได้'],
   ['Not authenticated', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง'],
+  ['Only a purchase order that has already received something can have its receiving undone', 'ยกเลิกการรับของได้เฉพาะใบสั่งซื้อที่มีการรับของแล้วเท่านั้น'],
+  [
+    "Cannot undo receiving - a payment has already been recorded against one of this order's receipts",
+    'ยกเลิกการรับของไม่ได้ เนื่องจากมีการบันทึกจ่ายเงินสำหรับใบรับสินค้านี้แล้ว กรุณายกเลิกใบสำคัญจ่ายก่อน',
+  ],
+  [
+    'Cannot undo receiving - some of the received material has already been withdrawn or used elsewhere',
+    'ยกเลิกการรับของไม่ได้ เนื่องจากวัสดุบางส่วนถูกเบิกใช้ไปแล้ว กรุณายกเลิกการเบิกนั้นก่อน',
+  ],
 ]
 
 function translatePoError(message: string): string {
@@ -239,13 +248,22 @@ export async function markPurchaseOrderReceived(id: string, receivedAt: string) 
   revalidatePath(`/dashboard/procurement/orders/${id}`)
 }
 
+/** Fully reverses everything this PO has ever received: every line's
+ * quantity_received goes back to 0, the goods_receipts/goods_receipt_items
+ * rows are gone, and the stock those receipts added (or, for a direct-to-
+ * site line, netted to zero) is reversed - not just the status label. See
+ * 202609230003_po_unmark_received_full_undo.sql for why and what it
+ * refuses (a receipt already paid, or material already withdrawn). */
 export async function unmarkPurchaseOrderReceived(id: string) {
   await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can unmark a purchase order as received')
   const supabase = await createClient()
   const { error } = await supabase.rpc('po_unmark_received', { p_id: id })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(translatePoError(error.message))
   revalidatePath('/dashboard/procurement/orders')
   revalidatePath(`/dashboard/procurement/orders/${id}`)
+  revalidatePath('/dashboard/procurement/requests')
+  revalidatePath('/dashboard/procurement/receipts')
+  revalidatePath('/dashboard/stock')
 }
 
 /** Only draft/sent/cancelled orders with no goods_receipts can be deleted -

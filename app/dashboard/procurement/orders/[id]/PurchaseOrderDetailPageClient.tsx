@@ -157,7 +157,12 @@ export default function PurchaseOrderDetailPageClient({
   }
 
   function handleUnmarkReceived() {
-    if (!confirm('ยกเลิกการรับของ และย้อนกลับไปสถานะยืนยันสั่งซื้อ?')) return
+    if (
+      !confirm(
+        'ยกเลิกการรับของทั้งหมดของใบสั่งซื้อนี้? จำนวนที่รับจะกลับเป็น 0 ทุกรายการ ใบรับสินค้าที่บันทึกไว้จะถูกลบ และสต็อกที่เพิ่มไปจะถูกดึงกลับ - ใช้เมื่อบันทึกวันที่หรือจำนวนผิด แล้วต้องการรับของใหม่ให้ถูกต้อง'
+      )
+    )
+      return
     startTransition(async () => {
       try {
         await unmarkPurchaseOrderReceived(id)
@@ -175,7 +180,7 @@ export default function PurchaseOrderDetailPageClient({
   const canEditStatus = order.status === 'draft' || order.status === 'sent'
   const canCancel = order.status === 'draft' || order.status === 'sent'
   const canReceive = order.status === 'sent' || order.status === 'partially_received'
-  const canUnmarkReceived = order.status === 'received'
+  const canUnmarkReceived = order.status === 'received' || order.status === 'partially_received'
   const isFormReadOnly = order.status === 'paid' || order.status === 'cancelled'
 
   const milestones = [
