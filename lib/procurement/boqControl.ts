@@ -67,11 +67,31 @@ export function ceilingQty(row: BoqControlRow): number {
   return row.plannedQty + row.allowanceQty
 }
 
-/** What's actually gone out the door so far: ordered (committed, whether or
- * not it has arrived yet) plus issued from stock. Deliberately not
- * receivedQty - the commitment happens at order time, not delivery. */
+/** Committed-so-far basis for the "would this push us over budget" checks
+ * at signing time (BoqCheckLine / getBoqCheckForDraft's 'ordered' basis,
+ * getBoqCheckForPurchaseOrder, the PR draft check) - ordered (whether or not
+ * it has arrived yet) plus issued from stock. Deliberately not receivedQty -
+ * the commitment happens at order time, not delivery. Deliberately NOT used
+ * for the cost-control rollup's own ceiling/status/percent any more - see
+ * consumedQty below. */
 export function totalUsedQty(row: BoqControlRow): number {
   return row.orderedQty + row.issuedQty
+}
+
+/** What this scope has actually consumed: every 'out' stock movement against
+ * it, whatever posted it - a manual withdrawal from the store, or Phase 1's
+ * direct_to_site posting for material that never entered the store at all.
+ * This, not totalUsedQty, is what the cost-control rollup page compares
+ * against the BOQ ceiling (percentUsed/rowStatus/excessValue below) - once
+ * material can be bought for house 101 and then issued to house 101, adding
+ * purchase and consumption together would double-count the same material
+ * (MATERIAL_FLOW_PLAN.md Phase 4). orderedQty/receivedQty stay on the row as
+ * their own "on order" figure, still shown, just not part of this. The
+ * precommitment checks above keep using totalUsedQty on purpose: an early
+ * warning has to count what's already been ordered, not just what's been
+ * consumed, or an over-order would never trip it before the material ships. */
+export function consumedQty(row: BoqControlRow): number {
+  return row.issuedQty
 }
 
 /** Null when there is no budget to measure against - a material bought but
@@ -79,25 +99,28 @@ export function totalUsedQty(row: BoqControlRow): number {
 export function percentUsed(row: BoqControlRow): number | null {
   const ceiling = ceilingQty(row)
   if (ceiling <= 0) return null
-  return (totalUsedQty(row) / ceiling) * 100
+  return (consumedQty(row) / ceiling) * 100
 }
 
 /**
- * The money behind an over-BOQ row: (total used - ceiling) x the row's own
- * average unit price (orderedValue / orderedQty - the rollup doesn't carry
- * a single unit price since a material can be bought at different prices
- * across POs). 0 for a row that isn't over, or that has no ordered value to
- * derive a price from.
+ * The money behind an over-BOQ row: (consumed - ceiling) x the row's own
+ * average unit price. Priced off orderedValue / orderedQty because
+ * stock_movements carries no price of its own (a material can be bought at
+ * different prices across POs, so there's no single figure to pull from
+ * there either) - orderedQty is only the price source here, not part of
+ * "how much is over" any more. 0 for a row that isn't over, or that has no
+ * ordered value to derive a price from (e.g. consumption with no PO history
+ * at all, such as an opening-balance-only material).
  */
 export function excessValue(row: BoqControlRow): number {
-  const excessQty = totalUsedQty(row) - ceilingQty(row)
+  const excessQty = consumedQty(row) - ceilingQty(row)
   if (excessQty <= 0 || row.orderedQty <= 0) return 0
   const unitPrice = row.orderedValue / row.orderedQty
   return excessQty * unitPrice
 }
 
 export function rowStatus(row: BoqControlRow): BoqControlStatus {
-  const used = totalUsedQty(row)
+  const used = consumedQty(row)
   if (row.plannedQty === 0 && used > 0) return 'not_in_boq'
   const percent = percentUsed(row)
   if (percent === null) return 'no_budget'

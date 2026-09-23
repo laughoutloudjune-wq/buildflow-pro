@@ -1,4 +1,4 @@
-import { Boxes, User } from 'lucide-react'
+import { User } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { formatCurrency } from '@/lib/currency'
 import type { PlotJobRow } from '@/lib/types/plotDetail'
@@ -27,7 +27,6 @@ export default function PlotConstructionTab({
   onResetVariablePrice,
   onAssign,
   onStatusChange,
-  onOpenMaterialsLog,
 }: {
   jobs: PlotJobRow[]
   contractors: Contractor[]
@@ -39,7 +38,6 @@ export default function PlotConstructionTab({
   onResetVariablePrice: (job: PlotJobRow) => void
   onAssign: (jobId: string, contractorId: string) => void
   onStatusChange: (jobId: string, status: string) => void
-  onOpenMaterialsLog: (job: { id: string; label: string }) => void
 }) {
   // Sales (canSeeCost=false, so every job.cost is null) sees job name and
   // status only - no contractor column, no price/budget/paid columns at
@@ -59,7 +57,6 @@ export default function PlotConstructionTab({
               {showCostColumns && <th className="px-4 py-3 font-semibold text-right">จ่ายแล้ว</th>}
               <th className="px-4 py-3 font-semibold w-[200px]">ผู้รับเหมา</th>
               <th className="px-4 py-3 font-semibold w-[120px]">สถานะ</th>
-              <th className="px-4 py-3 font-semibold w-[80px] text-center">วัสดุ</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
@@ -170,19 +167,6 @@ export default function PlotConstructionTab({
                       <span className={`inline-flex rounded px-2 py-1 text-xs font-bold ${STATUS_CLASS[job.status] || STATUS_CLASS.pending}`}>
                         {STATUS_LABEL[job.status] || job.status}
                       </span>
-                    )}
-                  </td>
-
-                  <td className="px-4 py-3 text-center">
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() => onOpenMaterialsLog({ id: job.id, label: job.itemName })}
-                        className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition"
-                        title="บันทึกวัสดุ"
-                      >
-                        <Boxes className="h-4 w-4" />
-                      </button>
                     )}
                   </td>
                 </tr>

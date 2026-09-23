@@ -22,7 +22,7 @@ cheque, so overspending is caught before the money leaves.
 
 | Decision | Choice | Why |
 |---|---|---|
-| What counts as "purchased" | PO lines **and** stock issue-outs | There are 1,159 stock issue-outs (489 plot-tagged) vs ~28 plot-tagged app-created POs. PO-only would show houses supplied from the central store as under budget. |
+| What counts as "purchased" | ~~PO lines **and** stock issue-outs~~ **Superseded 2026-09-23 by MATERIAL_FLOW_PLAN.md Phase 4: consumption only (all `'out'` stock movements), purchases shown separately as "on order".** Once destination (Phase 1 of the material flow plan) lets a line be bought for house 101 *and* issued to house 101, adding PO lines and issue-outs together double-counts the same material. See `consumedQty()`/`totalUsedQty()` in `lib/procurement/boqControl.ts` for the resulting split: the cost-control rollup compares `consumedQty` (issued only) against the ceiling; the precommitment "would this push us over" checks at signing time still use `totalUsedQty` (ordered+issued) on purpose, so an over-order trips the warning before it ships. | There are 1,159 stock issue-outs (489 plot-tagged) vs ~28 plot-tagged app-created POs. PO-only would show houses supplied from the central store as under budget. |
 | Control ceiling | BOQ qty **+ wastage %** per material | A bare-BOQ ceiling flags every cut-waste material (tile, rebar, cement) and turns red flags into noise. |
 | Going over BOQ | Warn + **record a mandatory reason** | Site work must not stall while BOQ data is still incomplete, but the overspend needs an audit trail on the signed document. **Do not block the PO.** |
 | Non-BOQ purchases | Explicit `is_outside_boq` flag on the PO | Common area, office supplies and machinery have no BOQ line; without a flag they pollute every variance. |
@@ -475,7 +475,12 @@ export type BoqControlRow = {
 }
 export type BoqControlStatus = 'ok' | 'watch' | 'over' | 'not_in_boq' | 'no_budget'
 export function ceilingQty(row: BoqControlRow): number
+// totalUsedQty (ordered+issued) drives the precommitment "would this push us
+// over" checks at signing time; consumedQty (issued only) is what the
+// cost-control rollup itself compares against the ceiling - added Phase 4 of
+// MATERIAL_FLOW_PLAN.md, see the decisions table above.
 export function totalUsedQty(row: BoqControlRow): number
+export function consumedQty(row: BoqControlRow): number
 export function percentUsed(row: BoqControlRow): number | null
 export function rowStatus(row: BoqControlRow): BoqControlStatus
 ```

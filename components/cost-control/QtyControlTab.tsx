@@ -8,9 +8,9 @@ import { getBoqControlMaterialDetail } from '@/actions/procurement/boq-control'
 import {
   STATUS_LABEL_TH,
   ceilingQty,
+  consumedQty,
   percentUsed,
   rowStatus,
-  totalUsedQty,
   type BoqControlDetailRow,
   type BoqControlOutsideBoqRow,
   type BoqControlRow,
@@ -127,9 +127,8 @@ export default function QtyControlTab({
         เผื่อ: r.allowanceQty,
         รวมงบ: ceilingQty(r),
         สั่งซื้อ: r.orderedQty,
-        เบิกสต็อก: r.issuedQty,
-        ใช้จริง: totalUsedQty(r),
-        คงเหลือ: ceilingQty(r) - totalUsedQty(r),
+        ใช้จริง: consumedQty(r),
+        คงเหลือ: ceilingQty(r) - consumedQty(r),
         เปอร์เซ็นต์: percentUsed(r) == null ? '' : Math.round((percentUsed(r) as number) * 10) / 10,
         สถานะ: STATUS_LABEL_TH[rowStatus(r)],
       }))
@@ -201,9 +200,12 @@ export default function QtyControlTab({
                 <th className="px-3 py-2 text-right">BOQ</th>
                 <th className="px-3 py-2 text-right">เผื่อ</th>
                 <th className="px-3 py-2 text-right">รวมงบ</th>
-                <th className="px-3 py-2 text-right">สั่งซื้อ</th>
-                <th className="px-3 py-2 text-right">เบิกสต็อก</th>
-                <th className="px-3 py-2 text-right">ใช้จริง</th>
+                <th className="px-3 py-2 text-right" title="สั่งซื้อแล้ว ไม่ว่าจะรับของหรือยัง - ข้อมูลอ้างอิง ไม่นับรวมในเปอร์เซ็นต์/สถานะ">
+                  สั่งซื้อ
+                </th>
+                <th className="px-3 py-2 text-right" title="วัสดุที่เบิกออกจากสต็อกจริงแล้ว รวมของที่ส่งตรงหน้างานโดยไม่เข้าสโตร์ - ตัวนี้คือตัวที่เทียบกับ BOQ">
+                  ใช้จริง
+                </th>
                 <th className="px-3 py-2 text-right">คงเหลือ</th>
                 <th className="px-3 py-2 text-right">%</th>
                 <th className="px-3 py-2">สถานะ</th>
@@ -213,7 +215,7 @@ export default function QtyControlTab({
               {filteredRows.map((row) => {
                 const status = rowStatus(row)
                 const ceiling = ceilingQty(row)
-                const used = totalUsedQty(row)
+                const used = consumedQty(row)
                 const percent = percentUsed(row)
                 const isExpanded = expandedId === row.materialTypeId
                 return (
@@ -238,7 +240,6 @@ export default function QtyControlTab({
                       <td className="px-3 py-2.5 text-right text-slate-500">{row.allowanceQty.toLocaleString('th-TH')}</td>
                       <td className="px-3 py-2.5 text-right font-medium text-slate-700">{ceiling.toLocaleString('th-TH')}</td>
                       <td className="px-3 py-2.5 text-right text-slate-600">{row.orderedQty.toLocaleString('th-TH')}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-600">{row.issuedQty.toLocaleString('th-TH')}</td>
                       <td className="px-3 py-2.5 text-right font-medium text-slate-800">{used.toLocaleString('th-TH')}</td>
                       <td className={`px-3 py-2.5 text-right font-medium ${ceiling - used < 0 ? 'text-red-600' : 'text-slate-700'}`}>
                         {(ceiling - used).toLocaleString('th-TH')}
@@ -253,7 +254,7 @@ export default function QtyControlTab({
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={12} className="bg-slate-50/70 px-6 py-3">
+                        <td colSpan={11} className="bg-slate-50/70 px-6 py-3">
                           {isDetailLoading && !detailByMaterial[row.materialTypeId] ? (
                             <div className="flex items-center gap-2 py-2 text-sm text-slate-400">
                               <Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลด...

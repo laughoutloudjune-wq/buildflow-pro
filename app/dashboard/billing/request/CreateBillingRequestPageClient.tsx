@@ -8,8 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
-import JobMaterialLogModal from '@/components/materials/JobMaterialLogModal'
-import { CheckCircle, Boxes } from 'lucide-react'
+import { CheckCircle } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import type { BillingAdjustmentForm, BillableJob, ContractorOption, ProgressHistoryItem, ProjectOption, SelectedBillingJobState } from '@/lib/types/billing'
 
@@ -57,7 +56,6 @@ export default function CreateBillingRequestPageClient({
   const [submittedData, setSubmittedData] = useState<{ project_id: string; contractor_id: string; net_amount: number; doc_no?: string | number } | null>(null)
   const [editingBilling] = useState<BillingDetail>(initialEditingBilling)
   const [didPrefillJobs, setDidPrefillJobs] = useState(false)
-  const [materialsJob, setMaterialsJob] = useState<{ id: string; label: string } | null>(null)
 
   useEffect(() => {
     if (!selectedProject || !selectedContractor) return
@@ -343,7 +341,6 @@ export default function CreateBillingRequestPageClient({
                     <th className="px-4 py-3 text-right">คืบหน้าปัจจุบัน %</th>
                     <th className="px-4 py-3 text-right">ยอดขอเบิก (บาท)</th>
                     <th className="px-4 py-3 text-right">คงเหลือหลังเบิก</th>
-                    <th className="px-4 py-3 text-center">วัสดุ</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -392,18 +389,6 @@ export default function CreateBillingRequestPageClient({
                             )}
                           </td>
                           <td className="px-4 py-3 text-right font-semibold text-emerald-700">{formatCurrency(remainingAfter)}</td>
-                          <td className="px-4 py-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setMaterialsJob({ id: job.id, label: job.boq_master?.item_name || 'งาน' })
-                              }
-                              className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
-                              title="บันทึกวัสดุ"
-                            >
-                              <Boxes className="h-4 w-4" />
-                            </button>
-                          </td>
                         </tr>
 
                         {selectedJobs.has(job.id) && (
@@ -540,15 +525,6 @@ export default function CreateBillingRequestPageClient({
           </Button>
         </div>
       </Card>
-
-      {materialsJob && (
-        <JobMaterialLogModal
-          isOpen={Boolean(materialsJob)}
-          onClose={() => setMaterialsJob(null)}
-          jobAssignmentId={materialsJob.id}
-          jobLabel={materialsJob.label}
-        />
-      )}
     </div>
   )
 }

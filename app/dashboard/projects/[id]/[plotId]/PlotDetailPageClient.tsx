@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
-import JobMaterialLogModal from '@/components/materials/JobMaterialLogModal'
 import PlotOverviewTab from '@/components/plots/PlotOverviewTab'
 import PlotSalesTab from '@/components/plots/PlotSalesTab'
 import PlotConstructionTab from '@/components/plots/PlotConstructionTab'
@@ -113,7 +112,6 @@ export default function PlotDetailPageClient({
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>(() => buildPriceDrafts(initialJobs))
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [materialsJob, setMaterialsJob] = useState<{ id: string; label: string } | null>(null)
 
   const getHouseModelLabel = (model: HouseModel) => {
     const projectName = model?.projects?.name
@@ -313,7 +311,6 @@ export default function PlotDetailPageClient({
           onResetVariablePrice={handleResetVariablePrice}
           onAssign={handleAssign}
           onStatusChange={handleStatusChange}
-          onOpenMaterialsLog={(job) => setMaterialsJob(job)}
         />
       )}
       {tab === 'materials' && <PlotMaterialsTab materials={materials} canSeeCost={canSeeCost} />}
@@ -365,15 +362,6 @@ export default function PlotDetailPageClient({
             </div>
           </form>
         </Modal>
-      )}
-
-      {materialsJob && (
-        <JobMaterialLogModal
-          isOpen={Boolean(materialsJob)}
-          onClose={() => setMaterialsJob(null)}
-          jobAssignmentId={materialsJob.id}
-          jobLabel={materialsJob.label}
-        />
       )}
     </div>
   )

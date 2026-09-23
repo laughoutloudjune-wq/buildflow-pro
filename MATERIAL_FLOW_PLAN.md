@@ -5,8 +5,8 @@ receiving it, storing it, and issuing it out. Each phase is independently
 shippable and has its own acceptance criteria.
 
 **Audience:** an engineer (or Claude Sonnet) implementing this in `buildflow-pro`.
-**Status:** design approved 2026-09-22. Phases 1-3 shipped (1-2 on 2026-09-22,
-3 on 2026-09-23; migrations applied to the live project). Phase 5 (cutover
+**Status:** design approved 2026-09-22. Phases 1-4 shipped (1-2 on 2026-09-22,
+3-4 on 2026-09-23; migrations applied to the live project). Phase 5 (cutover
 count) still needs to happen - see its own section below; do it the day this
 deploys, not before.
 
@@ -271,7 +271,7 @@ the migration — step 2 above was a no-op check, not a write. `getProjects`'s
 central-stock placeholder) - same true/false semantics, just accurately named now that
 Phase 2 already made it cover every bucket, not one row.
 
-### Phase 4 — One consumption rule
+### Phase 4 — One consumption rule - SHIPPED 2026-09-23
 
 Rewrite the "purchased" side of BOQ control to count **consumption** — all `'out'`
 movements, whether `manual_request` or `direct_to_site` — instead of PO lines plus
@@ -286,6 +286,26 @@ first; `boq_material_items` is unaffected.
 **Acceptance:** a house supplied entirely by direct delivery and a house supplied
 entirely from the store both show correct consumption against BOQ, with no
 double-count for material bought against a plot and then issued to it.
+
+Implementation notes: `boq_control_rollup`'s SQL needed no changes at all - its
+`issued` CTE already filters only on `sm.type = 'out'` with no `source_type`
+restriction, so it already summed `manual_request` and `direct_to_site` together once
+Phase 1 started posting the latter. The actual fix lived entirely in
+`lib/procurement/boqControl.ts`: `totalUsedQty` (ordered+issued) turned out to be
+shared by two different consumers that both needed to survive - the cost-control
+rollup (the one this phase targets) AND the "would this push us over budget"
+precommitment checks at PO/PR/receipt signing time (`getBoqCheckForDraft`,
+`getBoqCheckForPurchaseOrder`, the PR draft check), which intentionally want
+ordered+issued as their basis so an over-order trips the warning before it ships.
+Blindly redefining `totalUsedQty` to mean consumption-only broke those (and an
+existing test locking in the old behaviour) - the actual fix added a new
+`consumedQty()` (issuedQty alone) and pointed only `percentUsed`/`rowStatus`/
+`excessValue` at it, leaving `totalUsedQty` and every precommitment check untouched.
+`material_usage_log` turned out to back a real, nav-linked foreman page
+("บันทึกวัสดุ", reachable from `/dashboard/foreman/create-progress` and buttons on
+the plot construction tab and the billing request form) even though the table itself
+had only 2 rows ever - confirmed with the user before removing it; retired the whole
+feature (page, `JobMaterialLogModal`, the CRUD/variance actions) along with the table.
 
 ### Phase 5 — Cutover count
 
