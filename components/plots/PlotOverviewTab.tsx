@@ -1,17 +1,21 @@
-import { Calendar, User } from 'lucide-react'
+import { Calendar, Tag, User } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { formatCurrency } from '@/lib/currency'
 import { statusColorClasses } from '@/lib/sales/statusColors'
+import PlotProgressCurveChart, { buildSaleMarkers } from '@/components/plots/PlotProgressCurveChart'
 import type { PlotSaleDetail } from '@/actions/sales-actions'
 import type { PlotJobRow } from '@/lib/types/plotDetail'
+import type { PlotProgressCurve } from '@/actions/plot-progress-curve'
 
+// inspectionAt/transferAt are pulled out into their own always-shown stat
+// row below (June, 2026-09-24 - wanted these two specifically prominent),
+// so they're left out of this generic "only if set" list to avoid showing
+// twice.
 const DATE_FIELDS: { key: keyof NonNullable<PlotSaleDetail['sale']>; label: string }[] = [
   { key: 'bookedAt', label: 'วันจอง' },
   { key: 'contractAt', label: 'วันทำสัญญา' },
   { key: 'loanSubmittedAt', label: 'ยื่นกู้' },
   { key: 'loanApprovedAt', label: 'อนุมัติสินเชื่อ' },
-  { key: 'inspectionAt', label: 'นัดตรวจบ้าน' },
-  { key: 'transferAt', label: 'วันโอน' },
   { key: 'deliveredAt', label: 'วันส่งมอบ' },
 ]
 
@@ -24,11 +28,13 @@ export default function PlotOverviewTab({
   jobs,
   jobsDone,
   canSeeCost,
+  progressCurve,
 }: {
   saleDetail: PlotSaleDetail
   jobs: PlotJobRow[]
   jobsDone: number
   canSeeCost: boolean
+  progressCurve: PlotProgressCurve
 }) {
   const sale = saleDetail.sale
   const c = statusColorClasses(sale?.statusColor)
@@ -60,6 +66,32 @@ export default function PlotOverviewTab({
         </div>
         {sale?.salesRepName && <div className="mt-1 text-xs text-slate-400">พนักงานขาย: {sale.salesRepName}</div>}
 
+        {sale?.promotionName && (
+          <div className="mt-2 flex items-center gap-1.5">
+            <Tag className="h-3.5 w-3.5 text-indigo-400" />
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+              {sale.promotionName} (
+              {sale.promotionDiscountType === 'percent'
+                ? `ลด ${sale.promotionDiscountValue}%`
+                : `ลด ${formatCurrency(sale.promotionDiscountValue)} บาท`}
+              )
+            </span>
+          </div>
+        )}
+
+        {sale && (
+          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+            <div>
+              <div className="text-xs text-slate-400">นัดตรวจบ้าน</div>
+              <div className="text-sm font-medium text-slate-700">{sale.inspectionAt ? formatDate(sale.inspectionAt) : 'ยังไม่กำหนด'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-400">วันโอนกรรมสิทธิ์</div>
+              <div className="text-sm font-medium text-slate-700">{sale.transferAt ? formatDate(sale.transferAt) : 'ยังไม่กำหนด'}</div>
+            </div>
+          </div>
+        )}
+
         {setDates.length > 0 && (
           <div className="mt-4 space-y-1.5 border-t border-slate-100 pt-3">
             {setDates.map((f) => (
@@ -88,6 +120,20 @@ export default function PlotOverviewTab({
           <p className="mt-4 text-xs text-slate-400">ราคาต้นทุนก่อสร้างไม่แสดงในมุมมองนี้</p>
         )}
       </Card>
+
+      {canSeeCost && (
+        <Card className="p-5 md:col-span-2">
+          <h3 className="text-sm font-semibold text-slate-700">กราฟความคืบหน้าแปลง</h3>
+          <div className="mt-3">
+            <PlotProgressCurveChart
+              curve={progressCurve}
+              saleMarkers={buildSaleMarkers(sale)}
+              statusLabel={sale?.statusLabel || 'ว่าง'}
+              statusColor={sale?.statusColor}
+            />
+          </div>
+        </Card>
+      )}
     </div>
   )
 }

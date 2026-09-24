@@ -18,6 +18,27 @@ import {
 import type { SalePaymentRow } from '@/actions/sale-payments-actions'
 import type { Promotion } from '@/actions/promotions-actions'
 
+// lead_source stays a free-text DB column (no schema change) - reused for
+// "ประเภทลูกค้า" (June, 2026-09-24) with a fixed 3-option picker going
+// forward. Older rows can hold anything (e.g. "นำเข้าจากระบบเดิม", a
+// channel name from before this change) - CustomerTypeSelect below injects
+// that as its own option instead of silently blanking it, same fix as the
+// deactivated-material/-promotion pickers.
+const CUSTOMER_TYPE_OPTIONS = ['ลูกค้าใหม่', 'ลูกค้าเก่า', 'ลูกค้าแนะนำ']
+
+function CustomerTypeSelect({ name, defaultValue, disabled }: { name: string; defaultValue: string; disabled: boolean }) {
+  const isKnownOrEmpty = defaultValue === '' || CUSTOMER_TYPE_OPTIONS.includes(defaultValue)
+  return (
+    <select name={name} defaultValue={defaultValue} disabled={disabled} className="w-full">
+      <option value="">ยังไม่ระบุ</option>
+      {CUSTOMER_TYPE_OPTIONS.map((o) => (
+        <option key={o} value={o}>{o}</option>
+      ))}
+      {!isKnownOrEmpty && <option value={defaultValue}>{defaultValue} (ค่าเดิม)</option>}
+    </select>
+  )
+}
+
 const PRICE_FIELDS: { key: string; label: string }[] = [
   { key: 'list_price', label: 'ราคาตั้ง' },
   { key: 'sale_price', label: 'ราคาขายจริง' },
@@ -250,8 +271,8 @@ export default function PlotSalesTab({
               <input name="address" defaultValue={customer.address ?? ''} disabled={!canEdit} className="w-full" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">ช่องทางที่รู้จัก</label>
-              <input name="lead_source" defaultValue={customer.leadSource ?? ''} disabled={!canEdit} placeholder="เช่น ป้าย, Facebook, นายหน้า" className="w-full" />
+              <label className="mb-1 block text-xs font-medium text-slate-500">ประเภทลูกค้า</label>
+              <CustomerTypeSelect name="lead_source" defaultValue={customer.leadSource ?? ''} disabled={!canEdit} />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">หมายเหตุลูกค้า</label>
@@ -290,8 +311,8 @@ export default function PlotSalesTab({
               <input name="address" className="w-full" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">ช่องทางที่รู้จัก</label>
-              <input name="lead_source" placeholder="เช่น ป้าย, Facebook, นายหน้า" className="w-full" />
+              <label className="mb-1 block text-xs font-medium text-slate-500">ประเภทลูกค้า</label>
+              <CustomerTypeSelect name="lead_source" defaultValue="" disabled={false} />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">หมายเหตุลูกค้า</label>

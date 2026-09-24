@@ -28,6 +28,7 @@ import { getHouseModels } from '@/actions/boq-actions'
 import { getContractors } from '@/actions/contractor-actions'
 import type { PlotSaleDetail, SaleStatus } from '@/actions/sales-actions'
 import type { Promotion } from '@/actions/promotions-actions'
+import type { PlotProgressCurve } from '@/actions/plot-progress-curve'
 import type { WorkRequestRow } from '@/actions/sales-work-requests'
 import type { SalePaymentRow } from '@/actions/sale-payments-actions'
 import type { PlotHistoryRowView, PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
@@ -62,6 +63,7 @@ export default function PlotDetailPageClient({
   materials,
   workRequests,
   payments,
+  progressCurve,
   canSeeCost,
   canEditConstruction,
   canEditSales,
@@ -88,6 +90,7 @@ export default function PlotDetailPageClient({
   materials: PlotMaterialRowView[]
   workRequests: WorkRequestRow[]
   payments: SalePaymentRow[]
+  progressCurve: PlotProgressCurve
   canSeeCost: boolean
   canEditConstruction: boolean
   canEditSales: boolean
@@ -297,7 +300,7 @@ export default function PlotDetailPageClient({
       </div>
 
       {tab === 'overview' && (
-        <PlotOverviewTab saleDetail={saleDetail} jobs={jobs} jobsDone={jobsDone} canSeeCost={canSeeCost} />
+        <PlotOverviewTab saleDetail={saleDetail} jobs={jobs} jobsDone={jobsDone} canSeeCost={canSeeCost} progressCurve={progressCurve} />
       )}
       {tab === 'sales' && (
         <PlotSalesTab
@@ -368,6 +371,10 @@ export default function PlotDetailPageClient({
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">เลขที่โฉนด</label>
               <input name="title_deed_no" className="w-full" defaultValue={plot.title_deed_no ?? ''} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">วันที่คาดว่าจะแล้วเสร็จ (สำหรับกราฟความคืบหน้า)</label>
+              <input type="date" name="target_completion_date" className="w-full" defaultValue={plot.target_completion_date ?? ''} />
             </div>
             <div className="flex justify-end gap-3 pt-4 border-t">
               <Button type="button" variant="secondary" onClick={() => setIsEditModalOpen(false)}>ยกเลิก</Button>

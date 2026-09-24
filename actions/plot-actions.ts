@@ -119,6 +119,7 @@ export async function updatePlot(id: string, projectId: string, formData: FormDa
     const house_model_id = String(formData.get('house_model_id') || '')
     const is_sellable = formData.get('is_sellable') === 'on'
     const title_deed_no = String(formData.get('title_deed_no') || '').trim() || null
+    const target_completion_date = String(formData.get('target_completion_date') || '').trim() || null
 
     if (!name || !house_model_id) {
       return { success: false, error: 'กรุณากรอกชื่อแปลงและเลือกแบบบ้าน' } satisfies PlotActionResult
@@ -161,6 +162,7 @@ export async function updatePlot(id: string, projectId: string, formData: FormDa
         title_deed_no,
         land_area_sqwa: landArea.value,
         list_price: listPrice.value,
+        target_completion_date,
       })
       .match({ id })
     if (error) return { success: false, error: error.message } satisfies PlotActionResult

@@ -7,6 +7,7 @@ import { getPlotMaterialsSummary, getPlotSaleDetail, getPlotSaleHistory, getSale
 import { getWorkRequestsForPlot } from '@/actions/sales-work-requests'
 import { getSalePaymentsForSale } from '@/actions/sale-payments-actions'
 import { getPromotions } from '@/actions/promotions-actions'
+import { getPlotProgressCurve, type PlotProgressCurve } from '@/actions/plot-progress-curve'
 import { permissionsForRole, requireModuleAccess } from '@/lib/auth/route-access'
 import type { PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
 
@@ -37,13 +38,14 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
   let rawMaterials: Awaited<ReturnType<typeof getPlotMaterialsSummary>> = []
   let workRequests: Awaited<ReturnType<typeof getWorkRequestsForPlot>> = []
   let payments: Awaited<ReturnType<typeof getSalePaymentsForSale>> = []
+  let progressCurve: PlotProgressCurve = { startDate: null, targetDate: null, totalBoqValue: 0, actualPoints: [], today: new Date().toISOString() }
 
   try {
     // job_assignments' own RLS excludes sales entirely (agreed_price_per_unit
     // is a real cost column) - get_plot_jobs_public() is the SECURITY
     // DEFINER, price-free equivalent for that case, not just a stripped copy
     // of the same query.
-    const [pData, jData, cData, hmData, saleData, statusesData, promotionsData, historyData, materialsData, workRequestsData] = await Promise.all([
+    const [pData, jData, cData, hmData, saleData, statusesData, promotionsData, historyData, materialsData, workRequestsData, progressCurveData] = await Promise.all([
       getPlotById(plotId),
       canSeeCost ? getJobAssignments(plotId) : getPlotJobsPublic(plotId),
       getContractors(),
@@ -54,6 +56,11 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
       getPlotSaleHistory(plotId),
       getPlotMaterialsSummary(plotId, projectId).catch(() => []),
       getWorkRequestsForPlot(plotId).catch(() => []),
+      // Construction-only (D2) - a sales viewer never sees this chart, so
+      // there's no reason to even compute it for them.
+      canSeeCost
+        ? getPlotProgressCurve(plotId).catch(() => progressCurve)
+        : Promise.resolve(progressCurve),
     ])
     plot = pData
     if (canSeeCost) {
@@ -74,6 +81,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     history = historyData
     rawMaterials = materialsData
     workRequests = workRequestsData
+    progressCurve = progressCurveData
 
     if (saleData.sale) payments = await getSalePaymentsForSale(saleData.sale.id).catch(() => [])
   } catch (error) {
@@ -152,6 +160,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     materials,
     workRequests,
     payments,
+    progressCurve,
     canSeeCost,
     canEditConstruction,
     canEditSales,

@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { Fragment, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes, Upload, PackageSearch } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes, Upload, PackageSearch, Search, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -49,6 +49,17 @@ export default function BOQDetailPageClient({
   const [materialsBoqItem, setMaterialsBoqItem] = useState<{ id: string; item_name: string } | null>(null)
   const [isHouseModelMaterialsOpen, setIsHouseModelMaterialsOpen] = useState(false)
   const [isMaterialExcelImportOpen, setIsMaterialExcelImportOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [collapsedTypes, setCollapsedTypes] = useState<Set<number>>(new Set())
+
+  const toggleTypeCollapsed = (typeId: number) => {
+    setCollapsedTypes((prev) => {
+      const next = new Set(prev)
+      if (next.has(typeId)) next.delete(typeId)
+      else next.add(typeId)
+      return next
+    })
+  }
 
   // Re-fetches just the BOQ item list in place, without a full page reload
   // (which would blank the whole page behind a spinner for a single-row
@@ -182,6 +193,27 @@ export default function BOQDetailPageClient({
   // คำนวณราคารวม
   const grandTotal = items.reduce((sum, item) => sum + (item.total_price || 0), 0)
 
+  // Grouped by contractor_type_id (ประเภทช่าง already on every item - no new
+  // category field needed) with a "search all categories" filter on top, so
+  // a long BOQ (hundreds of lines once every trade is listed) can actually
+  // be scanned - flat alphabetical-by-insertion was the reported problem.
+  const filteredItems = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return items
+    return items.filter((item) => item.item_name.toLowerCase().includes(q))
+  }, [items, search])
+
+  const groupedItems = useMemo(() => {
+    const groups = new Map<number, { typeId: number; typeName: string; items: BOQItem[] }>()
+    for (const item of filteredItems) {
+      const typeId = item.contractor_type_id ?? 0
+      const typeName = item.contractor_types?.name || 'ไม่ระบุประเภทช่าง'
+      if (!groups.has(typeId)) groups.set(typeId, { typeId, typeName, items: [] })
+      groups.get(typeId)!.items.push(item)
+    }
+    return Array.from(groups.values()).sort((a, b) => a.typeName.localeCompare(b.typeName, 'th'))
+  }, [filteredItems])
+
   // หาไม่เจอ
   if (!model) {
     return (
@@ -243,14 +275,24 @@ export default function BOQDetailPageClient({
         />
       </div>
 
-      {/* ตาราง BOQ */}
+      {/* ค้นหา BOQ */}
+      <div className="relative max-w-sm">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="ค้นหารายการงาน..."
+          className="w-full pl-9"
+        />
+      </div>
+
+      {/* ตาราง BOQ - จัดกลุ่มตามประเภทช่าง */}
       <Card className="overflow-hidden border-0 shadow-md">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-700">
               <tr>
                 <th className="px-4 py-3 font-semibold">รายการงาน</th>
-                <th className="px-4 py-3 font-semibold">ประเภทช่าง</th>
                 <th className="px-4 py-3 font-semibold text-right">จำนวน</th>
                 <th className="px-4 py-3 font-semibold text-right">หน่วย</th>
                 <th className="px-4 py-3 font-semibold text-right">ราคา/หน่วย</th>
@@ -261,62 +303,86 @@ export default function BOQDetailPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400 italic">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400 italic">
                     ยังไม่มีรายการ BOQ กดปุ่ม &quot;เพิ่มรายการ&quot; เพื่อเริ่มต้น
                   </td>
                 </tr>
+              ) : groupedItems.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400 italic">
+                    ไม่พบรายการที่ตรงกับคำค้นหา &quot;{search}&quot;
+                  </td>
+                </tr>
               ) : (
-                items.map((item, index) => (
-                  <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-slate-800">
-                      {index + 1}. {item.item_name}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">
-                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                            {item.contractor_types?.name || 'ทั่วไป'}
-                        </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">{item.quantity}</td>
-                    <td className="px-4 py-3 text-right text-slate-500">{item.unit}</td>
-                    <td className="px-4 py-3 text-right">฿{formatCurrency(item.price_per_unit)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-700">
-                      ฿{formatCurrency(item.total_price || 0)}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => setMaterialsBoqItem({ id: item.id, item_name: item.item_name })}
-                        disabled={isPending}
-                        className="rounded p-1 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition"
-                        title="วัสดุที่ใช้ในงานนี้"
+                groupedItems.map((group) => {
+                  const isCollapsed = collapsedTypes.has(group.typeId)
+                  const groupTotal = group.items.reduce((sum, item) => sum + (item.total_price || 0), 0)
+                  return (
+                    <Fragment key={group.typeId}>
+                      <tr
+                        onClick={() => toggleTypeCollapsed(group.typeId)}
+                        className="cursor-pointer bg-slate-100/80 hover:bg-slate-200/60"
                       >
-                        <Boxes className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => openEditModal(item)}
-                        disabled={isPending}
-                        className="rounded p-1 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition"
-                        title="แก้ไข"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        disabled={isPending}
-                        className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 transition"
-                        title="ลบ"
-                      >
-                        {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                        <td colSpan={4} className="px-4 py-2 font-semibold text-slate-700">
+                          <span className="flex items-center gap-1.5">
+                            {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            {group.typeName}
+                            <span className="font-normal text-slate-400">({group.items.length} รายการ)</span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-right font-semibold text-slate-600">฿{formatCurrency(groupTotal)}</td>
+                        <td />
+                      </tr>
+                      {!isCollapsed &&
+                        group.items.map((item, index) => (
+                          <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 pl-9 font-medium text-slate-800">
+                              {index + 1}. {item.item_name}
+                            </td>
+                            <td className="px-4 py-3 text-right">{item.quantity}</td>
+                            <td className="px-4 py-3 text-right text-slate-500">{item.unit}</td>
+                            <td className="px-4 py-3 text-right">฿{formatCurrency(item.price_per_unit)}</td>
+                            <td className="px-4 py-3 text-right font-semibold text-slate-700">
+                              ฿{formatCurrency(item.total_price || 0)}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                onClick={() => setMaterialsBoqItem({ id: item.id, item_name: item.item_name })}
+                                disabled={isPending}
+                                className="rounded p-1 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition"
+                                title="วัสดุที่ใช้ในงานนี้"
+                              >
+                                <Boxes className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => openEditModal(item)}
+                                disabled={isPending}
+                                className="rounded p-1 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition"
+                                title="แก้ไข"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(item.id)}
+                                disabled={isPending}
+                                className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 transition"
+                                title="ลบ"
+                              >
+                                {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </Fragment>
+                  )
+                })
               )}
             </tbody>
             {/* Footer สรุปยอด */}
             {items.length > 0 && (
                 <tfoot className="bg-slate-50 font-bold text-slate-800">
                     <tr>
-                        <td colSpan={5} className="px-4 py-3 text-right">รวมทั้งสิ้น</td>
+                        <td colSpan={4} className="px-4 py-3 text-right">รวมทั้งสิ้น</td>
                         <td className="px-4 py-3 text-right text-emerald-600">฿{formatCurrency(grandTotal)}</td>
                         <td></td>
                     </tr>
