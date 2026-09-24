@@ -32,7 +32,7 @@ test.describe('Billing workflow', () => {
 
     await loginAsPm(page)
     await page.goto(`/dashboard/billing/${process.env.E2E_APPROVED_BILLING_ID}/review`)
-    await page.getByText('Undo Approve').click()
+    await page.getByRole('button', { name: 'ย้อนสถานะอนุมัติ' }).click()
     await expect(page.getByRole('heading', { name: 'ย้อนสถานะอนุมัติ' })).toBeVisible()
   })
 })

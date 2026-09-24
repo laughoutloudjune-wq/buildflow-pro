@@ -17,7 +17,8 @@ import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import PurchaseRequestSettleModal from '@/components/procurement/PurchaseRequestSettleModal'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
 import { getBoqCheckForPurchaseRequest } from '@/actions/procurement/boq-control'
-import type { PurchaseRequest, PurchaseRequestItem, PurchaseRequestStatus } from '@/lib/types/procurement'
+import { PR_STATUS_LABEL, PR_STATUS_TONE } from '@/lib/status-labels'
+import type { PurchaseRequest, PurchaseRequestItem } from '@/lib/types/procurement'
 import {
   isAnsweredByOrder,
   orderedQuantity,
@@ -27,24 +28,6 @@ import {
 } from '@/lib/procurement/requestQuantities'
 
 const DAY_MS = 24 * 60 * 60 * 1000
-
-export const PR_STATUS_LABEL: Record<PurchaseRequestStatus, string> = {
-  pending_review: 'รอตรวจสอบ',
-  approved: 'อนุมัติแล้ว',
-  rejected: 'ปฏิเสธ',
-  ordered: 'สั่งซื้อแล้ว',
-  received: 'รับของครบ',
-  cancelled: 'ยกเลิก',
-}
-
-export const PR_STATUS_TONE: Record<PurchaseRequestStatus, string> = {
-  pending_review: 'bg-amber-50 text-amber-700',
-  approved: 'bg-indigo-50 text-indigo-700',
-  rejected: 'bg-red-50 text-red-700',
-  ordered: 'bg-violet-50 text-violet-700',
-  received: 'bg-emerald-50 text-emerald-700',
-  cancelled: 'bg-slate-100 text-slate-500',
-}
 
 /** The whole request can't be ordered faster than its slowest-lead-time
  * line, since procurement places one order per request - so the request

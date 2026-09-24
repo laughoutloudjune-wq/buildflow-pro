@@ -385,7 +385,7 @@ export default function ReviewBillingPageClient({
                   <h2 className="text-xl font-semibold text-amber-800">ตรวจสอบงานเพิ่ม (DC)</h2>
                   <p className="text-sm text-amber-700">ปรับรายการและราคาได้ก่อนอนุมัติ</p>
                 </div>
-                <span className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-200 text-amber-900">EXTRA WORK</span>
+                <span className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-200 text-amber-900">งานเพิ่ม</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -419,8 +419,8 @@ export default function ReviewBillingPageClient({
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">มูลค่าทั้งหมด</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">เบิกแล้ว</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">คงเหลือก่อนเบิก</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Foreman %</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">PM %</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">% ที่แจ้ง</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">% อนุมัติ</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">ยอดเงิน</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">คงเหลือหลังเบิก</th>
                       <th className="px-6 py-3"></th>

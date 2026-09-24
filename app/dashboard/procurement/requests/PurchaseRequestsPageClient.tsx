@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { PackageCheck, Plus, Printer } from 'lucide-react'
+import { PackageCheck, Plus, Printer, Search } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -14,24 +14,7 @@ import PurchaseRequestDetail, {
   partiallyOrderedHint,
 } from '@/components/procurement/PurchaseRequestDetail'
 import type { PurchaseRequest, PurchaseRequestStatus } from '@/lib/types/procurement'
-
-const STATUS_LABEL: Record<PurchaseRequestStatus, string> = {
-  pending_review: 'รอตรวจสอบ',
-  approved: 'อนุมัติแล้ว',
-  rejected: 'ปฏิเสธ',
-  ordered: 'สั่งซื้อแล้ว',
-  received: 'รับของครบ',
-  cancelled: 'ยกเลิก',
-}
-
-const STATUS_TONE: Record<PurchaseRequestStatus, string> = {
-  pending_review: 'bg-amber-50 text-amber-700',
-  approved: 'bg-indigo-50 text-indigo-700',
-  rejected: 'bg-red-50 text-red-700',
-  ordered: 'bg-violet-50 text-violet-700',
-  received: 'bg-emerald-50 text-emerald-700',
-  cancelled: 'bg-slate-100 text-slate-500',
-}
+import { PR_STATUS_LABEL as STATUS_LABEL, PR_STATUS_TONE as STATUS_TONE } from '@/lib/status-labels'
 
 /** First material line plus a count of how many more, for a quick "what's
  * in this request" glance without opening it - same convention as the PO
@@ -44,11 +27,11 @@ function materialSummary(request: PurchaseRequest): { label: string; extra: numb
 
 const FILTERS: { key: PurchaseRequestStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'ทั้งหมด' },
-  { key: 'pending_review', label: 'รอตรวจสอบ' },
-  { key: 'approved', label: 'อนุมัติแล้ว' },
-  { key: 'ordered', label: 'สั่งซื้อแล้ว' },
-  { key: 'received', label: 'รับของครบ' },
-  { key: 'rejected', label: 'ปฏิเสธ' },
+  { key: 'pending_review', label: STATUS_LABEL.pending_review },
+  { key: 'approved', label: STATUS_LABEL.approved },
+  { key: 'ordered', label: STATUS_LABEL.ordered },
+  { key: 'received', label: STATUS_LABEL.received },
+  { key: 'rejected', label: STATUS_LABEL.rejected },
 ]
 
 export default function PurchaseRequestsPageClient({
@@ -61,6 +44,7 @@ export default function PurchaseRequestsPageClient({
   const router = useRouter()
   const toast = useToast()
   const [filter, setFilter] = useState<PurchaseRequestStatus | 'all'>('all')
+  const [search, setSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   // Looked up from `requests` (not the status-filtered `filtered` list) so
@@ -78,10 +62,16 @@ export default function PurchaseRequestsPageClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialError])
 
-  const filtered = useMemo(
-    () => (filter === 'all' ? requests : requests.filter((r) => r.status === filter)),
-    [requests, filter]
-  )
+  const filtered = useMemo(() => {
+    const byStatus = filter === 'all' ? requests : requests.filter((r) => r.status === filter)
+    const q = search.trim().toLowerCase()
+    if (!q) return byStatus
+    return byStatus.filter((r) => {
+      const materials = (r.purchase_request_items || []).map((i) => i.material_types?.name || '').join(' ')
+      const haystack = `${r.pr_no} ${r.projects?.name || ''} ${r.plots?.name || ''} ${r.plot_groups?.name || ''} ${materials}`.toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [requests, filter, search])
 
   const allChecked = filtered.length > 0 && filtered.every((r) => checked.has(r.id))
 
@@ -112,7 +102,7 @@ export default function PurchaseRequestsPageClient({
         }
       />
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {FILTERS.map((f) => (
           <button
             key={f.key}
@@ -124,6 +114,15 @@ export default function PurchaseRequestsPageClient({
             {f.label}
           </button>
         ))}
+        <div className="relative ml-auto w-full max-w-xs">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9"
+            placeholder="ค้นหาเลขที่คำขอ / โครงการ / แปลง / วัสดุ"
+          />
+        </div>
       </div>
 
       {checked.size > 0 && (

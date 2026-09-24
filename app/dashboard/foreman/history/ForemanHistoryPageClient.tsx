@@ -4,32 +4,31 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getBillingsByCreator, deleteBilling } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
-import { Badge, statusTone } from '@/components/ui/Badge'
+import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { Loader2, Trash2, Pencil } from 'lucide-react'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import { Loader2, Trash2, Pencil, Search } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
+import { BILLING_STATUS_LABEL, BILLING_STATUS_TONE } from '@/lib/status-labels'
 
 type Billing = Awaited<ReturnType<typeof getBillingsByCreator>>[number]
 
-const statusLabels: Record<string, string> = {
-  approved: 'อนุมัติแล้ว',
-  pending_review: 'รอตรวจสอบ',
-  rejected: 'ปฏิเสธ',
+const getStatusChip = (status: string) => {
+  const key = status as keyof typeof BILLING_STATUS_LABEL
+  return (
+    <Badge tone={BILLING_STATUS_TONE[key] || 'neutral'} className="px-2 py-0.5 text-[11px] font-medium leading-4">
+      {BILLING_STATUS_LABEL[key] || status}
+    </Badge>
+  )
 }
-
-const getStatusChip = (status: string) => (
-  <Badge tone={statusTone(status)} className="px-2 py-0.5 text-[11px] font-medium leading-4">
-    {statusLabels[status] || status}
-  </Badge>
-)
 
 type Tab = 'pending_review' | 'rejected' | 'approved'
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'pending_review', label: 'รอตรวจสอบ' },
-  { key: 'rejected', label: 'ถูกปฏิเสธ' },
-  { key: 'approved', label: 'อนุมัติแล้ว' },
+  { key: 'pending_review', label: BILLING_STATUS_LABEL.pending_review },
+  { key: 'rejected', label: BILLING_STATUS_LABEL.rejected },
+  { key: 'approved', label: BILLING_STATUS_LABEL.approved },
 ]
 
 export default function ForemanHistoryPageClient({
@@ -44,6 +43,9 @@ export default function ForemanHistoryPageClient({
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(initialError ?? null)
   const [tab, setTab] = useState<Tab>('pending_review')
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [search, setSearch] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -114,9 +116,12 @@ export default function ForemanHistoryPageClient({
     router.push(target)
   }
 
-  const handleDelete = async (billId: string) => {
-    if (!confirm('ต้องการลบคำขอนี้ใช่หรือไม่?')) return
-    const result = await deleteBilling(billId)
+  const handleDelete = async () => {
+    if (!deleteTargetId) return
+    setIsDeleting(true)
+    const result = await deleteBilling(deleteTargetId)
+    setIsDeleting(false)
+    setDeleteTargetId(null)
     if ('error' in result) {
       setLoadError(result.error)
       return
@@ -124,7 +129,13 @@ export default function ForemanHistoryPageClient({
     await load()
   }
 
-  const filteredBillings = billings.filter((bill) => bill.status === tab)
+  const q = search.trim().toLowerCase()
+  const filteredBillings = billings.filter((bill) => {
+    if (bill.status !== tab) return false
+    if (!q) return true
+    const haystack = `${bill.contractors?.name || ''} ${getPlotLabel(bill)} ${getBriefJobLines(bill).join(' ')}`.toLowerCase()
+    return haystack.includes(q)
+  })
   const tabCount = (key: Tab) => billings.filter((bill) => bill.status === key).length
 
   return (
@@ -144,19 +155,30 @@ export default function ForemanHistoryPageClient({
         }
       />
 
-      <div className="flex border-b border-slate-200">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={`px-4 py-2.5 text-sm font-semibold transition ${
-              tab === t.key ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {t.label} <span className="text-xs font-normal text-slate-400">({tabCount(t.key)})</span>
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200">
+        <div className="flex">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`px-4 py-2.5 text-sm font-semibold transition ${
+                tab === t.key ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t.label} <span className="text-xs font-normal text-slate-400">({tabCount(t.key)})</span>
+            </button>
+          ))}
+        </div>
+        <div className="relative mb-2 w-full max-w-xs">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9"
+            placeholder="ค้นหาผู้รับเหมา / แปลง / งาน"
+          />
+        </div>
       </div>
 
       <Card className="p-4 bg-slate-50/60 border-slate-200">
@@ -170,7 +192,7 @@ export default function ForemanHistoryPageClient({
             </Button>
           </div>
         ) : filteredBillings.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">ไม่มีคำขอในหมวดนี้</div>
+          <div className="p-8 text-center text-slate-400">{search ? 'ไม่พบคำขอที่ค้นหา' : 'ไม่มีคำขอในหมวดนี้'}</div>
         ) : (
           <div className="space-y-3">
             {filteredBillings.map((bill) => (
@@ -204,7 +226,7 @@ export default function ForemanHistoryPageClient({
                     {bill.status === 'pending_review' ? (
                       <div className="flex items-center gap-2">
                         <button onClick={() => handleEdit(bill)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-100"><Pencil className="h-4 w-4"/></button>
-                        <button onClick={() => handleDelete(bill.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-100"><Trash2 className="h-4 w-4"/></button>
+                        <button onClick={() => setDeleteTargetId(bill.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-100"><Trash2 className="h-4 w-4"/></button>
                       </div>
                     ) : bill.status === 'rejected' ? (
                       <Button size="sm" variant="secondary" onClick={() => handleEdit(bill)}>
@@ -218,6 +240,18 @@ export default function ForemanHistoryPageClient({
           </div>
         )}
       </Card>
+
+      <ConfirmDialog
+        isOpen={deleteTargetId !== null}
+        title="ลบคำขอ"
+        message="ต้องการลบคำขอนี้ใช่หรือไม่?"
+        confirmLabel={isDeleting ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isDeleting}
+        onCancel={() => setDeleteTargetId(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   )
 }

@@ -11,23 +11,22 @@ import type { getBillings } from '@/actions/billing-actions'
 import BillingModal from '@/components/billings/BillingModal'
 import { formatCurrency } from '@/lib/currency'
 import NoticeBanner, { type NoticeTone } from '@/components/ui/NoticeBanner'
+import { BILLING_STATUS_LABEL, BILLING_STATUS_TONE } from '@/lib/status-labels'
 
 type BillingListItem = Awaited<ReturnType<typeof getBillings>>[number]
 type BillingJobLine = NonNullable<BillingListItem['billing_jobs']>[number]
 type BillingAdjustmentLine = NonNullable<BillingListItem['billing_adjustments']>[number]
 
-const statusLabels: Record<string, string> = {
-  approved: 'อนุมัติแล้ว',
-  pending_review: 'รอตรวจสอบ',
-  rejected: 'ไม่อนุมัติ',
-  draft: 'ฉบับร่าง',
-}
+const statusLabels: Record<string, string> = BILLING_STATUS_LABEL
 
-const getStatusChip = (status?: string | null) => (
-  <Badge tone={statusTone(status || '')} className="px-2 py-0.5 text-[11px] font-medium leading-4">
-    {statusLabels[status || ''] || status}
-  </Badge>
-)
+const getStatusChip = (status?: string | null) => {
+  const key = status as keyof typeof BILLING_STATUS_LABEL
+  return (
+    <Badge tone={BILLING_STATUS_TONE[key] || statusTone(status || '')} className="px-2 py-0.5 text-[11px] font-medium leading-4">
+      {statusLabels[status || ''] || status}
+    </Badge>
+  )
+}
 
 type BillingFilters = {
   month?: string
@@ -174,9 +173,9 @@ export default function BillingPageClient({
       <div className="flex border-b border-slate-200">
         {[
           { key: undefined, label: 'ทั้งหมด' },
-          { key: 'pending_review', label: 'รอตรวจสอบ' },
-          { key: 'rejected', label: 'ถูกปฏิเสธ' },
-          { key: 'approved', label: 'อนุมัติแล้ว' },
+          { key: 'pending_review', label: BILLING_STATUS_LABEL.pending_review },
+          { key: 'rejected', label: BILLING_STATUS_LABEL.rejected },
+          { key: 'approved', label: BILLING_STATUS_LABEL.approved },
         ].map((t) => {
           const count = t.key ? billings.filter((b) => b.status === t.key).length : billings.length
           const isActive = (filters.status || undefined) === t.key

@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { AlertTriangle, Check, Link2, Loader2, User, X } from 'lucide-react'
+import { AlertTriangle, Check, Link2, Loader2, Search, User, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
+import ReasonDialog from '@/components/ui/ReasonDialog'
 import {
   assignWorkRequestContractor,
   getUnlinkedDcBillingsForPlot,
@@ -72,8 +73,10 @@ export default function SalesRequestsPageClient({
   const [requests, setRequests] = useState(initialRequests)
   const [statusFilter, setStatusFilter] = useState<'open' | WorkRequestStatus>('open')
   const [projectFilter, setProjectFilter] = useState('')
+  const [search, setSearch] = useState('')
   const [dcOptionsFor, setDcOptionsFor] = useState<string | null>(null)
   const [dcOptions, setDcOptions] = useState<{ id: string; docNo: number | string | null; billingDate: string | null; netAmount: number | null }[]>([])
+  const [rejectTarget, setRejectTarget] = useState<WorkRequestRow | null>(null)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -81,26 +84,20 @@ export default function SalesRequestsPageClient({
   }, [initialError])
 
   const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
     return requests.filter((r) => {
       if (statusFilter === 'open' ? !['new', 'accepted', 'in_progress'].includes(r.status) : r.status !== statusFilter) return false
       if (projectFilter && r.projectId !== projectFilter) return false
+      if (q && !`${r.requestNo || ''} ${r.plotName} ${r.title}`.toLowerCase().includes(q)) return false
       return true
     })
-  }, [requests, statusFilter, projectFilter])
+  }, [requests, statusFilter, projectFilter, search])
 
   function applyLocal(id: string, patch: Partial<WorkRequestRow>) {
     setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   }
 
-  function handleSetStatus(row: WorkRequestRow, status: 'accepted' | 'in_progress' | 'done' | 'rejected') {
-    let reason: string | undefined
-    if (status === 'rejected') {
-      reason = window.prompt('เหตุผลที่ปฏิเสธ:') || ''
-      if (!reason.trim()) {
-        toast.error('กรุณาระบุเหตุผล')
-        return
-      }
-    }
+  function handleSetStatus(row: WorkRequestRow, status: 'accepted' | 'in_progress' | 'done', reason?: string) {
     startTransition(async () => {
       const res = await setWorkRequestStatus(row.id, status, reason)
       if (!res.success) {
@@ -109,9 +106,23 @@ export default function SalesRequestsPageClient({
       }
       applyLocal(row.id, {
         status,
-        rejectReason: status === 'rejected' ? reason || null : row.rejectReason,
         completedAt: status === 'done' ? new Date().toISOString() : row.completedAt,
       })
+      toast.success(`อัปเดตคำขอ ${row.requestNo || ''} แล้ว`)
+    })
+  }
+
+  function handleReject(reason: string) {
+    const row = rejectTarget
+    if (!row) return
+    setRejectTarget(null)
+    startTransition(async () => {
+      const res = await setWorkRequestStatus(row.id, 'rejected', reason)
+      if (!res.success) {
+        toast.error(res.error || 'บันทึกไม่สำเร็จ')
+        return
+      }
+      applyLocal(row.id, { status: 'rejected', rejectReason: reason })
       toast.success(`อัปเดตคำขอ ${row.requestNo || ''} แล้ว`)
     })
   }
@@ -169,6 +180,18 @@ export default function SalesRequestsPageClient({
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+        </div>
+        <div className="min-w-[200px]">
+          <label className="mb-1 block text-xs font-medium text-slate-500">ค้นหา</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9"
+              placeholder="เลขที่คำขอ / แปลง / เรื่อง"
+            />
+          </div>
         </div>
         <span className="ml-auto pb-2 text-xs text-slate-400">{filtered.length} รายการ</span>
       </Card>
@@ -281,7 +304,7 @@ export default function SalesRequestsPageClient({
                           {row.status !== 'done' && row.status !== 'rejected' && (
                             <button
                               type="button"
-                              onClick={() => handleSetStatus(row, 'rejected')}
+                              onClick={() => setRejectTarget(row)}
                               disabled={isPending}
                               className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
                             >
@@ -344,6 +367,17 @@ export default function SalesRequestsPageClient({
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังบันทึก...
         </div>
       )}
+
+      <ReasonDialog
+        isOpen={rejectTarget !== null}
+        title="ปฏิเสธคำขอ"
+        label="เหตุผลที่ปฏิเสธ"
+        required
+        confirmLabel="ปฏิเสธคำขอ"
+        busy={isPending}
+        onCancel={() => setRejectTarget(null)}
+        onConfirm={handleReject}
+      />
     </div>
   )
 }

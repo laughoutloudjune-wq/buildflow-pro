@@ -1,14 +1,7 @@
 import Link from 'next/link'
 import { formatCurrency } from '@/lib/currency'
+import { PO_STATUS_LABEL } from '@/lib/status-labels'
 import type { MaterialsSummaryRow } from '@/actions/procurement/materials-summary'
-
-const PO_STATUS_LABEL: Record<string, string> = {
-  draft: 'ร่าง',
-  sent: 'ยืนยันสั่งซื้อ',
-  partially_received: 'รับของบางส่วน',
-  received: 'รับของแล้ว',
-  paid: 'ชำระแล้ว',
-}
 
 /** Lifted from the materials tab of the now-retired ProjectCostReportModal -
  * same table, same columns, so nothing about how material cost is read
@@ -53,7 +46,7 @@ export default function MaterialCostTab({ rows }: { rows: MaterialsSummaryRow[] 
                     <Link
                       key={o.id}
                       href={`/dashboard/procurement/orders/${o.id}`}
-                      title={PO_STATUS_LABEL[o.status] || o.status}
+                      title={PO_STATUS_LABEL[o.status as keyof typeof PO_STATUS_LABEL] || o.status}
                       className="rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-xs text-indigo-700 hover:bg-indigo-100"
                     >
                       {o.po_no}

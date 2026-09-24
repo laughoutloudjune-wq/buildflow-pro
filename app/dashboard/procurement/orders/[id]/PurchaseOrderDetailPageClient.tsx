@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import ReasonDialog from '@/components/ui/ReasonDialog'
 import { formatCurrency } from '@/lib/currency'
 import PurchaseOrderForm, { type PurchaseOrderFormHandle, type PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
 import PurchaseOrderDocActions from '@/components/procurement/PurchaseOrderDocActions'
@@ -22,25 +24,8 @@ import {
   unmarkPurchaseOrderReceived,
 } from '@/actions/procurement-actions'
 import { getBoqCheckForPurchaseOrder, setPoBoqOverrides } from '@/actions/procurement/boq-control'
-import type { GoodsReceipt, PurchaseOrder, PurchaseOrderStatus } from '@/lib/types/procurement'
-
-const STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
-  draft: 'ร่าง',
-  sent: 'ยืนยันสั่งซื้อ',
-  partially_received: 'รับของบางส่วน',
-  received: 'รับของแล้ว',
-  paid: 'ชำระแล้ว',
-  cancelled: 'ยกเลิก',
-}
-
-const STATUS_TONE: Record<PurchaseOrderStatus, string> = {
-  draft: 'bg-slate-100 text-slate-500',
-  sent: 'bg-indigo-50 text-indigo-700',
-  partially_received: 'bg-amber-50 text-amber-700',
-  received: 'bg-emerald-50 text-emerald-700',
-  paid: 'bg-violet-50 text-violet-700',
-  cancelled: 'bg-red-50 text-red-700',
-}
+import { PO_STATUS_LABEL as STATUS_LABEL, PO_STATUS_TONE as STATUS_TONE } from '@/lib/status-labels'
+import type { GoodsReceipt, PurchaseOrder } from '@/lib/types/procurement'
 
 function formatDate(value: string | null) {
   if (!value) return null
@@ -87,6 +72,9 @@ export default function PurchaseOrderDetailPageClient({
   const refresh = onRefresh ?? (() => router.refresh())
   const [isPending, startTransition] = useTransition()
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false)
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
+  const [isCloseShortDialogOpen, setIsCloseShortDialogOpen] = useState(false)
+  const [isUnmarkReceivedConfirmOpen, setIsUnmarkReceivedConfirmOpen] = useState(false)
   const toast = useToast()
 
   const [boqCheck, setBoqCheck] = useState<Awaited<ReturnType<typeof getBoqCheckForPurchaseOrder>> | null>(null)
@@ -157,9 +145,8 @@ export default function PurchaseOrderDetailPageClient({
     }
   }
 
-  function handleCancel() {
-    const reason = prompt('เหตุผลที่ยกเลิก:')
-    if (reason === null) return
+  function handleCancel(reason: string) {
+    setIsCancelDialogOpen(false)
     startTransition(async () => {
       const result = await cancelPurchaseOrder(id, reason)
       if ('error' in result) {
@@ -183,13 +170,8 @@ export default function PurchaseOrderDetailPageClient({
     })
   }
 
-  function handleUnmarkReceived() {
-    if (
-      !confirm(
-        'ยกเลิกการรับของทั้งหมดของใบสั่งซื้อนี้? จำนวนที่รับจะกลับเป็น 0 ทุกรายการ ใบรับสินค้าที่บันทึกไว้จะถูกลบ และสต็อกที่เพิ่มไปจะถูกดึงกลับ - ใช้เมื่อบันทึกวันที่หรือจำนวนผิด แล้วต้องการรับของใหม่ให้ถูกต้อง'
-      )
-    )
-      return
+  function handleConfirmUnmarkReceived() {
+    setIsUnmarkReceivedConfirmOpen(false)
     startTransition(async () => {
       const result = await unmarkPurchaseOrderReceived(id)
       if ('error' in result) {
@@ -200,13 +182,12 @@ export default function PurchaseOrderDetailPageClient({
     })
   }
 
-  function handleCloseShort() {
-    const reason = prompt('เหตุผลที่ปิดใบสั่งซื้อทั้งที่ส่งไม่ครบ:')
-    if (reason === null) return
+  function handleCloseShort(reason: string) {
     if (!reason.trim()) {
       toast.error('กรุณาระบุเหตุผล')
       return
     }
+    setIsCloseShortDialogOpen(false)
     startTransition(async () => {
       const result = await closePurchaseOrderShort(id, reason)
       if ('error' in result) {
@@ -285,12 +266,12 @@ export default function PurchaseOrderDetailPageClient({
                 </Button>
               )}
               {canUnmarkReceived && (
-                <Button type="button" variant="secondary" size="sm" onClick={handleUnmarkReceived} disabled={isPending}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => setIsUnmarkReceivedConfirmOpen(true)} disabled={isPending}>
                   <Undo2 className="h-3.5 w-3.5" /> ยกเลิกการรับของ
                 </Button>
               )}
               {canCloseShort && (
-                <Button type="button" variant="secondary" size="sm" onClick={handleCloseShort} disabled={isPending}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => setIsCloseShortDialogOpen(true)} disabled={isPending}>
                   <PackageX className="h-3.5 w-3.5" /> ปิดใบสั่งซื้อ (ส่งไม่ครบ)
                 </Button>
               )}
@@ -303,7 +284,7 @@ export default function PurchaseOrderDetailPageClient({
                 </Link>
               )}
               {canCancel && (
-                <Button type="button" variant="danger" size="sm" onClick={handleCancel} disabled={isPending}>
+                <Button type="button" variant="danger" size="sm" onClick={() => setIsCancelDialogOpen(true)} disabled={isPending}>
                   <XCircle className="h-3.5 w-3.5" /> ยกเลิก
                 </Button>
               )}
@@ -404,6 +385,39 @@ export default function PurchaseOrderDetailPageClient({
           refresh()
           toast.success('บันทึกการรับของแล้ว')
         }}
+      />
+
+      <ReasonDialog
+        isOpen={isCancelDialogOpen}
+        title="ยกเลิกใบสั่งซื้อ"
+        label="เหตุผลที่ยกเลิก"
+        confirmLabel="ยกเลิกใบสั่งซื้อ"
+        busy={isPending}
+        onCancel={() => setIsCancelDialogOpen(false)}
+        onConfirm={handleCancel}
+      />
+
+      <ReasonDialog
+        isOpen={isCloseShortDialogOpen}
+        title="ปิดใบสั่งซื้อ (ส่งไม่ครบ)"
+        label="เหตุผลที่ปิดใบสั่งซื้อทั้งที่ส่งไม่ครบ"
+        required
+        confirmLabel="ปิดใบสั่งซื้อ"
+        busy={isPending}
+        onCancel={() => setIsCloseShortDialogOpen(false)}
+        onConfirm={handleCloseShort}
+      />
+
+      <ConfirmDialog
+        isOpen={isUnmarkReceivedConfirmOpen}
+        title="ยกเลิกการรับของ"
+        message="ยกเลิกการรับของทั้งหมดของใบสั่งซื้อนี้? จำนวนที่รับจะกลับเป็น 0 ทุกรายการ ใบรับสินค้าที่บันทึกไว้จะถูกลบ และสต็อกที่เพิ่มไปจะถูกดึงกลับ - ใช้เมื่อบันทึกวันที่หรือจำนวนผิด แล้วต้องการรับของใหม่ให้ถูกต้อง"
+        confirmLabel={isPending ? 'กำลังยกเลิก...' : 'ยกเลิกการรับของ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setIsUnmarkReceivedConfirmOpen(false)}
+        onConfirm={handleConfirmUnmarkReceived}
       />
     </div>
   )

@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/components/ui/Toast'
 import PlotOverviewTab from '@/components/plots/PlotOverviewTab'
 import PlotSalesTab from '@/components/plots/PlotSalesTab'
 import PlotConstructionTab from '@/components/plots/PlotConstructionTab'
@@ -105,6 +107,7 @@ export default function PlotDetailPageClient({
 }) {
   const router = useRouter()
   const refresh = onRefresh ?? (() => router.refresh())
+  const toast = useToast()
   const [isPending, startTransition] = useTransition()
   const [tab, setTab] = useState<Tab>('overview')
 
@@ -112,6 +115,7 @@ export default function PlotDetailPageClient({
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>(() => buildPriceDrafts(initialJobs))
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isSyncConfirmOpen, setIsSyncConfirmOpen] = useState(false)
 
   const getHouseModelLabel = (model: HouseModel) => {
     const projectName = model?.projects?.name
@@ -172,7 +176,12 @@ export default function PlotDetailPageClient({
 
   const handleSync = () => {
     if (!plot) return
-    if (!confirm('ต้องการดึงรายการ BOQ ล่าสุดมาเพิ่มใช่ไหม?')) return
+    setIsSyncConfirmOpen(true)
+  }
+
+  const handleConfirmSync = () => {
+    if (!plot) return
+    setIsSyncConfirmOpen(false)
     startTransition(async () => {
       await syncPlotJobs(plotId, plot.house_model_id, projectId)
       await refreshJobs()
@@ -187,7 +196,7 @@ export default function PlotDetailPageClient({
     const raw = (priceDrafts[job.id] ?? '').trim()
     const next = raw === '' ? null : Number(raw)
     if (next != null && (!Number.isFinite(next) || next < 0)) {
-      alert('กรุณาใส่ราคาต่อหน่วยที่ถูกต้อง')
+      toast.error('กรุณาใส่ราคาต่อหน่วยที่ถูกต้อง')
       return
     }
     setJobs((prev) => prev.map((j) => (j.id === job.id && j.cost ? { ...j, cost: { ...j.cost, agreedPricePerUnit: next } } : j)))
@@ -363,6 +372,18 @@ export default function PlotDetailPageClient({
           </form>
         </Modal>
       )}
+
+      <ConfirmDialog
+        isOpen={isSyncConfirmOpen}
+        title="ดึงรายการ BOQ"
+        message="ต้องการดึงรายการ BOQ ล่าสุดมาเพิ่มใช่ไหม?"
+        confirmLabel={isPending ? 'กำลังดึงข้อมูล...' : 'ดึง BOQ'}
+        cancelLabel="ยกเลิก"
+        tone="primary"
+        busy={isPending}
+        onCancel={() => setIsSyncConfirmOpen(false)}
+        onConfirm={handleConfirmSync}
+      />
     </div>
   )
 }

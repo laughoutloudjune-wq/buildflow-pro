@@ -46,7 +46,7 @@ type SidebarSection = {
 const menuSections: SidebarSection[] = [
   {
     title: 'ภาพรวม',
-    items: [{ icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' }],
+    items: [{ icon: LayoutDashboard, label: 'ภาพรวม', href: '/dashboard' }],
   },
   {
     title: 'ข้อมูลหลัก',
@@ -59,8 +59,8 @@ const menuSections: SidebarSection[] = [
   {
     title: 'งานประจำวัน',
     items: [
-      { icon: HardHat, label: 'ตรวจหน้างาน (Foreman)', href: '/dashboard/foreman/create-progress', permission: 'foreman' as const },
-      { icon: FileText, label: 'รายการเบิกจ่าย (For PM)', href: '/dashboard/billing', permission: 'billing' as const },
+      { icon: HardHat, label: 'ตรวจหน้างาน', href: '/dashboard/foreman/create-progress', permission: 'foreman' as const },
+      { icon: FileText, label: 'รายการเบิกจ่าย', href: '/dashboard/billing', permission: 'billing' as const },
     ],
   },
   {

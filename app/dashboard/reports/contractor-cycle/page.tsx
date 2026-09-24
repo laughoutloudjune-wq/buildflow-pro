@@ -1650,7 +1650,9 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                             )}
                           </td>
                           <td className="px-3 py-2 text-center no-print">
-                            <button onClick={() => handleUndoApprove(bill.id)} className="px-2 py-1 rounded-lg border text-xs text-amber-700 hover:bg-amber-50">Undo Approve</button>
+                            {!bill.paid_out_at && (
+                              <button onClick={() => handleUndoApprove(bill.id)} className="px-2 py-1 rounded-lg border text-xs text-amber-700 hover:bg-amber-50">ย้อนสถานะอนุมัติ</button>
+                            )}
                           </td>
                         </tr>
                         <tr className="border-b bg-slate-50/40">

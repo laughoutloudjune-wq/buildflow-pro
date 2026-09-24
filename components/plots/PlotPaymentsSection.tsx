@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import { todayInBangkok } from '@/lib/utils'
@@ -58,6 +59,7 @@ export default function PlotPaymentsSection({
   const [installmentCount, setInstallmentCount] = useState('12')
   const [voidingId, setVoidingId] = useState<string | null>(null)
   const [voidReason, setVoidReason] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<SalePaymentRow | null>(null)
 
   const hasDownSchedule = payments.some((p) => p.kind === 'down')
   const canGenerateSchedule = canEdit && !hasDownSchedule && downTotal && downTotal > 0 && contractAt
@@ -107,14 +109,16 @@ export default function PlotPaymentsSection({
     })
   }
 
-  function handleDelete(payment: SalePaymentRow) {
-    if (!confirm(`ลบรายการ ${KIND_LABEL[payment.kind] || payment.kind}${payment.installmentNo ? ` งวดที่ ${payment.installmentNo}` : ''} ใช่ไหม?`)) return
+  function handleDelete() {
+    if (!deleteTarget) return
+    const payment = deleteTarget
     startTransition(async () => {
       const res = await deleteSalePayment(payment.id)
       if (!res.success) {
         toast.error(res.error)
         return
       }
+      setDeleteTarget(null)
       onRefresh()
     })
   }
@@ -230,7 +234,7 @@ export default function PlotPaymentsSection({
                             </button>
                           )}
                           {!p.paidAt && (
-                            <button type="button" onClick={() => handleDelete(p)} className="text-slate-300 hover:text-red-500">
+                            <button type="button" onClick={() => setDeleteTarget(p)} className="text-slate-300 hover:text-red-500">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           )}
@@ -385,6 +389,22 @@ export default function PlotPaymentsSection({
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="ลบรายการ"
+        message={
+          deleteTarget
+            ? `ลบรายการ ${KIND_LABEL[deleteTarget.kind] || deleteTarget.kind}${deleteTarget.installmentNo ? ` งวดที่ ${deleteTarget.installmentNo}` : ''} ใช่ไหม?`
+            : ''
+        }
+        confirmLabel={isPending ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+      />
     </Card>
   )
 }

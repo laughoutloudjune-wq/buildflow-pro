@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { Plus, MapPin, Trash2, Loader2, Building2 } from 'lucide-react'
+import { useMemo, useState, useTransition } from 'react'
+import { Plus, MapPin, Trash2, Loader2, Building2, Search } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -54,6 +54,7 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
   const [projects, setProjects] = useState<Project[]>(initialProjects)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [search, setSearch] = useState('')
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
 
   const handleSubmit = async (formData: FormData) => {
@@ -81,11 +82,17 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
       return collator.compare(a.name || '', b.name || '')
     })
 
+  const searched = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return projects
+    return projects.filter((p) => `${p.name} ${p.location || ''}`.toLowerCase().includes(q))
+  }, [projects, search])
+
   // Only 'completed' counts as closed - a project on 'hold' (a valid status
   // in the DB check constraint, just with no toggle for it here) still
   // shows as ongoing, since it's paused, not done.
-  const ongoing = sortByLocationThenName(projects.filter((p) => p.status !== 'completed'))
-  const closed = sortByLocationThenName(projects.filter((p) => p.status === 'completed'))
+  const ongoing = sortByLocationThenName(searched.filter((p) => p.status !== 'completed'))
+  const closed = sortByLocationThenName(searched.filter((p) => p.status === 'completed'))
 
   function renderCard(project: Project) {
     const isActive = project.status !== 'completed'
@@ -151,12 +158,22 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
         </div>
       ) : (
         <div className="space-y-8">
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9"
+              placeholder="ค้นหาชื่อโครงการ / ทำเล"
+            />
+          </div>
+
           <div>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
               กำลังดำเนินการ ({ongoing.length})
             </h2>
             {ongoing.length === 0 ? (
-              <p className="text-sm text-slate-400">ไม่มีโครงการที่กำลังดำเนินการ</p>
+              <p className="text-sm text-slate-400">{search ? 'ไม่พบโครงการที่ค้นหา' : 'ไม่มีโครงการที่กำลังดำเนินการ'}</p>
             ) : (
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">{ongoing.map(renderCard)}</div>
             )}

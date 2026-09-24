@@ -15,34 +15,8 @@ import {
   duplicatePurchaseOrders,
   deletePurchaseOrders,
 } from '@/actions/procurement-actions'
-import type { PurchaseOrder, PurchaseOrderStatus } from '@/lib/types/procurement'
-
-const STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
-  draft: 'ร่าง',
-  sent: 'ยืนยันสั่งซื้อ',
-  partially_received: 'รับของบางส่วน',
-  received: 'รับของแล้ว',
-  paid: 'ชำระแล้ว',
-  cancelled: 'ยกเลิก',
-}
-
-const STATUS_DOT: Record<PurchaseOrderStatus, string> = {
-  draft: 'bg-slate-400',
-  sent: 'bg-emerald-500',
-  partially_received: 'bg-amber-500',
-  received: 'bg-indigo-500',
-  paid: 'bg-violet-500',
-  cancelled: 'bg-red-500',
-}
-
-const STATUS_TEXT: Record<PurchaseOrderStatus, string> = {
-  draft: 'text-slate-500',
-  sent: 'text-emerald-700',
-  partially_received: 'text-amber-700',
-  received: 'text-indigo-700',
-  paid: 'text-violet-700',
-  cancelled: 'text-red-600',
-}
+import type { PurchaseOrder } from '@/lib/types/procurement'
+import { PO_STATUS_LABEL as STATUS_LABEL, PO_STATUS_DOT as STATUS_DOT, PO_STATUS_TEXT as STATUS_TEXT } from '@/lib/status-labels'
 
 /** First material line plus a count of how many more, for a quick "what's
  * in this PO" glance without opening it. Item order isn't guaranteed by the

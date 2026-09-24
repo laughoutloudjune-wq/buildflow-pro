@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Loader2, Home, Ruler, Building, RefreshCw, Pencil } from 'lucide-react'
+import { Plus, Trash2, Loader2, Home, Ruler, Building, RefreshCw, Pencil, Search } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -31,6 +31,7 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<HouseModel | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [search, setSearch] = useState('')
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
 
   const openModal = (model: HouseModel | null = null) => {
@@ -64,7 +65,12 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
   }
 
   const projectMetaById = new Map(projects.map((p: any) => [p.id, p]))
-  const groupedModels = models
+  const searchedModels = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return models
+    return models.filter((m) => `${m.name} ${m.code} ${m.projects?.name || ''}`.toLowerCase().includes(q))
+  }, [models, search])
+  const groupedModels = searchedModels
     .slice()
     .sort((a, b) => {
       const pa = a.project_id ? projectMetaById.get(a.project_id) : null
@@ -99,6 +105,20 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
           </Button>
         }
       />
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full pl-9"
+          placeholder="ค้นหาชื่อแบบบ้าน / รหัสแบบ / โครงการ"
+        />
+      </div>
+
+      {searchedModels.length === 0 && (
+        <p className="text-sm text-slate-400">ไม่พบแบบบ้านที่ค้นหา</p>
+      )}
 
       <div className="space-y-6">
         {Array.from(groupedModels.entries()).map(([groupKey, groupModels]) => {
