@@ -1,6 +1,6 @@
 'use server'
 
-import { getJobAssignments, getPlotById } from '@/actions/job-actions'
+import { getJobAssignments, getPlotById, getPlotJobsPublic } from '@/actions/job-actions'
 import { getHouseModels } from '@/actions/boq-actions'
 import { getContractors } from '@/actions/contractor-actions'
 import { getPlotMaterialsSummary, getPlotSaleDetail, getPlotSaleHistory, getSaleStatuses } from '@/actions/sales-actions'
@@ -26,6 +26,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
 
   let plot: Awaited<ReturnType<typeof getPlotById>> = null
   let rawJobs: Awaited<ReturnType<typeof getJobAssignments>> = []
+  let safeJobs: Awaited<ReturnType<typeof getPlotJobsPublic>> = []
   let contractors: Awaited<ReturnType<typeof getContractors>> = []
   let houseModels: Awaited<ReturnType<typeof getHouseModels>> = []
   let saleDetail: Awaited<ReturnType<typeof getPlotSaleDetail>> = { sale: null, customer: null }
@@ -36,9 +37,13 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
   let payments: Awaited<ReturnType<typeof getSalePaymentsForSale>> = []
 
   try {
+    // job_assignments' own RLS excludes sales entirely (agreed_price_per_unit
+    // is a real cost column) - get_plot_jobs_public() is the SECURITY
+    // DEFINER, price-free equivalent for that case, not just a stripped copy
+    // of the same query.
     const [pData, jData, cData, hmData, saleData, statusesData, historyData, materialsData, workRequestsData] = await Promise.all([
       getPlotById(plotId),
-      getJobAssignments(plotId),
+      canSeeCost ? getJobAssignments(plotId) : getPlotJobsPublic(plotId),
       getContractors(),
       getHouseModels(),
       getPlotSaleDetail(plotId),
@@ -48,7 +53,11 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
       getWorkRequestsForPlot(plotId).catch(() => []),
     ])
     plot = pData
-    rawJobs = jData || []
+    if (canSeeCost) {
+      rawJobs = (jData || []) as Awaited<ReturnType<typeof getJobAssignments>>
+    } else {
+      safeJobs = (jData || []) as Awaited<ReturnType<typeof getPlotJobsPublic>>
+    }
     // getContractors() carries total_paid/total_retention (construction
     // money, M-03) - strip those for sales same as jobs/materials/history
     // below. Only names/type are needed here (contractor picker).
@@ -67,33 +76,41 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     console.error(error)
   }
 
-  const jobs: PlotJobRow[] = rawJobs.map((job) => {
-    const agreedPrice = job.agreed_price_per_unit as number | null
-    const boqPrice = (job.boq_master?.price_per_unit as number | null) || 0
-    const quantity = (job.boq_master?.quantity as number | null) || 0
-    const effectivePrice = (agreedPrice ?? boqPrice) || 0
-    const totalBoq = quantity * effectivePrice
-    const paid = ((job.payments || []) as Array<{ amount: number | null }>).reduce((s, p) => s + (p.amount || 0), 0)
+  const jobs: PlotJobRow[] = canSeeCost
+    ? rawJobs.map((job) => {
+        const agreedPrice = job.agreed_price_per_unit as number | null
+        const boqPrice = (job.boq_master?.price_per_unit as number | null) || 0
+        const quantity = (job.boq_master?.quantity as number | null) || 0
+        const effectivePrice = (agreedPrice ?? boqPrice) || 0
+        const totalBoq = quantity * effectivePrice
+        const paid = ((job.payments || []) as Array<{ amount: number | null }>).reduce((s, p) => s + (p.amount || 0), 0)
 
-    return {
-      id: job.id,
-      status: job.status,
-      itemName: job.boq_master?.item_name || '',
-      unit: job.boq_master?.unit || '',
-      quantity,
-      contractorId: job.contractor_id,
-      cost: canSeeCost
-        ? {
+        return {
+          id: job.id,
+          status: job.status,
+          itemName: job.boq_master?.item_name || '',
+          unit: job.boq_master?.unit || '',
+          quantity,
+          contractorId: job.contractor_id,
+          cost: {
             contractorName: job.contractors?.name || null,
             agreedPricePerUnit: agreedPrice,
             boqPricePerUnit: boqPrice,
             effectivePrice,
             totalBoq,
             paid,
-          }
-        : null,
-    }
-  })
+          },
+        }
+      })
+    : safeJobs.map((job) => ({
+        id: job.id,
+        status: job.status,
+        itemName: job.item_name || '',
+        unit: job.unit || '',
+        quantity: job.quantity || 0,
+        contractorId: job.contractor_id,
+        cost: null,
+      }))
   const jobsDone = jobs.filter((j) => j.status === 'completed').length
 
   const materials: PlotMaterialRowView[] = rawMaterials.map((m) => ({

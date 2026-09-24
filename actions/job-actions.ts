@@ -41,6 +41,30 @@ export async function getJobAssignments(plotId: string) {
   return data || []
 }
 
+/** Same job list as getJobAssignments(), but never carries price -
+ * agreed_price_per_unit, boq_master's price columns and the payments embed
+ * are all left out at the SQL level (get_plot_jobs_public, SECURITY
+ * DEFINER), not just stripped after the fact. Used by getPlotDetailBundle
+ * for viewers who must never see construction cost (sales, D2/Q-08), since
+ * job_assignments' own RLS now excludes that role entirely. */
+export type PlotJobPublicRow = {
+  id: string
+  status: string
+  contractor_id: string | null
+  quantity: number | null
+  item_name: string | null
+  unit: string | null
+}
+
+export async function getPlotJobsPublic(plotId: string): Promise<PlotJobPublicRow[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_plot_jobs_public', { p_plot_id: plotId })
+  if (error) {
+    console.error("Error fetching public jobs:", error)
+  }
+  return (data as PlotJobPublicRow[] | null) || []
+}
+
 // อัปเดตผู้รับเหมา (Assign Contractor)
 export async function assignContractor(jobId: string, contractorId: string, plotId: string, projectId: string) {
   await requireModuleAccess('projects')
