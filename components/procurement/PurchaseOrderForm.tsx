@@ -90,6 +90,14 @@ type Line = {
   id: string | null
   quantity_received: number
   material_type_id: number
+  /** Name/unit carried straight from this line's own joined material_types
+   * row (unfiltered by is_active), so a material deactivated after this
+   * order was placed still shows its real name here instead of falling back
+   * to the picker's active-only list and rendering blank - see M-0x. Null
+   * for a freshly-added line, which always has an active material anyway
+   * (the picker itself only offers active ones). */
+  material_name: string | null
+  material_unit: string | null
   purchase_request_item_id: string | null
   quantity_ordered: string
   /** Purchasing's answer: this order covers the request line this came from.
@@ -424,6 +432,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             id: item.id,
             quantity_received: item.quantity_received,
             material_type_id: item.material_type_id,
+            material_name: item.material_types?.name || null,
+            material_unit: item.material_types?.unit || null,
             purchase_request_item_id: item.purchase_request_item_id,
             quantity_ordered: String(item.quantity_ordered),
             closes_request_line: item.closes_request_line,
@@ -481,6 +491,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                 id: null,
                 quantity_received: 0,
                 material_type_id: item.material_type_id,
+                material_name: item.material_types?.name || null,
+                material_unit: item.material_types?.unit || null,
                 purchase_request_item_id: item.id,
                 quantity_ordered: String(item.quantity_requested),
                 // Pre-answered when the request asked in a unit this order
@@ -860,6 +872,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         id: null,
         quantity_received: 0,
         material_type_id: 0,
+        material_name: null,
+        material_unit: null,
         purchase_request_item_id: null,
         quantity_ordered: '',
         closes_request_line: false,
@@ -877,8 +891,12 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   /** The unit this order line transacts in. Always the material's own unit -
    * a PO goes to a supplier, who sells in exactly one unit, so there is
    * nothing here for purchasing to choose. */
-  function materialUnit(materialTypeId: number): string {
-    return materials.find((m) => m.id === materialTypeId)?.unit || ''
+  // Falls back to the line's own embedded material_unit (from the order's
+  // joined material_types row, unfiltered by is_active) when the material
+  // isn't in the active-only picker list anymore - otherwise a deactivated
+  // material's unit silently renders as "-" on an order that already used it.
+  function materialUnit(line: Line): string {
+    return materials.find((m) => m.id === line.material_type_id)?.unit || line.material_unit || ''
   }
 
   /** True when the request asked in a different unit than this order can be
@@ -888,7 +906,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     if (!line.purchase_request_item_id) return false
     const source = requestLines[line.purchase_request_item_id]
     if (!source?.unit) return false
-    const thisUnit = materialUnit(line.material_type_id)
+    const thisUnit = materialUnit(line)
     return Boolean(thisUnit) && thisUnit !== source.unit
   }
 
@@ -1527,6 +1545,22 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                 {lines.map((line, i) => {
                   const gross = (Number(line.quantity_ordered) || 0) * (Number(line.unit_price) || 0)
                   const netLineTotal = gross - lineDiscountAmount(line, gross, discountMode)
+                  // materialOptions only lists active materials (the picker
+                  // shouldn't offer a deactivated one for a NEW selection) -
+                  // but a line already pointing at one (placed before it was
+                  // deactivated) needs its own option added back in, using
+                  // the name/unit embedded on the line itself, or the picker
+                  // shows a blank/placeholder box instead of the real name.
+                  const lineMaterialOptions =
+                    line.material_type_id && !materialOptions.some((o) => o.value === String(line.material_type_id))
+                      ? [
+                          ...materialOptions,
+                          {
+                            value: String(line.material_type_id),
+                            label: `${line.material_name || 'วัสดุที่ปิดใช้งานแล้ว'} (${line.material_unit || '-'}) - ปิดใช้งานแล้ว`,
+                          },
+                        ]
+                      : materialOptions
                   return (
                     <tr key={i} className="align-top">
                       <td className="px-3 py-2 text-slate-400">{i + 1}</td>
@@ -1534,7 +1568,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                         <div className="flex items-center gap-1">
                           <SearchableSelect
                             className="min-w-0 flex-1"
-                            options={materialOptions}
+                            options={lineMaterialOptions}
                             value={line.material_type_id ? String(line.material_type_id) : ''}
                             onChange={(v) => {
                               updateLine(i, withDefaultAnswer(line, { material_type_id: Number(v) }))
@@ -1586,7 +1620,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                               {differsFromRequestUnit(line) && (
                                 <span className="mt-0.5 block text-[10px] text-amber-700">
                                   ขอเป็น {requestLines[line.purchase_request_item_id].unit} แต่สั่งเป็น{' '}
-                                  {materialUnit(line.material_type_id)} - ระบบจะไม่หักจำนวนข้ามหน่วยให้
+                                  {materialUnit(line)} - ระบบจะไม่หักจำนวนข้ามหน่วยให้
                                   ติ๊กช่องนี้เพื่อปิดรายการในคำขอ
                                 </span>
                               )}
@@ -1710,7 +1744,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             className="w-full text-right"
                             disabled={readOnly}
                           />
-                          <span className="shrink-0 text-xs text-[#86868b]">{materialUnit(line.material_type_id) || '-'}</span>
+                          <span className="shrink-0 text-xs text-[#86868b]">{materialUnit(line) || '-'}</span>
                         </div>
                         {line.quantity_received > 0 && (
                           <div className="mt-1 text-right text-[10px] text-emerald-600">

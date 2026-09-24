@@ -22,6 +22,12 @@ type Line = {
   unit: string
   note: string
   boq_id: string | null
+  /** This line's own material name, from its joined material_types row
+   * (unfiltered by is_active) - falls back to this when the material isn't
+   * in the active-only picker list anymore, so a deactivated material still
+   * shows its real name on a request that already asked for it, instead of
+   * a blank picker box. Null for a freshly-added line. */
+  material_name: string | null
 }
 
 type SubmitResult = { id: string; pr_no: string } | { error: string }
@@ -98,6 +104,7 @@ export default function PurchaseRequestForm({
             unit: i.unit || m.find((mat) => mat.id === i.material_type_id)?.unit || '',
             note: i.note || '',
             boq_id: i.boq_id,
+            material_name: i.material_types?.name || null,
           }))
         )
       }
@@ -124,7 +131,7 @@ export default function PurchaseRequestForm({
   }, [projectId])
 
   function addLine() {
-    setLines((prev) => [...prev, { material_type_id: 0, quantity_requested: '', unit: '', note: '', boq_id: null }])
+    setLines((prev) => [...prev, { material_type_id: 0, quantity_requested: '', unit: '', note: '', boq_id: null, material_name: null }])
   }
 
   // The BOQ job picker's options: every job belonging to any plot currently
@@ -301,12 +308,26 @@ export default function PurchaseRequestForm({
           </p>
         ) : (
           <div className="space-y-2">
-            {lines.map((line, i) => (
+            {lines.map((line, i) => {
+              // materialOptions only lists active materials (the picker
+              // shouldn't offer a deactivated one for a NEW selection) - but
+              // a line already pointing at one (asked for before it was
+              // deactivated) needs its own option added back in, using the
+              // name embedded on the line itself, or the picker shows a
+              // blank box instead of the real name.
+              const lineMaterialOptions =
+                line.material_type_id && !materialOptions.some((o) => o.value === String(line.material_type_id))
+                  ? [
+                      ...materialOptions,
+                      { value: String(line.material_type_id), label: `${line.material_name || 'วัสดุที่ปิดใช้งานแล้ว'} (${line.unit || '-'}) - ปิดใช้งานแล้ว` },
+                    ]
+                  : materialOptions
+              return (
               <div key={i} className="rounded-lg border border-slate-200 p-2">
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <SearchableSelect
-                      options={materialOptions}
+                      options={lineMaterialOptions}
                       value={line.material_type_id ? String(line.material_type_id) : ''}
                       onChange={(v) => {
                         const material = materials.find((m) => m.id === Number(v))
@@ -356,7 +377,8 @@ export default function PurchaseRequestForm({
                   className="mt-2 w-full text-sm"
                 />
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
