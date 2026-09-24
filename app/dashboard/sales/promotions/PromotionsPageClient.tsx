@@ -1,18 +1,23 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { ArrowLeft, Loader2, Plus, Tag } from 'lucide-react'
+import { ArrowLeft, Loader2, Pencil, Plus, Tag, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
-import { createPromotion, setPromotionActive, updatePromotion, type Promotion } from '@/actions/promotions-actions'
-
-type Draft = { name: string; description: string; discount_type: 'percent' | 'amount'; discount_value: string }
-
-function toDraft(p: Promotion): Draft {
-  return { name: p.name, description: p.description || '', discount_type: p.discountType, discount_value: String(p.discountValue) }
-}
+import {
+  addPromotionItem,
+  createPromotion,
+  deletePromotionItem,
+  setPromotionActive,
+  updatePromotion,
+  updatePromotionItem,
+  type Promotion,
+  type PromotionItem,
+} from '@/actions/promotions-actions'
 
 export default function PromotionsPageClient({
   initialPromotions,
@@ -24,13 +29,13 @@ export default function PromotionsPageClient({
   canManage: boolean
 }) {
   const [promotions, setPromotions] = useState<Promotion[]>(initialPromotions)
-  const [drafts, setDrafts] = useState<Record<string, Draft>>(() =>
-    Object.fromEntries(initialPromotions.map((p) => [p.id, toDraft(p)]))
-  )
-  const [savingId, setSavingId] = useState<string | null>(null)
-  const [togglingId, setTogglingId] = useState<string | null>(null)
   const [isCreating, startCreating] = useTransition()
+  const [isPending, startTransition] = useTransition()
   const [formKey, setFormKey] = useState(0)
+  const [editingBundle, setEditingBundle] = useState<Promotion | null>(null)
+  const [itemModalBundleId, setItemModalBundleId] = useState<string | null>(null)
+  const [editingItem, setEditingItem] = useState<PromotionItem | null>(null)
+  const [deleteItemTarget, setDeleteItemTarget] = useState<{ bundleId: string; item: PromotionItem } | null>(null)
   const toast = useToast()
 
   useEffect(() => {
@@ -38,52 +43,10 @@ export default function PromotionsPageClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialError])
 
-  function updateDraft(id: string, patch: Partial<Draft>) {
-    setDrafts((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }))
-  }
-
-  async function handleSaveRow(id: string) {
-    const draft = drafts[id]
-    if (!draft) return
-    if (!draft.name.trim()) {
-      toast.error('กรุณาใส่ชื่อโปรโมชั่น')
-      return
-    }
-    setSavingId(id)
-
-    const formData = new FormData()
-    formData.set('name', draft.name)
-    formData.set('description', draft.description)
-    formData.set('discount_type', draft.discount_type)
-    formData.set('discount_value', draft.discount_value)
-
-    const res = await updatePromotion(id, formData)
-    setSavingId(null)
-
-    if (!res.success) {
-      toast.error(res.error || 'บันทึกไม่สำเร็จ')
-      return
-    }
-    setPromotions((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? { ...p, name: draft.name, description: draft.description || null, discountType: draft.discount_type, discountValue: Number(draft.discount_value) }
-          : p
-      )
-    )
-    toast.success(`บันทึกโปรโมชั่น "${draft.name}" แล้ว`)
-  }
-
-  async function handleToggleActive(promo: Promotion) {
-    setTogglingId(promo.id)
-    const res = await setPromotionActive(promo.id, !promo.isActive)
-    setTogglingId(null)
-    if (!res.success) {
-      toast.error(res.error || 'เปลี่ยนสถานะไม่สำเร็จ')
-      return
-    }
-    setPromotions((prev) => prev.map((p) => (p.id === promo.id ? { ...p, isActive: !p.isActive } : p)))
-    toast.success(promo.isActive ? `ปิดใช้งาน "${promo.name}" แล้ว` : `เปิดใช้งาน "${promo.name}" แล้ว`)
+  function refetchNeeded() {
+    // Item/bundle CRUD changes nested structure that's simpler to just
+    // reload than reconcile client-side (unlike sale_statuses' flat list).
+    window.location.reload()
   }
 
   function handleCreate(formData: FormData) {
@@ -93,19 +56,82 @@ export default function PromotionsPageClient({
         toast.error(res.error || 'เพิ่มโปรโมชั่นไม่สำเร็จ')
         return
       }
-      setFormKey((k) => k + 1)
       toast.success(`เพิ่มโปรโมชั่น "${formData.get('name')}" แล้ว`)
-      // Re-derive the full list from the server rather than fabricating a
-      // fake id client-side - handleSaveRow/handleToggleActive both need a
-      // real promotion id to call their actions against.
-      window.location.reload()
+      setFormKey((k) => k + 1)
+      refetchNeeded()
+    })
+  }
+
+  function handleSaveBundle(formData: FormData) {
+    if (!editingBundle) return
+    startTransition(async () => {
+      const res = await updatePromotion(editingBundle.id, formData)
+      if (!res.success) {
+        toast.error(res.error || 'บันทึกไม่สำเร็จ')
+        return
+      }
+      toast.success('บันทึกแล้ว')
+      setEditingBundle(null)
+      refetchNeeded()
+    })
+  }
+
+  function handleToggleActive(bundle: Promotion) {
+    startTransition(async () => {
+      const res = await setPromotionActive(bundle.id, !bundle.isActive)
+      if (!res.success) {
+        toast.error(res.error || 'เปลี่ยนสถานะไม่สำเร็จ')
+        return
+      }
+      setPromotions((prev) => prev.map((p) => (p.id === bundle.id ? { ...p, isActive: !p.isActive } : p)))
+      toast.success(bundle.isActive ? `ปิดใช้งาน "${bundle.name}" แล้ว` : `เปิดใช้งาน "${bundle.name}" แล้ว`)
+    })
+  }
+
+  function openAddItem(bundleId: string) {
+    setItemModalBundleId(bundleId)
+    setEditingItem(null)
+  }
+
+  function openEditItem(bundleId: string, item: PromotionItem) {
+    setItemModalBundleId(bundleId)
+    setEditingItem(item)
+  }
+
+  function handleSaveItem(formData: FormData) {
+    if (!itemModalBundleId) return
+    startTransition(async () => {
+      const res = editingItem
+        ? await updatePromotionItem(editingItem.id, formData)
+        : await addPromotionItem(itemModalBundleId, formData)
+      if (!res.success) {
+        toast.error(res.error || 'บันทึกไม่สำเร็จ')
+        return
+      }
+      toast.success('บันทึกรายการแล้ว')
+      setItemModalBundleId(null)
+      setEditingItem(null)
+      refetchNeeded()
+    })
+  }
+
+  function handleDeleteItem() {
+    if (!deleteItemTarget) return
+    startTransition(async () => {
+      const res = await deletePromotionItem(deleteItemTarget.item.id)
+      if (!res.success) {
+        toast.error(res.error || 'ลบไม่สำเร็จ')
+        return
+      }
+      setDeleteItemTarget(null)
+      refetchNeeded()
     })
   }
 
   const sorted = [...promotions].sort((a, b) => a.name.localeCompare(b.name, 'th'))
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm font-medium text-indigo-600">
@@ -114,8 +140,9 @@ export default function PromotionsPageClient({
           </div>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">โปรโมชั่น</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            รายการโปรโมชั่นให้เลือกใช้ในหน้ารายละเอียดแปลง - แต่ละดีลเลือกได้ทีละ 1 โปรโมชั่น
-            ปิดใช้งานแทนการลบ เพื่อไม่ให้ดีลเก่าที่เคยใช้โปรโมชั่นนี้หายไป
+            แต่ละโปรโมชั่นเป็นชุด (bundle) ของรายการของแถม แต่ละรายการมีมูลค่าของตัวเอง เช่น
+            &quot;แถมแอร์ 4 เครื่อง = 48,000 บาท&quot; + &quot;แถมบ้านตกแต่งครบ = 200,000 บาท&quot;
+            เมื่อนำไปใช้กับดีลจริง ฝ่ายขายปรับรายการ/มูลค่า หรือเพิ่มรายการเองได้ตามที่เจรจากับลูกค้า
           </p>
         </div>
         <ButtonLink href="/dashboard/sales" variant="secondary">
@@ -126,16 +153,11 @@ export default function PromotionsPageClient({
 
       {canManage && (
         <Card className="border-slate-200 p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">เพิ่มโปรโมชั่นใหม่</h2>
-          <form key={formKey} action={handleCreate} className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-6">
-            <input name="name" required placeholder="ชื่อโปรโมชั่น" className="col-span-2 sm:col-span-2" />
-            <input name="description" placeholder="รายละเอียด / เงื่อนไข" className="col-span-2 sm:col-span-2" />
-            <select name="discount_type" required defaultValue="amount">
-              <option value="amount">ลดเป็นจำนวนเงิน</option>
-              <option value="percent">ลดเป็นเปอร์เซ็นต์</option>
-            </select>
-            <input name="discount_value" type="number" min="0" step="0.01" required placeholder="มูลค่าส่วนลด" />
-            <Button type="submit" disabled={isCreating} className="col-span-2 sm:col-span-6 sm:w-fit">
+          <h2 className="text-sm font-semibold text-slate-900">เพิ่มโปรโมชั่นใหม่ (bundle)</h2>
+          <form key={formKey} action={handleCreate} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <input name="name" required placeholder="ชื่อโปรโมชั่น เช่น โปรโมชั่นหลัก" className="sm:col-span-1" />
+            <input name="description" placeholder="รายละเอียด / เงื่อนไข (ถ้ามี)" className="sm:col-span-1" />
+            <Button type="submit" disabled={isCreating} className="sm:w-fit">
               {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               เพิ่มโปรโมชั่น
             </Button>
@@ -143,104 +165,140 @@ export default function PromotionsPageClient({
         </Card>
       )}
 
-      <Card className="overflow-hidden border-slate-200 shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">ชื่อโปรโมชั่น</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">รายละเอียด</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">ส่วนลด</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600">ใช้งาน</th>
-                {canManage && <th className="px-4 py-3" />}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {sorted.length === 0 && (
-                <tr>
-                  <td colSpan={canManage ? 5 : 4} className="px-4 py-8 text-center text-slate-400">
-                    ยังไม่มีโปรโมชั่น
-                  </td>
-                </tr>
+      {sorted.length === 0 && (
+        <Card className="p-8 text-center text-slate-400">ยังไม่มีโปรโมชั่น</Card>
+      )}
+
+      {sorted.map((bundle) => {
+        const total = bundle.items.reduce((s, i) => s + i.value, 0)
+        return (
+          <Card key={bundle.id} className={`overflow-hidden border-slate-200 shadow-sm ${!bundle.isActive ? 'opacity-60' : ''}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-slate-900">{bundle.name}</h3>
+                  {!bundle.isActive && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">ปิดใช้งาน</span>}
+                </div>
+                {bundle.description && <p className="mt-1 text-sm text-slate-500">{bundle.description}</p>}
+                <p className="mt-1 text-xs text-slate-400">{bundle.items.length} รายการ - มูลค่ารวม ฿{formatCurrency(total)}</p>
+              </div>
+              {canManage && (
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => setEditingBundle(bundle)}>
+                    <Pencil className="h-3.5 w-3.5" /> แก้ไข
+                  </Button>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <input
+                      type="checkbox"
+                      checked={bundle.isActive}
+                      disabled={isPending}
+                      onChange={() => handleToggleActive(bundle)}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    ใช้งาน
+                  </label>
+                </div>
               )}
-              {sorted.map((p) => {
-                const draft = drafts[p.id] || toDraft(p)
-                return (
-                  <tr key={p.id} className={`hover:bg-slate-50/80 ${!p.isActive ? 'opacity-60' : ''}`}>
-                    <td className="px-2 py-2">
-                      {canManage ? (
-                        <input
-                          value={draft.name}
-                          onChange={(e) => updateDraft(p.id, { name: e.target.value })}
-                          className="w-full min-w-[140px]"
-                        />
-                      ) : (
-                        <span className="px-2">{p.name}</span>
-                      )}
-                    </td>
-                    <td className="px-2 py-2">
-                      {canManage ? (
-                        <input
-                          value={draft.description}
-                          onChange={(e) => updateDraft(p.id, { description: e.target.value })}
-                          className="w-full min-w-[180px]"
-                        />
-                      ) : (
-                        <span className="px-2 text-slate-500">{p.description || '-'}</span>
-                      )}
-                    </td>
-                    <td className="px-2 py-2">
-                      {canManage ? (
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={draft.discount_type}
-                            onChange={(e) => updateDraft(p.id, { discount_type: e.target.value as Draft['discount_type'] })}
-                          >
-                            <option value="amount">บาท</option>
-                            <option value="percent">%</option>
-                          </select>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={draft.discount_value}
-                            onChange={(e) => updateDraft(p.id, { discount_value: e.target.value })}
-                            className="w-24"
-                          />
-                        </div>
-                      ) : (
-                        <span className="px-2">
-                          {p.discountType === 'percent' ? `${p.discountValue}%` : `${formatCurrency(p.discountValue)} บาท`}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      {canManage ? (
-                        <input
-                          type="checkbox"
-                          checked={p.isActive}
-                          disabled={togglingId === p.id}
-                          onChange={() => handleToggleActive(p)}
-                          className="h-4 w-4 rounded border-slate-300"
-                        />
-                      ) : (
-                        <span className="text-xs text-slate-500">{p.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}</span>
-                      )}
-                    </td>
-                    {canManage && (
-                      <td className="px-2 py-2 text-right">
-                        <Button size="sm" variant="secondary" onClick={() => handleSaveRow(p.id)} disabled={savingId === p.id}>
-                          {savingId === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'บันทึก'}
-                        </Button>
-                      </td>
-                    )}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+            </div>
+
+            <div className="p-5">
+              {bundle.items.length === 0 ? (
+                <p className="text-sm text-slate-400">ยังไม่มีรายการของแถมในโปรโมชั่นนี้</p>
+              ) : (
+                <table className="w-full text-left text-sm">
+                  <tbody className="divide-y divide-slate-100">
+                    {bundle.items.map((item) => (
+                      <tr key={item.id}>
+                        <td className="py-1.5 pr-2 text-slate-700">{item.name}</td>
+                        <td className="py-1.5 pr-2 text-right font-medium text-slate-700">฿{formatCurrency(item.value)}</td>
+                        {canManage && (
+                          <td className="py-1.5 pl-2 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button type="button" onClick={() => openEditItem(bundle.id, item)} className="text-slate-300 hover:text-indigo-600">
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteItemTarget({ bundleId: bundle.id, item })}
+                                className="text-slate-300 hover:text-red-500"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {canManage && (
+                <Button size="sm" variant="secondary" className="mt-3" onClick={() => openAddItem(bundle.id)}>
+                  <Plus className="h-3.5 w-3.5" /> เพิ่มรายการของแถม
+                </Button>
+              )}
+            </div>
+          </Card>
+        )
+      })}
+
+      <Modal isOpen={editingBundle !== null} onClose={() => setEditingBundle(null)} title="แก้ไขโปรโมชั่น">
+        {editingBundle && (
+          <form action={handleSaveBundle} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">ชื่อโปรโมชั่น</label>
+              <input name="name" required defaultValue={editingBundle.name} className="w-full" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">รายละเอียด / เงื่อนไข</label>
+              <textarea name="description" rows={2} defaultValue={editingBundle.description ?? ''} className="w-full" />
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button type="button" variant="secondary" onClick={() => setEditingBundle(null)}>ยกเลิก</Button>
+              <Button type="submit" disabled={isPending}>
+                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                บันทึก
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={itemModalBundleId !== null}
+        onClose={() => { setItemModalBundleId(null); setEditingItem(null) }}
+        title={editingItem ? 'แก้ไขรายการของแถม' : 'เพิ่มรายการของแถม'}
+      >
+        <form key={editingItem?.id || 'new'} action={handleSaveItem} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">ชื่อรายการ</label>
+            <input name="name" required placeholder="เช่น แอร์ 12,000 BTU 1 เครื่อง" className="w-full" defaultValue={editingItem?.name} />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">มูลค่า (บาท)</label>
+            <input type="number" min="0" step="0.01" name="value" required className="w-full" defaultValue={editingItem?.value} />
+          </div>
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button type="button" variant="secondary" onClick={() => { setItemModalBundleId(null); setEditingItem(null) }}>ยกเลิก</Button>
+            <Button type="submit" disabled={isPending}>
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              บันทึก
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={deleteItemTarget !== null}
+        title="ลบรายการ"
+        message={deleteItemTarget ? `ลบรายการ "${deleteItemTarget.item.name}" ใช่ไหม?` : ''}
+        confirmLabel={isPending ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDeleteItemTarget(null)}
+        onConfirm={handleDeleteItem}
+      />
     </div>
   )
 }

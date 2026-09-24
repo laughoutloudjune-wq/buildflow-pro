@@ -7,6 +7,7 @@ import { getPlotMaterialsSummary, getPlotSaleDetail, getPlotSaleHistory, getSale
 import { getWorkRequestsForPlot } from '@/actions/sales-work-requests'
 import { getSalePaymentsForSale } from '@/actions/sale-payments-actions'
 import { getPromotions } from '@/actions/promotions-actions'
+import { getPlotSalePromotionItems } from '@/actions/plot-sale-promotion-items'
 import { getPlotProgressCurve, type PlotProgressCurve } from '@/actions/plot-progress-curve'
 import { permissionsForRole, requireModuleAccess } from '@/lib/auth/route-access'
 import type { PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
@@ -38,6 +39,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
   let rawMaterials: Awaited<ReturnType<typeof getPlotMaterialsSummary>> = []
   let workRequests: Awaited<ReturnType<typeof getWorkRequestsForPlot>> = []
   let payments: Awaited<ReturnType<typeof getSalePaymentsForSale>> = []
+  let promotionItems: Awaited<ReturnType<typeof getPlotSalePromotionItems>> = []
   let progressCurve: PlotProgressCurve = { startDate: null, targetDate: null, totalBoqValue: 0, actualPoints: [], today: new Date().toISOString() }
 
   try {
@@ -83,7 +85,10 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     workRequests = workRequestsData
     progressCurve = progressCurveData
 
-    if (saleData.sale) payments = await getSalePaymentsForSale(saleData.sale.id).catch(() => [])
+    if (saleData.sale) {
+      payments = await getSalePaymentsForSale(saleData.sale.id).catch(() => [])
+      promotionItems = await getPlotSalePromotionItems(saleData.sale.id).catch(() => [])
+    }
   } catch (error) {
     console.error(error)
   }
@@ -160,6 +165,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     materials,
     workRequests,
     payments,
+    promotionItems,
     progressCurve,
     canSeeCost,
     canEditConstruction,

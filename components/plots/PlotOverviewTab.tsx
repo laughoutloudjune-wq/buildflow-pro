@@ -6,6 +6,7 @@ import PlotProgressCurveChart, { buildSaleMarkers } from '@/components/plots/Plo
 import type { PlotSaleDetail } from '@/actions/sales-actions'
 import type { PlotJobRow } from '@/lib/types/plotDetail'
 import type { PlotProgressCurve } from '@/actions/plot-progress-curve'
+import type { PlotSalePromotionItem } from '@/actions/plot-sale-promotion-items'
 
 // inspectionAt/transferAt are pulled out into their own always-shown stat
 // row below (June, 2026-09-24 - wanted these two specifically prominent),
@@ -29,17 +30,20 @@ export default function PlotOverviewTab({
   jobsDone,
   canSeeCost,
   progressCurve,
+  promotionItems,
 }: {
   saleDetail: PlotSaleDetail
   jobs: PlotJobRow[]
   jobsDone: number
   canSeeCost: boolean
   progressCurve: PlotProgressCurve
+  promotionItems: PlotSalePromotionItem[]
 }) {
   const sale = saleDetail.sale
   const c = statusColorClasses(sale?.statusColor)
   const setDates = DATE_FIELDS.filter((f) => sale?.[f.key])
   const progressPercent = jobs.length > 0 ? Math.round((jobsDone / jobs.length) * 100) : 0
+  const promotionTotal = promotionItems.reduce((sum, i) => sum + i.value, 0)
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -66,16 +70,22 @@ export default function PlotOverviewTab({
         </div>
         {sale?.salesRepName && <div className="mt-1 text-xs text-slate-400">พนักงานขาย: {sale.salesRepName}</div>}
 
-        {sale?.promotionName && (
-          <div className="mt-2 flex items-center gap-1.5">
-            <Tag className="h-3.5 w-3.5 text-indigo-400" />
-            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
-              {sale.promotionName} (
-              {sale.promotionDiscountType === 'percent'
-                ? `ลด ${sale.promotionDiscountValue}%`
-                : `ลด ${formatCurrency(sale.promotionDiscountValue)} บาท`}
-              )
-            </span>
+        {promotionItems.length > 0 && (
+          <div className="mt-2">
+            <div className="flex items-center gap-1.5">
+              <Tag className="h-3.5 w-3.5 text-indigo-400" />
+              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                ของแถม {promotionItems.length} รายการ มูลค่า ฿{formatCurrency(promotionTotal)}
+              </span>
+            </div>
+            <ul className="mt-1.5 space-y-0.5 pl-1 text-xs text-slate-500">
+              {promotionItems.map((item) => (
+                <li key={item.id} className="flex items-center justify-between gap-2">
+                  <span>• {item.name}</span>
+                  <span className="shrink-0 text-slate-400">฿{formatCurrency(item.value)}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 

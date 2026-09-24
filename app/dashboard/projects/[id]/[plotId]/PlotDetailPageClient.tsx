@@ -28,6 +28,7 @@ import { getHouseModels } from '@/actions/boq-actions'
 import { getContractors } from '@/actions/contractor-actions'
 import type { PlotSaleDetail, SaleStatus } from '@/actions/sales-actions'
 import type { Promotion } from '@/actions/promotions-actions'
+import type { PlotSalePromotionItem } from '@/actions/plot-sale-promotion-items'
 import type { PlotProgressCurve } from '@/actions/plot-progress-curve'
 import type { WorkRequestRow } from '@/actions/sales-work-requests'
 import type { SalePaymentRow } from '@/actions/sale-payments-actions'
@@ -59,6 +60,7 @@ export default function PlotDetailPageClient({
   saleDetail,
   saleStatuses,
   promotions,
+  promotionItems,
   history,
   materials,
   workRequests,
@@ -86,6 +88,7 @@ export default function PlotDetailPageClient({
   saleDetail: PlotSaleDetail
   saleStatuses: SaleStatus[]
   promotions: Promotion[]
+  promotionItems: PlotSalePromotionItem[]
   history: PlotHistoryRowView[]
   materials: PlotMaterialRowView[]
   workRequests: WorkRequestRow[]
@@ -300,7 +303,14 @@ export default function PlotDetailPageClient({
       </div>
 
       {tab === 'overview' && (
-        <PlotOverviewTab saleDetail={saleDetail} jobs={jobs} jobsDone={jobsDone} canSeeCost={canSeeCost} progressCurve={progressCurve} />
+        <PlotOverviewTab
+          saleDetail={saleDetail}
+          jobs={jobs}
+          jobsDone={jobsDone}
+          canSeeCost={canSeeCost}
+          progressCurve={progressCurve}
+          promotionItems={promotionItems}
+        />
       )}
       {tab === 'sales' && (
         <PlotSalesTab
@@ -310,6 +320,7 @@ export default function PlotDetailPageClient({
           saleDetail={saleDetail}
           saleStatuses={saleStatuses}
           promotions={promotions}
+          promotionItems={promotionItems}
           payments={payments}
           canEdit={canEditSales}
           onRefresh={refresh}
