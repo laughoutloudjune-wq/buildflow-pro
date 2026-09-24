@@ -3,45 +3,25 @@
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import dynamic from 'next/dynamic'
 import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling, getJobProgressHistory } from '@/actions/billing-actions'
-import { getOrganizationSettings } from '@/actions/settings-actions'
-import type { SignatureSlot } from '@/lib/types/signatures'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { BillingPdf } from '@/components/pdf/BillingPdf'
 import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
-import { Trash2, Edit, Loader2 } from 'lucide-react'
+import { Trash2, Edit } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Modal from '@/components/ui/Modal'
 import NoticeBanner from '@/components/ui/NoticeBanner'
 import type { BillingAdjustmentForm, ProgressHistoryItem } from '@/lib/types/billing'
 
-const PDFViewer = dynamic(
-  () => import('@react-pdf/renderer').then((mod) => mod.PDFViewer),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex items-center justify-center h-[400px] text-slate-400">
-        <Loader2 className="h-8 w-8 animate-spin" />
-        <span className="ml-2">กำลังสร้างเอกสาร PDF...</span>
-      </div>
-    ),
-  }
-)
-
 type BillingData = Awaited<ReturnType<typeof getBillingById>>
-type SettingsData = Awaited<ReturnType<typeof getOrganizationSettings>>
 type Job = NonNullable<NonNullable<BillingData>['billing_jobs']>[number]
 type Adjustment = BillingAdjustmentForm & { id?: string }
 
 export default function ReviewBillingPageClient({
   id,
   initialBilling,
-  initialSettings,
-  initialSignatureSlots,
   initialJobs,
   initialAdjustments,
   initialBillingDate,
@@ -53,8 +33,6 @@ export default function ReviewBillingPageClient({
 }: {
   id: string
   initialBilling: BillingData
-  initialSettings: SettingsData
-  initialSignatureSlots: SignatureSlot[]
   initialJobs: Job[]
   initialAdjustments: Adjustment[]
   initialBillingDate: string
@@ -67,14 +45,11 @@ export default function ReviewBillingPageClient({
   const router = useRouter()
 
   const [billing] = useState<BillingData>(initialBilling)
-  const [settings] = useState<SettingsData>(initialSettings)
-  const [signatureSlots] = useState<SignatureSlot[]>(initialSignatureSlots)
   const [jobs, setJobs] = useState<Job[]>(initialJobs)
   const [adjustments, setAdjustments] = useState<Adjustment[]>(initialAdjustments)
   const [billingDate, setBillingDate] = useState(initialBillingDate)
   const [whtPercent] = useState(initialWhtPercent)
   const [retentionPercent] = useState(initialRetentionPercent)
-  const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit')
   const [progressHistoryByJob, setProgressHistoryByJob] = useState<Record<string, ProgressHistoryItem[]>>(initialProgressHistoryByJob)
   const [expandedHistoryRows, setExpandedHistoryRows] = useState<Set<string>>(new Set())
 
@@ -284,22 +259,6 @@ export default function ReviewBillingPageClient({
     }
   }
 
-  const previewData = useMemo(
-    () => ({
-      ...billing,
-      billing_jobs: jobs,
-      billing_adjustments: adjustments,
-      billing_date: billingDate,
-      wht_percent: whtPercent,
-      retention_percent: retentionPercent,
-      total_work_amount: totalWorkAmount,
-      total_add_amount: totalAddAmount,
-      total_deduct_amount: totalDeductAmount,
-      net_amount: netAmount,
-    }),
-    [billing, jobs, adjustments, billingDate, whtPercent, retentionPercent, totalWorkAmount, totalAddAmount, totalDeductAmount, netAmount]
-  )
-
   if (error && !billing) {
     return (
       <div className="container mx-auto max-w-lg space-y-4 p-4">
@@ -348,19 +307,7 @@ export default function ReviewBillingPageClient({
 
       {error ? <NoticeBanner tone="error" message={error} onClose={() => setError(null)} /> : null}
 
-      <div className="flex border-b">
-        <button
-          onClick={() => setActiveTab('edit')}
-          className={`flex-1 py-3 text-sm font-bold transition flex items-center justify-center gap-2 ${
-            activeTab === 'edit' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50' : 'text-slate-500 hover:bg-slate-50'
-          }`}
-        >
-          <Edit className="h-4 w-4" /> แก้ไขข้อมูล
-        </button>
-      </div>
-
-      {activeTab === 'edit' && (
-        <>
+      <>
           <Card className="p-4 bg-slate-50">
             <h2 className="text-xl font-semibold mb-3">ข้อมูลจาก Foreman</h2>
             <div className="grid grid-cols-2 gap-4">
@@ -593,16 +540,7 @@ export default function ReviewBillingPageClient({
               </div>
             )}
           </Card>
-        </>
-      )}
-
-      {activeTab === 'preview' && (
-        <div className="h-[75vh] w-full bg-slate-500 rounded-lg shadow-inner overflow-hidden flex flex-col">
-          <PDFViewer className="w-full h-full border-none">
-            <BillingPdf data={previewData} settings={settings} slots={signatureSlots} />
-          </PDFViewer>
-        </div>
-      )}
+      </>
 
       <ConfirmDialog
         isOpen={confirmAction === 'delete'}

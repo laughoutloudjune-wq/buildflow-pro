@@ -1,6 +1,4 @@
 import { getBillingById, getJobProgressHistory } from '@/actions/billing-actions'
-import { getOrganizationSettings } from '@/actions/settings-actions'
-import { getSignatureSlots } from '@/actions/signature-slots-actions'
 import { getDashboardSession } from '@/lib/auth/route-access'
 import type { BillingAdjustmentForm, ProgressHistoryItem } from '@/lib/types/billing'
 import { todayInBangkok } from '@/lib/utils'
@@ -14,8 +12,6 @@ export default async function ReviewBillingPage({ params }: { params: Promise<{ 
   const { id } = await params
 
   let billing: BillingData = null
-  let settings: Awaited<ReturnType<typeof getOrganizationSettings>> = null
-  let signatureSlots: Awaited<ReturnType<typeof getSignatureSlots>> = []
   let jobs: Job[] = []
   let adjustments: Adjustment[] = []
   let billingDate = todayInBangkok()
@@ -32,14 +28,7 @@ export default async function ReviewBillingPage({ params }: { params: Promise<{ 
   const canApprove = role === 'pm' || role === 'admin'
 
   try {
-    const [billingData, settingsData, slotsData] = await Promise.all([
-      getBillingById(id),
-      getOrganizationSettings(),
-      getSignatureSlots('billing'),
-    ])
-
-    settings = settingsData
-    signatureSlots = slotsData
+    const billingData = await getBillingById(id)
 
     if (billingData) {
       billing = billingData
@@ -77,8 +66,6 @@ export default async function ReviewBillingPage({ params }: { params: Promise<{ 
     <ReviewBillingPageClient
       id={id}
       initialBilling={billing}
-      initialSettings={settings}
-      initialSignatureSlots={signatureSlots}
       initialJobs={jobs}
       initialAdjustments={adjustments}
       initialBillingDate={billingDate}

@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import { useToast } from '@/components/ui/Toast'
 import { createHouseModel, deleteHouseModel, updateHouseModel } from '@/actions/boq-actions'
 
 type HouseModel = {
@@ -32,6 +33,7 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
   const [editingModel, setEditingModel] = useState<HouseModel | null>(null)
   const [isPending, startTransition] = useTransition()
   const [search, setSearch] = useState('')
+  const toast = useToast()
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
 
   const openModal = (model: HouseModel | null = null) => {
@@ -59,8 +61,12 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
   const handleDelete = async (id: string) => {
     if(!confirm('ยืนยันลบแบบบ้านนี้?')) return
     startTransition(async () => {
-      await deleteHouseModel(id)
-      router.refresh()
+      try {
+        await deleteHouseModel(id)
+        router.refresh()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'ลบไม่สำเร็จ')
+      }
     })
   }
 

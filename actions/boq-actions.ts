@@ -4,6 +4,32 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 
+/** M-12: boq_master -> job_assignments (CASCADE) -> payments (CASCADE) means
+ * deleting a BOQ line, or a whole house model, can silently wipe out jobs
+ * that already have a contractor, an agreed price, or payments recorded
+ * against them - across every plot using that model. Refuses instead of
+ * cascading when any of that exists; there's no undo for a cascade delete. */
+async function guardBoqDeleteAffectsJobs(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  boqItemIds: string[]
+) {
+  if (boqItemIds.length === 0) return
+  const { data: jobs, error } = await supabase
+    .from('job_assignments')
+    .select('id, contractor_id, agreed_price_per_unit, payments (id)')
+    .in('boq_item_id', boqItemIds)
+  if (error) throw new Error(error.message)
+
+  const affected = (jobs || []).filter(
+    (j) => j.contractor_id || j.agreed_price_per_unit != null || (j.payments && j.payments.length > 0)
+  )
+  if (affected.length > 0) {
+    throw new Error(
+      `ลบไม่ได้ เนื่องจากมี ${affected.length} งานที่กำหนดผู้รับเหมา ราคา หรือมีการจ่ายเงินแล้วผูกกับรายการนี้ กรุณายกเลิกงานเหล่านั้นก่อน`
+    )
+  }
+}
+
 // --- HOUSE MODELS (แบบบ้าน) ---
 
 export async function getHouseModels() {
@@ -60,6 +86,11 @@ export async function createHouseModel(formData: FormData) {
 export async function deleteHouseModel(id: string) {
   await requireModuleAccess('boq')
   const supabase = await createClient()
+
+  const { data: boqItems, error: boqError } = await supabase.from('boq_master').select('id').eq('house_model_id', id)
+  if (boqError) throw new Error(boqError.message)
+  await guardBoqDeleteAffectsJobs(supabase, (boqItems || []).map((b) => b.id))
+
   const { error } = await supabase.from('house_models').delete().match({ id })
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/boq')
@@ -148,6 +179,7 @@ export async function createBOQItem(formData: FormData) {
 export async function deleteBOQItem(id: string, modelId: string) {
   await requireModuleAccess('boq')
   const supabase = await createClient()
+  await guardBoqDeleteAffectsJobs(supabase, [id])
   const { error } = await supabase.from('boq_master').delete().match({ id })
   if (error) throw new Error(error.message)
   revalidatePath(`/dashboard/boq/${modelId}`)

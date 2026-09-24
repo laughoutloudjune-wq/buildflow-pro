@@ -27,7 +27,6 @@ import {
   settlePurchaseRequestItems as settlePurchaseRequestItemsImpl,
   undoPurchaseRequestItemSettlement as undoPurchaseRequestItemSettlementImpl,
   getApprovedRequestsForOrder as getApprovedRequestsForOrderImpl,
-  getCurrentRequesterId as getCurrentRequesterIdImpl,
   getBoqJobOptionsForPlots as getBoqJobOptionsForPlotsImpl,
   type PurchaseRequestFilters,
 } from '@/actions/procurement/requests'
@@ -40,7 +39,6 @@ import {
   setPurchaseOrderStatus as setPurchaseOrderStatusImpl,
   cancelPurchaseOrder as cancelPurchaseOrderImpl,
   closePurchaseOrderShort as closePurchaseOrderShortImpl,
-  markPurchaseOrderReceived as markPurchaseOrderReceivedImpl,
   unmarkPurchaseOrderReceived as unmarkPurchaseOrderReceivedImpl,
   deletePurchaseOrder as deletePurchaseOrderImpl,
   deletePurchaseOrders as deletePurchaseOrdersImpl,
@@ -56,7 +54,6 @@ import {
 } from '@/actions/procurement/receipts'
 import {
   getPaymentVouchers as getPaymentVouchersImpl,
-  getPaymentVoucherById as getPaymentVoucherByIdImpl,
   createPaymentVoucher as createPaymentVoucherImpl,
   voidPaymentVoucher as voidPaymentVoucherImpl,
 } from '@/actions/procurement/payments'
@@ -166,10 +163,6 @@ export async function getApprovedRequestsForOrder(projectId?: string) {
   return getApprovedRequestsForOrderImpl(projectId)
 }
 
-export async function getCurrentRequesterId() {
-  return getCurrentRequesterIdImpl()
-}
-
 export async function getBoqJobOptionsForPlots(plotIds: string[]) {
   return getBoqJobOptionsForPlotsImpl(plotIds)
 }
@@ -208,10 +201,6 @@ export async function cancelPurchaseOrder(id: string, reason?: string) {
 
 export async function closePurchaseOrderShort(id: string, reason: string) {
   return closePurchaseOrderShortImpl(id, reason)
-}
-
-export async function markPurchaseOrderReceived(id: string, receivedAt: string) {
-  return markPurchaseOrderReceivedImpl(id, receivedAt)
 }
 
 export async function unmarkPurchaseOrderReceived(id: string) {
@@ -260,10 +249,6 @@ export async function createGoodsReceipt(input: Parameters<typeof createGoodsRec
 
 export async function getPaymentVouchers() {
   return getPaymentVouchersImpl()
-}
-
-export async function getPaymentVoucherById(id: string) {
-  return getPaymentVoucherByIdImpl(id)
 }
 
 export async function createPaymentVoucher(input: Parameters<typeof createPaymentVoucherImpl>[0]) {

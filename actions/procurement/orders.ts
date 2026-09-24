@@ -243,15 +243,6 @@ export async function closePurchaseOrderShort(id: string, reason: string): Promi
   }
 }
 
-export async function markPurchaseOrderReceived(id: string, receivedAt: string) {
-  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can mark a purchase order as received')
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('po_mark_received', { p_id: id, p_received_at: receivedAt })
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/procurement/orders')
-  revalidatePath(`/dashboard/procurement/orders/${id}`)
-}
-
 /** Fully reverses everything this PO has ever received: every line's
  * quantity_received goes back to 0, the goods_receipts/goods_receipt_items
  * rows are gone, and the stock those receipts added (or, for a direct-to-

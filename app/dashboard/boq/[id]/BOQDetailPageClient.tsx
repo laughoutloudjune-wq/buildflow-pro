@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import { useToast } from '@/components/ui/Toast'
 import BoqMaterialItemsModal from '@/components/materials/BoqMaterialItemsModal'
 import BoqMaterialImportModal from '@/components/materials/BoqMaterialImportModal'
 import BoqHouseModelMaterialsGrid from '@/components/materials/BoqHouseModelMaterialsGrid'
@@ -44,6 +45,7 @@ export default function BOQDetailPageClient({
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<BOQItem | null>(null)
   const [isPending, startTransition] = useTransition()
+  const toast = useToast()
   const [materialsBoqItem, setMaterialsBoqItem] = useState<{ id: string; item_name: string } | null>(null)
   const [isHouseModelMaterialsOpen, setIsHouseModelMaterialsOpen] = useState(false)
   const [isMaterialExcelImportOpen, setIsMaterialExcelImportOpen] = useState(false)
@@ -168,8 +170,12 @@ export default function BOQDetailPageClient({
   const handleDelete = async (itemId: string) => {
     if (!confirm('ยืนยันลบรายการนี้?')) return
     startTransition(async () => {
-      await deleteBOQItem(itemId, id)
-      await refreshItems()
+      try {
+        await deleteBOQItem(itemId, id)
+        await refreshItems()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'ลบไม่สำเร็จ')
+      }
     })
   }
 

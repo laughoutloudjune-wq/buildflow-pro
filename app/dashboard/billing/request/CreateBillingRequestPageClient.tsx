@@ -61,15 +61,20 @@ export default function CreateBillingRequestPageClient({
     if (!selectedProject || !selectedContractor) return
     async function fetchJobs() {
       setIsLoading(true)
-      const jobs = await getBillableJobs(selectedProject, selectedContractor)
-      const jobsWithProgress = jobs.map((job: BillableJob) => ({
-        ...job,
-        previous_progress: job.totalBoq > 0 ? (job.paid / job.totalBoq) * 100 : 0,
-      }))
-      setBillableJobs(jobsWithProgress)
-      setSelectedJobs(new Map())
-      setProgressHistoryByJob({})
-      setIsLoading(false)
+      try {
+        const jobs = await getBillableJobs(selectedProject, selectedContractor)
+        const jobsWithProgress = jobs.map((job: BillableJob) => ({
+          ...job,
+          previous_progress: job.totalBoq > 0 ? (job.paid / job.totalBoq) * 100 : 0,
+        }))
+        setBillableJobs(jobsWithProgress)
+        setSelectedJobs(new Map())
+        setProgressHistoryByJob({})
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'โหลดรายการงานที่เบิกได้ไม่สำเร็จ')
+      } finally {
+        setIsLoading(false)
+      }
     }
     fetchJobs()
   }, [selectedProject, selectedContractor])

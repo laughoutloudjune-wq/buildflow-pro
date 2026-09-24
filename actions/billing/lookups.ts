@@ -175,12 +175,12 @@ export async function getBillableJobs(projectId: string, contractorId: string, p
 
   const { data, error } = await query
 
-  if (error) {
-    console.error('Error fetching billable jobs:', error)
-    return []
-  }
+  // L-08: used to swallow the error and return an empty list, which read as
+  // "this contractor has no billable jobs" - indistinguishable from an
+  // actual network/permission failure.
+  if (error) throw new Error(error.message)
 
-  return data
+  return (data || [])
     .map((job) => {
       const typedJob = job as unknown as BillableJobRow
       const resolvedJob: ResolvedBillableJobRow = {

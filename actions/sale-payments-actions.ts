@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireModuleAccess } from '@/lib/auth/route-access'
-import { todayInBangkok } from '@/lib/utils'
+import { addMonthsClamped, todayInBangkok } from '@/lib/utils'
 
 export type SalePaymentKind = 'booking' | 'contract' | 'down' | 'transfer' | 'extra'
 
@@ -87,6 +87,13 @@ export async function createSalePayment(formData: FormData): Promise<CreateSaleP
 
   if (!plotSaleId || !kind) return { success: false, error: 'ข้อมูลไม่ครบ' }
 
+  // L-07: an empty/negative/non-numeric amount used to insert straight into
+  // the database, either silently recording a 0/negative payment or
+  // surfacing a raw Postgres numeric-parse error instead of a Thai message.
+  if (!Number.isFinite(amountDue) || amountDue <= 0) {
+    return { success: false, error: 'กรุณาระบุยอดที่ต้องชำระให้ถูกต้อง (มากกว่า 0)' }
+  }
+
   const insert: Record<string, unknown> = {
     plot_sale_id: plotSaleId,
     kind,
@@ -96,8 +103,12 @@ export async function createSalePayment(formData: FormData): Promise<CreateSaleP
   }
 
   if (markPaidNow) {
+    const amountPaid = amountPaidRaw ? Number(amountPaidRaw) : amountDue
+    if (!Number.isFinite(amountPaid) || amountPaid <= 0) {
+      return { success: false, error: 'กรุณาระบุยอดที่ชำระให้ถูกต้อง (มากกว่า 0)' }
+    }
     insert.paid_at = todayInBangkok()
-    insert.amount_paid = amountPaidRaw ? Number(amountPaidRaw) : amountDue
+    insert.amount_paid = amountPaid
     insert.method = method
     insert.receipt_no = await nextReceiptNo(supabase)
   }
@@ -129,13 +140,18 @@ export async function markSalePaymentPaid(paymentId: string, formData: FormData)
   if (existing.voided_at) return { success: false, error: 'รายการนี้ถูกยกเลิกไปแล้ว' }
   if (existing.paid_at) return { success: false, error: 'รายการนี้ชำระแล้ว ไม่สามารถบันทึกการชำระซ้ำได้' }
 
+  const amountPaid = amountPaidRaw ? Number(amountPaidRaw) : existing.amount_due
+  if (!Number.isFinite(amountPaid) || amountPaid <= 0) {
+    return { success: false, error: 'กรุณาระบุยอดที่ชำระให้ถูกต้อง (มากกว่า 0)' }
+  }
+
   const receiptNo = existing.receipt_no || (await nextReceiptNo(supabase))
 
   const { error } = await supabase
     .from('sale_payments')
     .update({
       paid_at: paidAt,
-      amount_paid: amountPaidRaw ? Number(amountPaidRaw) : existing.amount_due,
+      amount_paid: amountPaid,
       method,
       receipt_no: receiptNo,
     })
@@ -193,8 +209,7 @@ export async function generateDownPaymentSchedule(plotSaleId: string, installmen
 
   const rows = Array.from({ length: installmentCount }, (_, i) => {
     const n = i + 1
-    const due = new Date(contractDate)
-    due.setMonth(due.getMonth() + n)
+    const due = addMonthsClamped(contractDate, n)
     const isLast = n === installmentCount
     const amount = isLast ? Math.round((total - base * (installmentCount - 1)) * 100) / 100 : base
     return {

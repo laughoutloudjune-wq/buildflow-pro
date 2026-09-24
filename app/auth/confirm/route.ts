@@ -13,7 +13,13 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const token_hash = searchParams.get('token_hash')
   const type = searchParams.get('type') as EmailOtpType | null
-  const next = searchParams.get('next') ?? '/set-password'
+  // L-03: only a same-site path is a valid redirect target - `next=//evil.
+  // example` or `next=https://evil.example` would otherwise send someone to
+  // another origin right after a real login link is used. A single leading
+  // "/" (and not "//", which the browser also treats as protocol-relative)
+  // is the only shape accepted.
+  const rawNext = searchParams.get('next')
+  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/set-password'
 
   if (token_hash && type) {
     const supabase = await createClient()

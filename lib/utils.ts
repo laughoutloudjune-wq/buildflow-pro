@@ -36,3 +36,16 @@ export function monthRangeInBangkok(monthStart?: string): { start: string; end: 
   const end = `${String(nextYear).padStart(4, '0')}-${String(nextMonth).padStart(2, '0')}-01`
   return { start, end }
 }
+
+/** Adds `months` to `date`, clamped to the target month's actual last day
+ * (L-06) - plain `date.setMonth(date.getMonth() + months)` overflows past
+ * short months instead (31 Jan + 1 month becomes 3 Mar, not 28/29 Feb),
+ * which a down-payment schedule anchored on a 29th-31st contract date hits
+ * on nearly every installment. */
+export function addMonthsClamped(date: Date, months: number): Date {
+  const day = date.getDate()
+  const firstOfTargetMonth = new Date(date.getFullYear(), date.getMonth() + months, 1)
+  const daysInTargetMonth = new Date(firstOfTargetMonth.getFullYear(), firstOfTargetMonth.getMonth() + 1, 0).getDate()
+  firstOfTargetMonth.setDate(Math.min(day, daysInTargetMonth))
+  return firstOfTargetMonth
+}

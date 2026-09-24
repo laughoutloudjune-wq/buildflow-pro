@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
-import { getCurrentUser, requireAuthRole } from '@/actions/_shared/user-role'
+import { requireAuthRole } from '@/actions/_shared/user-role'
 import { translateError as translatePrError } from '@/lib/errors'
 import type { PurchaseRequest, PurchaseRequestStatus, SettlementReason } from '@/lib/types/procurement'
 
@@ -276,11 +276,4 @@ export async function getApprovedRequestsForOrder(projectId?: string): Promise<P
   const { data, error } = await query
   if (error) throw new Error(error.message)
   return (data as unknown as PurchaseRequest[]) || []
-}
-
-// Exposed so the current user's own id is available client-side when needed
-// (e.g. to label "your request").
-export async function getCurrentRequesterId(): Promise<string | null> {
-  const user = await getCurrentUser()
-  return user?.id || null
 }

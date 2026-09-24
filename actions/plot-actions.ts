@@ -25,6 +25,10 @@ export async function getPlotsByProjectId(projectId: string) {
 }
 
 // สร้างแปลงใหม่ + Auto Generate Jobs
+// L-10: used to insert the plot then the jobs as two separate round trips -
+// a failure between them left a plot with no jobs (or half of them) and no
+// way to tell from the UI that anything had gone wrong. plot_create() does
+// both inside one function call, so any failure rolls back the whole thing.
 export async function createPlot(formData: FormData): Promise<PlotActionResult> {
   try {
     await requireModuleAccess('projects')
@@ -38,90 +42,10 @@ export async function createPlot(formData: FormData): Promise<PlotActionResult> 
       return { success: false, error: 'กรุณากรอกชื่อแปลงและเลือกแบบบ้าน' }
     }
 
-    // M-07 guard (future only): the screen already filters the source-plot
-    // list to the same project + house model, but the server has to check
-    // too - this is exactly how the 43 mismatched Arada Vela/Prime rows
-    // happened (a plot from the wrong project got picked). Checked before
-    // the plot itself is created, so a bad source plot never leaves behind
-    // an empty plot with no jobs.
-    if (source_plot_id) {
-      const { data: sourcePlot, error: sourcePlotError } = await supabase
-        .from('plots')
-        .select('id, project_id, house_model_id')
-        .eq('id', source_plot_id)
-        .maybeSingle()
-
-      if (sourcePlotError) return { success: false, error: sourcePlotError.message }
-      if (!sourcePlot) return { success: false, error: 'ไม่พบแปลงต้นทางที่เลือก' }
-      if (sourcePlot.project_id !== project_id || sourcePlot.house_model_id !== house_model_id) {
-        return { success: false, error: 'คัดลอกงานได้เฉพาะจากแปลงในโครงการเดียวกันที่ใช้แบบบ้านเดียวกันเท่านั้น' }
-      }
-    }
-
-    // 1. สร้างแปลง (Plot)
-    const { data: plot, error: plotError } = await supabase
-      .from('plots')
-      .insert([{ project_id, house_model_id, name }])
-      .select()
-      .single()
-
-    if (plotError) return { success: false, error: plotError.message }
-    if (!plot) return { success: false, error: 'สร้างแปลงไม่สำเร็จ' }
-
-    // 2. สร้าง Job Assignments (เลือกวิธี: copy หรือ from template)
-    let jobsToCreate: {
-      plot_id: string
-      boq_item_id: string
-      contractor_id?: string | null
-      status: string
-    }[] = []
-
-    if (source_plot_id) {
-      // --- วิธีที่ 1: คัดลอกจากแปลงอื่น ---
-      const { data: sourceJobs, error: sourceJobError } = await supabase
-        .from('job_assignments')
-        .select('boq_item_id, contractor_id')
-        .eq('plot_id', source_plot_id)
-
-      if (sourceJobError) {
-        return { success: false, error: 'คัดลอกงานจากแปลงต้นทางไม่สำเร็จ: ' + sourceJobError.message }
-      }
-
-      if (sourceJobs) {
-        jobsToCreate = sourceJobs
-          .filter((job) => Boolean(job.boq_item_id))
-          .map((job) => ({
-            plot_id: plot.id,
-            boq_item_id: String(job.boq_item_id),
-            contractor_id: job.contractor_id ?? null, // คัดลอกผู้รับเหมามาด้วย
-            status: 'pending',
-          }))
-      }
-    } else {
-      // --- วิธีที่ 2: สร้างจาก BOQ Master Template (ของเดิม) ---
-      const { data: boqItems, error: boqError } = await supabase
-        .from('boq_master')
-        .select('id')
-        .eq('house_model_id', house_model_id)
-
-      if (boqError) return { success: false, error: boqError.message }
-
-      if (boqItems) {
-        jobsToCreate = boqItems
-          .filter((item) => Boolean(item.id))
-          .map((item) => ({
-            plot_id: plot.id,
-            boq_item_id: String(item.id),
-            status: 'pending',
-          }))
-      }
-    }
-
-    // 3. Insert Jobs ที่เตรียมไว้
-    if (jobsToCreate.length > 0) {
-      const { error: jobError } = await supabase.from('job_assignments').insert(jobsToCreate)
-      if (jobError) return { success: false, error: 'สร้างรายการงานอัตโนมัติไม่สำเร็จ: ' + jobError.message }
-    }
+    const { error } = await supabase.rpc('plot_create', {
+      p_payload: { project_id, house_model_id, name, source_plot_id },
+    })
+    if (error) return { success: false, error: error.message }
 
     revalidatePath(`/dashboard/projects/${project_id}`)
     return { success: true }
