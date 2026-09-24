@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
+import { formatCurrency } from '@/lib/currency'
 import PlotPaymentsSection from '@/components/plots/PlotPaymentsSection'
 import {
   changeSaleStatus,
@@ -15,6 +16,7 @@ import {
   type SaleStatus,
 } from '@/actions/sales-actions'
 import type { SalePaymentRow } from '@/actions/sale-payments-actions'
+import type { Promotion } from '@/actions/promotions-actions'
 
 const PRICE_FIELDS: { key: string; label: string }[] = [
   { key: 'list_price', label: 'ราคาตั้ง' },
@@ -39,6 +41,7 @@ export default function PlotSalesTab({
   plotId,
   saleDetail,
   saleStatuses,
+  promotions,
   payments,
   canEdit,
   onRefresh,
@@ -47,6 +50,7 @@ export default function PlotSalesTab({
   projectId: string
   saleDetail: PlotSaleDetail
   saleStatuses: SaleStatus[]
+  promotions: Promotion[]
   payments: SalePaymentRow[]
   canEdit: boolean
   onRefresh: () => void
@@ -165,6 +169,30 @@ export default function PlotSalesTab({
 
   const sale = saleDetail.sale
   const customer = saleDetail.customer
+
+  // The deal's own promotion may since have been deactivated (removed from
+  // `promotions`, the active-only list) - inject it as a synthetic option so
+  // the picker still shows its name instead of falling back to a blank box,
+  // same fix as the deactivated-material picker in PurchaseOrderForm.
+  const promotionOptions =
+    sale.promotionId && !promotions.some((p) => p.id === sale.promotionId)
+      ? [
+          {
+            id: sale.promotionId,
+            name: `${sale.promotionName || 'โปรโมชั่น'} - ปิดใช้งานแล้ว`,
+            description: null,
+            discountType: sale.promotionDiscountType || 'amount',
+            discountValue: sale.promotionDiscountValue || 0,
+            isActive: false,
+          },
+          ...promotions,
+        ]
+      : promotions
+
+  function promotionLabel(p: Promotion) {
+    const discount = p.discountType === 'percent' ? `ลด ${p.discountValue}%` : `ลด ${formatCurrency(p.discountValue)} บาท`
+    return `${p.name} (${discount})`
+  }
 
   return (
     <div className="space-y-4">
@@ -347,8 +375,27 @@ export default function PlotSalesTab({
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">ส่วนลด / ของแถม</label>
-            <input name="discount_note" defaultValue={sale.discountNote ?? ''} disabled={!canEdit} className="w-full" />
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">โปรโมชั่นและส่วนลด</p>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">โปรโมชั่น</label>
+                <select name="promotion_id" defaultValue={sale.promotionId ?? ''} disabled={!canEdit} className="w-full">
+                  <option value="">ไม่มีโปรโมชั่น</option>
+                  {promotionOptions.map((p) => (
+                    <option key={p.id} value={p.id}>{promotionLabel(p)}</option>
+                  ))}
+                </select>
+                {sale.promotionName && (
+                  <p className="mt-1 text-xs text-slate-400">
+                    เงื่อนไข: {promotions.find((p) => p.id === sale.promotionId)?.description || 'ไม่มีรายละเอียดเพิ่มเติม'}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">ส่วนลด / ของแถม (เพิ่มเติม)</label>
+                <input name="discount_note" defaultValue={sale.discountNote ?? ''} disabled={!canEdit} className="w-full" />
+              </div>
+            </div>
           </div>
 
           <div>

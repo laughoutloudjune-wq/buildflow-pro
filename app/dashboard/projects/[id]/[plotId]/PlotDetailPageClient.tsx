@@ -27,6 +27,7 @@ import { updatePlot } from '@/actions/plot-actions'
 import { getHouseModels } from '@/actions/boq-actions'
 import { getContractors } from '@/actions/contractor-actions'
 import type { PlotSaleDetail, SaleStatus } from '@/actions/sales-actions'
+import type { Promotion } from '@/actions/promotions-actions'
 import type { WorkRequestRow } from '@/actions/sales-work-requests'
 import type { SalePaymentRow } from '@/actions/sale-payments-actions'
 import type { PlotHistoryRowView, PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
@@ -56,6 +57,7 @@ export default function PlotDetailPageClient({
   houseModels,
   saleDetail,
   saleStatuses,
+  promotions,
   history,
   materials,
   workRequests,
@@ -81,6 +83,7 @@ export default function PlotDetailPageClient({
   houseModels: HouseModel[]
   saleDetail: PlotSaleDetail
   saleStatuses: SaleStatus[]
+  promotions: Promotion[]
   history: PlotHistoryRowView[]
   materials: PlotMaterialRowView[]
   workRequests: WorkRequestRow[]
@@ -303,6 +306,7 @@ export default function PlotDetailPageClient({
           projectId={projectId}
           saleDetail={saleDetail}
           saleStatuses={saleStatuses}
+          promotions={promotions}
           payments={payments}
           canEdit={canEditSales}
           onRefresh={refresh}

@@ -68,6 +68,7 @@ const menuSections: SidebarSection[] = [
     items: [
       { icon: BarChart3, label: 'แดชบอร์ดขาย', href: '/dashboard/sales/dashboard', permission: 'sales' as const },
       { icon: Tag, label: 'ผังการขาย', href: '/dashboard/sales', permission: 'sales' as const },
+      { icon: Tag, label: 'โปรโมชั่น', href: '/dashboard/sales/promotions', permission: 'sales' as const },
       {
         icon: ClipboardCheck,
         label: 'คำขอจากฝ่ายขาย',

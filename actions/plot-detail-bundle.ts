@@ -6,6 +6,7 @@ import { getContractors } from '@/actions/contractor-actions'
 import { getPlotMaterialsSummary, getPlotSaleDetail, getPlotSaleHistory, getSaleStatuses } from '@/actions/sales-actions'
 import { getWorkRequestsForPlot } from '@/actions/sales-work-requests'
 import { getSalePaymentsForSale } from '@/actions/sale-payments-actions'
+import { getPromotions } from '@/actions/promotions-actions'
 import { permissionsForRole, requireModuleAccess } from '@/lib/auth/route-access'
 import type { PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
 
@@ -31,6 +32,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
   let houseModels: Awaited<ReturnType<typeof getHouseModels>> = []
   let saleDetail: Awaited<ReturnType<typeof getPlotSaleDetail>> = { sale: null, customer: null }
   let saleStatuses: Awaited<ReturnType<typeof getSaleStatuses>> = []
+  let promotions: Awaited<ReturnType<typeof getPromotions>> = []
   let history: Awaited<ReturnType<typeof getPlotSaleHistory>> = []
   let rawMaterials: Awaited<ReturnType<typeof getPlotMaterialsSummary>> = []
   let workRequests: Awaited<ReturnType<typeof getWorkRequestsForPlot>> = []
@@ -41,13 +43,14 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     // is a real cost column) - get_plot_jobs_public() is the SECURITY
     // DEFINER, price-free equivalent for that case, not just a stripped copy
     // of the same query.
-    const [pData, jData, cData, hmData, saleData, statusesData, historyData, materialsData, workRequestsData] = await Promise.all([
+    const [pData, jData, cData, hmData, saleData, statusesData, promotionsData, historyData, materialsData, workRequestsData] = await Promise.all([
       getPlotById(plotId),
       canSeeCost ? getJobAssignments(plotId) : getPlotJobsPublic(plotId),
       getContractors(),
       getHouseModels(),
       getPlotSaleDetail(plotId),
       getSaleStatuses().catch(() => []),
+      getPromotions().catch(() => []),
       getPlotSaleHistory(plotId),
       getPlotMaterialsSummary(plotId, projectId).catch(() => []),
       getWorkRequestsForPlot(plotId).catch(() => []),
@@ -67,6 +70,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     houseModels = hmData || []
     saleDetail = saleData
     saleStatuses = statusesData
+    promotions = promotionsData
     history = historyData
     rawMaterials = materialsData
     workRequests = workRequestsData
@@ -143,6 +147,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     houseModels,
     saleDetail,
     saleStatuses,
+    promotions,
     history: historyView,
     materials,
     workRequests,

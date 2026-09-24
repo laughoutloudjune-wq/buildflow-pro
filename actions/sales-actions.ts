@@ -634,6 +634,10 @@ export type PlotSaleDetail = {
     listPrice: number | null
     salePrice: number | null
     discountNote: string | null
+    promotionId: string | null
+    promotionName: string | null
+    promotionDiscountType: 'percent' | 'amount' | null
+    promotionDiscountValue: number | null
     bookingAmount: number | null
     contractAmount: number | null
     downTotal: number | null
@@ -667,12 +671,13 @@ export async function getPlotSaleDetail(plotId: string): Promise<PlotSaleDetail>
   const { data: sale, error } = await supabase
     .from('plot_sales')
     .select(`
-      id, status_code, list_price, sale_price, discount_note, booking_amount, contract_amount,
+      id, status_code, list_price, sale_price, discount_note, promotion_id, booking_amount, contract_amount,
       down_total, loan_bank, loan_amount, booked_at, contract_at, loan_submitted_at,
       loan_approved_at, inspection_at, transfer_at, delivered_at, cancel_reason, note,
       sale_statuses (label, color, stage),
       customers (id, full_name, phone, email, id_card, address, lead_source, note),
-      profiles!plot_sales_sales_rep_id_fkey (full_name)
+      profiles!plot_sales_sales_rep_id_fkey (full_name),
+      promotions (name, discount_type, discount_value)
     `)
     .eq('plot_id', plotId)
     .is('cancelled_at', null)
@@ -709,6 +714,7 @@ export async function getPlotSaleDetail(plotId: string): Promise<PlotSaleDetail>
       }
     : null
   const rep = sale.profiles as unknown as { full_name: string | null } | null
+  const promotionInfo = sale.promotions as unknown as { name: string; discount_type: string; discount_value: number } | null
 
   return {
     sale: {
@@ -720,6 +726,10 @@ export async function getPlotSaleDetail(plotId: string): Promise<PlotSaleDetail>
       listPrice: sale.list_price,
       salePrice: sale.sale_price,
       discountNote: sale.discount_note,
+      promotionId: sale.promotion_id,
+      promotionName: promotionInfo?.name || null,
+      promotionDiscountType: promotionInfo ? (promotionInfo.discount_type === 'percent' ? 'percent' : 'amount') : null,
+      promotionDiscountValue: promotionInfo?.discount_value ?? null,
       bookingAmount: sale.booking_amount,
       contractAmount: sale.contract_amount,
       downTotal: sale.down_total,
@@ -927,6 +937,7 @@ export async function updatePlotSaleDetails(saleId: string, formData: FormData) 
       list_price: num('list_price'),
       sale_price: num('sale_price'),
       discount_note: text('discount_note'),
+      promotion_id: text('promotion_id'),
       booking_amount: num('booking_amount'),
       contract_amount: num('contract_amount'),
       down_total: num('down_total'),
