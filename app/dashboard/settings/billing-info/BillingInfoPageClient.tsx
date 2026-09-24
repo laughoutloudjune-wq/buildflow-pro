@@ -33,13 +33,13 @@ export default function BillingInfoPageClient({
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
     startTransition(async () => {
-      try {
-        await updateBillingInfo(formData)
-        router.refresh()
-        toast.success('บันทึกข้อมูลใบเบิกเรียบร้อยแล้ว')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ')
+      const result = await updateBillingInfo(formData)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      router.refresh()
+      toast.success('บันทึกข้อมูลใบเบิกเรียบร้อยแล้ว')
     })
   }
 

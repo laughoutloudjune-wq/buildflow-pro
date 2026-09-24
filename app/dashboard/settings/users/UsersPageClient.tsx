@@ -45,14 +45,14 @@ export default function UsersPageClient({
 
   function handleRoleChange(userId: string, newRole: UserRole) {
     startTransition(async () => {
-      try {
-        await updateUserRole(userId, newRole)
-        setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)))
-        const target = users.find((u) => u.id === userId)
-        toast.success(`อัปเดตบทบาทแล้ว: ${target?.email || target?.full_name || userId}`)
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'อัปเดตบทบาทไม่สำเร็จ')
+      const result = await updateUserRole(userId, newRole)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)))
+      const target = users.find((u) => u.id === userId)
+      toast.success(`อัปเดตบทบาทแล้ว: ${target?.email || target?.full_name || userId}`)
     })
   }
 
@@ -60,13 +60,13 @@ export default function UsersPageClient({
     const next = !user.disabled
     if (next && !confirm(`ต้องการปิดการใช้งาน ${user.email || user.full_name || user.id} ใช่หรือไม่?`)) return
     startTransition(async () => {
-      try {
-        await setUserDisabled(user.id, next)
-        setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, disabled: next } : u)))
-        toast.success(next ? 'ปิดการใช้งานแล้ว' : 'เปิดใช้งานแล้ว')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ดำเนินการไม่สำเร็จ')
+      const result = await setUserDisabled(user.id, next)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, disabled: next } : u)))
+      toast.success(next ? 'ปิดการใช้งานแล้ว' : 'เปิดใช้งานแล้ว')
     })
   }
 
@@ -83,10 +83,13 @@ export default function UsersPageClient({
 
     setSavingNameFor(user.id)
     updateUserFullName(user.id, trimmed)
-      .then(() => {
+      .then((result) => {
+        if ('error' in result) {
+          toast.error(result.error)
+          return
+        }
         setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, full_name: trimmed } : u)))
       })
-      .catch((error) => toast.error(error instanceof Error ? error.message : 'เปลี่ยนชื่อไม่สำเร็จ'))
       .finally(() => setSavingNameFor(null))
   }
 

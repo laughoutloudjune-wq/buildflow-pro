@@ -51,11 +51,14 @@ export default function PaymentsPageClient({
     if (!confirm(`ยกเลิกใบสำคัญจ่าย ${v.pp_no}? ใบรับสินค้าที่รวมอยู่จะกลับเป็นสถานะยังไม่จ่าย และ PO จะย้อนกลับเป็นรับของแล้ว`)) return
     setVoidingId(v.id)
     voidPaymentVoucher(v.id)
-      .then(() => {
+      .then((result) => {
+        if ('error' in result) {
+          toast.error(result.error)
+          return
+        }
         router.refresh()
         toast.success('ยกเลิกใบสำคัญจ่ายแล้ว')
       })
-      .catch((error) => toast.error(error instanceof Error ? error.message : 'ยกเลิกใบสำคัญจ่ายไม่สำเร็จ'))
       .finally(() => setVoidingId(null))
   }
 

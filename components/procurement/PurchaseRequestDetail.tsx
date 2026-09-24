@@ -233,26 +233,26 @@ export default function PurchaseRequestDetail({
 
   function handleApprove() {
     startTransition(async () => {
-      try {
-        await approvePurchaseRequest(request.id)
-        onChanged()
-        toast.success('อนุมัติคำขอซื้อเรียบร้อยแล้ว')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'อนุมัติไม่สำเร็จ')
+      const result = await approvePurchaseRequest(request.id)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      onChanged()
+      toast.success('อนุมัติคำขอซื้อเรียบร้อยแล้ว')
     })
   }
 
   function handleReject() {
     startTransition(async () => {
-      try {
-        await rejectPurchaseRequest(request.id, rejectNote)
-        setShowRejectBox(false)
-        onChanged()
-        toast.success('ปฏิเสธคำขอซื้อแล้ว')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ปฏิเสธไม่สำเร็จ')
+      const result = await rejectPurchaseRequest(request.id, rejectNote)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      setShowRejectBox(false)
+      onChanged()
+      toast.success('ปฏิเสธคำขอซื้อแล้ว')
     })
   }
 

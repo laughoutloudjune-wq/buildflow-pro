@@ -31,12 +31,12 @@ export default function FinancialDefaultsPageClient({
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
     startTransition(async () => {
-      try {
-        await updateFinancialDefaults(formData)
-        toast.success('บันทึกค่าเริ่มต้นเรียบร้อยแล้ว')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ')
+      const result = await updateFinancialDefaults(formData)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      toast.success('บันทึกค่าเริ่มต้นเรียบร้อยแล้ว')
     })
   }
 

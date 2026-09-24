@@ -87,30 +87,26 @@ export default function SuppliersPageClient({
       return
     }
     startTransition(async () => {
-      try {
-        if (editing) {
-          await updateSupplier(editing.id, draft)
-        } else {
-          await createSupplier(draft)
-        }
-        closeModal()
-        router.refresh()
-        toast.success('บันทึกข้อมูลผู้จำหน่ายเรียบร้อยแล้ว')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ')
+      const result = editing ? await updateSupplier(editing.id, draft) : await createSupplier(draft)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      closeModal()
+      router.refresh()
+      toast.success('บันทึกข้อมูลผู้จำหน่ายเรียบร้อยแล้ว')
     })
   }
 
   function handleDeactivate(supplier: Supplier) {
     if (!confirm(`ยืนยันปิดใช้งานผู้จำหน่าย "${supplier.name}"?`)) return
     startTransition(async () => {
-      try {
-        await deactivateSupplier(supplier.id)
-        router.refresh()
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ปิดใช้งานไม่สำเร็จ')
+      const result = await deactivateSupplier(supplier.id)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      router.refresh()
     })
   }
 

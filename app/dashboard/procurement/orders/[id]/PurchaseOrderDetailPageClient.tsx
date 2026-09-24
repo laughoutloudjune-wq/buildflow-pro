@@ -161,25 +161,25 @@ export default function PurchaseOrderDetailPageClient({
     const reason = prompt('เหตุผลที่ยกเลิก:')
     if (reason === null) return
     startTransition(async () => {
-      try {
-        await cancelPurchaseOrder(id, reason)
-        refresh()
-        toast.success('ยกเลิกใบสั่งซื้อแล้ว')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ยกเลิกไม่สำเร็จ')
+      const result = await cancelPurchaseOrder(id, reason)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      refresh()
+      toast.success('ยกเลิกใบสั่งซื้อแล้ว')
     })
   }
 
   function handleStatusChange(status: 'draft' | 'sent') {
     if (!order || order.status === status) return
     startTransition(async () => {
-      try {
-        await setPurchaseOrderStatus(id, status)
-        refresh()
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'เปลี่ยนสถานะไม่สำเร็จ')
+      const result = await setPurchaseOrderStatus(id, status)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      refresh()
     })
   }
 
@@ -191,12 +191,12 @@ export default function PurchaseOrderDetailPageClient({
     )
       return
     startTransition(async () => {
-      try {
-        await unmarkPurchaseOrderReceived(id)
-        refresh()
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ยกเลิกการรับของไม่สำเร็จ')
+      const result = await unmarkPurchaseOrderReceived(id)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      refresh()
     })
   }
 

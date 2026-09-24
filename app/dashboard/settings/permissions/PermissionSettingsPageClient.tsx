@@ -70,12 +70,12 @@ export default function PermissionSettingsPageClient({
 
   const handleSave = () => {
     startTransition(async () => {
-      try {
-        await updateRolePermissions(permissions)
-        toast.success('บันทึกสิทธิ์การใช้งานเรียบร้อยแล้ว')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'บันทึกสิทธิ์การใช้งานไม่สำเร็จ')
+      const result = await updateRolePermissions(permissions)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      toast.success('บันทึกสิทธิ์การใช้งานเรียบร้อยแล้ว')
     })
   }
 

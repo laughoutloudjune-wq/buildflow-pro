@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
+import { translateError } from '@/lib/errors'
 import type {
   ActiveMaterialRow,
   ConsumptionReport,
@@ -122,19 +123,23 @@ export async function createStockAdjustment(input: {
   material_type_id: number
   counted_qty: number
   note: string
-}): Promise<StockAdjustmentResult> {
-  await requireModuleAccess('materials')
-  const supabase = await createClient()
+}): Promise<StockAdjustmentResult | { error: string }> {
+  try {
+    await requireModuleAccess('materials')
+    const supabase = await createClient()
 
-  const { data, error } = await supabase.rpc('stock_adjustment_create', {
-    p_material_type_id: input.material_type_id,
-    p_counted_qty: input.counted_qty,
-    p_note: input.note.trim() || null,
-  })
+    const { data, error } = await supabase.rpc('stock_adjustment_create', {
+      p_material_type_id: input.material_type_id,
+      p_counted_qty: input.counted_qty,
+      p_note: input.note.trim() || null,
+    })
 
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/stock')
-  return data as StockAdjustmentResult
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/stock')
+    return data as StockAdjustmentResult
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'บันทึกการปรับยอดไม่สำเร็จ') }
+  }
 }
 
 /** Used to cap at 500 rows, which silently hid everything older than that
@@ -199,24 +204,28 @@ export async function createStockWithdrawal(input: {
   plot_group_id?: string | null
   note?: string
   items: { material_type_id: number; quantity: number }[]
-}): Promise<StockWithdrawResult> {
-  await requireModuleAccess('materials')
-  const supabase = await createClient()
+}): Promise<StockWithdrawResult | { error: string }> {
+  try {
+    await requireModuleAccess('materials')
+    const supabase = await createClient()
 
-  const { data, error } = await supabase.rpc('stock_request_create', {
-    p_payload: {
-      project_id: input.project_id,
-      contractor_id: input.contractor_id,
-      plot_id: input.plot_id || null,
-      plot_group_id: input.plot_group_id || null,
-      note: input.note?.trim() || null,
-      items: input.items,
-    },
-  })
+    const { data, error } = await supabase.rpc('stock_request_create', {
+      p_payload: {
+        project_id: input.project_id,
+        contractor_id: input.contractor_id,
+        plot_id: input.plot_id || null,
+        plot_group_id: input.plot_group_id || null,
+        note: input.note?.trim() || null,
+        items: input.items,
+      },
+    })
 
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/stock')
-  return data as StockWithdrawResult
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/stock')
+    return data as StockWithdrawResult
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'บันทึกการเบิกวัสดุไม่สำเร็จ') }
+  }
 }
 
 // ---------------------------------------------------------------------------

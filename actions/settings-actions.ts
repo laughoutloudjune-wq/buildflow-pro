@@ -6,6 +6,7 @@ import { DEFAULT_ROLE_PERMISSIONS, normalizeRolePermissions, type RolePermission
 import { requireAuthRole } from '@/actions/_shared/user-role'
 import { toUserRole, type UserRole } from '@/lib/types/billing'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { translateError } from '@/lib/errors'
 
 type SettingsQueryClient = {
   auth: {
@@ -115,103 +116,106 @@ export async function getRolePermissions(): Promise<RolePermissions> {
  * could fill in and save with no visible effect, so they were removed rather
  * than kept as a silent no-op.
  */
-export async function updateBillingInfo(formData: FormData) {
-  await requireAuthRole(['admin'])
-  const supabase = await createClient()
+export async function updateBillingInfo(formData: FormData): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin'])
+    const supabase = await createClient()
 
-  const settingsData = {
-    company_name: formData.get('company_name') as string,
-    tax_id: formData.get('tax_id') as string,
-    updated_at: new Date().toISOString(),
-    signature_url: undefined as string | undefined,
-  }
-
-  const signatureFile = formData.get('signature_url') as File | null;
-
-  if (signatureFile && signatureFile.size > 0) {
-    const filePath = `public/signature-${new Date().getTime()}.${signatureFile.name.split('.').pop()}`
-    const { error: uploadError } = await supabase.storage
-      .from('assets')
-      .upload(filePath, signatureFile);
-
-    if (uploadError) {
-      throw new Error(`Signature upload failed: ${uploadError.message}`);
+    const settingsData = {
+      company_name: formData.get('company_name') as string,
+      tax_id: formData.get('tax_id') as string,
+      updated_at: new Date().toISOString(),
+      signature_url: undefined as string | undefined,
     }
 
-    const { data: urlData } = supabase.storage.from('assets').getPublicUrl(filePath);
-    settingsData.signature_url = urlData.publicUrl
+    const signatureFile = formData.get('signature_url') as File | null;
+
+    if (signatureFile && signatureFile.size > 0) {
+      const filePath = `public/signature-${new Date().getTime()}.${signatureFile.name.split('.').pop()}`
+      const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(filePath, signatureFile);
+
+      if (uploadError) {
+        throw new Error(`อัปโหลดลายเซ็นไม่สำเร็จ: ${uploadError.message}`);
+      }
+
+      const { data: urlData } = supabase.storage.from('assets').getPublicUrl(filePath);
+      settingsData.signature_url = urlData.publicUrl
+    }
+
+    const { error: upsertError } = await supabase
+      .from('organization_settings')
+      .update(settingsData)
+      .eq('id', 1);
+
+    if (upsertError) throw new Error(upsertError.message)
+
+    revalidatePath('/dashboard/settings/billing-info')
+    revalidatePath('/dashboard/settings')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ') }
   }
-
-  const { error: upsertError } = await supabase
-    .from('organization_settings')
-    .update(settingsData)
-    .eq('id', 1);
-
-  if (upsertError) {
-    console.error('Error updating billing info:', upsertError)
-    throw new Error(upsertError.message)
-  }
-
-  revalidatePath('/dashboard/settings/billing-info')
-  revalidatePath('/dashboard/settings')
-  return { success: true }
 }
 
 /**
  * Updates the default VAT/WHT/retention percentages pre-filled when
  * creating or reviewing a billing request (adjustable per-request afterward).
  */
-export async function updateFinancialDefaults(formData: FormData) {
-  await requireAuthRole(['admin'])
-  const supabase = await createClient()
+export async function updateFinancialDefaults(formData: FormData): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin'])
+    const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('organization_settings')
-    .update({
-      default_vat: parseFloat(formData.get('default_vat') as string) || 0,
-      default_wht: parseFloat(formData.get('default_wht') as string) || 0,
-      default_retention: parseFloat(formData.get('default_retention') as string) || 0,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', 1);
+    const { error } = await supabase
+      .from('organization_settings')
+      .update({
+        default_vat: parseFloat(formData.get('default_vat') as string) || 0,
+        default_wht: parseFloat(formData.get('default_wht') as string) || 0,
+        default_retention: parseFloat(formData.get('default_retention') as string) || 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', 1);
 
-  if (error) {
-    console.error('Error updating financial defaults:', error)
-    throw new Error(error.message)
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/settings/financial-defaults')
+    revalidatePath('/dashboard/settings')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ') }
   }
-
-  revalidatePath('/dashboard/settings/financial-defaults')
-  revalidatePath('/dashboard/settings')
-  return { success: true }
 }
 
-export async function updateRolePermissions(nextPermissions: RolePermissions) {
-  const supabase = await createClient()
-  const { role } = await getCurrentUserAndRole(supabase)
-  if (role !== 'admin') throw new Error('Only admin can update permissions')
+export async function updateRolePermissions(nextPermissions: RolePermissions): Promise<{ ok: true } | { error: string }> {
+  try {
+    const supabase = await createClient()
+    const { role } = await getCurrentUserAndRole(supabase)
+    if (role !== 'admin') throw new Error('Only admin can update permissions')
 
-  const permissions = normalizeRolePermissions(nextPermissions)
+    const permissions = normalizeRolePermissions(nextPermissions)
 
-  const { error } = await supabase
-    .from('organization_settings')
-    .upsert(
-      [{
-        id: 1,
-        role_permissions: permissions,
-        updated_at: new Date().toISOString(),
-      }],
-      { onConflict: 'id' }
-    )
+    const { error } = await supabase
+      .from('organization_settings')
+      .upsert(
+        [{
+          id: 1,
+          role_permissions: permissions,
+          updated_at: new Date().toISOString(),
+        }],
+        { onConflict: 'id' }
+      )
 
-  if (error) {
-    console.error('Error updating role permissions:', error)
-    throw new Error(error.message)
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/settings')
+    revalidatePath('/dashboard/settings/permissions')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'บันทึกสิทธิ์การใช้งานไม่สำเร็จ') }
   }
-
-  revalidatePath('/dashboard')
-  revalidatePath('/dashboard/settings')
-  revalidatePath('/dashboard/settings/permissions')
-  return { success: true }
 }
 
 /**
@@ -280,39 +284,40 @@ export async function getUsers() {
 /**
  * Updates the role for a specific user.
  */
-export async function updateUserRole(userId: string, newRole: UserRole) {
-  const supabase = await createClient()
-  const { user, role } = await getCurrentUserAndRole(supabase)
-  if (role !== 'admin') throw new Error('Only admin can update user roles')
+export async function updateUserRole(userId: string, newRole: UserRole): Promise<{ ok: true } | { error: string }> {
+  try {
+    const supabase = await createClient()
+    const { user, role } = await getCurrentUserAndRole(supabase)
+    if (role !== 'admin') throw new Error('Only admin can update user roles')
 
-  // M-10: an admin who demotes themself (or the last other admin) leaves no
-  // one who can fix it. Self-demotion is refused outright, even with other
-  // admins around - it's always the wrong click to make on your own account.
-  if (newRole !== 'admin') {
-    const { data: target } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle()
-    if (target?.role === 'admin') {
-      if (user?.id === userId) {
-        throw new Error('ไม่สามารถเปลี่ยนบทบาทของตัวเองออกจาก Admin ได้ ให้ผู้ดูแลระบบคนอื่นเปลี่ยนแทน')
-      }
-      const { count } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')
-      if ((count || 0) <= 1) {
-        throw new Error('ต้องมีผู้ดูแลระบบ (Admin) อย่างน้อย 1 คนเสมอ')
+    // M-10: an admin who demotes themself (or the last other admin) leaves no
+    // one who can fix it. Self-demotion is refused outright, even with other
+    // admins around - it's always the wrong click to make on your own account.
+    if (newRole !== 'admin') {
+      const { data: target } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle()
+      if (target?.role === 'admin') {
+        if (user?.id === userId) {
+          throw new Error('ไม่สามารถเปลี่ยนบทบาทของตัวเองออกจาก Admin ได้ ให้ผู้ดูแลระบบคนอื่นเปลี่ยนแทน')
+        }
+        const { count } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')
+        if ((count || 0) <= 1) {
+          throw new Error('ต้องมีผู้ดูแลระบบ (Admin) อย่างน้อย 1 คนเสมอ')
+        }
       }
     }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role: newRole })
+      .eq('id', userId)
+
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/settings')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'อัปเดตบทบาทไม่สำเร็จ') }
   }
-
-  const { error } = await supabase
-    .from('profiles')
-    .update({ role: newRole })
-    .eq('id', userId)
-
-  if (error) {
-    console.error('Error updating user role:', error)
-    throw new Error(error.message)
-  }
-
-  revalidatePath('/dashboard/settings')
-  return { success: true }
 }
 
 /**
@@ -321,30 +326,34 @@ export async function updateUserRole(userId: string, newRole: UserRole) {
  * means real data access. ban_duration '876000h' (~100 years) is Supabase's
  * own convention for "indefinite"; 'none' clears it.
  */
-export async function setUserDisabled(userId: string, disabled: boolean) {
-  const supabase = await createClient()
-  const { user, role } = await getCurrentUserAndRole(supabase)
-  if (role !== 'admin') throw new Error('เฉพาะ Admin เท่านั้นที่สามารถปิด/เปิดการใช้งานผู้ใช้ได้')
+export async function setUserDisabled(userId: string, disabled: boolean): Promise<{ ok: true } | { error: string }> {
+  try {
+    const supabase = await createClient()
+    const { user, role } = await getCurrentUserAndRole(supabase)
+    if (role !== 'admin') throw new Error('เฉพาะ Admin เท่านั้นที่สามารถปิด/เปิดการใช้งานผู้ใช้ได้')
 
-  if (disabled) {
-    if (user?.id === userId) {
-      throw new Error('ไม่สามารถปิดการใช้งานบัญชีตัวเองได้')
-    }
-    const { data: target } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle()
-    if (target?.role === 'admin') {
-      const { count } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')
-      if ((count || 0) <= 1) {
-        throw new Error('ต้องมีผู้ดูแลระบบ (Admin) อย่างน้อย 1 คนเสมอ')
+    if (disabled) {
+      if (user?.id === userId) {
+        throw new Error('ไม่สามารถปิดการใช้งานบัญชีตัวเองได้')
+      }
+      const { data: target } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle()
+      if (target?.role === 'admin') {
+        const { count } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')
+        if ((count || 0) <= 1) {
+          throw new Error('ต้องมีผู้ดูแลระบบ (Admin) อย่างน้อย 1 คนเสมอ')
+        }
       }
     }
+
+    const admin = createAdminClient()
+    const { error } = await admin.auth.admin.updateUserById(userId, { ban_duration: disabled ? '876000h' : 'none' })
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/settings')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'ดำเนินการไม่สำเร็จ') }
   }
-
-  const admin = createAdminClient()
-  const { error } = await admin.auth.admin.updateUserById(userId, { ban_duration: disabled ? '876000h' : 'none' })
-  if (error) throw new Error(error.message)
-
-  revalidatePath('/dashboard/settings')
-  return { success: true }
 }
 
 /**
@@ -354,25 +363,26 @@ export async function setUserDisabled(userId: string, disabled: boolean) {
  * name - this is how that gets fixed. Admin can rename anyone; everyone else
  * can only rename themselves.
  */
-export async function updateUserFullName(userId: string, fullName: string) {
-  const supabase = await createClient()
-  const { user, role } = await getCurrentUserAndRole(supabase)
-  if (!user) throw new Error('Not authenticated')
-  if (role !== 'admin' && userId !== user.id) throw new Error('You can only change your own name')
+export async function updateUserFullName(userId: string, fullName: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    const supabase = await createClient()
+    const { user, role } = await getCurrentUserAndRole(supabase)
+    if (!user) throw new Error('Not authenticated')
+    if (role !== 'admin' && userId !== user.id) throw new Error('You can only change your own name')
 
-  const trimmed = fullName.trim()
-  if (!trimmed) throw new Error('กรุณาใส่ชื่อ')
+    const trimmed = fullName.trim()
+    if (!trimmed) throw new Error('กรุณาใส่ชื่อ')
 
-  const { error } = await supabase
-    .from('profiles')
-    .update({ full_name: trimmed })
-    .eq('id', userId)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ full_name: trimmed })
+      .eq('id', userId)
 
-  if (error) {
-    console.error('Error updating user full name:', error)
-    throw new Error(error.message)
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/settings')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'เปลี่ยนชื่อไม่สำเร็จ') }
   }
-
-  revalidatePath('/dashboard/settings')
-  return { success: true }
 }

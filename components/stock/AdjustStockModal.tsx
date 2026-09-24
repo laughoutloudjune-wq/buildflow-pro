@@ -9,12 +9,6 @@ import { createStockAdjustment } from '@/actions/stock-actions'
 
 const numberFormat = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 })
 
-function friendlyError(message: string): string {
-  if (message === 'No permission to adjust stock') return 'คุณไม่มีสิทธิ์ปรับยอดสต็อก'
-  if (message === 'Counted quantity must be zero or more') return 'จำนวนที่นับได้ต้องไม่ติดลบ'
-  return message
-}
-
 export default function AdjustStockModal({
   isOpen,
   onClose,
@@ -52,16 +46,15 @@ export default function AdjustStockModal({
   async function handleSubmit() {
     if (!canSubmit) return
     setIsSubmitting(true)
-    try {
-      await createStockAdjustment({ material_type_id: materialId, counted_qty: countedNumber, note })
+    const result = await createStockAdjustment({ material_type_id: materialId, counted_qty: countedNumber, note })
+    if ('error' in result) {
+      toast.error(result.error)
+    } else {
       toast.success('บันทึกการปรับยอดแล้ว')
       onSuccess()
       onClose()
-    } catch (error) {
-      toast.error(friendlyError(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ'))
-    } finally {
-      setIsSubmitting(false)
     }
+    setIsSubmitting(false)
   }
 
   return (

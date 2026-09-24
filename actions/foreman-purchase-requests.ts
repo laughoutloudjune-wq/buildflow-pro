@@ -4,22 +4,13 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { getCurrentUser } from '@/actions/_shared/user-role'
+import { translateError } from '@/lib/errors'
 
 // W-01: foreman raises the request, purchasing (admin) raises the PO - this
 // file exists so the foreman side never needs the 'procurement' module
 // (which would also expose supplier/PO screens it has no business seeing).
 // pr_create already allows the foreman role; this just gates the same RPC
 // call behind 'foreman' instead of 'procurement'.
-
-const PR_ERROR_TRANSLATIONS: [string, string][] = [
-  ['Not authenticated', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง'],
-  ['No permission to create purchase request', 'คุณไม่มีสิทธิ์สร้างคำขอซื้อ'],
-  ['Choose either a single plot or a plot group, not both', 'กรุณาเลือกแปลงเดียวหรือกลุ่มแปลงอย่างใดอย่างหนึ่งเท่านั้น'],
-]
-
-function translateError(message: string): string {
-  return PR_ERROR_TRANSLATIONS.find(([needle]) => message.includes(needle))?.[1] || message
-}
 
 export async function createForemanPurchaseRequest(input: {
   project_id: string

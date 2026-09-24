@@ -84,31 +84,28 @@ export default function SupplierBranchesModal({
       return
     }
     startTransition(async () => {
-      try {
-        if (editing) {
-          await updateSupplierBranch(editing.id, draft)
-          toast.success('แก้ไขสาขาเรียบร้อยแล้ว')
-        } else {
-          await createSupplierBranch({ ...draft, supplier_id: supplier.id })
-          toast.success('เพิ่มสาขาเรียบร้อยแล้ว')
-        }
-        setIsFormOpen(false)
-        await reload()
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'บันทึกสาขาไม่สำเร็จ')
+      const result = editing
+        ? await updateSupplierBranch(editing.id, draft)
+        : await createSupplierBranch({ ...draft, supplier_id: supplier.id })
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      toast.success(editing ? 'แก้ไขสาขาเรียบร้อยแล้ว' : 'เพิ่มสาขาเรียบร้อยแล้ว')
+      setIsFormOpen(false)
+      await reload()
     })
   }
 
   function handleDeactivate(branch: SupplierBranch) {
     startTransition(async () => {
-      try {
-        await deactivateSupplierBranch(branch.id)
-        toast.success('ปิดใช้งานสาขาแล้ว')
-        await reload()
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ปิดใช้งานสาขาไม่สำเร็จ')
+      const result = await deactivateSupplierBranch(branch.id)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      toast.success('ปิดใช้งานสาขาแล้ว')
+      await reload()
     })
   }
 

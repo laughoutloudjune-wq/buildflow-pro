@@ -768,18 +768,17 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       return
     }
     setIsSavingSupplier(true)
-    try {
-      const created = await createSupplier(supplierDraft)
+    const created = await createSupplier(supplierDraft)
+    if ('error' in created) {
+      toast.error(created.error)
+    } else {
       setSuppliers((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name, 'th')))
       setSupplierId(created.id)
       setPaymentTerms(created.payment_terms || '')
       setIsSupplierModalOpen(false)
       setSupplierDraft(emptySupplierDraft)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'เพิ่มผู้จำหน่ายไม่สำเร็จ')
-    } finally {
-      setIsSavingSupplier(false)
     }
+    setIsSavingSupplier(false)
   }
 
   async function handleCreateCompany() {
@@ -788,17 +787,16 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       return
     }
     setIsSavingCompany(true)
-    try {
-      const created = await createCompany(companyDraft)
+    const created = await createCompany(companyDraft)
+    if ('error' in created) {
+      toast.error(created.error)
+    } else {
       setCompanies((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name, 'th')))
       setCompanyId(created.id)
       setIsCompanyModalOpen(false)
       setCompanyDraft(emptyCompanyDraft)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'เพิ่มบริษัทไม่สำเร็จ')
-    } finally {
-      setIsSavingCompany(false)
     }
+    setIsSavingCompany(false)
   }
 
   function openMaterialModal(lineIndex: number) {

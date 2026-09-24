@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole } from '@/actions/_shared/user-role'
+import { translateError } from '@/lib/errors'
 import type { Company, Supplier, SupplierBranch, SupplierBranchInput, SupplierInput } from '@/lib/types/procurement'
 
 // ---------------------------------------------------------------------------
@@ -26,17 +27,51 @@ export async function getSuppliers(activeOnly = true): Promise<Supplier[]> {
 // add a new supplier inline while building a purchase order, without having
 // to stop and go find an admin first. Editing/deactivating an existing
 // supplier stays admin-only - see updateSupplier/deactivateSupplier below.
-export async function createSupplier(input: SupplierInput): Promise<Supplier> {
-  await requireAuthRole(['admin', 'pm'])
-  const supabase = await createClient()
+export async function createSupplier(input: SupplierInput): Promise<Supplier | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'])
+    const supabase = await createClient()
 
-  const name = input.name.trim()
-  if (!name) throw new Error('Supplier name is required')
+    const name = input.name.trim()
+    if (!name) throw new Error('กรุณาใส่ชื่อผู้จำหน่าย')
 
-  const { data, error } = await supabase
-    .from('suppliers')
-    .insert([
-      {
+    const { data, error } = await supabase
+      .from('suppliers')
+      .insert([
+        {
+          name,
+          supplier_type: input.supplier_type === 'individual' ? 'individual' : 'company',
+          contact_name: input.contact_name?.trim() || null,
+          phone: input.phone?.trim() || null,
+          email: input.email?.trim() || null,
+          address: input.address?.trim() || null,
+          tax_id: input.tax_id?.trim() || null,
+          branch_code: input.branch_code?.trim() || null,
+          payment_terms: input.payment_terms?.trim() || null,
+        },
+      ])
+      .select()
+      .single()
+
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/settings/suppliers')
+    return data
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ') }
+  }
+}
+
+export async function updateSupplier(id: string, input: SupplierInput): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin'])
+    const supabase = await createClient()
+
+    const name = input.name.trim()
+    if (!name) throw new Error('กรุณาใส่ชื่อผู้จำหน่าย')
+
+    const { error } = await supabase
+      .from('suppliers')
+      .update({
         name,
         supplier_type: input.supplier_type === 'individual' ? 'individual' : 'company',
         contact_name: input.contact_name?.trim() || null,
@@ -46,48 +81,28 @@ export async function createSupplier(input: SupplierInput): Promise<Supplier> {
         tax_id: input.tax_id?.trim() || null,
         branch_code: input.branch_code?.trim() || null,
         payment_terms: input.payment_terms?.trim() || null,
-      },
-    ])
-    .select()
-    .single()
+      })
+      .eq('id', id)
 
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/settings/suppliers')
-  return data
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/settings/suppliers')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ') }
+  }
 }
 
-export async function updateSupplier(id: string, input: SupplierInput) {
-  await requireAuthRole(['admin'])
-  const supabase = await createClient()
-
-  const name = input.name.trim()
-  if (!name) throw new Error('Supplier name is required')
-
-  const { error } = await supabase
-    .from('suppliers')
-    .update({
-      name,
-      supplier_type: input.supplier_type === 'individual' ? 'individual' : 'company',
-      contact_name: input.contact_name?.trim() || null,
-      phone: input.phone?.trim() || null,
-      email: input.email?.trim() || null,
-      address: input.address?.trim() || null,
-      tax_id: input.tax_id?.trim() || null,
-      branch_code: input.branch_code?.trim() || null,
-      payment_terms: input.payment_terms?.trim() || null,
-    })
-    .eq('id', id)
-
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/settings/suppliers')
-}
-
-export async function deactivateSupplier(id: string) {
-  await requireAuthRole(['admin'])
-  const supabase = await createClient()
-  const { error } = await supabase.from('suppliers').update({ is_active: false }).eq('id', id)
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/settings/suppliers')
+export async function deactivateSupplier(id: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin'])
+    const supabase = await createClient()
+    const { error } = await supabase.from('suppliers').update({ is_active: false }).eq('id', id)
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/settings/suppliers')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'ปิดใช้งานไม่สำเร็จ') }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -134,68 +149,85 @@ export async function getSupplierBranches(supplierId: string): Promise<SupplierB
 
 // Same reasoning as createSupplier: a PM adding a branch mid-order shouldn't
 // have to go find an admin. Editing and deactivating stay admin-only.
-export async function createSupplierBranch(input: SupplierBranchInput): Promise<SupplierBranch> {
-  await requireAuthRole(['admin', 'pm'])
-  const supabase = await createClient()
+export async function createSupplierBranch(input: SupplierBranchInput): Promise<SupplierBranch | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'])
+    const supabase = await createClient()
 
-  const name = input.name.trim()
-  const branchCode = input.branch_code.trim()
-  if (!name) throw new Error('Branch name is required')
-  if (!branchCode) throw new Error('Branch code is required')
+    const name = input.name.trim()
+    const branchCode = input.branch_code.trim()
+    if (!name) throw new Error('กรุณาใส่ชื่อสาขา')
+    if (!branchCode) throw new Error('กรุณาใส่รหัสสาขา')
 
-  const { data, error } = await supabase
-    .from('supplier_branches')
-    .insert([
-      {
-        supplier_id: input.supplier_id,
+    const { data, error } = await supabase
+      .from('supplier_branches')
+      .insert([
+        {
+          supplier_id: input.supplier_id,
+          branch_code: branchCode,
+          name,
+          address: input.address?.trim() || null,
+          phone: input.phone?.trim() || null,
+          contact_name: input.contact_name?.trim() || null,
+        },
+      ])
+      .select()
+      .single()
+
+    if (error) throw new Error(translateBranchError(error.message))
+    revalidatePath('/dashboard/settings/suppliers')
+    return data
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ' }
+  }
+}
+
+export async function updateSupplierBranch(
+  id: string,
+  input: Omit<SupplierBranchInput, 'supplier_id'>
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin'])
+    const supabase = await createClient()
+
+    const name = input.name.trim()
+    const branchCode = input.branch_code.trim()
+    if (!name) throw new Error('กรุณาใส่ชื่อสาขา')
+    if (!branchCode) throw new Error('กรุณาใส่รหัสสาขา')
+
+    const { error } = await supabase
+      .from('supplier_branches')
+      .update({
         branch_code: branchCode,
         name,
         address: input.address?.trim() || null,
         phone: input.phone?.trim() || null,
         contact_name: input.contact_name?.trim() || null,
-      },
-    ])
-    .select()
-    .single()
+      })
+      .eq('id', id)
 
-  if (error) throw new Error(translateBranchError(error.message))
-  revalidatePath('/dashboard/settings/suppliers')
-  return data
-}
-
-export async function updateSupplierBranch(id: string, input: Omit<SupplierBranchInput, 'supplier_id'>) {
-  await requireAuthRole(['admin'])
-  const supabase = await createClient()
-
-  const name = input.name.trim()
-  const branchCode = input.branch_code.trim()
-  if (!name) throw new Error('Branch name is required')
-  if (!branchCode) throw new Error('Branch code is required')
-
-  const { error } = await supabase
-    .from('supplier_branches')
-    .update({
-      branch_code: branchCode,
-      name,
-      address: input.address?.trim() || null,
-      phone: input.phone?.trim() || null,
-      contact_name: input.contact_name?.trim() || null,
-    })
-    .eq('id', id)
-
-  if (error) throw new Error(translateBranchError(error.message))
-  revalidatePath('/dashboard/settings/suppliers')
+    if (error) throw new Error(translateBranchError(error.message))
+    revalidatePath('/dashboard/settings/suppliers')
+    return { ok: true }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ' }
+  }
 }
 
 /** Deactivate rather than delete: orders already issued against this branch
  * keep pointing at it, and the FK has no ON DELETE action precisely so a
  * cited branch cannot be removed out from under them. */
-export async function deactivateSupplierBranch(id: string) {
-  await requireAuthRole(['admin'])
-  const supabase = await createClient()
-  const { error } = await supabase.from('supplier_branches').update({ is_active: false }).eq('id', id)
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/settings/suppliers')
+export async function deactivateSupplierBranch(id: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin'])
+    const supabase = await createClient()
+    const { error } = await supabase.from('supplier_branches').update({ is_active: false }).eq('id', id)
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/settings/suppliers')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'ปิดใช้งานไม่สำเร็จ') }
+  }
 }
 
 function translateBranchError(message: string): string {
@@ -229,31 +261,35 @@ export async function createCompany(input: {
   phone?: string
   logo_url?: string
   signature_url?: string
-}): Promise<Company> {
-  await requireAuthRole(['admin', 'pm'])
-  const supabase = await createClient()
+}): Promise<Company | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'])
+    const supabase = await createClient()
 
-  const name = input.name.trim()
-  if (!name) throw new Error('Company name is required')
+    const name = input.name.trim()
+    if (!name) throw new Error('กรุณาใส่ชื่อบริษัท')
 
-  const { data, error } = await supabase
-    .from('companies')
-    .insert([
-      {
-        name,
-        tax_id: input.tax_id?.trim() || null,
-        address: input.address?.trim() || null,
-        phone: input.phone?.trim() || null,
-        logo_url: input.logo_url?.trim() || null,
-        signature_url: input.signature_url?.trim() || null,
-      },
-    ])
-    .select()
-    .single()
+    const { data, error } = await supabase
+      .from('companies')
+      .insert([
+        {
+          name,
+          tax_id: input.tax_id?.trim() || null,
+          address: input.address?.trim() || null,
+          phone: input.phone?.trim() || null,
+          logo_url: input.logo_url?.trim() || null,
+          signature_url: input.signature_url?.trim() || null,
+        },
+      ])
+      .select()
+      .single()
 
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/settings/companies')
-  return data
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/settings/companies')
+    return data
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ') }
+  }
 }
 
 export async function updateCompany(
@@ -266,27 +302,32 @@ export async function updateCompany(
     logo_url?: string
     signature_url?: string
   }
-) {
-  await requireAuthRole(['admin'])
-  const supabase = await createClient()
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin'])
+    const supabase = await createClient()
 
-  const name = input.name.trim()
-  if (!name) throw new Error('Company name is required')
+    const name = input.name.trim()
+    if (!name) throw new Error('กรุณาใส่ชื่อบริษัท')
 
-  const { error } = await supabase
-    .from('companies')
-    .update({
-      name,
-      tax_id: input.tax_id?.trim() || null,
-      address: input.address?.trim() || null,
-      phone: input.phone?.trim() || null,
-      logo_url: input.logo_url?.trim() || null,
-      signature_url: input.signature_url?.trim() || null,
-    })
-    .eq('id', id)
+    const { error } = await supabase
+      .from('companies')
+      .update({
+        name,
+        tax_id: input.tax_id?.trim() || null,
+        address: input.address?.trim() || null,
+        phone: input.phone?.trim() || null,
+        logo_url: input.logo_url?.trim() || null,
+        signature_url: input.signature_url?.trim() || null,
+      })
+      .eq('id', id)
 
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/settings/companies')
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/settings/companies')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ') }
+  }
 }
 
 // Uploads a company logo or signature and returns its public URL.
@@ -295,29 +336,38 @@ export async function updateCompany(
 // to FormData, because the purchase order form's inline "add company" modal
 // calls them with plain fields and has no file picker. The settings page
 // uploads first, then saves the returned URL like any other string field.
-export async function uploadCompanyAsset(kind: 'logo' | 'signature', formData: FormData): Promise<string> {
-  await requireAuthRole(['admin'])
-  const supabase = await createClient()
+export async function uploadCompanyAsset(kind: 'logo' | 'signature', formData: FormData): Promise<{ url: string } | { error: string }> {
+  try {
+    await requireAuthRole(['admin'])
+    const supabase = await createClient()
 
-  const file = formData.get('file') as File | null
-  if (!file || file.size === 0) throw new Error('No file provided')
-  if (!file.type.startsWith('image/')) throw new Error('ไฟล์ต้องเป็นรูปภาพเท่านั้น')
-  if (file.size > 2 * 1024 * 1024) throw new Error('ขนาดไฟล์ต้องไม่เกิน 2MB')
+    const file = formData.get('file') as File | null
+    if (!file || file.size === 0) throw new Error('กรุณาเลือกไฟล์')
+    if (!file.type.startsWith('image/')) throw new Error('ไฟล์ต้องเป็นรูปภาพเท่านั้น')
+    if (file.size > 2 * 1024 * 1024) throw new Error('ขนาดไฟล์ต้องไม่เกิน 2MB')
 
-  const extension = file.name.split('.').pop() || 'png'
-  const filePath = `public/company-${kind}-${Date.now()}.${extension}`
+    const extension = file.name.split('.').pop() || 'png'
+    const filePath = `public/company-${kind}-${Date.now()}.${extension}`
 
-  const { error: uploadError } = await supabase.storage.from('assets').upload(filePath, file)
-  if (uploadError) throw new Error(`อัปโหลดไม่สำเร็จ: ${uploadError.message}`)
+    const { error: uploadError } = await supabase.storage.from('assets').upload(filePath, file)
+    if (uploadError) throw new Error(`อัปโหลดไม่สำเร็จ: ${uploadError.message}`)
 
-  const { data } = supabase.storage.from('assets').getPublicUrl(filePath)
-  return data.publicUrl
+    const { data } = supabase.storage.from('assets').getPublicUrl(filePath)
+    return { url: data.publicUrl }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'อัปโหลดไม่สำเร็จ' }
+  }
 }
 
-export async function deactivateCompany(id: string) {
-  await requireAuthRole(['admin'])
-  const supabase = await createClient()
-  const { error } = await supabase.from('companies').update({ is_active: false }).eq('id', id)
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/settings/companies')
+export async function deactivateCompany(id: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin'])
+    const supabase = await createClient()
+    const { error } = await supabase.from('companies').update({ is_active: false }).eq('id', id)
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/settings/companies')
+    return { ok: true }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'ปิดใช้งานไม่สำเร็จ') }
+  }
 }

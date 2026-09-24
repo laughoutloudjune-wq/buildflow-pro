@@ -59,16 +59,15 @@ export default function CompaniesPageClient({
   async function handleAssetUpload(kind: 'logo' | 'signature', file: File | undefined) {
     if (!file) return
     setUploading(kind)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const url = await uploadCompanyAsset(kind, formData)
-      setDraft((prev) => ({ ...prev, [kind === 'logo' ? 'logo_url' : 'signature_url']: url }))
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'อัปโหลดไม่สำเร็จ')
-    } finally {
-      setUploading(null)
+    const formData = new FormData()
+    formData.append('file', file)
+    const result = await uploadCompanyAsset(kind, formData)
+    if ('error' in result) {
+      toast.error(result.error)
+    } else {
+      setDraft((prev) => ({ ...prev, [kind === 'logo' ? 'logo_url' : 'signature_url']: result.url }))
     }
+    setUploading(null)
   }
 
   function closeModal() {
@@ -82,30 +81,26 @@ export default function CompaniesPageClient({
       return
     }
     startTransition(async () => {
-      try {
-        if (editing) {
-          await updateCompany(editing.id, draft)
-        } else {
-          await createCompany(draft)
-        }
-        closeModal()
-        router.refresh()
-        toast.success('บันทึกข้อมูลบริษัทเรียบร้อยแล้ว')
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ')
+      const result = editing ? await updateCompany(editing.id, draft) : await createCompany(draft)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      closeModal()
+      router.refresh()
+      toast.success('บันทึกข้อมูลบริษัทเรียบร้อยแล้ว')
     })
   }
 
   function handleDeactivate(company: Company) {
     if (!confirm(`ยืนยันปิดใช้งานบริษัท "${company.name}"?`)) return
     startTransition(async () => {
-      try {
-        await deactivateCompany(company.id)
-        router.refresh()
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ปิดใช้งานไม่สำเร็จ')
+      const result = await deactivateCompany(company.id)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      router.refresh()
     })
   }
 

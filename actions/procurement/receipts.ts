@@ -4,20 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole } from '@/actions/_shared/user-role'
+import { translateError as translateReceiptError } from '@/lib/errors'
 import type { GoodsReceipt } from '@/lib/types/procurement'
-
-// Same reasoning as PO_ERROR_TRANSLATIONS in actions/procurement/orders.ts.
-const RECEIPT_ERROR_TRANSLATIONS: [string, string][] = [
-  ['Not authenticated', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง'],
-  ['Only PM/Admin can record a goods receipt', 'เฉพาะ PM/Admin เท่านั้นที่สามารถบันทึกการรับของได้'],
-  ['Purchase order not found', 'ไม่พบใบสั่งซื้อนี้'],
-  ['Can only receive against a purchase order that is sent or partially received', 'รับของได้เฉพาะใบสั่งซื้อที่อยู่ในสถานะส่งแล้วหรือรับของบางส่วนเท่านั้น'],
-  ['One or more receipt lines do not belong to this purchase order', 'มีรายการที่ไม่ได้อยู่ในใบสั่งซื้อนี้'],
-]
-
-function translateReceiptError(message: string): string {
-  return RECEIPT_ERROR_TRANSLATIONS.find(([needle]) => message.includes(needle))?.[1] || message
-}
 
 const SELECT_WITH_RELATIONS = `
   *,

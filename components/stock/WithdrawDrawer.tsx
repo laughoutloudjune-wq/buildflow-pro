@@ -18,24 +18,6 @@ import type { PlotGroup } from '@/lib/types/materials'
 type Line = { material_type_id: number | null; quantity: string }
 type PlotScope = 'none' | 'plot' | 'group'
 
-// The backend hard-blocks a withdrawal that would take stock negative - a
-// deliberate call, see the integration plan. This form disables Submit
-// instead of letting people find that out after a failed round trip, but
-// the message still needs translating for the rare race (someone else
-// withdrew the same material in between loading this form and submitting).
-function friendlyError(message: string): string {
-  if (message.startsWith('Not enough stock')) return 'วัสดุในสต็อกไม่พอสำหรับจำนวนที่ระบุ กรุณาลดจำนวนหรือรีเฟรชข้อมูล'
-  // Shouldn't be reachable since the picker already excludes these
-  // materials, but the RPC enforces it too (defense in depth) - translate
-  // it just in case the list is stale.
-  if (message.includes('is set to receive-only')) return `${message.split(' is set to receive-only')[0]} เป็นวัสดุรับเข้าอย่างเดียว ไม่สามารถเบิกได้ กรุณารีเฟรชข้อมูล`
-  if (message === 'project_id is required') return 'กรุณาเลือกโครงการ'
-  if (message === 'contractor_id is required') return 'กรุณาเลือกผู้รับเหมา'
-  if (message === 'No permission to withdraw stock') return 'คุณไม่มีสิทธิ์เบิกวัสดุ'
-  if (message.startsWith('Choose either a single plot')) return 'กรุณาเลือกแปลงเดียวหรือกลุ่มแปลง อย่างใดอย่างหนึ่ง'
-  return message
-}
-
 export default function WithdrawDrawer({
   isOpen,
   onClose,
@@ -223,24 +205,23 @@ export default function WithdrawDrawer({
   async function handleSubmit() {
     if (!canSubmit) return
     setIsSubmitting(true)
-    try {
-      await createStockWithdrawal({
-        project_id: projectId,
-        contractor_id: contractorId,
-        plot_id: plotScope === 'plot' ? plotId : null,
-        plot_group_id: plotScope === 'group' ? plotGroupId : null,
-        note,
-        items: lines.map((l) => ({ material_type_id: l.material_type_id as number, quantity: Number(l.quantity) })),
-      })
+    const result = await createStockWithdrawal({
+      project_id: projectId,
+      contractor_id: contractorId,
+      plot_id: plotScope === 'plot' ? plotId : null,
+      plot_group_id: plotScope === 'group' ? plotGroupId : null,
+      note,
+      items: lines.map((l) => ({ material_type_id: l.material_type_id as number, quantity: Number(l.quantity) })),
+    })
+    if ('error' in result) {
+      toast.error(result.error)
+    } else {
       toast.success('บันทึกการเบิกวัสดุแล้ว')
       resetForm()
       onSuccess()
       onClose()
-    } catch (error) {
-      toast.error(friendlyError(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ'))
-    } finally {
-      setIsSubmitting(false)
     }
+    setIsSubmitting(false)
   }
 
   return (

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole } from '@/actions/_shared/user-role'
+import { translateError as translatePoError } from '@/lib/errors'
 import type { LastMaterialOrderPrice, PurchaseOrder, PurchaseOrderInput, PurchaseOrderStatus } from '@/lib/types/procurement'
 
 const SELECT_WITH_RELATIONS = `
@@ -140,41 +141,9 @@ export async function getLastMaterialOrderPrice(
 // clean, expected validation message like "already has goods received" into
 // an unreadable "An error occurred in the Server Components render" toast
 // for the user. Returning `{ error }` as normal data instead sidesteps that
-// sanitization. The substring map below also covers the raw RPC exception
-// text (English, from the SQL function) with the Thai the rest of the form
-// is in - same convention as the plot-group-member conflict message in
-// material-actions.ts.
-const PO_ERROR_TRANSLATIONS: [string, string][] = [
-  ['Cannot edit a purchase order that has already been paid or cancelled', 'ไม่สามารถแก้ไขใบสั่งซื้อนี้ได้ เนื่องจากชำระเงินแล้วหรือถูกยกเลิกไปแล้ว'],
-  ['Cannot remove a line that already has goods received - reduce its quantity instead', 'ลบรายการนี้ไม่ได้ เนื่องจากมีการรับของแล้ว กรุณาลดจำนวนแทนการลบ'],
-  ['Cannot set ordered quantity below the quantity already received', 'ระบุจำนวนสั่งซื้อน้อยกว่าจำนวนที่รับแล้วไม่ได้'],
-  ['Branch does not belong to this supplier', 'สาขาที่เลือกไม่ได้อยู่กับผู้จำหน่ายรายนี้ กรุณาเลือกสาขาใหม่'],
-  ['Choose either a single plot or a plot group, not both', 'กรุณาเลือกแปลงเดียวหรือกลุ่มแปลงอย่างใดอย่างหนึ่งเท่านั้น'],
-  ['A reason is required when marking a purchase order outside BOQ', 'กรุณาระบุเหตุผลเมื่อทำเครื่องหมายว่าเป็นการซื้อนอก BOQ'],
-  ['Purchase order not found', 'ไม่พบใบสั่งซื้อนี้'],
-  ['Only PM/Admin can edit a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถแก้ไขใบสั่งซื้อได้'],
-  ['Only PM/Admin can create a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถสร้างใบสั่งซื้อได้'],
-  ['Not authenticated', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง'],
-  ['Only a purchase order that has already received something can have its receiving undone', 'ยกเลิกการรับของได้เฉพาะใบสั่งซื้อที่มีการรับของแล้วเท่านั้น'],
-  [
-    "Cannot undo receiving - a payment has already been recorded against one of this order's receipts",
-    'ยกเลิกการรับของไม่ได้ เนื่องจากมีการบันทึกจ่ายเงินสำหรับใบรับสินค้านี้แล้ว กรุณายกเลิกใบสำคัญจ่ายก่อน',
-  ],
-  [
-    'Cannot undo receiving - some of the received material has already been withdrawn or used elsewhere',
-    'ยกเลิกการรับของไม่ได้ เนื่องจากวัสดุบางส่วนถูกเบิกใช้ไปแล้ว กรุณายกเลิกการเบิกนั้นก่อน',
-  ],
-  ['Only PM/Admin can close a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถปิดใบสั่งซื้อได้'],
-  ['A reason is required to close a purchase order short', 'กรุณาระบุเหตุผลที่ปิดใบสั่งซื้อ'],
-  [
-    'Can only close short a partially received purchase order',
-    'ปิดใบสั่งซื้อแบบส่งไม่ครบได้เฉพาะใบสั่งซื้อที่มีสถานะรับของบางส่วนเท่านั้น',
-  ],
-]
-
-function translatePoError(message: string): string {
-  return PO_ERROR_TRANSLATIONS.find(([needle]) => message.includes(needle))?.[1] || message
-}
+// sanitization. translatePoError (imported above as lib/errors's shared
+// translateError) covers the raw RPC exception text (English, from the SQL
+// function) with the Thai the rest of the form is in.
 
 export async function createPurchaseOrder(
   input: PurchaseOrderInput & { status?: 'draft' | 'sent' }
@@ -227,22 +196,32 @@ export async function updatePurchaseOrder(
   }
 }
 
-export async function setPurchaseOrderStatus(id: string, status: 'draft' | 'sent') {
-  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can change purchase order status')
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('po_set_status', { p_id: id, p_status: status })
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/procurement/orders')
-  revalidatePath(`/dashboard/procurement/orders/${id}`)
+export async function setPurchaseOrderStatus(id: string, status: 'draft' | 'sent'): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can change purchase order status')
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('po_set_status', { p_id: id, p_status: status })
+    if (error) return { error: translatePoError(error.message) }
+    revalidatePath('/dashboard/procurement/orders')
+    revalidatePath(`/dashboard/procurement/orders/${id}`)
+    return { ok: true }
+  } catch (error) {
+    return { error: translatePoError(error instanceof Error ? error.message : 'เปลี่ยนสถานะไม่สำเร็จ') }
+  }
 }
 
-export async function cancelPurchaseOrder(id: string, reason?: string) {
-  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can cancel a purchase order')
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('po_cancel', { p_id: id, p_reason: reason?.trim() || null })
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/procurement/orders')
-  revalidatePath(`/dashboard/procurement/orders/${id}`)
+export async function cancelPurchaseOrder(id: string, reason?: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can cancel a purchase order')
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('po_cancel', { p_id: id, p_reason: reason?.trim() || null })
+    if (error) return { error: translatePoError(error.message) }
+    revalidatePath('/dashboard/procurement/orders')
+    revalidatePath(`/dashboard/procurement/orders/${id}`)
+    return { ok: true }
+  } catch (error) {
+    return { error: translatePoError(error instanceof Error ? error.message : 'ยกเลิกไม่สำเร็จ') }
+  }
 }
 
 /** From partially_received: shrinks every short line's ordered quantity
@@ -279,48 +258,60 @@ export async function markPurchaseOrderReceived(id: string, receivedAt: string) 
  * site line, netted to zero) is reversed - not just the status label. See
  * 202609230003_po_unmark_received_full_undo.sql for why and what it
  * refuses (a receipt already paid, or material already withdrawn). */
-export async function unmarkPurchaseOrderReceived(id: string) {
-  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can unmark a purchase order as received')
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('po_unmark_received', { p_id: id })
-  if (error) throw new Error(translatePoError(error.message))
-  revalidatePath('/dashboard/procurement/orders')
-  revalidatePath(`/dashboard/procurement/orders/${id}`)
-  revalidatePath('/dashboard/procurement/requests')
-  revalidatePath('/dashboard/procurement/receipts')
-  revalidatePath('/dashboard/stock')
+export async function unmarkPurchaseOrderReceived(id: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can unmark a purchase order as received')
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('po_unmark_received', { p_id: id })
+    if (error) return { error: translatePoError(error.message) }
+    revalidatePath('/dashboard/procurement/orders')
+    revalidatePath(`/dashboard/procurement/orders/${id}`)
+    revalidatePath('/dashboard/procurement/requests')
+    revalidatePath('/dashboard/procurement/receipts')
+    revalidatePath('/dashboard/stock')
+    return { ok: true }
+  } catch (error) {
+    return { error: translatePoError(error instanceof Error ? error.message : 'ยกเลิกการรับของไม่สำเร็จ') }
+  }
 }
 
 /** Only draft/sent/cancelled orders with no goods_receipts can be deleted -
  * po_delete enforces this server-side; this just surfaces its error. */
-export async function deletePurchaseOrder(id: string) {
-  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can delete a purchase order')
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('po_delete', { p_id: id })
-  if (error) throw new Error(error.message)
-  revalidatePath('/dashboard/procurement/orders')
-  revalidatePath('/dashboard/procurement/requests')
+export async function deletePurchaseOrder(id: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can delete a purchase order')
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('po_delete', { p_id: id })
+    if (error) return { error: translatePoError(error.message) }
+    revalidatePath('/dashboard/procurement/orders')
+    revalidatePath('/dashboard/procurement/requests')
+    return { ok: true }
+  } catch (error) {
+    return { error: translatePoError(error instanceof Error ? error.message : 'ลบไม่สำเร็จ') }
+  }
 }
 
 /** Deletes each id independently (no partial-batch rollback) and reports how
  * many succeeded - the list page's bulk "delete selected" action. */
 export async function deletePurchaseOrders(ids: string[]) {
-  const results = await Promise.allSettled(ids.map((id) => deletePurchaseOrder(id)))
-  const errors = results
-    .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-    .map((r) => (r.reason instanceof Error ? r.reason.message : String(r.reason)))
+  const results = await Promise.all(ids.map((id) => deletePurchaseOrder(id)))
+  const errors = results.filter((r): r is { error: string } => 'error' in r).map((r) => r.error)
   return { deleted: ids.length - errors.length, failed: errors.length, errors }
 }
 
 /** Copies a PO's vendor/terms/line items into a brand-new draft - a fresh
  * po_no, today's date, and no link back to the source order's purchase
  * request (that request was already consumed by the original order). */
-export async function duplicatePurchaseOrder(id: string): Promise<{ id: string; po_no: string }> {
-  await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can duplicate a purchase order')
+export async function duplicatePurchaseOrder(id: string): Promise<{ id: string; po_no: string } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can duplicate a purchase order')
+  } catch (error) {
+    return { error: translatePoError(error instanceof Error ? error.message : 'ทำสำเนาไม่สำเร็จ') }
+  }
   const source = await getPurchaseOrderById(id)
-  if (!source) throw new Error('Purchase order not found')
+  if (!source) return { error: translatePoError('Purchase order not found') }
 
-  const result = await createPurchaseOrder({
+  return createPurchaseOrder({
     supplier_id: source.supplier_id,
     supplier_branch_id: source.supplier_branch_id,
     company_id: source.company_id,
@@ -352,23 +343,13 @@ export async function duplicatePurchaseOrder(id: string): Promise<{ id: string; 
       intended_destination: i.intended_destination,
     })),
   })
-  // createPurchaseOrder returns `{ error }` instead of throwing (see its
-  // definition above) - re-throw here so this function keeps the throws-on-
-  // failure contract that duplicatePurchaseOrders' Promise.allSettled below
-  // relies on to sort successes from failures.
-  if ('error' in result) throw new Error(result.error)
-  return result
 }
 
 /** Duplicates each id independently and reports how many succeeded - the
  * list page's bulk "duplicate selected" action. */
 export async function duplicatePurchaseOrders(ids: string[]) {
-  const results = await Promise.allSettled(ids.map((id) => duplicatePurchaseOrder(id)))
-  const created = results
-    .filter((r): r is PromiseFulfilledResult<{ id: string; po_no: string }> => r.status === 'fulfilled')
-    .map((r) => r.value)
-  const errors = results
-    .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-    .map((r) => (r.reason instanceof Error ? r.reason.message : String(r.reason)))
+  const results = await Promise.all(ids.map((id) => duplicatePurchaseOrder(id)))
+  const created = results.filter((r): r is { id: string; po_no: string } => !('error' in r))
+  const errors = results.filter((r): r is { error: string } => 'error' in r).map((r) => r.error)
   return { created, failed: errors.length, errors }
 }
