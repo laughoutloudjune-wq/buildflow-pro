@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { createContractor, deleteContractor, updateContractor, getContractorApprovedHistory } from '@/actions/contractor-actions'
 import { formatCurrency } from '@/lib/currency'
 
@@ -52,6 +53,7 @@ export default function ContractorsPageClient({
   const [retentionRows, setRetentionRows] = useState<any[]>([])
   const [isRetentionLoading, setIsRetentionLoading] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [deleteTarget, setDeleteTarget] = useState<Contractor | null>(null)
   const collator = useMemo(() => new Intl.Collator('th', { numeric: true, sensitivity: 'base' }), [])
 
   const openModal = (contractor: Contractor | null = null) => {
@@ -76,10 +78,12 @@ export default function ContractorsPageClient({
     })
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('ยืนยันลบผู้รับเหมารายนี้?')) return
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return
+    const id = deleteTarget.id
     startTransition(async () => {
       await deleteContractor(id)
+      setDeleteTarget(null)
       router.refresh()
     })
   }
@@ -199,7 +203,7 @@ export default function ContractorsPageClient({
                   <button onClick={() => openModal(c)} className="text-slate-300 hover:text-indigo-500 p-1 rounded hover:bg-indigo-50 transition">
                     <Pencil className="h-4 w-4" />
                   </button>
-                  <button onClick={() => handleDelete(c.id)} disabled={isPending} className="text-slate-300 hover:text-red-500 p-1 rounded hover:bg-red-50 transition">
+                  <button onClick={() => setDeleteTarget(c)} disabled={isPending} className="text-slate-300 hover:text-red-500 p-1 rounded hover:bg-red-50 transition">
                     {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   </button>
                 </div>
@@ -553,6 +557,18 @@ export default function ContractorsPageClient({
           )}
         </div>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="ลบผู้รับเหมา"
+        message={deleteTarget ? `ยืนยันลบผู้รับเหมา "${deleteTarget.name}"?` : ''}
+        confirmLabel={isPending ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

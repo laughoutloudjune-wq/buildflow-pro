@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useToast } from '@/components/ui/Toast'
 import BoqMaterialItemsModal from '@/components/materials/BoqMaterialItemsModal'
@@ -51,6 +52,7 @@ export default function BOQDetailPageClient({
   const [isMaterialExcelImportOpen, setIsMaterialExcelImportOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [collapsedTypes, setCollapsedTypes] = useState<Set<number>>(new Set())
+  const [deleteTarget, setDeleteTarget] = useState<BOQItem | null>(null)
 
   const toggleTypeCollapsed = (typeId: number) => {
     setCollapsedTypes((prev) => {
@@ -83,7 +85,7 @@ export default function BOQDetailPageClient({
         await refreshItems()
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to save BOQ item'
-        alert(message)
+        toast.error(message)
       }
     })
   }
@@ -146,7 +148,7 @@ export default function BOQDetailPageClient({
 
   const handleImportSubmit = () => {
     if (!sourceModelId) {
-      alert('กรุณาเลือกแบบบ้านต้นทาง')
+      toast.error('กรุณาเลือกแบบบ้านต้นทาง')
       return
     }
 
@@ -158,7 +160,7 @@ export default function BOQDetailPageClient({
       }))
 
     if (itemsToImport.length === 0) {
-      alert('กรุณาเลือกรายการอย่างน้อย 1 รายการ')
+      toast.error('กรุณาเลือกรายการอย่างน้อย 1 รายการ')
       return
     }
 
@@ -173,16 +175,18 @@ export default function BOQDetailPageClient({
         await refreshItems()
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to import BOQ items'
-        alert(message)
+        toast.error(message)
       }
     })
   }
 
-  const handleDelete = async (itemId: string) => {
-    if (!confirm('ยืนยันลบรายการนี้?')) return
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return
+    const itemId = deleteTarget.id
     startTransition(async () => {
       try {
         await deleteBOQItem(itemId, id)
+        setDeleteTarget(null)
         await refreshItems()
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'ลบไม่สำเร็จ')
@@ -363,7 +367,7 @@ export default function BOQDetailPageClient({
                                 <Pencil className="h-4 w-4" />
                               </button>
                               <button
-                                onClick={() => handleDelete(item.id)}
+                                onClick={() => setDeleteTarget(item)}
                                 disabled={isPending}
                                 className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 transition"
                                 title="ลบ"
@@ -558,6 +562,18 @@ export default function BOQDetailPageClient({
         isOpen={isMaterialExcelImportOpen}
         onClose={() => setIsMaterialExcelImportOpen(false)}
         onImported={() => setIsHouseModelMaterialsOpen(true)}
+      />
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="ลบรายการ BOQ"
+        message={deleteTarget ? `ยืนยันลบรายการ "${deleteTarget.item_name}"?` : ''}
+        confirmLabel={isPending ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   )

@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { createContractorType, updateContractorType, deleteContractorType } from '@/actions/contractor-type-actions'
 
@@ -27,6 +28,7 @@ export default function ContractorTypesPageClient({
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditing, setIsEditing] = useState<ContractorType | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [deleteTarget, setDeleteTarget] = useState<ContractorType | null>(null)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -55,10 +57,12 @@ export default function ContractorTypesPageClient({
     })
   }
 
-  const handleDelete = (id: number) => {
-    if (!confirm('ยืนยันการลบประเภทช่างนี้?')) return
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return
+    const id = deleteTarget.id
     startTransition(async () => {
       await deleteContractorType(id)
+      setDeleteTarget(null)
       router.refresh()
     })
   }
@@ -95,7 +99,7 @@ export default function ContractorTypesPageClient({
                       <button onClick={() => handleOpenModal(type)} className="p-1.5 rounded text-slate-500 hover:text-indigo-600 hover:bg-indigo-50">
                         <Pencil className="h-4 w-4" />
                       </button>
-                      <button onClick={() => handleDelete(type.id)} className="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-red-50" disabled={isPending}>
+                      <button onClick={() => setDeleteTarget(type)} className="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-red-50" disabled={isPending}>
                         {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                       </button>
                     </div>
@@ -132,6 +136,17 @@ export default function ContractorTypesPageClient({
         </form>
       </Modal>
 
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="ลบประเภทช่าง"
+        message={deleteTarget ? `ยืนยันการลบประเภทช่าง "${deleteTarget.name}"?` : ''}
+        confirmLabel={isPending ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

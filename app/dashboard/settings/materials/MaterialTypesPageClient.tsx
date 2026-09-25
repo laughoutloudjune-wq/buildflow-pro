@@ -8,6 +8,7 @@ import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import {
@@ -67,6 +68,8 @@ export default function MaterialTypesPageClient({
   const [isBulkCategoryCustom, setIsBulkCategoryCustom] = useState(false)
   const [isBulkUnitOpen, setIsBulkUnitOpen] = useState(false)
   const [bulkUnitDraft, setBulkUnitDraft] = useState('')
+  const [isBulkDeactivateConfirmOpen, setIsBulkDeactivateConfirmOpen] = useState(false)
+  const [deactivateTarget, setDeactivateTarget] = useState<MaterialCatalogRow | null>(null)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -251,12 +254,16 @@ export default function MaterialTypesPageClient({
   }
 
   function handleBulkDeactivate() {
-    if (!confirm(`ยืนยันปิดใช้งานวัสดุที่เลือก ${selected.size} รายการ?`)) return
+    setIsBulkDeactivateConfirmOpen(true)
+  }
+
+  function handleConfirmBulkDeactivate() {
     setIsBulkPending(true)
     bulkDeactivateMaterialTypes(Array.from(selected))
       .then((updated) => {
         patchMaterials(updated)
         setSelected(new Set())
+        setIsBulkDeactivateConfirmOpen(false)
         toast.success(`ปิดใช้งานแล้ว ${updated.length} รายการ`)
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : 'ปิดใช้งานไม่สำเร็จ'))
@@ -328,12 +335,14 @@ export default function MaterialTypesPageClient({
       .finally(() => setIsBulkPending(false))
   }
 
-  function handleDeactivate(material: MaterialCatalogRow) {
-    if (!confirm(`ยืนยันปิดใช้งานวัสดุ "${material.name}"? รายการนี้จะไม่ปรากฏให้เลือกใหม่ แต่ประวัติเดิมยังอยู่ครบ`)) return
+  function handleConfirmDeactivate() {
+    if (!deactivateTarget) return
+    const material = deactivateTarget
     startTransition(async () => {
       try {
         const updated = await deactivateMaterialType(material.id)
         patchMaterial(updated)
+        setDeactivateTarget(null)
         toast.success('ปิดใช้งานวัสดุแล้ว')
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'ปิดใช้งานไม่สำเร็จ')
@@ -515,7 +524,7 @@ export default function MaterialTypesPageClient({
                       </button>
                       {material.is_active ? (
                         <button
-                          onClick={() => handleDeactivate(material)}
+                          onClick={() => setDeactivateTarget(material)}
                           disabled={isPending}
                           className="rounded p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
                           title="ปิดใช้งาน"
@@ -743,6 +752,30 @@ export default function MaterialTypesPageClient({
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={isBulkDeactivateConfirmOpen}
+        title="ปิดใช้งานวัสดุหลายรายการ"
+        message={`ยืนยันปิดใช้งานวัสดุที่เลือก ${selected.size} รายการ?`}
+        confirmLabel={isBulkPending ? 'กำลังบันทึก...' : 'ปิดใช้งาน'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isBulkPending}
+        onCancel={() => setIsBulkDeactivateConfirmOpen(false)}
+        onConfirm={handleConfirmBulkDeactivate}
+      />
+
+      <ConfirmDialog
+        isOpen={deactivateTarget !== null}
+        title="ปิดใช้งานวัสดุ"
+        message={deactivateTarget ? `ยืนยันปิดใช้งานวัสดุ "${deactivateTarget.name}"? รายการนี้จะไม่ปรากฏให้เลือกใหม่ แต่ประวัติเดิมยังอยู่ครบ` : ''}
+        confirmLabel={isPending ? 'กำลังบันทึก...' : 'ปิดใช้งาน'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDeactivateTarget(null)}
+        onConfirm={handleConfirmDeactivate}
+      />
     </div>
   )
 }

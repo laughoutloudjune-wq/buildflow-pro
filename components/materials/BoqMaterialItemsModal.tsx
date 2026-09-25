@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { formatCurrency } from '@/lib/currency'
 import {
@@ -33,6 +34,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
   const [plannedQuantity, setPlannedQuantity] = useState('1')
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
 
+  const [deleteTarget, setDeleteTarget] = useState<BoqMaterialItem | null>(null)
   const [showNewMaterial, setShowNewMaterial] = useState(false)
   const [newMaterialName, setNewMaterialName] = useState('')
   const [newMaterialUnit, setNewMaterialUnit] = useState('')
@@ -110,12 +112,14 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
     }
   }
 
-  async function handleDeleteItem(itemId: string) {
-    if (!confirm('ยืนยันลบรายการวัสดุนี้?')) return
+  async function handleConfirmDeleteItem() {
+    if (!deleteTarget) return
+    const itemId = deleteTarget.id
     setIsSaving(true)
     setError(null)
     try {
       await deleteBoqMaterialItem(itemId, boqId)
+      setDeleteTarget(null)
       await loadData()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ลบรายการไม่สำเร็จ')
@@ -199,7 +203,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
                         <td className="px-3 py-2 text-center">
                           <button
                             type="button"
-                            onClick={() => handleDeleteItem(item.id)}
+                            onClick={() => setDeleteTarget(item)}
                             disabled={isSaving}
                             className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
                           >
@@ -304,6 +308,18 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="ลบรายการวัสดุ"
+        message={deleteTarget ? `ยืนยันลบรายการวัสดุ "${deleteTarget.material_types?.name || ''}"?` : ''}
+        confirmLabel={isSaving ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isSaving}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDeleteItem}
+      />
     </Modal>
   )
 }

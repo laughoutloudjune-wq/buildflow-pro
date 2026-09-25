@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { createProject, deleteProject, setProjectStatus } from '@/actions/project-actions'
 
 type Project = {
@@ -55,6 +56,7 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [search, setSearch] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
 
   const handleSubmit = async (formData: FormData) => {
@@ -64,10 +66,12 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
     })
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('ยืนยันลบโครงการนี้?')) return
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return
+    const id = deleteTarget.id
     startTransition(async () => {
       await deleteProject(id)
+      setDeleteTarget(null)
     })
   }
 
@@ -121,7 +125,7 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    handleDelete(project.id)
+                    setDeleteTarget(project)
                   }}
                   disabled={isPending}
                   className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition z-10"
@@ -210,6 +214,18 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="ลบโครงการ"
+        message={deleteTarget ? `ยืนยันลบโครงการ "${deleteTarget.name}"?` : ''}
+        confirmLabel={isPending ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

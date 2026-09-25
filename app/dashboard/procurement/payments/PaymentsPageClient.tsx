@@ -6,6 +6,7 @@ import { Loader2, Search, Undo2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import { voidPaymentVoucher } from '@/actions/procurement-actions'
@@ -34,6 +35,7 @@ export default function PaymentsPageClient({
 
   const [search, setSearch] = useState('')
   const [voidingId, setVoidingId] = useState<string | null>(null)
+  const [voidTarget, setVoidTarget] = useState<PaymentVoucher | null>(null)
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -47,8 +49,9 @@ export default function PaymentsPageClient({
 
   const grandTotal = useMemo(() => rows.reduce((sum, v) => sum + v.total_amount, 0), [rows])
 
-  function handleVoid(v: PaymentVoucher) {
-    if (!confirm(`ยกเลิกใบสำคัญจ่าย ${v.pp_no}? ใบรับสินค้าที่รวมอยู่จะกลับเป็นสถานะยังไม่จ่าย และ PO จะย้อนกลับเป็นรับของแล้ว`)) return
+  function handleConfirmVoid() {
+    if (!voidTarget) return
+    const v = voidTarget
     setVoidingId(v.id)
     voidPaymentVoucher(v.id)
       .then((result) => {
@@ -56,6 +59,7 @@ export default function PaymentsPageClient({
           toast.error(result.error)
           return
         }
+        setVoidTarget(null)
         router.refresh()
         toast.success('ยกเลิกใบสำคัญจ่ายแล้ว')
       })
@@ -127,7 +131,7 @@ export default function PaymentsPageClient({
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(v.total_amount)}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
-                        <Button type="button" variant="secondary" size="sm" onClick={() => handleVoid(v)} disabled={voidingId === v.id}>
+                        <Button type="button" variant="secondary" size="sm" onClick={() => setVoidTarget(v)} disabled={voidingId === v.id}>
                           {voidingId === v.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />} ยกเลิก
                         </Button>
                       </td>
@@ -139,6 +143,18 @@ export default function PaymentsPageClient({
           </table>
         </div>
       </Card>
+
+      <ConfirmDialog
+        isOpen={voidTarget !== null}
+        title="ยกเลิกใบสำคัญจ่าย"
+        message={voidTarget ? `ยกเลิกใบสำคัญจ่าย ${voidTarget.pp_no}? ใบรับสินค้าที่รวมอยู่จะกลับเป็นสถานะยังไม่จ่าย และ PO จะย้อนกลับเป็นรับของแล้ว` : ''}
+        confirmLabel={voidingId ? 'กำลังยกเลิก...' : 'ยกเลิกใบสำคัญจ่าย'}
+        cancelLabel="ปิด"
+        tone="danger"
+        busy={voidingId !== null}
+        onCancel={() => setVoidTarget(null)}
+        onConfirm={handleConfirmVoid}
+      />
     </div>
   )
 }

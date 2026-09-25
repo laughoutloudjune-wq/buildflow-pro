@@ -5,6 +5,7 @@ import { ArrowLeft, Ban, CheckCircle2, Users } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { updateUserRole, updateUserFullName, setUserDisabled } from '@/actions/settings-actions'
 import type { getUsers } from '@/actions/settings-actions'
@@ -36,6 +37,7 @@ export default function UsersPageClient({
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteLink, setInviteLink] = useState('')
   const [generatingLink, setGeneratingLink] = useState(false)
+  const [disableTarget, setDisableTarget] = useState<User | null>(null)
   const toast = useToast()
 
   useEffect(() => {
@@ -58,7 +60,10 @@ export default function UsersPageClient({
 
   function handleToggleDisabled(user: User) {
     const next = !user.disabled
-    if (next && !confirm(`ต้องการปิดการใช้งาน ${user.email || user.full_name || user.id} ใช่หรือไม่?`)) return
+    if (next) {
+      setDisableTarget(user)
+      return
+    }
     startTransition(async () => {
       const result = await setUserDisabled(user.id, next)
       if ('error' in result) {
@@ -66,7 +71,23 @@ export default function UsersPageClient({
         return
       }
       setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, disabled: next } : u)))
-      toast.success(next ? 'ปิดการใช้งานแล้ว' : 'เปิดใช้งานแล้ว')
+      toast.success('เปิดใช้งานแล้ว')
+    })
+  }
+
+  function handleConfirmDisable() {
+    if (!disableTarget) return
+    const user = disableTarget
+    startTransition(async () => {
+      const result = await setUserDisabled(user.id, true)
+      if ('error' in result) {
+        toast.error(result.error)
+        setDisableTarget(null)
+        return
+      }
+      setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, disabled: true } : u)))
+      toast.success('ปิดการใช้งานแล้ว')
+      setDisableTarget(null)
     })
   }
 
@@ -252,6 +273,18 @@ export default function UsersPageClient({
           </div>
         </div>
       </Card>
+
+      <ConfirmDialog
+        isOpen={disableTarget !== null}
+        title="ปิดการใช้งานผู้ใช้"
+        message={disableTarget ? `ต้องการปิดการใช้งาน ${disableTarget.email || disableTarget.full_name || disableTarget.id} ใช่หรือไม่?` : ''}
+        confirmLabel={isPending ? 'กำลังบันทึก...' : 'ปิดการใช้งาน'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDisableTarget(null)}
+        onConfirm={handleConfirmDisable}
+      />
     </div>
   )
 }

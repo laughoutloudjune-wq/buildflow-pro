@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { createHouseModel, deleteHouseModel, updateHouseModel } from '@/actions/boq-actions'
 
@@ -33,6 +34,7 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
   const [editingModel, setEditingModel] = useState<HouseModel | null>(null)
   const [isPending, startTransition] = useTransition()
   const [search, setSearch] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<HouseModel | null>(null)
   const toast = useToast()
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
 
@@ -58,11 +60,13 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
     })
   }
 
-  const handleDelete = async (id: string) => {
-    if(!confirm('ยืนยันลบแบบบ้านนี้?')) return
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return
+    const id = deleteTarget.id
     startTransition(async () => {
       try {
         await deleteHouseModel(id)
+        setDeleteTarget(null)
         router.refresh()
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'ลบไม่สำเร็จ')
@@ -177,7 +181,7 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    handleDelete(model.id)
+                    setDeleteTarget(model)
                   }}
                   disabled={isPending}
                   className="text-slate-500 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition z-10"
@@ -243,6 +247,18 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="ลบแบบบ้าน"
+        message={deleteTarget ? `ยืนยันลบแบบบ้าน "${deleteTarget.name}"?` : ''}
+        confirmLabel={isPending ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

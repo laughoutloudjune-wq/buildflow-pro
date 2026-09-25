@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { createCompany, deactivateCompany, updateCompany, uploadCompanyAsset } from '@/actions/procurement-actions'
 import type { Company } from '@/lib/types/procurement'
@@ -29,6 +30,7 @@ export default function CompaniesPageClient({
   const [editing, setEditing] = useState<Company | null>(null)
   const [draft, setDraft] = useState(emptyDraft)
   const [uploading, setUploading] = useState<'logo' | 'signature' | null>(null)
+  const [deactivateTarget, setDeactivateTarget] = useState<Company | null>(null)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -92,14 +94,16 @@ export default function CompaniesPageClient({
     })
   }
 
-  function handleDeactivate(company: Company) {
-    if (!confirm(`ยืนยันปิดใช้งานบริษัท "${company.name}"?`)) return
+  function handleConfirmDeactivate() {
+    if (!deactivateTarget) return
+    const id = deactivateTarget.id
     startTransition(async () => {
-      const result = await deactivateCompany(company.id)
+      const result = await deactivateCompany(id)
       if ('error' in result) {
         toast.error(result.error)
         return
       }
+      setDeactivateTarget(null)
       router.refresh()
     })
   }
@@ -171,7 +175,7 @@ export default function CompaniesPageClient({
                       </button>
                       {company.is_active && (
                         <button
-                          onClick={() => handleDeactivate(company)}
+                          onClick={() => setDeactivateTarget(company)}
                           disabled={isPending}
                           className="rounded p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
                           title="ปิดใช้งาน"
@@ -265,6 +269,18 @@ export default function CompaniesPageClient({
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={deactivateTarget !== null}
+        title="ปิดใช้งานบริษัท"
+        message={deactivateTarget ? `ยืนยันปิดใช้งานบริษัท "${deactivateTarget.name}"?` : ''}
+        confirmLabel={isPending ? 'กำลังบันทึก...' : 'ปิดใช้งาน'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDeactivateTarget(null)}
+        onConfirm={handleConfirmDeactivate}
+      />
     </div>
   )
 }

@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import SupplierBranchesModal from '@/components/procurement/SupplierBranchesModal'
 import { useToast } from '@/components/ui/Toast'
@@ -46,6 +47,7 @@ export default function SuppliersPageClient({
   const [branchesFor, setBranchesFor] = useState<Supplier | null>(null)
   const [page, setPage] = useState(1)
   const [draft, setDraft] = useState<SupplierInput>(emptyDraft)
+  const [deactivateTarget, setDeactivateTarget] = useState<Supplier | null>(null)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -98,14 +100,16 @@ export default function SuppliersPageClient({
     })
   }
 
-  function handleDeactivate(supplier: Supplier) {
-    if (!confirm(`ยืนยันปิดใช้งานผู้จำหน่าย "${supplier.name}"?`)) return
+  function handleConfirmDeactivate() {
+    if (!deactivateTarget) return
+    const id = deactivateTarget.id
     startTransition(async () => {
-      const result = await deactivateSupplier(supplier.id)
+      const result = await deactivateSupplier(id)
       if ('error' in result) {
         toast.error(result.error)
         return
       }
+      setDeactivateTarget(null)
       router.refresh()
     })
   }
@@ -188,7 +192,7 @@ export default function SuppliersPageClient({
                         </button>
                         {supplier.is_active && (
                           <button
-                            onClick={() => handleDeactivate(supplier)}
+                            onClick={() => setDeactivateTarget(supplier)}
                             disabled={isPending}
                             className="rounded p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
                             title="ปิดใช้งาน"
@@ -225,6 +229,18 @@ export default function SuppliersPageClient({
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={deactivateTarget !== null}
+        title="ปิดใช้งานผู้จำหน่าย"
+        message={deactivateTarget ? `ยืนยันปิดใช้งานผู้จำหน่าย "${deactivateTarget.name}"?` : ''}
+        confirmLabel={isPending ? 'กำลังบันทึก...' : 'ปิดใช้งาน'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDeactivateTarget(null)}
+        onConfirm={handleConfirmDeactivate}
+      />
     </div>
   )
 }

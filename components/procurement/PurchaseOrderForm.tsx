@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowLeft, Link2, Loader2, MapPin, Plus, Repeat2, Trash2
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { todayInBangkok } from '@/lib/utils'
 import SearchableSelect from '@/components/ui/SearchableSelect'
@@ -729,6 +730,12 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   // not catch the browser back/forward button - popstate-based traps are
   // unreliable enough (double-press, corrupted forward history) that they
   // cost more than the edge case they'd cover.
+  //
+  // The click has to be preventDefault'd synchronously (that's the only way
+  // to actually stop the navigation), so the in-app dialog below can't ask
+  // first the way every other confirm() in this app does - it holds the
+  // target URL and navigates to it itself once confirmed.
+  const [pendingNavUrl, setPendingNavUrl] = useState<string | null>(null)
   useEffect(() => {
     if (!isDirty) return
     function handleBeforeUnload(e: BeforeUnloadEvent) {
@@ -745,10 +752,9 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       const url = new URL(anchor.href, window.location.href)
       if (url.origin !== window.location.origin) return
       if (url.pathname === window.location.pathname && url.search === window.location.search) return
-      if (!window.confirm('มีการแก้ไขที่ยังไม่ได้บันทึก ต้องการออกจากหน้านี้โดยไม่บันทึกหรือไม่?')) {
-        e.preventDefault()
-        e.stopPropagation()
-      }
+      e.preventDefault()
+      e.stopPropagation()
+      setPendingNavUrl(anchor.href)
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     document.addEventListener('click', handleDocumentClick, true)
@@ -2014,6 +2020,21 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={pendingNavUrl !== null}
+        title="ออกจากหน้านี้โดยไม่บันทึก?"
+        message="มีการแก้ไขที่ยังไม่ได้บันทึก ต้องการออกจากหน้านี้โดยไม่บันทึกหรือไม่?"
+        confirmLabel="ออกจากหน้านี้"
+        cancelLabel="อยู่ต่อ"
+        tone="danger"
+        onCancel={() => setPendingNavUrl(null)}
+        onConfirm={() => {
+          const url = pendingNavUrl
+          setPendingNavUrl(null)
+          if (url) window.location.href = url
+        }}
+      />
     </div>
   )
 })

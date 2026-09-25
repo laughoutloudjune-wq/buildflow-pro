@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import PlotGroupManager from '@/components/plots/PlotGroupManager'
 import SitePlanMap, { type SitePlanMarker } from '@/components/plots/SitePlanMap'
 import { getProjectById, updateProject } from '@/actions/project-actions'
@@ -79,6 +80,7 @@ export default function ProjectDetailPageClient({
   const [plots, setPlots] = useState<Plot[]>(initialPlots)
   const [plotGroups, setPlotGroups] = useState<PlotGroup[]>(initialPlotGroups)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Plot | null>(null)
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -152,17 +154,20 @@ export default function ProjectDetailPageClient({
     })
   }
 
-  const handleDelete = async (plotId: string) => {
-    if (!confirm('ยืนยันลบแปลงนี้? ข้อมูลงานที่มอบหมายจะหายไปด้วย')) return
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return
+    const plotId = deleteTarget.id
     setActionError(null)
 
     startTransition(async () => {
       const res = await deletePlot(plotId, projectId)
       if (!res.success) {
         setActionError(res.error)
+        setDeleteTarget(null)
         return
       }
 
+      setDeleteTarget(null)
       await refreshPlots()
     })
   }
@@ -414,7 +419,7 @@ export default function ProjectDetailPageClient({
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button
-                        onClick={() => handleDelete(plot.id)}
+                        onClick={() => setDeleteTarget(plot)}
                         disabled={isPending}
                         className="rounded p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500"
                       >
@@ -523,6 +528,17 @@ export default function ProjectDetailPageClient({
         onChanged={refreshGroups}
       />
 
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="ลบแปลง"
+        message={deleteTarget ? `ยืนยันลบแปลง "${deleteTarget.name}"? ข้อมูลงานที่มอบหมายจะหายไปด้วย` : ''}
+        confirmLabel={isPending ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

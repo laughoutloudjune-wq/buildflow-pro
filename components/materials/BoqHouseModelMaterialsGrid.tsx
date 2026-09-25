@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, Loader2, Plus, Trash2 } from 'lucide-react'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import {
   bulkUpsertBoqMaterialItems,
@@ -10,7 +11,7 @@ import {
   getBoqMaterialsForHouseModel,
   getMaterialTypes,
 } from '@/actions/material-actions'
-import type { BoqMaterialsForHouseModelJob, MaterialType } from '@/lib/types/materials'
+import type { BoqMaterialItem, BoqMaterialsForHouseModelJob, MaterialType } from '@/lib/types/materials'
 
 type NewRowDraft = { materialTypeId: string; quantity: string; wastePercent: string }
 
@@ -32,6 +33,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
   const [wasteDrafts, setWasteDrafts] = useState<Record<string, string>>({})
   const [newRowDrafts, setNewRowDrafts] = useState<Record<string, NewRowDraft>>({})
+  const [deleteTarget, setDeleteTarget] = useState<{ boqId: string; item: BoqMaterialItem } | null>(null)
 
   useEffect(() => {
     void loadData()
@@ -100,12 +102,14 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
     }
   }
 
-  async function handleDelete(boqId: string, itemId: string) {
-    if (!confirm('ยืนยันลบรายการวัสดุนี้?')) return
-    setSavingKey(itemId)
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return
+    const { boqId, item } = deleteTarget
+    setSavingKey(item.id)
     try {
-      await deleteBoqMaterialItem(itemId, boqId)
-      setJobs((prev) => prev.map((j) => (j.boqId !== boqId ? j : { ...j, items: j.items.filter((i) => i.id !== itemId) })))
+      await deleteBoqMaterialItem(item.id, boqId)
+      setJobs((prev) => prev.map((j) => (j.boqId !== boqId ? j : { ...j, items: j.items.filter((i) => i.id !== item.id) })))
+      setDeleteTarget(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'ลบรายการไม่สำเร็จ')
     } finally {
@@ -230,7 +234,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                             <td className="px-3 py-1.5 text-center">
                               <button
                                 type="button"
-                                onClick={() => handleDelete(job.boqId, item.id)}
+                                onClick={() => setDeleteTarget({ boqId: job.boqId, item })}
                                 disabled={savingKey === item.id}
                                 className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
                               >
@@ -286,6 +290,18 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
           </div>
         )
       })}
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="ลบรายการวัสดุ"
+        message={deleteTarget ? `ยืนยันลบรายการวัสดุ "${deleteTarget.item.material_types?.name || ''}"?` : ''}
+        confirmLabel={savingKey === deleteTarget?.item.id ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={savingKey === deleteTarget?.item.id}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

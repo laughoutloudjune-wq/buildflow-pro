@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { GaugeCircle, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { createPlotGroup, deletePlotGroup, getPlotGroups, updatePlotGroup } from '@/actions/material-actions'
 import type { PlotGroup } from '@/lib/types/materials'
 
@@ -31,6 +32,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
   const [editing, setEditing] = useState<string | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const [selectedPlotIds, setSelectedPlotIds] = useState<Set<string>>(new Set())
+  const [deleteTarget, setDeleteTarget] = useState<PlotGroup | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -94,12 +96,13 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
     }
   }
 
-  async function handleDelete(group: PlotGroup) {
-    if (!confirm(`ยืนยันลบกลุ่ม "${group.name}"?`)) return
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return
     setError(null)
     setIsSaving(true)
     try {
-      await deletePlotGroup(group.id, projectId)
+      await deletePlotGroup(deleteTarget.id, projectId)
+      setDeleteTarget(null)
       await loadGroups()
       onChanged?.()
     } catch (err) {
@@ -174,7 +177,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDelete(group)}
+                          onClick={() => setDeleteTarget(group)}
                           disabled={isSaving}
                           className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                           title="ลบ"
@@ -260,6 +263,18 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="ลบกลุ่มแปลง"
+        message={deleteTarget ? `ยืนยันลบกลุ่ม "${deleteTarget.name}"?` : ''}
+        confirmLabel={isSaving ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isSaving}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </Modal>
   )
 }

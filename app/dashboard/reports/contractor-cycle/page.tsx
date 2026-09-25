@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/components/ui/Toast'
 import { getApprovedContractorCycleReport, getBillingOptions, undoApproveBilling, markBillingsAsPaidOut, unmarkBillingsAsPaidOut } from '@/actions/billing-actions'
 import { BadgeCheck, ChevronDown, ChevronRight, Loader2, Pencil, Printer, Undo2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
@@ -49,6 +51,7 @@ function isRecentlyApproved(approvedAt?: string | null) {
 }
 
 export default function ContractorCycleReportPage() {
+  const toast = useToast()
   const [projects, setProjects] = useState<Project[]>([])
   const [contractors, setContractors] = useState<Contractor[]>([])
   const [filters, setFilters] = useState<Filters>({})
@@ -74,6 +77,9 @@ export default function ContractorCycleReportPage() {
   // retention%, that was still actually paid with a real retention hold).
   const [retentionAmountMap, setRetentionAmountMap] = useState<Record<string, number>>({})
   const [whtAmountMap, setWhtAmountMap] = useState<Record<string, number>>({})
+  const [undoApproveTarget, setUndoApproveTarget] = useState<string | null>(null)
+  const [unmarkTarget, setUnmarkTarget] = useState<{ billIds: string[]; contractorName: string } | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
 
   useEffect(() => {
     getBillingOptions().then((data) => {
@@ -139,15 +145,21 @@ export default function ContractorCycleReportPage() {
     return () => window.removeEventListener('afterprint', clearPrintClass)
   }, [])
 
-  const handleUndoApprove = async (billId: string) => {
-    const ok = window.confirm('ต้องการย้อนสถานะอนุมัติใบเบิกนี้ใช่หรือไม่? ระบบจะย้ายกลับไปรอตรวจสอบและลบรายการจ่ายที่สร้างจากการอนุมัติ')
-    if (!ok) return
-    const result = await undoApproveBilling(billId)
-    if ('error' in result) {
-      alert(result.error)
-      return
+  const handleConfirmUndoApprove = async () => {
+    if (!undoApproveTarget) return
+    const billId = undoApproveTarget
+    setActionLoading(true)
+    try {
+      const result = await undoApproveBilling(billId)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      setUndoApproveTarget(null)
+      await runReport()
+    } finally {
+      setActionLoading(false)
     }
-    await runReport()
   }
 
   // Seeds the editable payout maps for a set of bills. For a fresh payment,
@@ -193,7 +205,7 @@ export default function ContractorCycleReportPage() {
       const billIds = payOutConfirm.bills.map((b: any) => b.id)
       const result = await markBillingsAsPaidOut(billIds, payOutDate, whtAppliedMap, retentionAppliedMap, deductAppliedMap, retentionAmountMap, whtAmountMap)
       if ('error' in result) {
-        alert(result.error)
+        toast.error(result.error)
         return
       }
       setPayOutConfirm(null)
@@ -204,15 +216,20 @@ export default function ContractorCycleReportPage() {
     }
   }
 
-  const handleUnmarkPaidOut = async (billIds: string[], contractorName: string) => {
-    const ok = window.confirm(`ต้องการยกเลิกสถานะ "จ่ายแล้ว" ของ ${contractorName} ใช่หรือไม่?`)
-    if (!ok) return
-    const result = await unmarkBillingsAsPaidOut(billIds)
-    if ('error' in result) {
-      alert(result.error)
-      return
+  const handleConfirmUnmarkPaidOut = async () => {
+    if (!unmarkTarget) return
+    setActionLoading(true)
+    try {
+      const result = await unmarkBillingsAsPaidOut(unmarkTarget.billIds)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      setUnmarkTarget(null)
+      await runReport()
+    } finally {
+      setActionLoading(false)
     }
-    await runReport()
   }
 
   // Reopens the same pay-out modal for a single already-paid bill, pre-filled
@@ -356,7 +373,7 @@ ${sectionsHtml || '<div class=\"contractor-section\">ไม่พบข้อม
 
     const w = window.open('', '_blank', 'noopener,noreferrer')
     if (!w) {
-      alert('Browser blocked popup window for print preview')
+      toast.error('เบราว์เซอร์บล็อกหน้าต่างตัวอย่างก่อนพิมพ์ กรุณาอนุญาตป็อปอัปสำหรับเว็บไซต์นี้')
       return
     }
     w.document.open()
@@ -1252,7 +1269,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                         <Button
                           variant="secondary"
                           size="sm"
-                          onClick={() => handleUnmarkPaidOut(cg.bills.map((b: any) => b.id), cg.contractor?.name || '-')}
+                          onClick={() => setUnmarkTarget({ billIds: cg.bills.map((b: any) => b.id), contractorName: cg.contractor?.name || '-' })}
                           className="no-print px-2 py-1 text-xs"
                         >
                           <Undo2 className="h-3 w-3" /> Undo
@@ -1536,7 +1553,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => handleUnmarkPaidOut(group.bills.filter((b: any) => !!b.paid_out_at).map((b: any) => b.id), group.contractor?.name || '-')}
+                      onClick={() => setUnmarkTarget({ billIds: group.bills.filter((b: any) => !!b.paid_out_at).map((b: any) => b.id), contractorName: group.contractor?.name || '-' })}
                       className="px-3 py-1.5 text-xs"
                     >
                       <Undo2 className="h-3.5 w-3.5" /> Undo
@@ -1651,7 +1668,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                           </td>
                           <td className="px-3 py-2 text-center no-print">
                             {!bill.paid_out_at && (
-                              <button onClick={() => handleUndoApprove(bill.id)} className="px-2 py-1 rounded-lg border text-xs text-amber-700 hover:bg-amber-50">ย้อนสถานะอนุมัติ</button>
+                              <button onClick={() => setUndoApproveTarget(bill.id)} className="px-2 py-1 rounded-lg border text-xs text-amber-700 hover:bg-amber-50">ย้อนสถานะอนุมัติ</button>
                             )}
                           </td>
                         </tr>
@@ -1729,6 +1746,30 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           )
         })
       )}
+
+      <ConfirmDialog
+        isOpen={undoApproveTarget !== null}
+        title="ย้อนสถานะอนุมัติ"
+        message="ต้องการย้อนสถานะอนุมัติใบเบิกนี้ใช่หรือไม่? ระบบจะย้ายกลับไปรอตรวจสอบและลบรายการจ่ายที่สร้างจากการอนุมัติ"
+        confirmLabel={actionLoading ? 'กำลังบันทึก...' : 'ย้อนสถานะ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={actionLoading}
+        onCancel={() => setUndoApproveTarget(null)}
+        onConfirm={handleConfirmUndoApprove}
+      />
+
+      <ConfirmDialog
+        isOpen={unmarkTarget !== null}
+        title="ยกเลิกสถานะจ่ายแล้ว"
+        message={unmarkTarget ? `ต้องการยกเลิกสถานะ "จ่ายแล้ว" ของ ${unmarkTarget.contractorName} ใช่หรือไม่?` : ''}
+        confirmLabel={actionLoading ? 'กำลังบันทึก...' : 'ยกเลิกสถานะ'}
+        cancelLabel="ปิด"
+        tone="danger"
+        busy={actionLoading}
+        onCancel={() => setUnmarkTarget(null)}
+        onConfirm={handleConfirmUnmarkPaidOut}
+      />
     </div>
   )
 }

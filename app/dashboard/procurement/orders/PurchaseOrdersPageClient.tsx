@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card'
 import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import PurchaseOrderModal from '@/components/procurement/PurchaseOrderModal'
@@ -74,6 +75,7 @@ export default function PurchaseOrdersPageClient({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [isDuplicating, setIsDuplicating] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [viewOrderId, setViewOrderId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -210,12 +212,16 @@ export default function PurchaseOrdersPageClient({
 
   function handleDeleteSelected() {
     if (selected.size === 0) return
-    if (!confirm(`ลบใบสั่งซื้อที่เลือก ${selected.size} รายการ? การลบไม่สามารถย้อนกลับได้`)) return
+    setIsDeleteConfirmOpen(true)
+  }
+
+  function handleConfirmDeleteSelected() {
     const ids = Array.from(selected)
     setIsDeleting(true)
     deletePurchaseOrders(ids)
       .then(({ deleted, failed, errors }) => {
         setSelected(new Set())
+        setIsDeleteConfirmOpen(false)
         router.refresh()
         if (deleted > 0) toast.success(`ลบใบสั่งซื้อแล้ว ${deleted} รายการ`)
         if (failed > 0) toast.error(`ลบไม่สำเร็จ ${failed} รายการ${errors[0] ? `: ${errors[0]}` : ''}`)
@@ -384,6 +390,18 @@ export default function PurchaseOrdersPageClient({
           setViewOrderId(null)
           router.refresh()
         }}
+      />
+
+      <ConfirmDialog
+        isOpen={isDeleteConfirmOpen}
+        title="ลบใบสั่งซื้อ"
+        message={`ลบใบสั่งซื้อที่เลือก ${selected.size} รายการ? การลบไม่สามารถย้อนกลับได้`}
+        confirmLabel={isDeleting ? 'กำลังลบ...' : 'ลบ'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isDeleting}
+        onCancel={() => setIsDeleteConfirmOpen(false)}
+        onConfirm={handleConfirmDeleteSelected}
       />
     </div>
   )
