@@ -34,8 +34,24 @@ export async function middleware(request: NextRequest) {
   // prefetch.
   // getClaims() reads through getSession(), so an expiring token is still
   // refreshed and the rotated cookies are still written back below.
-  const { data: claimsData } = await supabase.auth.getClaims()
-  const user = claimsData?.claims ?? null
+  //
+  // getSession()'s refresh call throws (not returns an error) when the
+  // refresh token is stale - "Refresh Token Not Found" (cookie survived
+  // past the token's server-side lifetime, common after a phone's browser
+  // was backgrounded for a while) or "Already Used" (two requests racing
+  // to refresh the same token, e.g. a page and its middleware firing close
+  // together on resume). Left uncaught, that exception crashed the whole
+  // middleware - every request on this matcher, not just the auth check -
+  // which is what produced the "Application error: a client-side
+  // exception" page reported 2026-09-25. An unrefreshable session is a
+  // logged-out session; treat it as one instead of taking the request down.
+  let user: Record<string, unknown> | null = null
+  try {
+    const { data: claimsData } = await supabase.auth.getClaims()
+    user = claimsData?.claims ?? null
+  } catch {
+    user = null
+  }
 
   const url = request.nextUrl.clone()
   const { pathname } = url
