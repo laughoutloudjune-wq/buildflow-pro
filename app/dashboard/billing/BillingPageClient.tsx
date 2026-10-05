@@ -154,7 +154,7 @@ export default function BillingPageClient({
       return next
     })
 
-  const handlePrint = () => {
+  const printHref = (() => {
     const params = new URLSearchParams()
     if (selectedVisible.length > 0) params.set('ids', selectedVisible.map((b) => b.id).join(','))
     if (filters.month) params.set('month', filters.month)
@@ -162,8 +162,8 @@ export default function BillingPageClient({
     if (filters.contractorId) params.set('contractorId', filters.contractorId)
     if (filters.status) params.set('status', filters.status)
     const qs = params.toString()
-    window.open(`/dashboard/billing/print${qs ? `?${qs}` : ''}`, '_blank')
-  }
+    return `/dashboard/billing/print${qs ? `?${qs}` : ''}`
+  })()
 
   const handleRowClick = (bill: BillingListItem) => {
     if (bill.status === 'pending_review') {
@@ -180,10 +180,16 @@ export default function BillingPageClient({
         subtitle="จัดการใบเบิกงวดงานหลักและงานเพิ่ม (DC) พร้อมติดตามสถานะอนุมัติ"
         actions={
           <>
-            <Button type="button" variant="secondary" onClick={handlePrint} disabled={filteredBillings.length === 0}>
-              <Printer className="h-4 w-4" />
-              {selectedVisible.length > 0 ? `พิมพ์ที่เลือก (${selectedVisible.length})` : `พิมพ์ทั้งหมด (${filteredBillings.length})`}
-            </Button>
+            {filteredBillings.length === 0 ? (
+              <Button type="button" variant="secondary" disabled>
+                <Printer className="h-4 w-4" /> พิมพ์ทั้งหมด (0)
+              </Button>
+            ) : (
+              <ButtonLink href={printHref} target="_blank" rel="noopener" variant="secondary">
+                <Printer className="h-4 w-4" />
+                {selectedVisible.length > 0 ? `พิมพ์ที่เลือก (${selectedVisible.length})` : `พิมพ์ทั้งหมด (${filteredBillings.length})`}
+              </ButtonLink>
+            )}
             <ButtonLink href="/dashboard/foreman/create-progress" variant="secondary">
               <Plus className="h-4 w-4" /> สร้างใบเบิกงวดงาน
             </ButtonLink>
