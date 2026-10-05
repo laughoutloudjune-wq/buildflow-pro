@@ -26,6 +26,7 @@ import {
   getPlotHistoryReport as getPlotHistoryReportImpl,
   getBillings as getBillingsImpl,
   getBillingById as getBillingByIdImpl,
+  getBillingsForPrint as getBillingsForPrintImpl,
 } from '@/actions/billing/reports'
 
 export async function getJobProgressHistory(jobAssignmentIds: string[]) {
@@ -120,4 +121,8 @@ export async function markBillingsAsPaidOut(
 
 export async function unmarkBillingsAsPaidOut(billingIds: string[]) {
   return unmarkBillingsAsPaidOutImpl(billingIds)
+}
+
+export async function getBillingsForPrint(filters: { ids?: string[]; month?: string; projectId?: string; contractorId?: string; status?: string } = {}) {
+  return getBillingsForPrintImpl(filters)
 }

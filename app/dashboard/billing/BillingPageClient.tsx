@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Eye, Edit, Loader2 } from 'lucide-react'
+import { Plus, Eye, Edit, Loader2, Printer } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge, statusTone } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
@@ -131,6 +131,40 @@ export default function BillingPageClient({
     })
   }, [billings, filters])
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const selectedVisible = useMemo(
+    () => filteredBillings.filter((b) => selectedIds.has(b.id)),
+    [filteredBillings, selectedIds]
+  )
+  const allVisibleSelected = filteredBillings.length > 0 && selectedVisible.length === filteredBillings.length
+
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const toggleSelectAllVisible = () =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allVisibleSelected) filteredBillings.forEach((b) => next.delete(b.id))
+      else filteredBillings.forEach((b) => next.add(b.id))
+      return next
+    })
+
+  const handlePrint = () => {
+    const params = new URLSearchParams()
+    if (selectedVisible.length > 0) params.set('ids', selectedVisible.map((b) => b.id).join(','))
+    if (filters.month) params.set('month', filters.month)
+    if (filters.projectId) params.set('projectId', filters.projectId)
+    if (filters.contractorId) params.set('contractorId', filters.contractorId)
+    if (filters.status) params.set('status', filters.status)
+    const qs = params.toString()
+    window.open(`/dashboard/billing/print${qs ? `?${qs}` : ''}`, '_blank')
+  }
+
   const handleRowClick = (bill: BillingListItem) => {
     if (bill.status === 'pending_review') {
       router.push(`/dashboard/billing/${bill.id}/review`)
@@ -146,6 +180,10 @@ export default function BillingPageClient({
         subtitle="จัดการใบเบิกงวดงานหลักและงานเพิ่ม (DC) พร้อมติดตามสถานะอนุมัติ"
         actions={
           <>
+            <Button type="button" variant="secondary" onClick={handlePrint} disabled={filteredBillings.length === 0}>
+              <Printer className="h-4 w-4" />
+              {selectedVisible.length > 0 ? `พิมพ์ที่เลือก (${selectedVisible.length})` : `พิมพ์ทั้งหมด (${filteredBillings.length})`}
+            </Button>
             <ButtonLink href="/dashboard/foreman/create-progress" variant="secondary">
               <Plus className="h-4 w-4" /> สร้างใบเบิกงวดงาน
             </ButtonLink>
@@ -269,13 +307,44 @@ export default function BillingPageClient({
           <div className="p-12 text-center text-slate-400">ไม่พบรายการที่ตรงกับตัวกรอง</div>
         ) : (
           <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={allVisibleSelected}
+                  onChange={toggleSelectAllVisible}
+                />
+                เลือกทั้งหมดที่แสดง ({filteredBillings.length})
+              </label>
+              {selectedVisible.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                >
+                  เลือกแล้ว {selectedVisible.length} • ล้างที่เลือก
+                </button>
+              )}
+            </div>
             {filteredBillings.map((bill) => (
               <div
                 key={bill.id}
-                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-indigo-300 hover:shadow cursor-pointer transition"
+                className={`flex gap-3 rounded-xl border bg-white p-4 shadow-sm hover:border-indigo-300 hover:shadow cursor-pointer transition ${
+                  selectedIds.has(bill.id) ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-slate-200'
+                }`}
                 onClick={() => handleRowClick(bill)}
               >
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-[130px_140px_150px_1fr_150px_120px_56px]">
+                <div className="flex items-start pt-1" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    aria-label={`เลือกใบเบิก #${bill.doc_no}`}
+                    checked={selectedIds.has(bill.id)}
+                    onChange={() => toggleSelected(bill.id)}
+                  />
+                </div>
+                <div className="min-w-0 flex-1 grid grid-cols-1 gap-3 lg:grid-cols-[130px_140px_150px_1fr_150px_120px_56px]">
                   <div className="flex items-start">
                     <div className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-md w-fit text-xs">
                       #{bill.doc_no?.toString().padStart(4, '0')}

@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { requireModuleAccess } from '@/lib/auth/route-access'
+import { requireModuleAccess, getDashboardSession } from '@/lib/auth/route-access'
 import { normalizeAdjustmentsWithPlot } from '@/actions/_shared/billing-adjustments'
 import { derivePlotLabelFromJobs, getPlotDetailMap, getPlotNameMap } from '@/actions/_shared/plot-maps'
 import { getCurrentUser } from '@/actions/_shared/user-role'
@@ -404,4 +404,125 @@ export async function getBillingById(id: string) {
   }
 
   return data ? { ...data, billing_adjustments: normalizeAdjustmentsWithPlot(data.billing_adjustments) } : data
+}
+
+
+/**
+ * Data for the "print all requests" sheet on the billing list. Applies the
+ * same filters the list screen has (month / project / contractor / status) and
+ * returns, per job, the same figures the PM review screen shows: total value,
+ * already paid, this request's amount and what is left after it. Whole-bill
+ * money is the net amount only.
+ */
+export async function getBillingsForPrint(
+  filters: { ids?: string[]; month?: string; projectId?: string; contractorId?: string; status?: string } = {}
+) {
+  await requireModuleAccess([...MONEY_MODULES])
+  const supabase = await createClient()
+  const session = await getDashboardSession()
+
+  let query = supabase
+    .from('billings')
+    .select(`
+      id,
+      type,
+      status,
+      doc_no,
+      billing_date,
+      created_at,
+      net_amount,
+      note,
+      reason_for_dc,
+      project_id,
+      contractor_id,
+      plot_id,
+      projects (name),
+      contractors (name),
+      billing_jobs (
+        id,
+        amount,
+        progress_percent,
+        job_assignments (
+          id,
+          agreed_price_per_unit,
+          plots (name, house_models (name, code)),
+          payments (amount),
+          boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, quantity, price_per_unit)
+        )
+      ),
+      billing_adjustments (id, type, description, unit, quantity, unit_price)
+    `)
+    .order('created_at', { ascending: true })
+
+  if (filters.ids && filters.ids.length > 0) query = query.in('id', filters.ids)
+  if (filters.projectId) query = query.eq('project_id', filters.projectId)
+  if (filters.contractorId) query = query.eq('contractor_id', filters.contractorId)
+  if (filters.status) query = query.eq('status', filters.status)
+  if (filters.month && /^\d{4}-\d{2}$/.test(filters.month)) {
+    const [y, m] = filters.month.split('-').map(Number)
+    const next = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
+    query = query.gte('billing_date', `${filters.month}-01`).lt('billing_date', next)
+  }
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+
+  const rows = (data || []) as unknown as BillingReportRow[]
+  const plotMap = await getPlotDetailMap(supabase, getPlotIds(rows))
+
+  const bills = rows.map((billing) => {
+    const plot = billing.plot_id ? plotMap.get(billing.plot_id) || null : null
+    const derivedName = plot ? null : derivePlotLabelFromJobs(billing.billing_jobs as any)
+    const jobHouseModel = (billing.billing_jobs || [])
+      .map((j) => j.job_assignments?.plots?.house_models?.name)
+      .find(Boolean)
+    return {
+      id: billing.id,
+      type: billing.type ?? null,
+      status: billing.status ?? null,
+      doc_no: billing.doc_no ?? null,
+      billing_date: billing.billing_date ?? null,
+      created_at: billing.created_at ?? null,
+      net_amount: Number(billing.net_amount || 0),
+      note: ((billing as { note?: string | null }).note ?? null) as string | null,
+      reason_for_dc: billing.reason_for_dc ?? null,
+      project_name: billing.projects?.name ?? null,
+      contractor_id: billing.contractor_id ?? null,
+      contractor_name: billing.contractors?.name ?? null,
+      plot_name: plot?.name || derivedName || null,
+      house_model_name: plot?.house_models?.name || jobHouseModel || null,
+      jobs: (billing.billing_jobs || []).map((j) => {
+        const ja = j.job_assignments
+        const unitPrice = Number(ja?.agreed_price_per_unit ?? ja?.boq_master?.price_per_unit ?? 0)
+        const totalValue = Number(ja?.boq_master?.quantity || 0) * unitPrice
+        const paid = (ja?.payments || []).reduce((sum, pay) => sum + Number(pay.amount || 0), 0)
+        const amount = Number(j.amount || 0)
+        return {
+          id: j.id,
+          name: ja?.boq_master?.item_name || 'งานหลัก',
+          plot_name: ja?.plots?.name ?? null,
+          total_value: totalValue,
+          paid_before: paid,
+          amount,
+          remaining_after: Math.max(0, totalValue - paid - amount),
+          previous_percent: totalValue > 0 ? (paid / totalValue) * 100 : 0,
+          percent: j.progress_percent == null ? null : Number(j.progress_percent),
+        }
+      }),
+      adjustments: normalizeAdjustmentsWithPlot(billing.billing_adjustments).map((a) => ({
+        id: a.id,
+        type: a.type === 'deduction' ? ('deduction' as const) : ('addition' as const),
+        description: a.description || '-',
+        unit: a.unit ?? null,
+        quantity: Number(a.quantity || 0),
+        unit_price: Number(a.unit_price || 0),
+        amount: Number(a.quantity || 0) * Number(a.unit_price || 0),
+      })),
+    }
+  })
+
+  return {
+    bills,
+    printedBy: (session.profile as { full_name?: string | null } | null)?.full_name || session.user?.email || null,
+  }
 }
