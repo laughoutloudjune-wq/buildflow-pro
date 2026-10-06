@@ -55,7 +55,6 @@ const ERROR_TRANSLATIONS: [string, string][] = [
   ['A request line can only be allocated once per order line', 'รายการในใบขอซื้อเดียวกันถูกจัดสรรซ้ำในรายการสั่งซื้อเดียว'],
   ['Only an approved purchase request can be ordered', 'สั่งซื้อได้เฉพาะใบขอซื้อที่อนุมัติแล้วเท่านั้น'],
   ['A purchase request line belongs to a different project than this order', 'มีรายการจากใบขอซื้อของคนละโครงการกับใบสั่งซื้อนี้'],
-  ['A purchase request line is for a different material than the order line', 'วัสดุในใบขอซื้อไม่ตรงกับรายการสั่งซื้อ'],
   ['A purchase request line is in a different unit than the order line', 'หน่วยในใบขอซื้อไม่ตรงกับหน่วยในรายการสั่งซื้อ'],
   ['The order line quantity must equal the sum of its request allocations', 'จำนวนในรายการสั่งซื้อต้องเท่ากับผลรวมที่จัดสรรจากใบขอซื้อ'],
   ['A purchase request line has already been closed by another purchase order', 'รายการในใบขอซื้อถูกปิดโดยใบสั่งซื้ออื่นไปแล้ว'],
