@@ -8,7 +8,17 @@ import Modal from '@/components/ui/Modal'
 // Both the on-screen preview and the downloaded file come from the same
 // server-rendered HTML (lib/pdf/purchaseOrderHtml.ts) - the preview asks for
 // ?format=png, the download gets the PDF.
-export default function PurchaseOrderDocActions({ orderId, poNo }: { orderId: string; poNo: string }) {
+export default function PurchaseOrderDocActions({
+  orderId,
+  poNo,
+  hasAllocations = false,
+}: {
+  orderId: string
+  poNo: string
+  /** The order draws on purchase request lines - offers the internal copy that
+   * prints each line's request/plot breakdown. */
+  hasAllocations?: boolean
+}) {
   const base = `/api/procurement/orders/${orderId}/pdf`
   const pngUrl = `${base}?format=png`
 
@@ -25,6 +35,14 @@ export default function PurchaseOrderDocActions({ orderId, poNo }: { orderId: st
           <Printer className="h-3.5 w-3.5" /> พิมพ์
         </Button>
       </a>
+
+      {hasAllocations && (
+        <a href={`${base}?internal=1`} target="_blank" rel="noreferrer" title="สำเนาภายใน แสดงที่มาของแต่ละแปลง (ไม่ส่งให้ผู้จำหน่าย)">
+          <Button type="button" variant="secondary" size="sm">
+            <Printer className="h-3.5 w-3.5" /> พิมพ์ (ภายใน)
+          </Button>
+        </a>
+      )}
 
       <a href={`${base}?download=1`} download={`${poNo}.pdf`}>
         <Button type="button" variant="secondary" size="sm">

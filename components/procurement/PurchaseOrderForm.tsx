@@ -30,6 +30,8 @@ import {
 import { getBoqCheckForDraft } from '@/actions/procurement/boq-control'
 import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
 import type { ControlScope } from '@/lib/procurement/boqControl'
+import { requestScopeLabel } from '@/lib/procurement/allocations'
+import { allocationTotal, takeCombineDraft, type LineAllocationDraft } from '@/lib/procurement/combineDraft'
 import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
 import type {
   Supplier,
@@ -100,6 +102,12 @@ type Line = {
   material_name: string | null
   material_unit: string | null
   purchase_request_item_id: string | null
+  /** Breakdown of this line across purchase request lines, when it
+   * consolidates several of them (or was built by the combine picker). The
+   * line's quantity is then the SUM of these, never typed on its own - the
+   * server requires them to agree. Null for a standalone line and for the
+   * single-request shortcut, which carries purchase_request_item_id instead. */
+  allocations: LineAllocationDraft[] | null
   quantity_ordered: string
   /** Purchasing's answer: this order covers the request line this came from.
    * When the order's unit and the request's differ nothing can be
@@ -206,6 +214,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   mode: 'create' | 'edit'
   orderId?: string
   fromRequestId?: string | null
+  /** Create mode: prefill from the combine-requests picker's hand-off. */
+  combined?: boolean
   initialOrder?: PurchaseOrder | null
   initialOptions?: PurchaseOrderFormOptions
   readOnly?: boolean
@@ -225,6 +235,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   mode,
   orderId,
   fromRequestId,
+  combined = false,
   initialOrder,
   initialOptions,
   readOnly = false,
@@ -237,7 +248,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   // With options in hand there is nothing left to await before the form can
   // paint - unless this is a create-from-request, which still has to load the
   // source PR to prefill its lines.
-  const [isLoading, setIsLoading] = useState(!initialOptions || Boolean(fromRequestId))
+  const [isLoading, setIsLoading] = useState(!initialOptions || Boolean(fromRequestId) || combined)
   // Flips true exactly once, after bootstrap()'s fields are fully settled -
   // including the awaited purchase-request lookup for a PR-linked order - so
   // the unsaved-changes snapshot below captures real loaded values instead of
@@ -436,6 +447,20 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             material_name: item.material_types?.name || null,
             material_unit: item.material_types?.unit || null,
             purchase_request_item_id: item.purchase_request_item_id,
+            // A line drawing on several request lines is edited through its
+            // breakdown; a single-link line keeps the original behaviour.
+            allocations:
+              (item.purchase_order_item_allocations || []).length > 1
+                ? (item.purchase_order_item_allocations || []).map((a) => {
+                    const pr = a.purchase_request_items?.purchase_requests
+                    return {
+                      purchase_request_item_id: a.purchase_request_item_id,
+                      quantity: String(a.quantity_allocated),
+                      pr_no: pr?.pr_no ?? null,
+                      plot_label: requestScopeLabel(pr),
+                    }
+                  })
+                : null,
             quantity_ordered: String(item.quantity_ordered),
             closes_request_line: item.closes_request_line,
             unit_price: String(item.unit_price),
@@ -459,6 +484,44 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         if (initialOrder.purchase_request_id) {
           const pr = await getPurchaseRequestById(initialOrder.purchase_request_id)
           if (pr) indexRequestLines(pr)
+        }
+      } else if (mode === 'create' && combined) {
+        // Built by the "combine requests" picker: lines already grouped by
+        // material, each carrying its per-request breakdown.
+        const draft = takeCombineDraft()
+        if (draft) {
+          setProjectId(draft.projectId)
+          setSupplierId(draft.supplierId)
+          const draftProject = (initialOptions?.projects ?? []).find((p) => p.id === draft.projectId)
+          if (draftProject?.delivery_address) setDeliveryAddress(draftProject.delivery_address)
+          if (draft.plotIds.length > 0) {
+            setPlotScope('multi')
+            setPlotIds(draft.plotIds)
+          } else {
+            setIsOutsideBoq(true)
+          }
+          setLines(
+            draft.lines.map((l) => ({
+              id: null,
+              quantity_received: 0,
+              material_type_id: l.material_type_id,
+              material_name: l.material_name,
+              material_unit: l.material_unit,
+              purchase_request_item_id: null,
+              allocations: l.allocations,
+              quantity_ordered: String(allocationTotal(l.allocations)),
+              closes_request_line: false,
+              unit_price: String(l.unit_price || 0),
+              description: '',
+              discountValue: '',
+              project_id: null,
+              plot_id: null,
+              plot_group_id: null,
+              intended_destination: null,
+            }))
+          )
+        } else {
+          toast.error('ไม่พบข้อมูลที่เลือกไว้ กรุณาเลือกรายการจากใบขอซื้ออีกครั้ง')
         }
       } else if (mode === 'create' && fromRequestId) {
         const pr = await getPurchaseRequestById(fromRequestId)
@@ -495,6 +558,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                 material_name: item.material_types?.name || null,
                 material_unit: item.material_types?.unit || null,
                 purchase_request_item_id: item.id,
+                allocations: null,
                 quantity_ordered: String(item.quantity_requested),
                 // Pre-answered when the request asked in a unit this order
                 // can't be placed in - the supplier sells by the material's
@@ -881,6 +945,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         material_name: null,
         material_unit: null,
         purchase_request_item_id: null,
+        allocations: null,
         quantity_ordered: '',
         closes_request_line: false,
         unit_price: '',
@@ -923,6 +988,28 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   function withDefaultAnswer(line: Line, patch: Partial<Line>): Partial<Line> {
     const next = { ...line, ...patch }
     return { ...patch, closes_request_line: differsFromRequestUnit(next) }
+  }
+
+  /** Edit one slice of a consolidated line; the line's quantity follows as
+   * the sum of its slices. */
+  function updateAllocation(lineIndex: number, allocIndex: number, quantity: string) {
+    setLines((prev) =>
+      prev.map((l, i) => {
+        if (i !== lineIndex || !l.allocations) return l
+        const allocations = l.allocations.map((a, j) => (j === allocIndex ? { ...a, quantity } : a))
+        return { ...l, allocations, quantity_ordered: String(allocationTotal(allocations)) }
+      })
+    )
+  }
+
+  function removeAllocation(lineIndex: number, allocIndex: number) {
+    setLines((prev) =>
+      prev.map((l, i) => {
+        if (i !== lineIndex || !l.allocations) return l
+        const allocations = l.allocations.filter((_, j) => j !== allocIndex)
+        return { ...l, allocations, quantity_ordered: String(allocationTotal(allocations)) }
+      })
+    )
   }
 
   function updateLine(index: number, patch: Partial<Line>) {
@@ -1006,9 +1093,13 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       items: validLines.map((l) => ({
         id: l.id,
         material_type_id: l.material_type_id,
-        purchase_request_item_id: l.purchase_request_item_id,
-        quantity_ordered: Number(l.quantity_ordered),
-        closes_request_line: Boolean(l.purchase_request_item_id) && l.closes_request_line,
+        purchase_request_item_id: l.allocations ? null : l.purchase_request_item_id,
+        allocations: l.allocations
+          ? l.allocations.map((a) => ({ purchase_request_item_id: a.purchase_request_item_id, quantity: Number(a.quantity) || 0 }))
+          : undefined,
+        // A consolidated line's total is the sum of its allocations.
+        quantity_ordered: l.allocations ? allocationTotal(l.allocations) : Number(l.quantity_ordered),
+        closes_request_line: !l.allocations && Boolean(l.purchase_request_item_id) && l.closes_request_line,
         unit_price: Number(l.unit_price) || 0,
         description: l.description,
         discount_type: (discountMode === 'individual' && Number(l.discountValue) > 0 ? 'amount' : 'none') as DiscountType,
@@ -1606,7 +1697,44 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             </button>
                           )}
                         </div>
-                        {sourceRequestNo != null && <RequestLinkNote line={line} requestLines={requestLines} />}
+                        {line.allocations && (
+                          <div className="mt-1.5 rounded-[10px] border border-indigo-100 bg-indigo-50/50 p-2">
+                            <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
+                              <Link2 className="h-3 w-3" /> จัดสรรจากใบขอซื้อ
+                            </div>
+                            <div className="space-y-1">
+                              {line.allocations.map((a, j) => (
+                                <div key={a.purchase_request_item_id} className="flex items-center gap-2 text-[11px] text-[#1d1d1f]">
+                                  <span className="min-w-0 flex-1 truncate">
+                                    PR-{a.pr_no ?? '?'}
+                                    {a.plot_label ? ` · ${a.plot_label}` : ''}
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={a.quantity}
+                                    onChange={(e) => updateAllocation(i, j, e.target.value)}
+                                    className="w-20 text-right text-xs"
+                                    disabled={readOnly}
+                                  />
+                                  <span className="w-10 shrink-0 text-[#86868b]">{materialUnit(line) || '-'}</span>
+                                  {!readOnly && line.allocations && line.allocations.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeAllocation(i, j)}
+                                      title="เอารายการนี้ออกจากใบสั่งซื้อ"
+                                      className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {sourceRequestNo != null && !line.allocations && <RequestLinkNote line={line} requestLines={requestLines} />}
                         {/* Purchasing's answer to the request line. When the
                           * two sides count the same way the arithmetic still
                           * closes the line on its own and this stays
@@ -1749,6 +1877,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             onChange={(e) => updateLine(i, { quantity_ordered: e.target.value })}
                             className="w-full text-right"
                             disabled={readOnly}
+                            readOnly={Boolean(line.allocations)}
+                            title={line.allocations ? 'ผลรวมของจำนวนที่จัดสรรจากใบขอซื้อแต่ละใบ' : undefined}
                           />
                           <span className="shrink-0 text-xs text-[#86868b]">{materialUnit(line) || '-'}</span>
                         </div>

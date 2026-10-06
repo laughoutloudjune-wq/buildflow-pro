@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole } from '@/actions/_shared/user-role'
 import { translateError as translatePrError } from '@/lib/errors'
-import type { PurchaseRequest, PurchaseRequestStatus, SettlementReason } from '@/lib/types/procurement'
+import { isAnsweredByOrder, requestLineUnit } from '@/lib/procurement/requestQuantities'
+import type { PurchaseOrderStatus, PurchaseRequest, PurchaseRequestStatus, SettlementReason } from '@/lib/types/procurement'
 
 const SELECT_WITH_RELATIONS = `
   *,
@@ -23,13 +24,49 @@ const SELECT_WITH_RELATIONS = `
       *,
       settler:profiles!purchase_request_item_settlements_settled_by_fkey (full_name, email)
     ),
-    purchase_order_items!purchase_order_items_purchase_request_item_id_fkey (
-      quantity_ordered, unit, closes_request_line,
-      purchase_orders (po_no)
+    purchase_order_item_allocations (
+      quantity_allocated,
+      purchase_order_items (unit, closes_request_line, purchase_orders (id, po_no, status))
     )
   ),
   purchase_orders (po_no, status)
 `
+
+type RawAllocation = {
+  quantity_allocated: number
+  purchase_order_items:
+    | { unit: string | null; closes_request_line: boolean; purchase_orders: { id: string; po_no: string; status: PurchaseOrderStatus } | null }
+    | null
+}
+
+/** Rebuilds each request line's `purchase_order_items` (the shape every
+ * quantity helper in lib/procurement/requestQuantities.ts reads) from the
+ * line's allocations: one entry per PO line that draws on it, carrying the
+ * ALLOCATED quantity rather than the PO line's own total - a consolidated PO
+ * line may serve several requests, and only this request's slice belongs
+ * here. Cancelled orders are left out: their quantity went back to the line
+ * when they were cancelled, so counting them again would overstate the
+ * original ask. */
+function mapRequestAllocations(request: PurchaseRequest): PurchaseRequest {
+  return {
+    ...request,
+    purchase_request_items: (request.purchase_request_items || []).map((item) => {
+      const raw = ((item as unknown as { purchase_order_item_allocations?: RawAllocation[] }).purchase_order_item_allocations ||
+        []) as RawAllocation[]
+      return {
+        ...item,
+        purchase_order_items: raw
+          .filter((a) => a.purchase_order_items && a.purchase_order_items.purchase_orders?.status !== 'cancelled')
+          .map((a) => ({
+            quantity_ordered: Number(a.quantity_allocated),
+            unit: a.purchase_order_items!.unit,
+            closes_request_line: a.purchase_order_items!.closes_request_line,
+            purchase_orders: a.purchase_order_items!.purchase_orders,
+          })),
+      }
+    }),
+  }
+}
 
 export type PurchaseRequestFilters = {
   projectId?: string
@@ -46,7 +83,7 @@ export async function getPurchaseRequests(filters: PurchaseRequestFilters = {}):
 
   const { data, error } = await query
   if (error) throw new Error(error.message)
-  return (data as unknown as PurchaseRequest[]) || []
+  return ((data as unknown as PurchaseRequest[]) || []).map(mapRequestAllocations)
 }
 
 export async function getPurchaseRequestById(id: string): Promise<PurchaseRequest | null> {
@@ -54,7 +91,7 @@ export async function getPurchaseRequestById(id: string): Promise<PurchaseReques
   const supabase = await createClient()
   const { data, error } = await supabase.from('purchase_requests').select(SELECT_WITH_RELATIONS).eq('id', id).maybeSingle()
   if (error) throw new Error(error.message)
-  return data as unknown as PurchaseRequest | null
+  return data ? mapRequestAllocations(data as unknown as PurchaseRequest) : null
 }
 
 /** For printing several requests as one combined PDF - one round trip for
@@ -70,7 +107,7 @@ export async function getPurchaseRequestsByIds(ids: string[]): Promise<PurchaseR
     .in('id', ids)
     .order('pr_no', { ascending: true })
   if (error) throw new Error(error.message)
-  return (data as unknown as PurchaseRequest[]) || []
+  return ((data as unknown as PurchaseRequest[]) || []).map(mapRequestAllocations)
 }
 
 /** BOQ job options for the request form's per-line "สำหรับงาน" picker -
@@ -275,5 +312,101 @@ export async function getApprovedRequestsForOrder(projectId?: string): Promise<P
   if (projectId) query = query.eq('project_id', projectId)
   const { data, error } = await query
   if (error) throw new Error(error.message)
-  return (data as unknown as PurchaseRequest[]) || []
+  return ((data as unknown as PurchaseRequest[]) || []).map(mapRequestAllocations)
+}
+
+/** One request line that can still be ordered, flattened for the
+ * "combine requests into one PO" picker. */
+export type EligibleRequestLine = {
+  purchase_request_item_id: string
+  purchase_request_id: string
+  pr_no: number
+  project_id: string
+  project_name: string
+  /** Display label of the request's plot / plot group / multi-plot scope. */
+  plot_label: string | null
+  /** Every concrete plot the request's scope resolves to (a saved group is
+   * expanded to its members) - used to scope the combined order. */
+  plot_ids: string[]
+  material_type_id: number
+  material_name: string
+  unit: string
+  /** What is still outstanding on the line (purchase_request_items.quantity_requested). */
+  remaining: number
+  /** The material's current catalog price - the same default the single-request flow prefills. */
+  unit_price: number
+  requested_at: string
+}
+
+/** Approved request lines with something left to order, for one project.
+ * Lines whose request unit differs from the material's own unit are left out:
+ * a PO line transacts in the material's unit, and a consolidated line only
+ * allocates same-unit quantities - those still go through the single-request
+ * flow with its "covers the request" tick box. Lines already closed by an
+ * order's tick box are left out too. */
+export async function getEligibleRequestLinesForOrder(projectId: string): Promise<EligibleRequestLine[]> {
+  await requireModuleAccess('procurement')
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('purchase_requests')
+    .select(SELECT_WITH_RELATIONS)
+    .eq('status', 'approved')
+    .eq('project_id', projectId)
+    .order('pr_no', { ascending: true })
+  if (error) throw new Error(error.message)
+  const requests = ((data as unknown as PurchaseRequest[]) || []).map(mapRequestAllocations)
+
+  const groupIds = Array.from(new Set(requests.map((r) => r.plot_group_id).filter((id): id is string => Boolean(id))))
+  const groupMembers = new Map<string, string[]>()
+  if (groupIds.length > 0) {
+    const { data: members, error: membersError } = await supabase
+      .from('plot_group_members')
+      .select('group_id, plot_id')
+      .in('group_id', groupIds)
+    if (membersError) throw new Error(membersError.message)
+    for (const m of (members || []) as { group_id: string; plot_id: string }[]) {
+      groupMembers.set(m.group_id, [...(groupMembers.get(m.group_id) || []), m.plot_id])
+    }
+  }
+
+  const rows: EligibleRequestLine[] = []
+  for (const request of requests) {
+    const plotIds = request.plot_group_id
+      ? groupMembers.get(request.plot_group_id) || []
+      : request.plot_id
+        ? [request.plot_id]
+        : (request.purchase_request_plots || []).map((p) => p.plot_id)
+    const plotNames = (request.purchase_request_plots || []).map((p) => p.plots?.name).filter(Boolean)
+    const plotLabel = request.plots?.name
+      ? `แปลง ${request.plots.name}`
+      : request.plot_groups?.name
+        ? `กลุ่มแปลง ${request.plot_groups.name}`
+        : plotNames.length > 0
+          ? `แปลง ${plotNames.join(', ')}`
+          : null
+
+    for (const item of request.purchase_request_items || []) {
+      const remaining = Number(item.quantity_requested)
+      if (!(remaining > 0)) continue
+      if (isAnsweredByOrder(item)) continue
+      const materialUnit = item.material_types?.unit || ''
+      if (requestLineUnit(item) !== materialUnit) continue
+      rows.push({
+        purchase_request_item_id: item.id,
+        purchase_request_id: request.id,
+        pr_no: request.pr_no,
+        project_id: request.project_id,
+        project_name: request.projects?.name || '-',
+        plot_label: plotLabel,
+        plot_ids: plotIds,
+        material_type_id: item.material_type_id,
+        material_name: item.material_types?.name || '-',
+        unit: materialUnit,
+        remaining,
+        unit_price: Number(item.material_types?.current_price ?? 0),
+        requested_at: request.created_at,
+      })
+    }
+  }
+  return rows
 }

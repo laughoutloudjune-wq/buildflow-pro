@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowDown, ArrowUp, ArrowUpDown, Copy, Loader2, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Copy, Layers, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import { Button } from '@/components/ui/Button'
@@ -238,11 +238,18 @@ export default function PurchaseOrdersPageClient({
         title="ใบสั่งซื้อ (Purchase Orders)"
         subtitle="ใบสั่งซื้อวัสดุที่ออกให้ผู้จำหน่าย ติดตามสถานะจนถึงชำระเงิน"
         actions={
-          <Link href="/dashboard/procurement/orders/create">
-            <Button>
-              <Plus className="h-4 w-4" /> สร้างใบสั่งซื้อ
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/dashboard/procurement/orders/combine">
+              <Button variant="secondary">
+                <Layers className="h-4 w-4" /> รวมใบขอซื้อ
+              </Button>
+            </Link>
+            <Link href="/dashboard/procurement/orders/create">
+              <Button>
+                <Plus className="h-4 w-4" /> สร้างใบสั่งซื้อ
+              </Button>
+            </Link>
+          </div>
         }
       />
 

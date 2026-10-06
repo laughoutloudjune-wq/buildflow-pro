@@ -129,7 +129,12 @@ export type PurchaseRequestItem = {
      * can close a line bought in a different unit than it was asked for -
      * see requestQuantities.ts. */
     closes_request_line: boolean
-    purchase_orders?: { po_no: string } | null
+    /** The quantity this PO line draws from THIS request line. For a
+     * consolidated multi-request PO line that is only this request's slice
+     * of the PO line total, so it is read from the allocation (see
+     * mapRequestAllocations in actions/procurement/requests.ts), never from
+     * the PO line itself. */
+    purchase_orders?: { id?: string; po_no: string; status?: PurchaseOrderStatus } | null
   }[]
 }
 
@@ -169,6 +174,27 @@ export type PurchaseOrderStatus = 'draft' | 'sent' | 'partially_received' | 'rec
 export type DiscountType = 'none' | 'percent' | 'amount'
 export type VatType = 'exclusive' | 'inclusive'
 
+/** One slice of a PO line: how much of the line's quantity comes from which
+ * purchase request line (and so which request's plot or batch). The PO line
+ * is the supplier-facing total; these are the internal breakdown, and their
+ * quantities always sum to the line's quantity_ordered. */
+export type PurchaseOrderItemAllocation = {
+  id: string
+  purchase_order_item_id: string
+  purchase_request_item_id: string
+  quantity_allocated: number
+  purchase_request_items?: {
+    purchase_request_id: string
+    purchase_requests?: {
+      pr_no: number
+      project_id: string
+      plots?: { name: string } | null
+      plot_groups?: { name: string } | null
+      purchase_request_plots?: { plot_id: string; plots?: { name: string } | null }[]
+    } | null
+  } | null
+}
+
 export type PurchaseOrderItem = {
   id: string
   purchase_order_id: string
@@ -206,6 +232,9 @@ export type PurchaseOrderItem = {
   projects?: { name: string } | null
   plots?: { name: string } | null
   plot_groups?: { name: string } | null
+  /** Request lines this order line is allocated against. Empty for a
+   * standalone line. */
+  purchase_order_item_allocations?: PurchaseOrderItemAllocation[]
 }
 
 export type PurchaseOrder = {
@@ -262,6 +291,12 @@ export type PurchaseOrder = {
   purchase_order_items?: PurchaseOrderItem[]
 }
 
+/** One slice of a consolidated PO line, as sent to po_create/po_update. */
+export type PurchaseOrderAllocationInput = {
+  purchase_request_item_id: string
+  quantity: number
+}
+
 export type PurchaseOrderItemInput = {
   /** Existing purchase_order_item id when editing a line that's already on
    * the order - lets po_update preserve quantity_received and the
@@ -270,6 +305,12 @@ export type PurchaseOrderItemInput = {
   id?: string | null
   material_type_id: number
   purchase_request_item_id?: string | null
+  /** Explicit breakdown of this line across request lines. When present the
+   * server validates each slice (approved request, same project, material
+   * and unit, within the outstanding quantity) and requires quantity_ordered
+   * to equal their sum. Omit for a standalone line or the single-request
+   * shortcut (purchase_request_item_id). */
+  allocations?: PurchaseOrderAllocationInput[]
   quantity_ordered: number
   /** This line's own unit; omitted/null means the material's catalog unit. */
   unit?: string | null

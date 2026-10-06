@@ -9,9 +9,9 @@ import PurchaseOrderForm, { type PurchaseOrderFormOptions } from '@/components/p
 export default async function CreatePurchaseOrderPage({
   searchParams,
 }: {
-  searchParams: Promise<{ fromRequest?: string }>
+  searchParams: Promise<{ fromRequest?: string; combined?: string }>
 }) {
-  const [{ fromRequest }, projects, suppliers, companies] = await Promise.all([
+  const [{ fromRequest, combined }, projects, suppliers, companies] = await Promise.all([
     searchParams,
     getProjects({ includeOverhead: true }),
     getSuppliersWithBranches(),
@@ -24,5 +24,10 @@ export default async function CreatePurchaseOrderPage({
     companies,
   }
 
-  return <PurchaseOrderForm mode="create" fromRequestId={fromRequest ?? null} initialOptions={initialOptions} />
+  return <PurchaseOrderForm
+      mode="create"
+      fromRequestId={fromRequest ?? null}
+      combined={combined === '1'}
+      initialOptions={initialOptions}
+    />
 }

@@ -21,6 +21,7 @@ import { PR_STATUS_LABEL, PR_STATUS_TONE } from '@/lib/status-labels'
 import type { PurchaseRequest, PurchaseRequestItem } from '@/lib/types/procurement'
 import {
   isAnsweredByOrder,
+  orderLineUnit,
   orderedQuantity,
   originalQuantityRequested,
   purchasesInOtherUnits,
@@ -117,14 +118,25 @@ function quantityDisplay(item: PurchaseRequestItem, closed: 'open' | 'ordered' |
   return `${originalQuantityRequested(item).toLocaleString('th-TH')} ${unit}`
 }
 
-/** The orders this line was answered by, deduplicated - usually exactly one. */
+/** The orders this line was answered by, with how much each one takes from
+ * THIS line (its allocation - on a consolidated order that is only this
+ * request's slice of the PO line). Deduplicated per order and unit. */
 function poRefs(item: PurchaseRequestItem): string[] {
-  const seen = new Set<string>()
+  const byPo = new Map<string, string>()
+  const totals = new Map<string, { poNo: string; unit: string; qty: number }>()
   for (const line of item.purchase_order_items || []) {
     const poNo = line.purchase_orders?.po_no
-    if (poNo) seen.add(poNo)
+    if (!poNo) continue
+    const unit = orderLineUnit(item, line)
+    const key = `${poNo}|${unit}`
+    const existing = totals.get(key)
+    if (existing) existing.qty += Number(line.quantity_ordered || 0)
+    else totals.set(key, { poNo, unit, qty: Number(line.quantity_ordered || 0) })
   }
-  return Array.from(seen)
+  for (const { poNo, unit, qty } of totals.values()) {
+    byPo.set(`${poNo}|${unit}`, `${poNo} (${qty.toLocaleString('th-TH')} ${unit})`.trim())
+  }
+  return Array.from(byPo.values())
 }
 
 /** Where the line stands, and the order that put it there. Replaces the old

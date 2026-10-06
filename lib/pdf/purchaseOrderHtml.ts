@@ -1,7 +1,8 @@
 import fs from 'fs'
 import path from 'path'
 import { bahtText } from '@/lib/bahtText'
-import type { PurchaseOrder } from '@/lib/types/procurement'
+import type { PurchaseOrder, PurchaseOrderItem } from '@/lib/types/procurement'
+import { allocationRows } from '@/lib/procurement/allocations'
 import type { SignatureSlot } from '@/lib/types/signatures'
 import { isBoqCheckLineOver, type BoqCheckLine, type BoqCheckOverride } from '@/lib/procurement/boqControl'
 
@@ -105,6 +106,18 @@ function slotContent(
   return { name: '', dateLine: '', imageUrl: slot.signature_url }
 }
 
+function allocationBreakdown(item: PurchaseOrderItem): string {
+  const rows = allocationRows(item.purchase_order_item_allocations)
+  if (rows.length === 0) return ''
+  const unit = esc(item.unit || item.material_types?.unit)
+  return `<div class="item-alloc">${rows
+    .map(
+      (r) =>
+        `<div class="alloc-row"><span>PR-${r.prNo ?? '?'}${r.plotLabel ? ` · ${esc(r.plotLabel)}` : ''}</span><span>${qty(r.quantity)} ${unit}</span></div>`
+    )
+    .join('')}</div>`
+}
+
 export type PurchaseOrderBoqCheck = {
   lines: BoqCheckLine[]
   scopeLabel: string
@@ -182,7 +195,11 @@ export function buildPurchaseOrderHtml(
   order: PurchaseOrder,
   fallbackSignatureUrl: string | null | undefined,
   slots: SignatureSlot[],
-  boqCheck?: PurchaseOrderBoqCheck | null
+  boqCheck?: PurchaseOrderBoqCheck | null,
+  /** `showAllocations`: the internal copy. The supplier-facing PO lists one
+   * consolidated line per material - which request/plot each slice came from
+   * is our own bookkeeping, so it is only printed when explicitly asked for. */
+  options: { showAllocations?: boolean } = {}
 ): string {
   if (!cachedRegular) cachedRegular = fontBase64('Sarabun-Regular.ttf')
   if (!cachedBold) cachedBold = fontBase64('Sarabun-Bold.ttf')
@@ -206,6 +223,7 @@ export function buildPurchaseOrderHtml(
             <div class="item-name">${esc(item.material_types?.name) || '-'}</div>
             ${item.description ? `<div class="item-desc">${esc(item.description)}</div>` : ''}
             ${discountNote}
+            ${options.showAllocations ? allocationBreakdown(item) : ''}
           </td>
           <td class="right nowrap">${qty(item.quantity_ordered)}</td>
           <td class="unit">${esc(item.unit || item.material_types?.unit) || '-'}</td>
@@ -418,6 +436,8 @@ export function buildPurchaseOrderHtml(
   .idx { color: ${c.muted}; width: 26px; }
   .unit { color: ${c.muted}; font-size: 9.5px; width: 46px; }
   .item-name { font-size: 10px; }
+  .item-alloc { margin-top: 3px; padding-left: 6px; border-left: 2px solid ${c.muted}; }
+  .alloc-row { display: flex; justify-content: space-between; gap: 8px; font-size: 8px; color: ${c.muted}; line-height: 1.5; }
   .item-desc { font-size: 8.5px; color: ${c.muted}; margin-top: 1px; line-height: 1.4; }
   .item-discount { font-size: 8.5px; color: #dc2626; margin-top: 1px; }
   .nowrap { white-space: nowrap; }
@@ -498,6 +518,7 @@ export function buildPurchaseOrderHtml(
         ${kv('โครงการ', esc(order.projects?.name) || '-')}
         ${kv('โครงการย่อย / แปลง', plotScopeLine || '-')}
         ${order.purchase_requests?.pr_no ? kv('อ้างอิงใบขอซื้อ', `PR-${order.purchase_requests.pr_no}`) : ''}
+        ${options.showAllocations ? kv('สำเนา', 'ภายใน - แสดงที่มาจากใบขอซื้อ/แปลง') : ''}
         ${kv('ผู้ขอซื้อ', esc(order.creator?.full_name) || '-')}
         ${kv('เงื่อนไขชำระเงิน', esc(order.payment_terms) || 'ไม่ระบุ', { strong: true })}
         ${kv('ภาษีมูลค่าเพิ่ม', vatLine)}
