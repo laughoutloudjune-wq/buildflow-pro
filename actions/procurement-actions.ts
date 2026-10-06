@@ -27,6 +27,7 @@ import {
   settlePurchaseRequestItems as settlePurchaseRequestItemsImpl,
   undoPurchaseRequestItemSettlement as undoPurchaseRequestItemSettlementImpl,
   getApprovedRequestsForOrder as getApprovedRequestsForOrderImpl,
+  getEligibleRequestLinesForOrder as getEligibleRequestLinesForOrderImpl,
   getBoqJobOptionsForPlots as getBoqJobOptionsForPlotsImpl,
   type PurchaseRequestFilters,
 } from '@/actions/procurement/requests'
@@ -157,6 +158,10 @@ export async function settlePurchaseRequestItems(input: Parameters<typeof settle
 
 export async function undoPurchaseRequestItemSettlement(settlementId: string, requestId: string) {
   return undoPurchaseRequestItemSettlementImpl(settlementId, requestId)
+}
+
+export async function getEligibleRequestLinesForOrder(projectId: string) {
+  return getEligibleRequestLinesForOrderImpl(projectId)
 }
 
 export async function getApprovedRequestsForOrder(projectId?: string) {

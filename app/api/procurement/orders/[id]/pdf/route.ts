@@ -31,7 +31,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // never block printing the PO itself.
   const boqCheck = await getBoqCheckForPurchaseOrder(id).catch(() => null)
 
-  const html = buildPurchaseOrderHtml(order, settings?.signature_url, slots, boqCheck)
+  // ?internal=1 prints the internal copy with each line's request/plot
+  // breakdown; the default stays supplier-facing.
+  const showAllocations = request.nextUrl.searchParams.get('internal') === '1'
+  const html = buildPurchaseOrderHtml(order, settings?.signature_url, slots, boqCheck, { showAllocations })
 
   return respondWithPrintable({
     request,

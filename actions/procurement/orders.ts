@@ -20,7 +20,21 @@ const SELECT_WITH_RELATIONS = `
   creator:profiles!purchase_orders_created_by_fkey (full_name),
   receiver:profiles!purchase_orders_received_by_fkey (full_name),
   payer:profiles!purchase_orders_paid_by_fkey (full_name),
-  purchase_order_items (*, material_types (*), projects (name), plots (name), plot_groups (name))
+  purchase_order_items (
+    *, material_types (*), projects (name), plots (name), plot_groups (name),
+    purchase_order_item_allocations (
+      id, purchase_order_item_id, purchase_request_item_id, quantity_allocated,
+      purchase_request_items (
+        purchase_request_id,
+        purchase_requests (
+          pr_no, project_id,
+          plots!purchase_requests_plot_id_fkey (name),
+          plot_groups (name),
+          purchase_request_plots (plot_id, plots (name))
+        )
+      )
+    )
+  )
 `
 
 export type PurchaseOrderFilters = {
@@ -56,6 +70,11 @@ function buildPayload(input: PurchaseOrderInput) {
         id: i.id || null,
         material_type_id: i.material_type_id,
         purchase_request_item_id: i.purchase_request_item_id || null,
+        // Explicit breakdown across request lines - validated and summed
+        // server-side (po_create/po_update); the line total is the sum.
+        allocations: (i.allocations || [])
+          .filter((a) => a.purchase_request_item_id && Number(a.quantity) > 0)
+          .map((a) => ({ purchase_request_item_id: a.purchase_request_item_id, quantity: Number(a.quantity) })),
         quantity_ordered: Number(i.quantity_ordered),
         unit: i.unit?.trim() || null,
         closes_request_line: Boolean(i.closes_request_line),
@@ -190,6 +209,7 @@ export async function updatePurchaseOrder(
     if (error) throw new Error(error.message)
     revalidatePath('/dashboard/procurement/orders')
     revalidatePath(`/dashboard/procurement/orders/${id}`)
+    revalidatePath('/dashboard/procurement/requests')
     return data as { id: string; po_no: string }
   } catch (error) {
     return { error: translatePoError(error instanceof Error ? error.message : 'Failed to update purchase order') }
@@ -216,6 +236,7 @@ export async function cancelPurchaseOrder(id: string, reason?: string): Promise<
     const supabase = await createClient()
     const { error } = await supabase.rpc('po_cancel', { p_id: id, p_reason: reason?.trim() || null })
     if (error) return { error: translatePoError(error.message) }
+    revalidatePath('/dashboard/procurement/requests')
     revalidatePath('/dashboard/procurement/orders')
     revalidatePath(`/dashboard/procurement/orders/${id}`)
     return { ok: true }

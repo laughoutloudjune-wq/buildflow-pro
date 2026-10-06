@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition, type Ref } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, XCircle, PackageCheck, ChevronDown, Undo2, PackageX, Receipt } from 'lucide-react'
+import { ArrowLeft, XCircle, PackageCheck, ChevronDown, Undo2, PackageX, Receipt, Link2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/Toast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import ReasonDialog from '@/components/ui/ReasonDialog'
 import { formatCurrency } from '@/lib/currency'
+import { allocationRows } from '@/lib/procurement/allocations'
 import PurchaseOrderForm, { type PurchaseOrderFormHandle, type PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
 import PurchaseOrderDocActions from '@/components/procurement/PurchaseOrderDocActions'
 import GoodsReceiptModal from '@/components/procurement/GoodsReceiptModal'
@@ -203,6 +204,13 @@ export default function PurchaseOrderDetailPageClient({
     return <div className="py-16 text-center text-slate-400">ไม่พบใบสั่งซื้อนี้</div>
   }
 
+  // Lines that answer purchase request lines, with their per-request / per-plot
+  // breakdown - the internal traceability view (the printed PO stays
+  // supplier-facing unless the internal copy is asked for).
+  const allocationLines = (order.purchase_order_items || [])
+    .map((item) => ({ item, rows: allocationRows(item.purchase_order_item_allocations) }))
+    .filter(({ rows }) => rows.length > 0)
+
   const canEditStatus = order.status === 'draft' || order.status === 'sent'
   const canCancel = order.status === 'draft' || order.status === 'sent'
   const canReceive = order.status === 'sent' || order.status === 'partially_received'
@@ -258,7 +266,7 @@ export default function PurchaseOrderDetailPageClient({
                 <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_TONE[order.status]}`}>{STATUS_LABEL[order.status]}</span>
               )}
 
-              <PurchaseOrderDocActions orderId={order.id} poNo={order.po_no} />
+              <PurchaseOrderDocActions orderId={order.id} poNo={order.po_no} hasAllocations={allocationLines.length > 0} />
 
               {canReceive && (
                 <Button type="button" size="sm" onClick={() => setIsReceiveModalOpen(true)}>
@@ -360,6 +368,49 @@ export default function PurchaseOrderDetailPageClient({
                 })}
               </tbody>
             </table>
+          </div>
+        </Card>
+      )}
+
+      {allocationLines.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+            <Link2 className="h-4 w-4 text-slate-500" />
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">ที่มาของรายการสั่งซื้อ (ใบขอซื้อ / แปลง)</h3>
+              <p className="text-xs text-slate-400">ข้อมูลภายใน - ผู้จำหน่ายเห็นเฉพาะยอดรวมต่อวัสดุ</p>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {allocationLines.map(({ item, rows }) => (
+              <div key={item.id} className="px-4 py-3">
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="font-medium text-slate-800">{item.material_types?.name || '-'}</span>
+                  <span className="whitespace-nowrap font-semibold text-slate-900">
+                    {item.quantity_ordered.toLocaleString('th-TH')} {item.unit || item.material_types?.unit || ''}
+                  </span>
+                </div>
+                <ul className="mt-1.5 space-y-0.5 text-xs text-slate-500">
+                  {rows.map((row) => (
+                    <li key={row.allocationId} className="flex justify-between gap-3">
+                      <span>
+                        {row.purchaseRequestId ? (
+                          <Link href={`/dashboard/procurement/requests/${row.purchaseRequestId}`} className="font-medium text-indigo-600 hover:underline">
+                            PR-{row.prNo}
+                          </Link>
+                        ) : (
+                          `PR-${row.prNo ?? '?'}`
+                        )}
+                        {row.plotLabel ? ` · ${row.plotLabel}` : ''}
+                      </span>
+                      <span className="whitespace-nowrap">
+                        {row.quantity.toLocaleString('th-TH')} {item.unit || item.material_types?.unit || ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         </Card>
       )}
