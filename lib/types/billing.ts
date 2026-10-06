@@ -1,5 +1,5 @@
-export type UserRole = 'admin' | 'pm' | 'foreman' | 'accountant' | 'sales'
-export const USER_ROLES = ['admin', 'pm', 'foreman', 'accountant', 'sales'] as const
+export type UserRole = 'admin' | 'pm' | 'foreman' | 'accountant' | 'sales' | 'sales_exec'
+export const USER_ROLES = ['admin', 'pm', 'foreman', 'accountant', 'sales', 'sales_exec'] as const
 
 /**
  * Coerces any DB/JWT value to a known UserRole, defaulting to 'foreman' -

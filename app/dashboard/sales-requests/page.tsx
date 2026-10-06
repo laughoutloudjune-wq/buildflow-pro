@@ -13,6 +13,8 @@ import SalesRequestsPageClient from './SalesRequestsPageClient'
 export default async function SalesRequestsPage() {
   const { role, permissions: rolePermissions } = await requireModuleAccess(['sales', 'foreman', 'projects'])
   const canManage = permissionsForRole(role, rolePermissions).projects
+  // Sales exec (and admin) approve/reject new requests before construction sees them.
+  const canApprove = role === 'admin' || role === 'sales_exec'
 
   let requests: Awaited<ReturnType<typeof getWorkRequestQueue>> = []
   let contractors: Awaited<ReturnType<typeof getContractors>> = []
@@ -41,6 +43,7 @@ export default async function SalesRequestsPage() {
       contractors={contractors}
       projects={projects}
       canManage={canManage}
+      canApprove={canApprove}
       initialError={initialError}
     />
   )

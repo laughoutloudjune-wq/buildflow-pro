@@ -21,6 +21,12 @@ const TYPE_LABEL: Record<NotificationItem['type'], string> = {
   pr_received: 'ของที่คุณขอซื้อมาถึงแล้ว',
   work_request_new: 'มีคำขอจากฝ่ายขายใหม่',
   work_request_done: 'คำขอจากฝ่ายขายเสร็จสิ้นแล้ว',
+  work_request_pending: 'มีคำขอจากฝ่ายขายรออนุมัติ',
+  work_request_approved: 'คำขอของคุณได้รับการอนุมัติแล้ว',
+  work_request_rejected: 'คำขอของคุณไม่ได้รับการอนุมัติ',
+  tr_submitted: 'มีใบขอโอนรออนุมัติ',
+  tr_approved: 'ใบขอโอนได้รับการอนุมัติแล้ว',
+  tr_rejected: 'ใบขอโอนไม่ได้รับการอนุมัติ',
 }
 
 const POLL_INTERVAL_MS = 45_000
@@ -46,6 +52,10 @@ function notificationSubtitle(item: NotificationItem): string {
     const swr = item.sales_work_request
     const parts = [swr.request_no, swr.plot_name ? `แปลง ${swr.plot_name}` : null, swr.title].filter(Boolean)
     return parts.join(' • ')
+  }
+  if (item.transfer_request) {
+    const tr = item.transfer_request
+    return [tr.request_no, tr.plot_name ? `แปลง ${tr.plot_name}` : null].filter(Boolean).join(' • ')
   }
   const billing = item.billing
   if (!billing) return ''
@@ -106,6 +116,7 @@ export default function NotificationBell({ role }: { role?: string }) {
       return role === 'foreman' ? '/dashboard/foreman/purchase-request' : `/dashboard/procurement/requests/${item.purchase_request.id}`
     }
     if (item.sales_work_request) return '/dashboard/sales-requests'
+    if (item.transfer_request) return '/dashboard/sales/transfer-requests'
     if (!item.billing) return null
     return role === 'foreman' ? '/dashboard/foreman/history' : `/dashboard/billing/${item.billing.id}/review`
   }

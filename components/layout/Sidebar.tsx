@@ -21,6 +21,7 @@ import {
   GaugeCircle,
   Tag,
   ClipboardCheck,
+  CalendarDays,
 } from 'lucide-react'
 import { useState } from 'react'
 import Link from 'next/link'
@@ -60,6 +61,7 @@ const menuSections: SidebarSection[] = [
     title: 'งานประจำวัน',
     items: [
       { icon: HardHat, label: 'ตรวจหน้างาน', href: '/dashboard/foreman/create-progress', permission: 'foreman' as const },
+      { icon: CalendarDays, label: 'แผนงาน', href: '/dashboard/weekly-plan', permission: 'projects' as const },
       { icon: FileText, label: 'รายการเบิกจ่าย', href: '/dashboard/billing', permission: 'billing' as const },
     ],
   },
@@ -69,6 +71,7 @@ const menuSections: SidebarSection[] = [
       { icon: BarChart3, label: 'แดชบอร์ดขาย', href: '/dashboard/sales/dashboard', permission: 'sales' as const },
       { icon: Tag, label: 'ผังการขาย', href: '/dashboard/sales', permission: 'sales' as const },
       { icon: Tag, label: 'โปรโมชั่น', href: '/dashboard/sales/promotions', permission: 'sales' as const },
+      { icon: FileText, label: 'ใบขอโอน (TR)', href: '/dashboard/sales/transfer-requests', permission: 'sales' as const },
       {
         icon: ClipboardCheck,
         label: 'คำขอจากฝ่ายขาย',

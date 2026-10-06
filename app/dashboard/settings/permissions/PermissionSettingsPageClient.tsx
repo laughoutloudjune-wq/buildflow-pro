@@ -15,6 +15,7 @@ const roleLabels: Record<UserRole, string> = {
   foreman: 'Foreman',
   accountant: 'Accountant',
   sales: 'Sales',
+  sales_exec: 'Sales Exec',
 }
 
 const moduleLabels: Record<PermissionModule, { title: string; description: string }> = {

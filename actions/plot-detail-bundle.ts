@@ -9,6 +9,7 @@ import { getSalePaymentsForSale } from '@/actions/sale-payments-actions'
 import { getPromotions } from '@/actions/promotions-actions'
 import { getPlotSalePromotionItems } from '@/actions/plot-sale-promotion-items'
 import { getPlotProgressCurve, type PlotProgressCurve } from '@/actions/plot-progress-curve'
+import { getPlotPhaseSchedule, type PlotPhaseScheduleRow } from '@/actions/plot-phase-schedule'
 import { permissionsForRole, requireModuleAccess } from '@/lib/auth/route-access'
 import type { PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
 
@@ -23,7 +24,7 @@ import type { PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
 export async function getPlotDetailBundle(projectId: string, plotId: string) {
   const { role, permissions: rolePermissions } = await requireModuleAccess(['projects', 'sales'])
   const perms = permissionsForRole(role, rolePermissions)
-  const canSeeCost = role !== 'sales'
+  const canSeeCost = role !== 'sales' && role !== 'sales_exec'
   const canEditConstruction = perms.projects
   const canEditSales = perms.sales
 
@@ -40,14 +41,15 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
   let workRequests: Awaited<ReturnType<typeof getWorkRequestsForPlot>> = []
   let payments: Awaited<ReturnType<typeof getSalePaymentsForSale>> = []
   let promotionItems: Awaited<ReturnType<typeof getPlotSalePromotionItems>> = []
-  let progressCurve: PlotProgressCurve = { startDate: null, targetDate: null, totalBoqValue: 0, actualPoints: [], today: new Date().toISOString() }
+  let progressCurve: PlotProgressCurve = { startDate: null, targetDate: null, totalBoqValue: 0, actualPoints: [], phaseMilestones: [], today: new Date().toISOString() }
+  let phaseSchedule: PlotPhaseScheduleRow[] = []
 
   try {
     // job_assignments' own RLS excludes sales entirely (agreed_price_per_unit
     // is a real cost column) - get_plot_jobs_public() is the SECURITY
     // DEFINER, price-free equivalent for that case, not just a stripped copy
     // of the same query.
-    const [pData, jData, cData, hmData, saleData, statusesData, promotionsData, historyData, materialsData, workRequestsData, progressCurveData] = await Promise.all([
+    const [pData, jData, cData, hmData, saleData, statusesData, promotionsData, historyData, materialsData, workRequestsData, progressCurveData, phaseScheduleData] = await Promise.all([
       getPlotById(plotId),
       canSeeCost ? getJobAssignments(plotId) : getPlotJobsPublic(plotId),
       getContractors(),
@@ -63,6 +65,9 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
       canSeeCost
         ? getPlotProgressCurve(plotId).catch(() => progressCurve)
         : Promise.resolve(progressCurve),
+      canSeeCost
+        ? getPlotPhaseSchedule(plotId).catch(() => phaseSchedule)
+        : Promise.resolve(phaseSchedule),
     ])
     plot = pData
     if (canSeeCost) {
@@ -84,6 +89,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     rawMaterials = materialsData
     workRequests = workRequestsData
     progressCurve = progressCurveData
+    phaseSchedule = phaseScheduleData
 
     if (saleData.sale) {
       payments = await getSalePaymentsForSale(saleData.sale.id).catch(() => [])
@@ -167,6 +173,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     payments,
     promotionItems,
     progressCurve,
+    phaseSchedule,
     canSeeCost,
     canEditConstruction,
     canEditSales,

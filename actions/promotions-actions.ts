@@ -56,7 +56,7 @@ export async function getPromotions(): Promise<Promotion[]> {
  * admin-only like sale_statuses) - includes inactive bundles so they can be
  * reactivated. */
 export async function getAllPromotions(): Promise<Promotion[]> {
-  await requireAuthRole(['admin', 'sales'], 'Only admin/sales can manage promotions')
+  await requireAuthRole(['admin', 'sales', 'sales_exec'], 'Only admin/sales can manage promotions')
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('promotions')
@@ -67,7 +67,7 @@ export async function getAllPromotions(): Promise<Promotion[]> {
 }
 
 export async function createPromotion(formData: FormData) {
-  await requireAuthRole(['admin', 'sales'], 'Only admin/sales can manage promotions')
+  await requireAuthRole(['admin', 'sales', 'sales_exec'], 'Only admin/sales can manage promotions')
   const name = String(formData.get('name') || '').trim()
   const description = String(formData.get('description') || '').trim()
   if (!name) return { success: false, error: 'กรุณาใส่ชื่อโปรโมชั่น' }
@@ -81,7 +81,7 @@ export async function createPromotion(formData: FormData) {
 }
 
 export async function updatePromotion(id: string, formData: FormData) {
-  await requireAuthRole(['admin', 'sales'], 'Only admin/sales can manage promotions')
+  await requireAuthRole(['admin', 'sales', 'sales_exec'], 'Only admin/sales can manage promotions')
   const name = String(formData.get('name') || '').trim()
   const description = String(formData.get('description') || '').trim()
   if (!name) return { success: false, error: 'กรุณาใส่ชื่อโปรโมชั่น' }
@@ -100,7 +100,7 @@ export async function updatePromotion(id: string, formData: FormData) {
 }
 
 export async function setPromotionActive(id: string, isActive: boolean) {
-  await requireAuthRole(['admin', 'sales'], 'Only admin/sales can manage promotions')
+  await requireAuthRole(['admin', 'sales', 'sales_exec'], 'Only admin/sales can manage promotions')
   const supabase = await createClient()
   const { error } = await supabase
     .from('promotions')
@@ -121,7 +121,7 @@ function readItemForm(formData: FormData) {
 }
 
 export async function addPromotionItem(promotionId: string, formData: FormData) {
-  await requireAuthRole(['admin', 'sales'], 'Only admin/sales can manage promotions')
+  await requireAuthRole(['admin', 'sales', 'sales_exec'], 'Only admin/sales can manage promotions')
   const { name, value } = readItemForm(formData)
   if (!name) return { success: false, error: 'กรุณาใส่ชื่อรายการ' }
   if (!Number.isFinite(value) || value < 0) return { success: false, error: 'มูลค่าไม่ถูกต้อง' }
@@ -135,7 +135,7 @@ export async function addPromotionItem(promotionId: string, formData: FormData) 
 }
 
 export async function updatePromotionItem(id: string, formData: FormData) {
-  await requireAuthRole(['admin', 'sales'], 'Only admin/sales can manage promotions')
+  await requireAuthRole(['admin', 'sales', 'sales_exec'], 'Only admin/sales can manage promotions')
   const { name, value } = readItemForm(formData)
   if (!name) return { success: false, error: 'กรุณาใส่ชื่อรายการ' }
   if (!Number.isFinite(value) || value < 0) return { success: false, error: 'มูลค่าไม่ถูกต้อง' }
@@ -149,7 +149,7 @@ export async function updatePromotionItem(id: string, formData: FormData) {
 }
 
 export async function deletePromotionItem(id: string) {
-  await requireAuthRole(['admin', 'sales'], 'Only admin/sales can manage promotions')
+  await requireAuthRole(['admin', 'sales', 'sales_exec'], 'Only admin/sales can manage promotions')
   const supabase = await createClient()
   const { error } = await supabase.from('promotion_items').delete().eq('id', id)
   if (error) return { success: false, error: error.message }

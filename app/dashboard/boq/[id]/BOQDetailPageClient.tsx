@@ -13,8 +13,10 @@ import { useToast } from '@/components/ui/Toast'
 import BoqMaterialItemsModal from '@/components/materials/BoqMaterialItemsModal'
 import BoqMaterialImportModal from '@/components/materials/BoqMaterialImportModal'
 import BoqHouseModelMaterialsGrid from '@/components/materials/BoqHouseModelMaterialsGrid'
+import HouseModelPhaseTemplateEditor from '@/components/boq/HouseModelPhaseTemplateEditor'
 import { getHouseModelById, getBOQItems, createBOQItem, deleteBOQItem, updateBOQItem, getHouseModels, importBOQItems } from '@/actions/boq-actions'
 import { getContractorTypes } from '@/actions/contractor-type-actions'
+import type { HouseModelPhaseTemplateRow } from '@/actions/house-model-phase-template'
 import { formatCurrency } from '@/lib/currency'
 
 type HouseModel = Awaited<ReturnType<typeof getHouseModelById>>
@@ -28,12 +30,14 @@ export default function BOQDetailPageClient({
   initialItems,
   types,
   allModels,
+  phaseTemplate,
 }: {
   id: string
   model: HouseModel
   initialItems: BOQItem[]
   types: ContractorTypeRow[]
   allModels: HouseModelListItem[]
+  phaseTemplate: HouseModelPhaseTemplateRow[]
 }) {
   const router = useRouter()
 
@@ -218,6 +222,21 @@ export default function BOQDetailPageClient({
     return Array.from(groups.values()).sort((a, b) => a.typeName.localeCompare(b.typeName, 'th'))
   }, [filteredItems])
 
+  // Same contractor_type_id grouping as above, but off the unfiltered `items`
+  // (not filteredItems - the phase template should always offer every trade
+  // actually on this house model's BOQ, regardless of the item search box).
+  const usedTypes = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const item of items) {
+      const typeId = item.contractor_type_id
+      if (typeId == null) continue
+      map.set(typeId, item.contractor_types?.name || 'ไม่ระบุประเภทช่าง')
+    }
+    return Array.from(map.entries())
+      .map(([typeId, typeName]) => ({ typeId, typeName }))
+      .sort((a, b) => a.typeName.localeCompare(b.typeName, 'th'))
+  }, [items])
+
   // หาไม่เจอ
   if (!model) {
     return (
@@ -289,6 +308,14 @@ export default function BOQDetailPageClient({
           className="w-full pl-9"
         />
       </div>
+
+      {/* เทมเพลตแผนงาน - ใช้สร้างกำหนดการให้ทุกแปลงของแบบบ้านนี้อัตโนมัติ */}
+      <Card className="p-5">
+        <h3 className="text-sm font-semibold text-slate-700">เทมเพลตแผนงาน (สร้างกำหนดการให้แปลงอัตโนมัติตอนดึง BOQ)</h3>
+        <div className="mt-3">
+          <HouseModelPhaseTemplateEditor houseModelId={id} usedTypes={usedTypes} template={phaseTemplate} canEdit />
+        </div>
+      </Card>
 
       {/* ตาราง BOQ - จัดกลุ่มตามประเภทช่าง */}
       <Card className="overflow-hidden border-0 shadow-md">

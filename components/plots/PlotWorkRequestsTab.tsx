@@ -18,6 +18,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   other: 'อื่นๆ',
 }
 const STATUS_LABEL: Record<string, string> = {
+  pending_approval: 'รออนุมัติ (ฝ่ายขาย)',
   new: 'ใหม่',
   accepted: 'รับเรื่องแล้ว',
   in_progress: 'กำลังทำ',
@@ -25,6 +26,7 @@ const STATUS_LABEL: Record<string, string> = {
   rejected: 'ปฏิเสธ',
 }
 const STATUS_TONE: Record<string, 'neutral' | 'warning' | 'success' | 'danger' | 'info'> = {
+  pending_approval: 'neutral',
   new: 'info',
   accepted: 'warning',
   in_progress: 'warning',
@@ -59,7 +61,7 @@ export default function PlotWorkRequestsTab({
         toast.error(res.error || 'ส่งคำขอไม่สำเร็จ')
         return
       }
-      toast.success('ส่งคำขอแล้ว จะปรากฏในคิวของหน่วยงานก่อสร้าง')
+      toast.success('ส่งคำขอแล้ว รอหัวหน้าฝ่ายขายอนุมัติก่อนส่งให้หน่วยงานก่อสร้าง')
       setIsCreateOpen(false)
       // The queue page is the source of truth for live status; this local
       // append just avoids the tab looking empty until the next full reload.
@@ -77,7 +79,7 @@ export default function PlotWorkRequestsTab({
           photoUrls: [],
           priority: String(formData.get('priority') || 'normal') as WorkRequestRow['priority'],
           neededBy: String(formData.get('needed_by') || '') || null,
-          status: 'new',
+          status: 'pending_approval',
           chargeTo: null,
           quotedAmount: null,
           assignedContractorId: null,
@@ -88,6 +90,7 @@ export default function PlotWorkRequestsTab({
           rejectReason: null,
           completedAt: null,
           createdAt: new Date().toISOString(),
+          rejectedAtApproval: false,
         },
         ...prev,
       ])

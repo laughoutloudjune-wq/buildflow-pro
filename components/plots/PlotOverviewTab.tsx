@@ -3,9 +3,11 @@ import { Card } from '@/components/ui/Card'
 import { formatCurrency } from '@/lib/currency'
 import { statusColorClasses } from '@/lib/sales/statusColors'
 import PlotProgressCurveChart, { buildSaleMarkers } from '@/components/plots/PlotProgressCurveChart'
+import PlotPhaseScheduleEditor from '@/components/plots/PlotPhaseScheduleEditor'
 import type { PlotSaleDetail } from '@/actions/sales-actions'
 import type { PlotJobRow } from '@/lib/types/plotDetail'
 import type { PlotProgressCurve } from '@/actions/plot-progress-curve'
+import type { PlotPhaseScheduleRow } from '@/actions/plot-phase-schedule'
 import type { PlotSalePromotionItem } from '@/actions/plot-sale-promotion-items'
 
 // inspectionAt/transferAt are pulled out into their own always-shown stat
@@ -31,6 +33,10 @@ export default function PlotOverviewTab({
   canSeeCost,
   progressCurve,
   promotionItems,
+  plotId,
+  projectId,
+  phaseSchedule,
+  canEditConstruction,
 }: {
   saleDetail: PlotSaleDetail
   jobs: PlotJobRow[]
@@ -38,6 +44,10 @@ export default function PlotOverviewTab({
   canSeeCost: boolean
   progressCurve: PlotProgressCurve
   promotionItems: PlotSalePromotionItem[]
+  plotId: string
+  projectId: string
+  phaseSchedule: PlotPhaseScheduleRow[]
+  canEditConstruction: boolean
 }) {
   const sale = saleDetail.sale
   const c = statusColorClasses(sale?.statusColor)
@@ -140,6 +150,20 @@ export default function PlotOverviewTab({
               saleMarkers={buildSaleMarkers(sale)}
               statusLabel={sale?.statusLabel || 'ว่าง'}
               statusColor={sale?.statusColor}
+            />
+          </div>
+        </Card>
+      )}
+
+      {canSeeCost && (
+        <Card className="p-5 md:col-span-2">
+          <h3 className="text-sm font-semibold text-slate-700">แผนงานตามเฟส (กำหนดวันเริ่ม-สิ้นสุดของแต่ละประเภทช่าง)</h3>
+          <div className="mt-3">
+            <PlotPhaseScheduleEditor
+              plotId={plotId}
+              projectId={projectId}
+              phases={phaseSchedule}
+              canEdit={canEditConstruction}
             />
           </div>
         </Card>

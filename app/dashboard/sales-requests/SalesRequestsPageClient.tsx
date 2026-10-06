@@ -12,6 +12,7 @@ import {
   getUnlinkedDcBillingsForPlot,
   linkWorkRequestBilling,
   setWorkRequestStatus,
+  approveWorkRequest,
   type WorkRequestRow,
   type WorkRequestStatus,
 } from '@/actions/sales-work-requests'
@@ -26,6 +27,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 const PRIORITY_LABEL: Record<string, string> = { low: 'ต่ำ', normal: 'ปกติ', urgent: 'ด่วน' }
 const PRIORITY_TONE: Record<string, 'neutral' | 'warning' | 'danger'> = { low: 'neutral', normal: 'neutral', urgent: 'danger' }
 const STATUS_LABEL: Record<WorkRequestStatus, string> = {
+  pending_approval: 'รออนุมัติ (ฝ่ายขาย)',
   new: 'ใหม่',
   accepted: 'รับเรื่องแล้ว',
   in_progress: 'กำลังทำ',
@@ -33,6 +35,7 @@ const STATUS_LABEL: Record<WorkRequestStatus, string> = {
   rejected: 'ปฏิเสธ',
 }
 const STATUS_TONE: Record<WorkRequestStatus, 'neutral' | 'warning' | 'success' | 'danger' | 'info'> = {
+  pending_approval: 'neutral',
   new: 'info',
   accepted: 'warning',
   in_progress: 'warning',
@@ -60,12 +63,14 @@ export default function SalesRequestsPageClient({
   contractors,
   projects,
   canManage,
+  canApprove,
   initialError,
 }: {
   initialRequests: WorkRequestRow[]
   contractors: { id: string; name: string }[]
   projects: { id: string; name: string }[]
   canManage: boolean
+  canApprove: boolean
   initialError?: string | null
 }) {
   const toast = useToast()
@@ -77,6 +82,7 @@ export default function SalesRequestsPageClient({
   const [dcOptionsFor, setDcOptionsFor] = useState<string | null>(null)
   const [dcOptions, setDcOptions] = useState<{ id: string; docNo: number | string | null; billingDate: string | null; netAmount: number | null }[]>([])
   const [rejectTarget, setRejectTarget] = useState<WorkRequestRow | null>(null)
+  const [declineTarget, setDeclineTarget] = useState<WorkRequestRow | null>(null)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -86,7 +92,7 @@ export default function SalesRequestsPageClient({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return requests.filter((r) => {
-      if (statusFilter === 'open' ? !['new', 'accepted', 'in_progress'].includes(r.status) : r.status !== statusFilter) return false
+      if (statusFilter === 'open' ? !['pending_approval', 'new', 'accepted', 'in_progress'].includes(r.status) : r.status !== statusFilter) return false
       if (projectFilter && r.projectId !== projectFilter) return false
       if (q && !`${r.requestNo || ''} ${r.plotName} ${r.title}`.toLowerCase().includes(q)) return false
       return true
@@ -127,6 +133,33 @@ export default function SalesRequestsPageClient({
     })
   }
 
+  function handleApprove(row: WorkRequestRow) {
+    startTransition(async () => {
+      const res = await approveWorkRequest(row.id, true)
+      if (!res.success) {
+        toast.error(res.error || 'อนุมัติไม่สำเร็จ')
+        return
+      }
+      applyLocal(row.id, { status: 'new' })
+      toast.success(`อนุมัติคำขอ ${row.requestNo || ''} แล้ว ส่งต่อให้ฝ่ายก่อสร้าง`)
+    })
+  }
+
+  function handleDecline(reason: string) {
+    const row = declineTarget
+    if (!row) return
+    setDeclineTarget(null)
+    startTransition(async () => {
+      const res = await approveWorkRequest(row.id, false, reason)
+      if (!res.success) {
+        toast.error(res.error || 'บันทึกไม่สำเร็จ')
+        return
+      }
+      applyLocal(row.id, { status: 'rejected', rejectReason: reason, rejectedAtApproval: true })
+      toast.success(`ไม่อนุมัติคำขอ ${row.requestNo || ''} แล้ว`)
+    })
+  }
+
   function handleAssignContractor(row: WorkRequestRow, contractorId: string) {
     applyLocal(row.id, {
       assignedContractorId: contractorId || null,
@@ -160,7 +193,7 @@ export default function SalesRequestsPageClient({
 
   return (
     <div className="space-y-6">
-      <PageHeader title="คำขอจากฝ่ายขาย" subtitle="คำขอจากฝ่ายขายที่รอหน่วยงานก่อสร้างดำเนินการ" />
+      <PageHeader title="คำขอจากฝ่ายขาย" subtitle="คำขอจากฝ่ายขาย: หัวหน้าฝ่ายขายอนุมัติก่อน แล้วจึงส่งให้หน่วยงานก่อสร้างดำเนินการ" />
 
       <Card className="flex flex-wrap items-end gap-3 p-4">
         <div className="min-w-[160px]">
@@ -210,7 +243,7 @@ export default function SalesRequestsPageClient({
                 <th className="px-4 py-3 font-semibold">ผู้แจ้ง</th>
                 <th className="px-4 py-3 font-semibold">สถานะ</th>
                 {canManage && <th className="px-4 py-3 font-semibold">ผู้รับเหมา</th>}
-                {canManage && <th className="px-4 py-3 font-semibold w-[220px]">การดำเนินการ</th>}
+                {(canManage || canApprove) && <th className="px-4 py-3 font-semibold w-[220px]">การดำเนินการ</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -268,10 +301,30 @@ export default function SalesRequestsPageClient({
                         </div>
                       </td>
                     )}
-                    {canManage && (
+                    {(canManage || canApprove) && (
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1.5">
-                          {row.status === 'new' && (
+                          {canApprove && row.status === 'pending_approval' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApprove(row)}
+                                disabled={isPending}
+                                className="rounded-lg bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                              >
+                                <Check className="inline h-3 w-3" /> อนุมัติ
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeclineTarget(row)}
+                                disabled={isPending}
+                                className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
+                              >
+                                <X className="inline h-3 w-3" /> ไม่อนุมัติ
+                              </button>
+                            </>
+                          )}
+                          {canManage && row.status === 'new' && (
                             <button
                               type="button"
                               onClick={() => handleSetStatus(row, 'accepted')}
@@ -281,7 +334,7 @@ export default function SalesRequestsPageClient({
                               รับเรื่อง
                             </button>
                           )}
-                          {(row.status === 'new' || row.status === 'accepted') && (
+                          {canManage && (row.status === 'new' || row.status === 'accepted') && (
                             <button
                               type="button"
                               onClick={() => handleSetStatus(row, 'in_progress')}
@@ -291,7 +344,7 @@ export default function SalesRequestsPageClient({
                               กำลังทำ
                             </button>
                           )}
-                          {row.status !== 'done' && row.status !== 'rejected' && (
+                          {canManage && ['new', 'accepted', 'in_progress'].includes(row.status) && (
                             <button
                               type="button"
                               onClick={() => handleSetStatus(row, 'done')}
@@ -301,7 +354,7 @@ export default function SalesRequestsPageClient({
                               <Check className="inline h-3 w-3" /> เสร็จ
                             </button>
                           )}
-                          {row.status !== 'done' && row.status !== 'rejected' && (
+                          {canManage && ['new', 'accepted', 'in_progress'].includes(row.status) && (
                             <button
                               type="button"
                               onClick={() => setRejectTarget(row)}
@@ -311,7 +364,7 @@ export default function SalesRequestsPageClient({
                               <X className="inline h-3 w-3" /> ปฏิเสธ
                             </button>
                           )}
-                          {row.category === 'extra_work' && !row.billingId && (
+                          {canManage && row.category === 'extra_work' && !row.billingId && (
                             <button
                               type="button"
                               onClick={() => handleOpenDcPicker(row)}
@@ -321,7 +374,7 @@ export default function SalesRequestsPageClient({
                             </button>
                           )}
                         </div>
-                        {dcOptionsFor === row.id && (
+                        {canManage && dcOptionsFor === row.id && (
                           <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
                             <div className="mb-1 flex items-center justify-between">
                               <span className="text-[11px] font-medium text-slate-500">เลือกใบ DC ของแปลงนี้</span>
@@ -377,6 +430,17 @@ export default function SalesRequestsPageClient({
         busy={isPending}
         onCancel={() => setRejectTarget(null)}
         onConfirm={handleReject}
+      />
+
+      <ReasonDialog
+        isOpen={declineTarget !== null}
+        title="ไม่อนุมัติคำขอ"
+        label="เหตุผลที่ไม่อนุมัติ"
+        required
+        confirmLabel="ไม่อนุมัติ"
+        busy={isPending}
+        onCancel={() => setDeclineTarget(null)}
+        onConfirm={handleDecline}
       />
     </div>
   )

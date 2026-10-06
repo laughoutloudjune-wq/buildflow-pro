@@ -5,7 +5,7 @@
 // (SALES_MODULE_PLAN.md §8.1). If an admin needs a colour outside this list,
 // add a key here first - never let the DB hold an arbitrary hex/Tailwind name.
 export const STATUS_COLOR_KEYS = [
-  'slate', 'zinc', 'amber', 'blue', 'indigo', 'sky', 'orange', 'rose', 'violet', 'emerald', 'red',
+  'slate', 'zinc', 'amber', 'blue', 'indigo', 'sky', 'cyan', 'orange', 'rose', 'violet', 'emerald', 'red',
 ] as const
 
 export type StatusColorKey = (typeof STATUS_COLOR_KEYS)[number]
@@ -17,6 +17,7 @@ export const STATUS_COLORS: Record<StatusColorKey, { chip: string; dot: string; 
   blue:    { chip: 'bg-blue-100 text-blue-800 ring-blue-200',        dot: 'bg-blue-500',    ring: 'ring-blue-300' },
   indigo:  { chip: 'bg-indigo-100 text-indigo-800 ring-indigo-200',  dot: 'bg-indigo-500',  ring: 'ring-indigo-300' },
   sky:     { chip: 'bg-sky-100 text-sky-800 ring-sky-200',           dot: 'bg-sky-500',     ring: 'ring-sky-300' },
+  cyan:    { chip: 'bg-cyan-100 text-cyan-800 ring-cyan-200',        dot: 'bg-cyan-500',    ring: 'ring-cyan-300' },
   orange:  { chip: 'bg-orange-100 text-orange-800 ring-orange-200',  dot: 'bg-orange-500',  ring: 'ring-orange-300' },
   rose:    { chip: 'bg-rose-100 text-rose-800 ring-rose-200',        dot: 'bg-rose-500',    ring: 'ring-rose-300' },
   violet:  { chip: 'bg-violet-100 text-violet-800 ring-violet-200',  dot: 'bg-violet-500',  ring: 'ring-violet-300' },

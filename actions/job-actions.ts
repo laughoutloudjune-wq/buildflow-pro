@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireModuleAccess } from '@/lib/auth/route-access'
+import { generatePlotPhaseScheduleFromTemplate } from '@/actions/plot-phase-schedule'
 
 // ดึงข้อมูลแปลง (Plot Info)
 export async function getPlotById(id: string) {
@@ -166,5 +167,14 @@ export async function syncPlotJobs(plotId: string, houseModelId: string, project
   }
   
   console.log("[SYNC SUCCESS] Jobs synced successfully.")
+
+  // Best-effort: auto-fill the plot's phase schedule from its house model's
+  // duration template (no-op if one already exists, or no template is
+  // defined) - see generatePlotPhaseScheduleFromTemplate. Never let this
+  // fail the sync itself.
+  await generatePlotPhaseScheduleFromTemplate(plotId, houseModelId).catch((err) => {
+    console.error('[SYNC WARN] Phase schedule generation failed:', err)
+  })
+
   revalidatePath(`/dashboard/projects/${projectId}/${plotId}`)
 }

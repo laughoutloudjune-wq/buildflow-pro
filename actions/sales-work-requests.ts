@@ -7,7 +7,7 @@ import { todayInBangkok } from '@/lib/utils'
 
 export type WorkRequestCategory = 'extra_work' | 'defect' | 'expedite' | 'handover_prep' | 'other'
 export type WorkRequestPriority = 'low' | 'normal' | 'urgent'
-export type WorkRequestStatus = 'new' | 'accepted' | 'in_progress' | 'done' | 'rejected'
+export type WorkRequestStatus = 'pending_approval' | 'new' | 'accepted' | 'in_progress' | 'done' | 'rejected'
 
 export type WorkRequestRow = {
   id: string
@@ -33,6 +33,7 @@ export type WorkRequestRow = {
   rejectReason: string | null
   completedAt: string | null
   createdAt: string
+  rejectedAtApproval: boolean
 }
 
 type RawRow = {
@@ -53,6 +54,7 @@ type RawRow = {
   reject_reason: string | null
   completed_at: string | null
   created_at: string
+  rejected_at_approval: boolean | null
   plots: { name: string; project_id: string; projects: { id: string; name: string } | null } | null
   contractors: { name: string } | null
   requester: { full_name: string | null } | null
@@ -61,7 +63,7 @@ type RawRow = {
 
 const SELECT = `
   id, request_no, plot_id, category, title, detail, photo_urls, priority, needed_by, status,
-  charge_to, quoted_amount, assigned_contractor_id, billing_id, reject_reason, completed_at, created_at,
+  charge_to, quoted_amount, assigned_contractor_id, billing_id, reject_reason, completed_at, created_at, rejected_at_approval,
   plots ( name, project_id, projects ( id, name ) ),
   contractors ( name ),
   requester:profiles!sales_work_requests_requested_by_fkey ( full_name ),
@@ -93,6 +95,7 @@ function toRow(r: RawRow): WorkRequestRow {
     rejectReason: r.reject_reason,
     completedAt: r.completed_at,
     createdAt: r.created_at,
+    rejectedAtApproval: Boolean(r.rejected_at_approval),
   }
 }
 
@@ -121,7 +124,7 @@ export async function getWorkRequestQueue(filter: WorkRequestQueueFilter = {}): 
   let query = supabase.from('sales_work_requests').select(SELECT)
 
   if (filter.status && filter.status.length > 0) query = query.in('status', filter.status)
-  else query = query.in('status', ['new', 'accepted', 'in_progress'])
+  else query = query.in('status', ['pending_approval', 'new', 'accepted', 'in_progress'])
 
   const { data, error } = await query.order('needed_by', { ascending: true, nullsFirst: false })
   if (error) throw new Error(error.message)
@@ -131,24 +134,28 @@ export async function getWorkRequestQueue(filter: WorkRequestQueueFilter = {}): 
   return rows
 }
 
-export type WorkRequestCounts = { newCount: number; overdueCount: number }
+/** newCount/overdueCount only ever count approved requests (construction's
+ * view); pendingApprovalCount is for the sales exec/admin approval queue. */
+export type WorkRequestCounts = { newCount: number; overdueCount: number; pendingApprovalCount: number }
 
 export async function getWorkRequestCounts(): Promise<WorkRequestCounts> {
   const supabase = await createClient()
   const today = todayInBangkok()
 
-  const [newRes, overdueRes] = await Promise.all([
+  const [newRes, overdueRes, pendingRes] = await Promise.all([
     supabase.from('sales_work_requests').select('id', { count: 'exact', head: true }).eq('status', 'new'),
     supabase
       .from('sales_work_requests')
       .select('id', { count: 'exact', head: true })
       .in('status', ['new', 'accepted', 'in_progress'])
       .lt('needed_by', today),
+    supabase.from('sales_work_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending_approval'),
   ])
   if (newRes.error) throw new Error(newRes.error.message)
   if (overdueRes.error) throw new Error(overdueRes.error.message)
+  if (pendingRes.error) throw new Error(pendingRes.error.message)
 
-  return { newCount: newRes.count || 0, overdueCount: overdueRes.count || 0 }
+  return { newCount: newRes.count || 0, overdueCount: overdueRes.count || 0, pendingApprovalCount: pendingRes.count || 0 }
 }
 
 export async function createWorkRequest(formData: FormData) {
@@ -175,6 +182,25 @@ export async function createWorkRequest(formData: FormData) {
 
   revalidatePath('/dashboard/sales-requests')
   revalidatePath('/dashboard/projects')
+  return { success: true, data }
+}
+
+/** Sales exec / admin approves a pending request (it then appears in
+ * construction's queue as 'new') or turns it down with a reason. The RPC
+ * enforces the role; this gate just keeps non-sales users off the action. */
+export async function approveWorkRequest(id: string, approve: boolean, rejectReason?: string) {
+  await requireModuleAccess('sales')
+  if (!approve && !rejectReason?.trim()) return { success: false, error: 'กรุณาระบุเหตุผลที่ไม่อนุมัติ' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('sales_work_request_approve', {
+    p_id: id,
+    p_payload: { approve, reject_reason: rejectReason?.trim() || null },
+  })
+  if (error) return { success: false, error: error.message }
+
+  revalidatePath('/dashboard/sales-requests')
+  revalidatePath('/dashboard/projects')
+  revalidatePath('/dashboard')
   return { success: true, data }
 }
 

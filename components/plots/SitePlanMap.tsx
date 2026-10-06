@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, MapPinOff, Move, Upload, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -102,6 +102,7 @@ export default function SitePlanMap({
   markers,
   unplacedEmptyLabel = 'วางครบทุกแปลงแล้ว',
   plotDetailTabs,
+  sidePanel,
 }: {
   projectId: string
   sitePlanUrl: string | null
@@ -113,6 +114,8 @@ export default function SitePlanMap({
   /** Passed straight through to the marker-click quick-view modal - see
    * PlotDetailPageClient's visibleTabs for why. */
   plotDetailTabs?: PlotDetailTab[]
+  /** Shown at the top of the right-hand column (above the map on phones). */
+  sidePanel?: ReactNode
 }) {
   const router = useRouter()
   const toast = useToast()
@@ -245,7 +248,8 @@ export default function SitePlanMap({
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
-      <Card className="overflow-hidden p-0">
+      {sidePanel && <div className="lg:col-start-2 lg:row-start-1">{sidePanel}</div>}
+      <Card className={`overflow-hidden p-0 ${sidePanel ? 'lg:col-start-1 lg:row-span-2 lg:row-start-1' : ''}`}>
         {canEdit && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5">
             <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-indigo-600">
@@ -323,7 +327,7 @@ export default function SitePlanMap({
         </div>
       </Card>
 
-      <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">
+      <div className={`space-y-3 ${sidePanel ? 'lg:col-start-2 lg:row-start-2' : 'lg:sticky lg:top-4 lg:self-start'}`}>
         {isSaving && (
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <Loader2 className="h-3 w-3 animate-spin" /> กำลังบันทึก...

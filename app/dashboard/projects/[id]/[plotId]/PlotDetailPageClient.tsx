@@ -30,6 +30,7 @@ import type { PlotSaleDetail, SaleStatus } from '@/actions/sales-actions'
 import type { Promotion } from '@/actions/promotions-actions'
 import type { PlotSalePromotionItem } from '@/actions/plot-sale-promotion-items'
 import type { PlotProgressCurve } from '@/actions/plot-progress-curve'
+import type { PlotPhaseScheduleRow } from '@/actions/plot-phase-schedule'
 import type { WorkRequestRow } from '@/actions/sales-work-requests'
 import type { SalePaymentRow } from '@/actions/sale-payments-actions'
 import type { PlotHistoryRowView, PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
@@ -66,6 +67,7 @@ export default function PlotDetailPageClient({
   workRequests,
   payments,
   progressCurve,
+  phaseSchedule,
   canSeeCost,
   canEditConstruction,
   canEditSales,
@@ -94,6 +96,7 @@ export default function PlotDetailPageClient({
   workRequests: WorkRequestRow[]
   payments: SalePaymentRow[]
   progressCurve: PlotProgressCurve
+  phaseSchedule: PlotPhaseScheduleRow[]
   canSeeCost: boolean
   canEditConstruction: boolean
   canEditSales: boolean
@@ -310,6 +313,10 @@ export default function PlotDetailPageClient({
           canSeeCost={canSeeCost}
           progressCurve={progressCurve}
           promotionItems={promotionItems}
+          plotId={plotId}
+          projectId={projectId}
+          phaseSchedule={phaseSchedule}
+          canEditConstruction={canEditConstruction}
         />
       )}
       {tab === 'sales' && (

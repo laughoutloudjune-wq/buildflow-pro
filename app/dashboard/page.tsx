@@ -5,6 +5,7 @@ import { Badge, statusTone } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { ButtonLink } from '@/components/ui/Button'
 import { getDashboardStats } from '@/actions/dashboard-actions'
+import { getDashboardWeek } from '@/actions/dashboard-week-actions'
 import { getWorkRequestCounts } from '@/actions/sales-work-requests'
 import { getDashboardSession, permissionsForRole } from '@/lib/auth/route-access'
 import { formatCurrency } from '@/lib/currency'
@@ -22,7 +23,7 @@ export default async function DashboardPage() {
   // Sales never sees construction money (Q-08) - rather than picking through
   // a big nested stats object to hide every baht figure in it, sales gets
   // its own lightweight dashboard entirely and never calls getDashboardStats.
-  if (role === 'sales') {
+  if (role === 'sales' || role === 'sales_exec') {
     return (
       <div className="space-y-6">
         <PageHeader title="ภาพรวม" subtitle="ยินดีต้อนรับ" />
@@ -36,7 +37,7 @@ export default async function DashboardPage() {
     )
   }
 
-  const stats = await getDashboardStats()
+  const [stats, week] = await Promise.all([getDashboardStats(), getDashboardWeek()])
   // Not everyone who lands on /dashboard cares about the work-request queue
   // (an accountant, say) - only show the card to roles that can actually do
   // something about it, same set the sidebar item itself is gated on.
@@ -135,6 +136,46 @@ export default async function DashboardPage() {
           </Link>
         ))}
       </div>
+
+      {week && !('error' in week) && (
+        <Card className="p-5">
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">สัปดาห์นี้</h2>
+            <span className="text-xs text-slate-500">{week.weekStart} ถึง {week.weekEnd}</span>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {week.sales && (
+              <WeekColumn title="งานขาย">
+                <WeekRow href="/dashboard/sales-requests" label="Sale Request (SR)" value={week.sales.srCount} />
+                {week.sales.srItems.map((item) => (
+                  <Link key={item.id} href="/dashboard/sales-requests" className="block truncate pl-2 text-xs text-slate-600 hover:underline">
+                    • {item.title} <span className="text-slate-400">({WORK_REQUEST_CATEGORY_LABEL[item.category] || item.category})</span>
+                  </Link>
+                ))}
+                <WeekRow href="/dashboard/sales/transfer-requests" label="Transfer Request (TR)" value={week.sales.trCount} />
+              </WeekColumn>
+            )}
+            {week.construction && (
+              <WeekColumn title="งานก่อสร้าง">
+                <WeekRow href="/dashboard/weekly-plan" label="งานหลัก" value={week.construction.main} />
+                <WeekRow href="/dashboard/weekly-plan" label="ตรวจบ้าน" value={week.construction.inspect} />
+                <WeekRow href="/dashboard/weekly-plan" label="งานอื่นๆ" value={week.construction.other} />
+                <WeekRow href="/dashboard/weekly-plan" label="DC" value={week.construction.dc} />
+              </WeekColumn>
+            )}
+            {week.procurement && (
+              <WeekColumn title="บัญชี/จัดซื้อ">
+                <WeekRow href="/dashboard/procurement/requests" label="ใบขอซื้อ (PR) ที่ยังเปิดอยู่" value={week.procurement.openPrCount} />
+              </WeekColumn>
+            )}
+            {week.unassigned && (
+              <WeekColumn title="ยังไม่ได้มอบหมาย">
+                <WeekRow href="/dashboard/weekly-plan" label="รายการแผนงานที่ไม่มีผู้รับผิดชอบ" value={week.unassigned.count} />
+              </WeekColumn>
+            )}
+          </div>
+        </Card>
+      )}
 
       {workRequestCounts && (
         <Link href="/dashboard/sales-requests" className="group block">
@@ -312,6 +353,32 @@ export default async function DashboardPage() {
         </>
       )}
     </div>
+  )
+}
+
+const WORK_REQUEST_CATEGORY_LABEL: Record<string, string> = {
+  extra_work: 'งานเพิ่ม',
+  defect: 'แก้ defect',
+  expedite: 'เร่งงาน',
+  handover_prep: 'เตรียมส่งมอบ',
+  other: 'อื่นๆ',
+}
+
+function WeekColumn({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-slate-200 p-3">
+      <p className="mb-2 text-sm font-semibold text-slate-900">{title}</p>
+      <div className="space-y-1.5">{children}</div>
+    </div>
+  )
+}
+
+function WeekRow({ href, label, value }: { href: string; label: string; value: number }) {
+  return (
+    <Link href={href} className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-slate-50">
+      <span className="text-sm text-slate-700">{label}</span>
+      <span className="text-lg font-semibold text-slate-900">{value}</span>
+    </Link>
   )
 }
 

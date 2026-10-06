@@ -11,7 +11,7 @@ import PromotionsPageClient from './PromotionsPageClient'
  */
 export default async function PromotionsPage() {
   const { role } = await requireModuleAccess('sales')
-  const canManage = role === 'admin' || role === 'sales'
+  const canManage = role === 'admin' || role === 'sales' || role === 'sales_exec'
 
   let promotions: Awaited<ReturnType<typeof getAllPromotions>> = []
   let initialError: string | null = null

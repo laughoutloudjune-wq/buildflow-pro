@@ -35,6 +35,7 @@ export default function UsersPageClient({
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({})
   const [savingNameFor, setSavingNameFor] = useState<string | null>(null)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<UserRole>('foreman')
   const [inviteLink, setInviteLink] = useState('')
   const [generatingLink, setGeneratingLink] = useState(false)
   const [disableTarget, setDisableTarget] = useState<User | null>(null)
@@ -122,7 +123,23 @@ export default function UsersPageClient({
     setGeneratingLink(true)
     setInviteLink('')
     try {
-      setInviteLink(await generateInviteLink(inviteEmail.trim()))
+      const email = inviteEmail.trim()
+      const result = await generateInviteLink(email, inviteRole)
+      setInviteLink(result.link)
+      if (result.existingUser) {
+        toast.success('อีเมลนี้มีบัญชีอยู่แล้ว ลิงก์นี้ใช้ตั้งรหัสผ่านใหม่ บทบาทเดิมไม่เปลี่ยน')
+      } else if (!result.roleApplied) {
+        toast.error('สร้างลิงก์แล้ว แต่ตั้งบทบาทไม่สำเร็จ กรุณาเลือกบทบาทในตารางด้านล่าง')
+      }
+      const { userId } = result
+      if (!result.existingUser && userId && !users.some((u) => u.id === userId)) {
+        setUsers((prev) =>
+          [
+            ...prev,
+            { id: userId, email, full_name: email, role: result.roleApplied ? inviteRole : 'foreman', disabled: false },
+          ].sort((a, b) => (a.email || '').localeCompare(b.email || ''))
+        )
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'สร้างลิงก์ไม่สำเร็จ')
     } finally {
@@ -171,6 +188,20 @@ export default function UsersPageClient({
             placeholder="email@example.com"
             className="w-full flex-1"
           />
+          <select
+            value={inviteRole}
+            onChange={(e) => setInviteRole(e.target.value as UserRole)}
+            disabled={generatingLink}
+            className={`${roleSelectClass} shrink-0`}
+            aria-label="บทบาทของผู้ใช้ใหม่"
+          >
+            <option value="admin">Admin</option>
+            <option value="pm">Project Manager</option>
+            <option value="foreman">Foreman</option>
+            <option value="accountant">Accountant</option>
+            <option value="sales">Sales</option>
+            <option value="sales_exec">Sales Exec (หัวหน้าฝ่ายขาย)</option>
+          </select>
           <Button type="button" onClick={handleGenerateLink} disabled={generatingLink} className="shrink-0">
             {generatingLink ? 'กำลังสร้างลิงก์...' : 'สร้างลิงก์เชิญ'}
           </Button>
@@ -241,6 +272,7 @@ export default function UsersPageClient({
                           <option value="foreman">Foreman</option>
                           <option value="accountant">Accountant</option>
                           <option value="sales">Sales</option>
+            <option value="sales_exec">Sales Exec (หัวหน้าฝ่ายขาย)</option>
                         </select>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3.5">

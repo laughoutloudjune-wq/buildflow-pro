@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import PlotPaymentsSection from '@/components/plots/PlotPaymentsSection'
+import PlotTransferRequestSection from '@/components/plots/PlotTransferRequestSection'
 import PlotPromotionItemsSection from '@/components/plots/PlotPromotionItemsSection'
 import {
   changeSaleStatus,
@@ -427,6 +428,8 @@ export default function PlotSalesTab({
         canEdit={canEdit}
         onRefresh={onRefresh}
       />
+
+      <PlotTransferRequestSection plotId={plotId} plotSaleId={sale.id} canEdit={canEdit} />
 
       <PlotPaymentsSection
         plotSaleId={sale.id}

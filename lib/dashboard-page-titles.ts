@@ -35,6 +35,7 @@ const PREFIX_TITLES: [string, string][] = [
   ['/dashboard/stock', 'สต็อกวัสดุ'],
   ['/dashboard/sales/dashboard', 'แดชบอร์ดขาย'],
   ['/dashboard/sales/receipts', 'ใบเสร็จรับเงิน'],
+  ['/dashboard/sales/transfer-requests', 'ใบขอโอน (TR)'],
   ['/dashboard/sales', 'ผังการขาย'],
   ['/dashboard/sales-requests', 'คำขอจากฝ่ายขาย'],
   ['/dashboard/settings/billing-info', 'ข้อมูลใบเบิก'],
