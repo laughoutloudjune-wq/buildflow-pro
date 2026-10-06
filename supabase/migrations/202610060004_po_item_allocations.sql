@@ -27,7 +27,8 @@
 -- Validation of explicit allocations (payload item.allocations) happens here,
 -- inside the transaction, with the request lines row-locked in a fixed order:
 -- the request must be approved, belong to the order's project, and the
--- quantity must be positive, in the line's material and unit, within what is
+-- quantity must be positive, in the line's unit (the material itself is
+-- purchasing's choice and may differ from the request), within what is
 -- still outstanding, and sum exactly to the PO line quantity. A line that
 -- only carries the old purchase_request_item_id (single-request flow) is
 -- treated as one lenient allocation of its whole quantity, which keeps
@@ -316,9 +317,10 @@ begin
         if v_pr_project is distinct from p_po_project_id then
           raise exception 'A purchase request line belongs to a different project than this order' using errcode = '22023';
         end if;
-        if v_pri_material <> v_line_material then
-          raise exception 'A purchase request line is for a different material than the order line' using errcode = '22023';
-        end if;
+        -- Material is deliberately NOT required to match: purchasing picks what
+        -- is actually bought (a different brand, say) and the request line is
+        -- re-pointed to it by the substitution sync below. Only the unit has
+        -- to agree, since quantities are summed in it.
         if v_pri_unit is distinct from v_line_unit then
           raise exception 'A purchase request line is in a different unit than the order line' using errcode = '22023';
         end if;
