@@ -31,6 +31,7 @@ import { getBoqCheckForDraft } from '@/actions/procurement/boq-control'
 import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
 import type { ControlScope } from '@/lib/procurement/boqControl'
 import { requestScopeLabel } from '@/lib/procurement/allocations'
+import AddRequestLinesModal, { type RequestPick } from '@/components/procurement/AddRequestLinesModal'
 import { allocationTotal, takeCombineDraft, type LineAllocationDraft } from '@/lib/procurement/combineDraft'
 import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
 import type {
@@ -357,6 +358,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
    * anything" hint stays quiet on ordinary standalone orders where an
    * unlinked line is simply normal. */
   const [sourceRequestNo, setSourceRequestNo] = useState<number | null>(null)
+  const [isAddRequestsOpen, setIsAddRequestsOpen] = useState(false)
 
   useEffect(() => {
     void bootstrap()
@@ -948,6 +950,86 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       [...prev, created].sort((a, b) => a.name.localeCompare(b.name, 'th'))
     )
     updateLine(lineIndex, { material_type_id: created.id })
+  }
+
+  /** The single request link a line carries (no breakdown yet), as the first
+   * slice of a breakdown - so more requests can be added beside it. */
+  function singleLinkAsAllocation(line: Line): LineAllocationDraft[] {
+    if (!line.purchase_request_item_id) return []
+    const saved = (initialOrder?.purchase_order_items || [])
+      .find((i) => i.id === line.id)
+      ?.purchase_order_item_allocations?.find((a) => a.purchase_request_item_id === line.purchase_request_item_id)
+    const pr = saved?.purchase_request_items?.purchase_requests
+    return [
+      {
+        purchase_request_item_id: line.purchase_request_item_id,
+        quantity: line.quantity_ordered,
+        pr_no: pr?.pr_no ?? null,
+        plot_label: requestScopeLabel(pr),
+      },
+    ]
+  }
+
+  /** Attach approved request lines (any project) to this existing order.
+   * Same-material lines that already answer a request take the new slices
+   * and grow by their total; anything else becomes a new line. The server
+   * re-validates every slice when the order is saved. */
+  function addRequestPicks(picks: RequestPick[]) {
+    const byMaterial = new Map<number, RequestPick[]>()
+    for (const pick of picks) {
+      byMaterial.set(pick.line.material_type_id, [...(byMaterial.get(pick.line.material_type_id) || []), pick])
+    }
+    setLines((prev) => {
+      const next = [...prev]
+      for (const [materialId, group] of byMaterial) {
+        const slices: LineAllocationDraft[] = group.map((p) => ({
+          purchase_request_item_id: p.line.purchase_request_item_id,
+          quantity: String(p.qty),
+          pr_no: p.line.pr_no,
+          plot_label: p.line.plot_label,
+        }))
+        const index = next.findIndex(
+          (l) => l.material_type_id === materialId && (l.allocations || (l.purchase_request_item_id && !differsFromRequestUnit(l)))
+        )
+        if (index >= 0) {
+          const line = next[index]
+          const merged = [...(line.allocations ?? singleLinkAsAllocation(line))]
+          for (const slice of slices) {
+            const at = merged.findIndex((m) => m.purchase_request_item_id === slice.purchase_request_item_id)
+            if (at >= 0) merged[at] = { ...merged[at], quantity: String((Number(merged[at].quantity) || 0) + (Number(slice.quantity) || 0)) }
+            else merged.push(slice)
+          }
+          next[index] = {
+            ...line,
+            purchase_request_item_id: null,
+            allocations: merged,
+            quantity_ordered: String(allocationTotal(merged)),
+            closes_request_line: false,
+          }
+        } else {
+          const first = group[0].line
+          next.push({
+            id: null,
+            quantity_received: 0,
+            material_type_id: materialId,
+            material_name: first.material_name,
+            material_unit: first.unit,
+            purchase_request_item_id: null,
+            allocations: slices,
+            quantity_ordered: String(allocationTotal(slices)),
+            closes_request_line: false,
+            unit_price: first.unit_price ? String(first.unit_price) : '',
+            description: '',
+            discountValue: '',
+            project_id: null,
+            plot_id: null,
+            plot_group_id: null,
+            intended_destination: null,
+          })
+        }
+      }
+      return next
+    })
   }
 
   function addLine() {
@@ -1951,9 +2033,32 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         )}
 
         {!readOnly && (
-          <button type="button" onClick={addLine} className="mt-3 flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800">
-            <Plus className="h-4 w-4" /> เพิ่มรายการสินค้า
-          </button>
+          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <button type="button" onClick={addLine} className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800">
+              <Plus className="h-4 w-4" /> เพิ่มรายการสินค้า
+            </button>
+            {mode === 'edit' && (
+              <button
+                type="button"
+                onClick={() => setIsAddRequestsOpen(true)}
+                className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800"
+              >
+                <Link2 className="h-4 w-4" /> เพิ่มจากใบขอซื้อ
+              </button>
+            )}
+          </div>
+        )}
+        {mode === 'edit' && (
+          <AddRequestLinesModal
+            isOpen={isAddRequestsOpen}
+            onClose={() => setIsAddRequestsOpen(false)}
+            defaultProjectId={projectId}
+            excludeItemIds={lines.flatMap((l) => [
+              ...(l.allocations || []).map((a) => a.purchase_request_item_id),
+              ...(l.purchase_request_item_id ? [l.purchase_request_item_id] : []),
+            ])}
+            onAdd={addRequestPicks}
+          />
         )}
 
         {draftBoqLines.length > 0 && (

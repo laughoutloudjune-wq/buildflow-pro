@@ -30,7 +30,11 @@ export default function CombineRequestsForm({
 }) {
   const router = useRouter()
   const toast = useToast()
+  const ALL_PROJECTS = '__all__'
+  /** The project the order is raised under (billing, delivery address). */
   const [projectId, setProjectId] = useState('')
+  /** Which projects' requests are listed: one project, or all of them. */
+  const [sourceFilter, setSourceFilter] = useState('')
   const [supplierId, setSupplierId] = useState('')
   const [lines, setLines] = useState<EligibleRequestLine[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -38,14 +42,17 @@ export default function CombineRequestsForm({
   /** purchase_request_item_id -> quantity to order (as typed). Presence = ticked. */
   const [selected, setSelected] = useState<Record<string, string>>({})
 
-  async function handleProjectChange(id: string) {
-    setProjectId(id)
+  async function handleSourceChange(id: string) {
+    setSourceFilter(id)
     setSelected({})
     setLines([])
+    // A single project is also the order's project; "all projects" leaves the
+    // order's own project to be chosen separately.
+    if (id !== ALL_PROJECTS) setProjectId(id)
     if (!id) return
     setIsLoading(true)
     try {
-      setLines(await getEligibleRequestLinesForOrder(id))
+      setLines(await getEligibleRequestLinesForOrder(id === ALL_PROJECTS ? null : id))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'โหลดรายการใบขอซื้อไม่สำเร็จ')
     } finally {
@@ -57,7 +64,11 @@ export default function CombineRequestsForm({
     const q = search.trim().toLowerCase()
     if (!q) return lines
     return lines.filter(
-      (l) => l.material_name.toLowerCase().includes(q) || `pr-${l.pr_no}`.includes(q) || (l.plot_label || '').toLowerCase().includes(q)
+      (l) =>
+        l.material_name.toLowerCase().includes(q) ||
+        `pr-${l.pr_no}`.includes(q) ||
+        (l.plot_label || '').toLowerCase().includes(q) ||
+        l.project_name.toLowerCase().includes(q)
     )
   }, [lines, search])
 
@@ -101,7 +112,7 @@ export default function CombineRequestsForm({
   const requestCount = new Set(groups.flatMap((g) => g.rows.map((r) => r.line.purchase_request_id))).size
 
   function handleContinue() {
-    if (!projectId) return toast.error('กรุณาเลือกโครงการ')
+    if (!projectId) return toast.error(sourceFilter === ALL_PROJECTS ? 'กรุณาเลือกโครงการของใบสั่งซื้อ' : 'กรุณาเลือกโครงการ')
     if (!supplierId) return toast.error('กรุณาเลือกผู้จำหน่าย')
     if (groups.length === 0) return toast.error('กรุณาเลือกรายการจากใบขอซื้ออย่างน้อย 1 รายการ')
     for (const g of groups) {
@@ -113,7 +124,11 @@ export default function CombineRequestsForm({
       }
     }
 
-    const plotIds = Array.from(new Set(groups.flatMap((g) => g.rows.flatMap((r) => r.line.plot_ids))))
+    // The order's own plot scope covers only the order's project; requests
+    // from other projects are attributed through their allocations.
+    const plotIds = Array.from(
+      new Set(groups.flatMap((g) => g.rows.filter((r) => r.line.project_id === projectId).flatMap((r) => r.line.plot_ids)))
+    )
     const draftLines: CombineDraftLine[] = groups.map((g) => ({
       material_type_id: g.materialId,
       material_name: g.materialName,
@@ -146,7 +161,7 @@ export default function CombineRequestsForm({
             <Layers className="h-5 w-5 text-indigo-600" /> รวมใบขอซื้อเป็นใบสั่งซื้อเดียว
           </h1>
           <p className="text-sm text-slate-500">
-            เลือกรายการจากใบขอซื้อที่อนุมัติแล้วหลายใบ วัสดุเดียวกันจะถูกรวมเป็นบรรทัดเดียวในใบสั่งซื้อ โดยเก็บที่มาของแต่ละแปลงไว้
+            เลือกรายการจากใบขอซื้อที่อนุมัติแล้วหลายใบ (ข้ามโครงการได้) วัสดุเดียวกันจะถูกรวมเป็นบรรทัดเดียวในใบสั่งซื้อ โดยเก็บที่มาของแต่ละแปลงไว้
           </p>
         </div>
       </div>
@@ -155,14 +170,25 @@ export default function CombineRequestsForm({
         <div className={appleCardLabel}>1. โครงการและผู้จำหน่าย</div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className={appleFieldLabel}>โครงการ</label>
+            <label className={appleFieldLabel}>ใบขอซื้อจากโครงการ</label>
             <SearchableSelect
-              options={projects.map((p) => ({ value: p.id, label: p.name }))}
-              value={projectId}
-              onChange={(v) => void handleProjectChange(v)}
+              options={[{ value: ALL_PROJECTS, label: 'ทุกโครงการ (รวมข้ามโครงการ)' }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
+              value={sourceFilter}
+              onChange={(v) => void handleSourceChange(v)}
               placeholder="เลือกโครงการ"
             />
           </div>
+          {sourceFilter === ALL_PROJECTS && (
+            <div>
+              <label className={appleFieldLabel}>ออกใบสั่งซื้อภายใต้โครงการ</label>
+              <SearchableSelect
+                options={projects.map((p) => ({ value: p.id, label: p.name }))}
+                value={projectId}
+                onChange={setProjectId}
+                placeholder="เลือกโครงการของใบสั่งซื้อ"
+              />
+            </div>
+          )}
           <div>
             <label className={appleFieldLabel}>ผู้จำหน่าย</label>
             <SearchableSelect
@@ -188,7 +214,7 @@ export default function CombineRequestsForm({
           )}
         </div>
 
-        {!projectId ? (
+        {!sourceFilter ? (
           <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">เลือกโครงการเพื่อดูรายการที่ยังสั่งซื้อได้</p>
         ) : isLoading ? (
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
@@ -205,6 +231,7 @@ export default function CombineRequestsForm({
                 <tr className="text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">
                   <th className="w-10 px-3 py-2.5" />
                   <th className="px-3 py-2.5">ใบขอซื้อ</th>
+                  {sourceFilter === ALL_PROJECTS && <th className="px-3 py-2.5">โครงการ</th>}
                   <th className="px-3 py-2.5">วัสดุ</th>
                   <th className="px-3 py-2.5">แปลง / กลุ่มแปลง</th>
                   <th className="px-3 py-2.5 text-right">คงเหลือ</th>
@@ -226,6 +253,7 @@ export default function CombineRequestsForm({
                         />
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-700">PR-{line.pr_no}</td>
+                      {sourceFilter === ALL_PROJECTS && <td className="px-3 py-2 text-slate-500">{line.project_name}</td>}
                       <td className="px-3 py-2">{line.material_name}</td>
                       <td className="px-3 py-2 text-slate-500">{line.plot_label || '-'}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-right text-slate-600">
@@ -275,6 +303,7 @@ export default function CombineRequestsForm({
                     <li key={r.line.purchase_request_item_id} className="flex justify-between gap-3">
                       <span>
                         PR-{r.line.pr_no}
+                        {sourceFilter === ALL_PROJECTS ? ` · ${r.line.project_name}` : ''}
                         {r.line.plot_label ? ` · ${r.line.plot_label}` : ''}
                       </span>
                       <span className="whitespace-nowrap">

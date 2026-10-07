@@ -160,7 +160,7 @@ export async function undoPurchaseRequestItemSettlement(settlementId: string, re
   return undoPurchaseRequestItemSettlementImpl(settlementId, requestId)
 }
 
-export async function getEligibleRequestLinesForOrder(projectId: string) {
+export async function getEligibleRequestLinesForOrder(projectId?: string | null) {
   return getEligibleRequestLinesForOrderImpl(projectId)
 }
 

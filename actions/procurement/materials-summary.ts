@@ -107,7 +107,35 @@ export async function getMaterialsSummaryForProject(
   }
   const scoped = Boolean(opts.plotGroupId) || targetPlotIds.size > 0
 
+  // Orders raised under another project that buy for THIS project's requests:
+  // only the allocations to this project's requests count here.
+  const { data: crossData, error: crossError } = await supabase
+    .from('purchase_orders')
+    .select(
+      `id, po_no, status, order_date, plot_id, plot_group_id,
+       purchase_order_plots (plot_id),
+       purchase_order_items!inner (
+         material_type_id, quantity_ordered, quantity_received, unit_price, material_types (name, unit),
+         purchase_order_item_allocations!inner (
+           quantity_allocated,
+           purchase_request_items!inner (
+             purchase_requests!inner (
+               project_id, plot_id, plot_group_id,
+               plot_groups (plot_group_members (plot_id)),
+               purchase_request_plots (plot_id)
+             )
+           )
+         )
+       )`
+    )
+    .neq('project_id', projectId)
+    .neq('status', 'cancelled')
+    .eq('purchase_order_items.purchase_order_item_allocations.purchase_request_items.purchase_requests.project_id', projectId)
+  // An add-on lookup: if it fails the project's own orders must still show.
+  if (crossError) console.error('materials summary: cross-project lookup failed', crossError.message)
+
   const orders = (data as unknown as QueriedOrder[]) || []
+  const crossOrders = ((crossError ? [] : crossData) as unknown as QueriedOrder[]) || []
 
   const summary = new Map<number, MaterialsSummaryRow>()
   const add = (order: QueriedOrder, item: NonNullable<QueriedOrder['purchase_order_items']>[number], qtyOrdered: number, qtyReceived: number) => {
@@ -136,7 +164,9 @@ export async function getMaterialsSummaryForProject(
     }
   }
 
-  for (const order of orders) {
+  // allocationsOnly: this order is not this project's own, so a line's
+  // unallocated remainder is never counted here.
+  const visit = (order: QueriedOrder, allocationsOnly: boolean) => {
     const orderMatches =
       !scoped ||
       (opts.plotGroupId != null && order.plot_group_id === opts.plotGroupId) ||
@@ -149,7 +179,7 @@ export async function getMaterialsSummaryForProject(
       const allocations = item.purchase_order_item_allocations || []
 
       if (allocations.length === 0) {
-        if (orderMatches) add(order, item, ordered, received)
+        if (orderMatches && !allocationsOnly) add(order, item, ordered, received)
         continue
       }
 
@@ -177,9 +207,11 @@ export async function getMaterialsSummaryForProject(
 
       // Whatever no allocation covers keeps the order-level rule.
       const remainder = unallocatedQty(ordered, allocations.map((a) => Number(a.quantity_allocated) || 0))
-      if (remainder > 0 && orderMatches) add(order, item, remainder, receivedShare(received, ordered, remainder))
+      if (remainder > 0 && orderMatches && !allocationsOnly) add(order, item, remainder, receivedShare(received, ordered, remainder))
     }
   }
+  for (const order of orders) visit(order, false)
+  for (const order of crossOrders) visit(order, true)
 
   return Array.from(summary.values()).sort((a, b) => a.name.localeCompare(b.name, 'th'))
 }

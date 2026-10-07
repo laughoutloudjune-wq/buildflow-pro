@@ -1129,7 +1129,7 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
   // a line overridden straight to this project is matched against its OWN
   // plot/group - regardless of which project its order was placed under (see
   // 202609220002_po_item_project_plot_override.sql).
-  const [inheritedRes, overriddenRes] = await Promise.all([
+  const [inheritedRes, overriddenRes, crossRes] = await Promise.all([
     supabase
       .from('purchase_orders')
       .select(
@@ -1147,9 +1147,37 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
       )
       .eq('project_id', projectId)
       .neq('purchase_orders.status', 'cancelled'),
+    // An order raised under ANOTHER project can still buy for this project's
+    // requests (one supplier delivering to several sites). Only the
+    // allocations to this project's requests come back here; nothing else on
+    // such a line belongs to this project.
+    supabase
+      .from('purchase_order_items')
+      .select(
+        `id, material_type_id, quantity_ordered, quantity_received, unit_price, project_id, plot_id, plot_group_id,
+         material_types (name, unit),
+         purchase_order_item_allocations!inner (
+           id, quantity_allocated,
+           purchase_request_items!inner (
+             purchase_request_id,
+             purchase_requests!inner (
+               id, pr_no, project_id, plot_id, plot_group_id,
+               plot_groups (plot_group_members (plot_id)),
+               purchase_request_plots (plot_id)
+             )
+           )
+         ),
+         purchase_orders!inner (id, po_no, status)`
+      )
+      .neq('purchase_orders.status', 'cancelled')
+      .neq('purchase_orders.project_id', projectId)
+      .eq('purchase_order_item_allocations.purchase_request_items.purchase_requests.project_id', projectId),
   ])
   if (inheritedRes.error) throw new Error(inheritedRes.error.message)
   if (overriddenRes.error) throw new Error(overriddenRes.error.message)
+  // The cross-project lookup is an add-on: if it ever fails, the plot's own
+  // materials must still show, so its error is logged and skipped.
+  if (crossRes.error) console.error('plot materials: cross-project lookup failed', crossRes.error.message)
 
   const toLine = (item: QueriedItem, poId: string, poNo: string, remainderBelongsToPlot: boolean): PlotSummaryLine => ({
     poItemId: item.id,
@@ -1201,6 +1229,12 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
   for (const item of (overriddenRes.data as unknown as (QueriedItem & { purchase_orders: { id: string; po_no: string } })[]) || []) {
     const itemMatchesPlot = item.plot_id === plotId || (groupId != null && item.plot_group_id === groupId)
     lines.set(item.id, toLine(item, item.purchase_orders.id, item.purchase_orders.po_no, itemMatchesPlot))
+  }
+
+  // Lines from other projects' orders: allocations only, never a remainder.
+  for (const item of ((crossRes.error ? [] : crossRes.data) as unknown as (QueriedItem & { purchase_orders: { id: string; po_no: string } })[]) || []) {
+    if (lines.has(item.id)) continue
+    lines.set(item.id, toLine(item, item.purchase_orders.id, item.purchase_orders.po_no, false))
   }
 
   return summarizePlotMaterials(Array.from(lines.values()), plotId)

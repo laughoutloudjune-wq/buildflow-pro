@@ -15,8 +15,6 @@ import {
   type BoqControlUnassignedRow,
   type ControlScope,
 } from '@/lib/procurement/boqControl'
-import { allocationsToOrderLines, type RawRequestAllocation } from '@/lib/procurement/allocationTrace'
-import { originalQuantityRequested } from '@/lib/procurement/requestQuantities'
 import type { PurchaseRequestItem } from '@/lib/types/procurement'
 
 function asSingle<T>(value: T | T[] | null | undefined): T | null {
@@ -514,8 +512,8 @@ export async function getBoqCheckForReceipts(receiptIds: string[]): Promise<{
 
 /**
  * Read-only BOQ check for a purchase request, using its own plot scope and
- * the original ask (originalQuantityRequested, not the outstanding
- * quantity_requested column - see requestQuantities.ts) as thisDocQty.
+ * what is still outstanding on it as thisDocQty (the ordered part is already
+ * in the rollup).
  * Catching an over-BOQ ask here is far cheaper than catching it at the
  * cheque. No override/acknowledge flow at this stage - only POs and
  * payments record an approval (plan section 9.4).
@@ -537,11 +535,7 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
        purchase_request_plots (plot_id, plots (name)),
        purchase_request_items (
          material_type_id, quantity_requested, unit, material_types!purchase_request_items_material_type_id_fkey (name, unit),
-         purchase_request_item_settlements (quantity),
-         purchase_order_item_allocations (
-           quantity_allocated,
-           purchase_order_items (unit, quantity_ordered, quantity_received, closes_request_line, material_types (name, unit), purchase_orders (id, po_no, status))
-         )
+         purchase_request_item_settlements (quantity)
        )`
     )
     .eq('id', prId)
@@ -561,12 +555,7 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
   })
   if (!resolved) return { lines: [], scopeLabel: 'ไม่ระบุแปลง' }
 
-  // The ask is reconstructed from what each PO line took from THIS request
-  // (its allocation) - a consolidated PO line's own legacy link is null, so
-  // reading it would understate what was asked.
-  const items = ((pr.purchase_request_items || []) as unknown as (PurchaseRequestItem & {
-    purchase_order_item_allocations?: RawRequestAllocation[]
-  })[]).map((item) => ({ ...item, purchase_order_items: allocationsToOrderLines(item.purchase_order_item_allocations) }))
+  const items = (pr.purchase_request_items || []) as unknown as PurchaseRequestItem[]
   if (items.length === 0) return { lines: [], scopeLabel: resolved.scopeLabel }
 
   const rollupRows = await fetchRollupRows(supabase, resolved.scope)
@@ -574,7 +563,11 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
 
   const byMaterial = new Map<number, { qty: number; name: string; unit: string }>()
   for (const item of items) {
-    const ask = originalQuantityRequested(item)
+    // Only what is still OUTSTANDING on the line. Whatever a PO has already
+    // taken off it is in the rollup already (as ordered), so adding the
+    // original ask on top would count the same material twice - once as the
+    // purchase and once as the request.
+    const ask = Number(item.quantity_requested) || 0
     if (ask <= 0) continue
     const existing = byMaterial.get(item.material_type_id) || {
       qty: 0,

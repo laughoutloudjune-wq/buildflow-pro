@@ -360,21 +360,20 @@ export type EligibleRequestLine = {
   requested_at: string
 }
 
-/** Approved request lines with something left to order, for one project.
+/** Approved request lines with something left to order, for one project (or
+ * every project when none is given).
  * Lines whose request unit differs from the material's own unit are left out:
  * a PO line transacts in the material's unit, and a consolidated line only
  * allocates same-unit quantities - those still go through the single-request
  * flow with its "covers the request" tick box. Lines already closed by an
  * order's tick box are left out too. */
-export async function getEligibleRequestLinesForOrder(projectId: string): Promise<EligibleRequestLine[]> {
+export async function getEligibleRequestLinesForOrder(projectId?: string | null): Promise<EligibleRequestLine[]> {
   await requireModuleAccess('procurement')
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('purchase_requests')
-    .select(SELECT_WITH_RELATIONS)
-    .eq('status', 'approved')
-    .eq('project_id', projectId)
-    .order('pr_no', { ascending: true })
+  // No project = every project, for an order that buys for several sites.
+  let query = supabase.from('purchase_requests').select(SELECT_WITH_RELATIONS).eq('status', 'approved')
+  if (projectId) query = query.eq('project_id', projectId)
+  const { data, error } = await query.order('pr_no', { ascending: true })
   if (error) throw new Error(error.message)
   const requests = ((data as unknown as PurchaseRequest[]) || []).map(mapRequestAllocations)
 
