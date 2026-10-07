@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole, getCurrentUser } from '@/actions/_shared/user-role'
 import { decodeAdjustmentDescription } from '@/actions/_shared/billing-adjustments'
+import { summarizePlotMaterials, type PlotMaterialSummaryRow, type PlotSummaryLine } from '@/lib/procurement/allocationTrace'
 
 export type SaleStatus = {
   code: string
@@ -1047,14 +1048,7 @@ export async function createCustomerForSale(saleId: string, formData: FormData) 
   return { success: true }
 }
 
-export type PlotMaterialRow = {
-  materialTypeId: number
-  name: string
-  unit: string
-  orderedQty: number
-  receivedQty: number
-  orderedValue: number
-}
+export type PlotMaterialRow = PlotMaterialSummaryRow
 
 /**
  * Dedicated plot-scoped materials query rather than calling the existing
@@ -1076,7 +1070,23 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
     .maybeSingle()
   const groupId = groupRow?.group_id || null
 
+  type QueriedAllocation = {
+    id: string
+    quantity_allocated: number | string
+    purchase_request_items: {
+      purchase_request_id: string
+      purchase_requests: {
+        id: string
+        pr_no: number
+        plot_id: string | null
+        plot_group_id: string | null
+        plot_groups: { plot_group_members: { plot_id: string }[] | null } | null
+        purchase_request_plots: { plot_id: string }[] | null
+      } | null
+    } | null
+  }
   type QueriedItem = {
+    id: string
     material_type_id: number
     quantity_ordered: number | string | null
     quantity_received: number | string | null
@@ -1085,30 +1095,55 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
     plot_id: string | null
     plot_group_id: string | null
     material_types: { name: string; unit: string } | null
+    purchase_order_item_allocations: QueriedAllocation[] | null
+  }
+  type QueriedOrder = {
+    id: string
+    po_no: string
+    plot_id: string | null
+    plot_group_id: string | null
+    purchase_order_plots: { plot_id: string }[] | null
+    purchase_order_items: QueriedItem[] | null
   }
 
-  // Two disjoint sets of items can belong to this plot: a line that never
-  // overrode its scope, inheriting the whole order's project/plot (matched
-  // against the ORDER's own plot/group/multi-plot); and a line overridden
-  // straight to this project, matched against its OWN plot/group instead -
-  // regardless of which project the order it lives on was placed under (see
+  const ITEM_COLUMNS = `id, material_type_id, quantity_ordered, quantity_received, unit_price, project_id, plot_id, plot_group_id,
+         material_types (name, unit),
+         purchase_order_item_allocations (
+           id, quantity_allocated,
+           purchase_request_items (
+             purchase_request_id,
+             purchase_requests (
+               id, pr_no, plot_id, plot_group_id,
+               plot_groups (plot_group_members (plot_id)),
+               purchase_request_plots (plot_id)
+             )
+           )
+         )`
+
+  // A line's allocated quantity is attributed through its allocations (each
+  // counts for its own request's plots) - never through the order header, so
+  // a combined PO that lists several plots does not put the whole line on
+  // each. Only the part of a line no allocation covers falls back to the two
+  // older rules: a line that never overrode its scope inherits the ORDER's
+  // project/plot (matched against the order's own plot/group/multi-plot), and
+  // a line overridden straight to this project is matched against its OWN
+  // plot/group - regardless of which project its order was placed under (see
   // 202609220002_po_item_project_plot_override.sql).
   const [inheritedRes, overriddenRes] = await Promise.all([
     supabase
       .from('purchase_orders')
       .select(
-        `id, status, plot_id, plot_group_id,
+        `id, po_no, status, plot_id, plot_group_id,
          purchase_order_plots (plot_id),
-         purchase_order_items (material_type_id, quantity_ordered, quantity_received, unit_price, project_id, plot_id, plot_group_id, material_types (name, unit))`
+         purchase_order_items (${ITEM_COLUMNS})`
       )
       .eq('project_id', projectId)
       .neq('status', 'cancelled'),
     supabase
       .from('purchase_order_items')
       .select(
-        `material_type_id, quantity_ordered, quantity_received, unit_price, project_id, plot_id, plot_group_id,
-         material_types (name, unit),
-         purchase_orders!inner (status)`
+        `${ITEM_COLUMNS},
+         purchase_orders!inner (id, po_no, status)`
       )
       .eq('project_id', projectId)
       .neq('purchase_orders.status', 'cancelled'),
@@ -1116,15 +1151,39 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
   if (inheritedRes.error) throw new Error(inheritedRes.error.message)
   if (overriddenRes.error) throw new Error(overriddenRes.error.message)
 
-  type QueriedOrder = {
-    id: string
-    plot_id: string | null
-    plot_group_id: string | null
-    purchase_order_plots: { plot_id: string }[] | null
-    purchase_order_items: QueriedItem[] | null
-  }
+  const toLine = (item: QueriedItem, poId: string, poNo: string, remainderBelongsToPlot: boolean): PlotSummaryLine => ({
+    poItemId: item.id,
+    poId,
+    poNo,
+    materialTypeId: item.material_type_id,
+    materialName: item.material_types?.name || '-',
+    unit: item.material_types?.unit || '',
+    quantityOrdered: Number(item.quantity_ordered) || 0,
+    quantityReceived: Number(item.quantity_received) || 0,
+    unitPrice: Number(item.unit_price) || 0,
+    remainderBelongsToPlot,
+    allocations: (item.purchase_order_item_allocations || []).flatMap((a) => {
+      const pr = a.purchase_request_items?.purchase_requests
+      if (!pr) return []
+      const members =
+        pr.plot_id != null
+          ? []
+          : pr.plot_group_id != null
+            ? (pr.plot_groups?.plot_group_members || []).map((m) => m.plot_id)
+            : (pr.purchase_request_plots || []).map((p) => p.plot_id)
+      return [
+        {
+          allocationId: a.id,
+          quantity: Number(a.quantity_allocated) || 0,
+          purchaseRequestId: pr.id,
+          prNo: pr.pr_no,
+          scope: { plotId: pr.plot_id, plotGroupId: pr.plot_group_id, memberPlotIds: members },
+        },
+      ]
+    }),
+  })
 
-  const matchingItems: QueriedItem[] = []
+  const lines = new Map<string, PlotSummaryLine>()
 
   const orders = (inheritedRes.data as unknown as QueriedOrder[]) || []
   for (const order of orders) {
@@ -1132,41 +1191,17 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
       order.plot_id === plotId ||
       (groupId != null && order.plot_group_id === groupId) ||
       (order.purchase_order_plots || []).some((p) => p.plot_id === plotId)
-    if (!orderMatchesPlot) continue
     for (const item of order.purchase_order_items || []) {
-      // Overridden away from this order's own scope - belongs elsewhere,
-      // counted (or not) by the second query instead.
-      if (item.project_id != null) continue
-      matchingItems.push(item)
+      // A line overridden away from this order's own scope has its remainder
+      // matched by its own plot/group below instead.
+      lines.set(item.id, toLine(item, order.id, order.po_no, orderMatchesPlot && item.project_id == null))
     }
   }
 
-  for (const item of (overriddenRes.data as unknown as QueriedItem[]) || []) {
+  for (const item of (overriddenRes.data as unknown as (QueriedItem & { purchase_orders: { id: string; po_no: string } })[]) || []) {
     const itemMatchesPlot = item.plot_id === plotId || (groupId != null && item.plot_group_id === groupId)
-    if (!itemMatchesPlot) continue
-    matchingItems.push(item)
+    lines.set(item.id, toLine(item, item.purchase_orders.id, item.purchase_orders.po_no, itemMatchesPlot))
   }
 
-  const summary = new Map<number, PlotMaterialRow>()
-  for (const item of matchingItems) {
-    let row = summary.get(item.material_type_id)
-    if (!row) {
-      row = {
-        materialTypeId: item.material_type_id,
-        name: item.material_types?.name || '-',
-        unit: item.material_types?.unit || '',
-        orderedQty: 0,
-        receivedQty: 0,
-        orderedValue: 0,
-      }
-      summary.set(item.material_type_id, row)
-    }
-    const ordered = Number(item.quantity_ordered) || 0
-    const received = Number(item.quantity_received) || 0
-    row.orderedQty += ordered
-    row.receivedQty += received
-    row.orderedValue += ordered * (Number(item.unit_price) || 0)
-  }
-
-  return Array.from(summary.values()).sort((a, b) => a.name.localeCompare(b.name, 'th'))
+  return summarizePlotMaterials(Array.from(lines.values()), plotId)
 }

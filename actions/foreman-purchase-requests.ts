@@ -83,7 +83,7 @@ export async function getMyPurchaseRequests(): Promise<ForemanPurchaseRequestRow
       projects (name),
       plots!purchase_requests_plot_id_fkey (name),
       plot_groups (name),
-      purchase_request_items ( quantity_requested, unit, material_types (name, unit) )
+      purchase_request_items ( quantity_requested, unit, material_types!purchase_request_items_material_type_id_fkey (name, unit) )
     `)
     .eq('requested_by', user.id)
     .order('created_at', { ascending: false })

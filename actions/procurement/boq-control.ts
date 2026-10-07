@@ -15,6 +15,7 @@ import {
   type BoqControlUnassignedRow,
   type ControlScope,
 } from '@/lib/procurement/boqControl'
+import { allocationsToOrderLines, type RawRequestAllocation } from '@/lib/procurement/allocationTrace'
 import { originalQuantityRequested } from '@/lib/procurement/requestQuantities'
 import type { PurchaseRequestItem } from '@/lib/types/procurement'
 
@@ -158,6 +159,9 @@ export async function getBoqControlMaterialDetail(scope: ControlScope, materialT
       quantity: number | string
       weight: number | string
       status: string
+      po_item_id: string | null
+      purchase_request_id: string | null
+      pr_no: number | null
     }[]) || []
   ).map((r) => ({
     docKind: r.doc_kind as BoqControlDetailRow['docKind'],
@@ -169,6 +173,9 @@ export async function getBoqControlMaterialDetail(scope: ControlScope, materialT
     quantity: toNumber(r.quantity),
     weight: toNumber(r.weight),
     status: r.status,
+    poItemId: r.po_item_id ?? null,
+    purchaseRequestId: r.purchase_request_id ?? null,
+    prNo: r.pr_no ?? null,
   }))
 }
 
@@ -529,9 +536,12 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
        plot_groups (name),
        purchase_request_plots (plot_id, plots (name)),
        purchase_request_items (
-         material_type_id, quantity_requested, unit, material_types (name, unit),
+         material_type_id, quantity_requested, unit, material_types!purchase_request_items_material_type_id_fkey (name, unit),
          purchase_request_item_settlements (quantity),
-         purchase_order_items (quantity_ordered, unit, closes_request_line)
+         purchase_order_item_allocations (
+           quantity_allocated,
+           purchase_order_items (unit, quantity_ordered, quantity_received, closes_request_line, material_types (name, unit), purchase_orders (id, po_no, status))
+         )
        )`
     )
     .eq('id', prId)
@@ -551,7 +561,12 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
   })
   if (!resolved) return { lines: [], scopeLabel: 'ไม่ระบุแปลง' }
 
-  const items = (pr.purchase_request_items || []) as unknown as PurchaseRequestItem[]
+  // The ask is reconstructed from what each PO line took from THIS request
+  // (its allocation) - a consolidated PO line's own legacy link is null, so
+  // reading it would understate what was asked.
+  const items = ((pr.purchase_request_items || []) as unknown as (PurchaseRequestItem & {
+    purchase_order_item_allocations?: RawRequestAllocation[]
+  })[]).map((item) => ({ ...item, purchase_order_items: allocationsToOrderLines(item.purchase_order_item_allocations) }))
   if (items.length === 0) return { lines: [], scopeLabel: resolved.scopeLabel }
 
   const rollupRows = await fetchRollupRows(supabase, resolved.scope)

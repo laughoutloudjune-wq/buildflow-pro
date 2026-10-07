@@ -1,4 +1,5 @@
 import type { MaterialType } from '@/lib/types/materials'
+import type { FulfillmentSummary } from '@/lib/procurement/allocationTrace'
 
 export type SupplierType = 'company' | 'individual'
 
@@ -99,7 +100,13 @@ export type PurchaseRequestItemSettlement = {
 export type PurchaseRequestItem = {
   id: string
   purchase_request_id: string
+  /** The material currently on the line: what purchasing actually ordered
+   * once a PO covers it (the PO syncs it back), otherwise what was asked. */
   material_type_id: number
+  /** What the foreman first asked for - history, set only once the line's
+   * material was replaced by a purchase. Null if it never changed. */
+  original_material_type_id: number | null
+  original_material?: { name: string } | null
   /** What's still OUTSTANDING, not the original ask - both POs raised from the
    * request and manual settlements subtract from it. Use
    * `originalQuantityRequested` (lib/procurement/requestedQuantity) wherever
@@ -121,6 +128,11 @@ export type PurchaseRequestItem = {
   /** Every PO line raised against this request line, cancelled POs included -
    * po_cancel doesn't hand the quantity back, so these all count towards
    * reconstructing the original ask. */
+  /** Every PO that fulfils this line - actual PO material, supplier, this
+   * line's allocated / received / outstanding quantity and the order's
+   * status - built from the allocations (buildFulfillmentLinks). Cancelled
+   * orders are listed for history but not counted. */
+  fulfillment?: FulfillmentSummary
   purchase_order_items?: {
     quantity_ordered: number
     unit: string | null

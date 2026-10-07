@@ -6,7 +6,8 @@ import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole } from '@/actions/_shared/user-role'
 import { translateError as translatePrError } from '@/lib/errors'
 import { isAnsweredByOrder, requestLineUnit } from '@/lib/procurement/requestQuantities'
-import type { PurchaseOrderStatus, PurchaseRequest, PurchaseRequestStatus, SettlementReason } from '@/lib/types/procurement'
+import { allocationsToOrderLines, buildFulfillmentLinks, type RawRequestAllocation } from '@/lib/procurement/allocationTrace'
+import type { PurchaseRequest, PurchaseRequestStatus, SettlementReason } from '@/lib/types/procurement'
 
 const SELECT_WITH_RELATIONS = `
   *,
@@ -18,54 +19,73 @@ const SELECT_WITH_RELATIONS = `
   reviewer:profiles!purchase_requests_reviewed_by_fkey (full_name, email),
   purchase_request_items (
     *,
-    material_types (*),
+    material_types!purchase_request_items_material_type_id_fkey (*),
     boq_master (item_name),
     purchase_request_item_settlements (
       *,
       settler:profiles!purchase_request_item_settlements_settled_by_fkey (full_name, email)
     ),
     purchase_order_item_allocations (
+      id,
       quantity_allocated,
-      purchase_order_items (unit, closes_request_line, purchase_orders (id, po_no, status))
+      purchase_order_items (
+        id, unit, quantity_ordered, quantity_received, closes_request_line, material_type_id,
+        material_types (name, unit),
+        purchase_orders (id, po_no, status, suppliers (name))
+      )
     )
   ),
   purchase_orders (po_no, status)
 `
 
-type RawAllocation = {
-  quantity_allocated: number
-  purchase_order_items:
-    | { unit: string | null; closes_request_line: boolean; purchase_orders: { id: string; po_no: string; status: PurchaseOrderStatus } | null }
-    | null
-}
-
 /** Rebuilds each request line's `purchase_order_items` (the shape every
- * quantity helper in lib/procurement/requestQuantities.ts reads) from the
- * line's allocations: one entry per PO line that draws on it, carrying the
- * ALLOCATED quantity rather than the PO line's own total - a consolidated PO
- * line may serve several requests, and only this request's slice belongs
- * here. Cancelled orders are left out: their quantity went back to the line
- * when they were cancelled, so counting them again would overstate the
- * original ask. */
+ * quantity helper in lib/procurement/requestQuantities.ts reads) and its
+ * `fulfillment` (every linked PO with the actual PO material, supplier and
+ * this line's allocated / received / outstanding quantity) from the line's
+ * allocations. The request line's own material stays what was requested. */
 function mapRequestAllocations(request: PurchaseRequest): PurchaseRequest {
   return {
     ...request,
     purchase_request_items: (request.purchase_request_items || []).map((item) => {
-      const raw = ((item as unknown as { purchase_order_item_allocations?: RawAllocation[] }).purchase_order_item_allocations ||
-        []) as RawAllocation[]
+      const raw = ((item as unknown as { purchase_order_item_allocations?: RawRequestAllocation[] }).purchase_order_item_allocations ||
+        []) as RawRequestAllocation[]
       return {
         ...item,
-        purchase_order_items: raw
-          .filter((a) => a.purchase_order_items && a.purchase_order_items.purchase_orders?.status !== 'cancelled')
-          .map((a) => ({
-            quantity_ordered: Number(a.quantity_allocated),
-            unit: a.purchase_order_items!.unit,
-            closes_request_line: a.purchase_order_items!.closes_request_line,
-            purchase_orders: a.purchase_order_items!.purchase_orders,
-          })),
+        purchase_order_items: allocationsToOrderLines(raw),
+        fulfillment: buildFulfillmentLinks(item, raw),
       }
     }),
   }
+}
+
+/** Attaches the name of each line's ORIGINAL requested material (kept as
+ * history when purchasing's material replaced it) - one lookup for the whole
+ * batch. A plain lookup rather than an embed, because the history column has
+ * no foreign key (see 202610070001). Fulfilment links are rebuilt with it so
+ * "ขอไว้" shows the original ask. */
+async function withOriginalMaterials(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  requests: PurchaseRequest[]
+): Promise<PurchaseRequest[]> {
+  const ids = Array.from(
+    new Set(
+      requests.flatMap((r) => (r.purchase_request_items || []).map((i) => i.original_material_type_id).filter((v): v is number => v != null))
+    )
+  )
+  if (ids.length === 0) return requests
+  const { data, error } = await supabase.from('material_types').select('id, name').in('id', ids)
+  if (error) throw new Error(error.message)
+  const names = new Map((data || []).map((m) => [m.id as number, m.name as string]))
+  return requests.map((r) => ({
+    ...r,
+    purchase_request_items: (r.purchase_request_items || []).map((item) => {
+      const name = item.original_material_type_id != null ? names.get(item.original_material_type_id) : undefined
+      if (!name) return item
+      const raw = (item as unknown as { purchase_order_item_allocations?: RawRequestAllocation[] }).purchase_order_item_allocations || []
+      const withOriginal = { ...item, original_material: { name } }
+      return { ...withOriginal, fulfillment: buildFulfillmentLinks(withOriginal, raw) }
+    }),
+  }))
 }
 
 export type PurchaseRequestFilters = {
@@ -83,7 +103,7 @@ export async function getPurchaseRequests(filters: PurchaseRequestFilters = {}):
 
   const { data, error } = await query
   if (error) throw new Error(error.message)
-  return ((data as unknown as PurchaseRequest[]) || []).map(mapRequestAllocations)
+  return withOriginalMaterials(supabase, ((data as unknown as PurchaseRequest[]) || []).map(mapRequestAllocations))
 }
 
 export async function getPurchaseRequestById(id: string): Promise<PurchaseRequest | null> {
@@ -91,7 +111,9 @@ export async function getPurchaseRequestById(id: string): Promise<PurchaseReques
   const supabase = await createClient()
   const { data, error } = await supabase.from('purchase_requests').select(SELECT_WITH_RELATIONS).eq('id', id).maybeSingle()
   if (error) throw new Error(error.message)
-  return data ? mapRequestAllocations(data as unknown as PurchaseRequest) : null
+  if (!data) return null
+  const [request] = await withOriginalMaterials(supabase, [mapRequestAllocations(data as unknown as PurchaseRequest)])
+  return request
 }
 
 /** For printing several requests as one combined PDF - one round trip for
@@ -107,7 +129,7 @@ export async function getPurchaseRequestsByIds(ids: string[]): Promise<PurchaseR
     .in('id', ids)
     .order('pr_no', { ascending: true })
   if (error) throw new Error(error.message)
-  return ((data as unknown as PurchaseRequest[]) || []).map(mapRequestAllocations)
+  return withOriginalMaterials(supabase, ((data as unknown as PurchaseRequest[]) || []).map(mapRequestAllocations))
 }
 
 /** BOQ job options for the request form's per-line "สำหรับงาน" picker -

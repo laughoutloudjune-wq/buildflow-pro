@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import { getBoqCheckForReceipts } from '@/actions/procurement/boq-control'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
+import PayoutPoComparison from '@/components/procurement/PayoutPoComparison'
 import GoodsReceiptDocActions from '@/components/procurement/GoodsReceiptDocActions'
 import type { GoodsReceipt } from '@/lib/types/procurement'
 
@@ -107,6 +108,8 @@ export default function ReceiptDetailModal({ receipt, onClose }: { receipt: Good
             </tfoot>
           </table>
         </div>
+
+        <PayoutPoComparison receiptIds={[receipt.id]} />
 
         {isLoading ? (
           <div className="flex items-center gap-2 py-2 text-sm text-slate-400">

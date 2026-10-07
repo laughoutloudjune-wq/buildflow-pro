@@ -143,6 +143,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     orderedQty: m.orderedQty,
     receivedQty: m.receivedQty,
     orderedValue: canSeeCost ? m.orderedValue : null,
+    sources: m.sources,
   }))
 
   const historyView = history.map((h) => ({

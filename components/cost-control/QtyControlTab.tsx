@@ -279,7 +279,7 @@ export default function QtyControlTab({
                                 {(detailByMaterial[row.materialTypeId] || []).map((d) => {
                                   const href = docHref(d)
                                   return (
-                                    <tr key={`${d.docKind}-${d.docId}`}>
+                                    <tr key={`${d.docKind}-${d.docId}-${d.poItemId ?? ''}-${d.purchaseRequestId ?? ''}`}>
                                       <td className="px-2 py-1.5 text-slate-500">{DOC_KIND_LABEL[d.docKind]}</td>
                                       <td className="px-2 py-1.5">
                                         {href ? (

@@ -59,6 +59,12 @@ export type BoqControlDetailRow = {
   quantity: number
   weight: number
   status: string
+  /** For a PO row from an allocation: the PO line it comes from and the
+   * request that contributed the quantity - the trace back from a plot's
+   * figure. Null on rows with no such link (stock, unallocated PO scope). */
+  poItemId: string | null
+  purchaseRequestId: string | null
+  prNo: number | null
 }
 
 /** The ceiling shown to users: BOQ + allowed waste, never the bare BOQ

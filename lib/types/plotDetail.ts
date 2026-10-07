@@ -1,3 +1,4 @@
+import type { PlotMaterialSource } from '@/lib/procurement/allocationTrace'
 import type { PlotSaleHistoryEntry } from '@/actions/sales-actions'
 
 /** Job row for the plot detail page's งานก่อสร้าง tab. `cost` is null
@@ -30,6 +31,8 @@ export type PlotMaterialRowView = {
   orderedQty: number
   receivedQty: number
   orderedValue: number | null
+  /** Which PO line and request each part of the figure came from (no money). */
+  sources: PlotMaterialSource[]
 }
 
 export type PlotHistoryRowView = Omit<PlotSaleHistoryEntry, 'amount'> & { amount: number | null }

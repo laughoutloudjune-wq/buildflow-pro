@@ -13,6 +13,7 @@ import { formatCurrency } from '@/lib/currency'
 import { todayInBangkok } from '@/lib/utils'
 import { createPaymentVoucher } from '@/actions/procurement-actions'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
+import PayoutPoComparison from '@/components/procurement/PayoutPoComparison'
 import ReceiptDetailModal from '@/components/procurement/ReceiptDetailModal'
 import { getBoqCheckForReceipts, setPoBoqOverrides } from '@/actions/procurement/boq-control'
 import { isBoqCheckLineOver } from '@/lib/procurement/boqControl'
@@ -290,6 +291,8 @@ export default function ReceiptsPageClient({
               <span>฿{formatCurrency(selectedTotal)}</span>
             </div>
           </div>
+
+          {isPayModalOpen && <PayoutPoComparison receiptIds={Array.from(selected)} />}
 
           {isBoqCheckLoading ? (
             <div className="flex items-center gap-2 py-2 text-sm text-slate-400">

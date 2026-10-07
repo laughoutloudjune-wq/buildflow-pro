@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { Fragment, useEffect, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, ListChecks, Loader2, PackageCheck, Pencil, ShoppingCart, Undo2, XCircle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -17,8 +18,9 @@ import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import PurchaseRequestSettleModal from '@/components/procurement/PurchaseRequestSettleModal'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
 import { getBoqCheckForPurchaseRequest } from '@/actions/procurement/boq-control'
-import { PR_STATUS_LABEL, PR_STATUS_TONE } from '@/lib/status-labels'
+import { PO_STATUS_LABEL, PO_STATUS_TONE, PR_STATUS_LABEL, PR_STATUS_TONE } from '@/lib/status-labels'
 import type { PurchaseRequest, PurchaseRequestItem } from '@/lib/types/procurement'
+import type { FulfillmentLink } from '@/lib/procurement/allocationTrace'
 import {
   isAnsweredByOrder,
   orderLineUnit,
@@ -170,6 +172,54 @@ function statusCell(item: PurchaseRequestItem, closed: 'open' | 'ordered' | 'can
     )
   }
   return <span className="text-xs text-slate-400">รอสั่งซื้อ</span>
+}
+
+/** Every PO fulfilling one request line: the supplier, what purchasing
+ * actually ordered (with the original ask when it differs), and this line's
+ * own allocated / received / outstanding quantity - never the whole PO
+ * line's, which on a consolidated order also serves other requests. */
+function FulfillmentTable({ links }: { links: FulfillmentLink[] }) {
+  const fmt = (n: number) => n.toLocaleString('th-TH')
+  return (
+    <table className="w-full text-left text-xs">
+      <thead className="text-slate-400">
+        <tr>
+          <th className="py-1 pr-3 font-medium">ใบสั่งซื้อ</th>
+          <th className="py-1 pr-3 font-medium">ผู้จำหน่าย</th>
+          <th className="py-1 pr-3 font-medium">วัสดุที่สั่งจริง</th>
+          <th className="py-1 pr-3 text-right font-medium">จัดสรรให้ใบนี้</th>
+          <th className="py-1 pr-3 text-right font-medium">รับแล้ว</th>
+          <th className="py-1 pr-3 text-right font-medium">ค้างรับ</th>
+          <th className="py-1 font-medium">สถานะ</th>
+        </tr>
+      </thead>
+      <tbody className="text-slate-600">
+        {links.map((l) => (
+          <tr key={l.allocationId ?? `${l.poId}-${l.poItemId}`} className={l.cancelled ? 'text-slate-400 line-through' : ''}>
+            <td className="py-1 pr-3 font-mono">
+              <Link href={`/dashboard/procurement/orders/${l.poId}`} className="text-indigo-600 hover:underline">
+                {l.poNo}
+              </Link>
+            </td>
+            <td className="py-1 pr-3">{l.supplierName || '-'}</td>
+            <td className="py-1 pr-3">
+              {l.actualMaterialName}
+              {l.isSubstitute && <span className="ml-1 text-slate-400">(ขอไว้: {l.requestedMaterialName})</span>}
+            </td>
+            <td className="whitespace-nowrap py-1 pr-3 text-right">
+              {fmt(l.allocated)} {l.unit}
+              {l.lineOrdered !== l.allocated && <span className="text-slate-400"> / {fmt(l.lineOrdered)}</span>}
+            </td>
+            <td className="whitespace-nowrap py-1 pr-3 text-right">{fmt(l.received)}</td>
+            <td className="whitespace-nowrap py-1 pr-3 text-right">{fmt(l.outstanding)}</td>
+            <td className="py-1">
+              <span className={`rounded-full px-2 py-0.5 ${PO_STATUS_TONE[l.poStatus]}`}>{PO_STATUS_LABEL[l.poStatus]}</span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
 }
 
 /** Plot scope is one of three mutually exclusive shapes (single plot, saved
@@ -354,10 +404,15 @@ export default function PurchaseRequestDetail({
               {(request.purchase_request_items || []).map((item) => {
                 const closed = closedState(request, item)
                 const settlements = item.purchase_request_item_settlements || []
+                const links = item.fulfillment?.links || []
                 return (
-                  <tr key={item.id}>
+                  <Fragment key={item.id}>
+                  <tr>
                     <td className="px-4 py-2.5 text-slate-800">
                       {item.material_types?.name || '-'}
+                      {item.original_material?.name && item.original_material_type_id !== item.material_type_id && (
+                        <span className="ml-2 text-xs text-slate-400">ขอไว้เดิม: {item.original_material.name}</span>
+                      )}
                       {item.boq_master?.item_name && (
                         <span className="ml-2 text-xs text-slate-400">สำหรับงาน: {item.boq_master.item_name}</span>
                       )}
@@ -406,6 +461,14 @@ export default function PurchaseRequestDetail({
                     </td>
                     <td className="px-4 py-2.5 text-slate-500">{item.note || '-'}</td>
                   </tr>
+                  {links.length > 0 && (
+                    <tr className="bg-slate-50/60">
+                      <td colSpan={5} className="px-4 py-2">
+                        <FulfillmentTable links={links} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>
