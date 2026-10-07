@@ -379,19 +379,23 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
    * asked for on it - the PO line may well have been swapped to a different
    * brand, which is exactly the case worth showing. */
   function indexRequestLines(request: PurchaseRequest) {
-    setSourceRequestNo(request.pr_no)
-    setRequestLines(
-      Object.fromEntries(
+    setSourceRequestNo((prev) => prev ?? request.pr_no)
+    // Merged, not replaced: a combined order draws on several requests.
+    setRequestLines((prev) => ({
+      ...prev,
+      ...Object.fromEntries(
         (request.purchase_request_items || []).map((item) => [
           item.id,
           {
-            name: item.material_types?.name || '-',
-            materialTypeId: item.material_type_id,
+            // What was asked for: the original once purchasing's material
+            // replaced it on the request line.
+            name: item.original_material?.name || item.material_types?.name || '-',
+            materialTypeId: item.original_material_type_id ?? item.material_type_id,
             unit: item.unit || item.material_types?.unit || '',
           },
         ])
-      )
-    )
+      ),
+    }))
   }
 
   async function bootstrap() {
@@ -481,8 +485,19 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
 
         // Only for an order raised from a request - otherwise there is no
         // request line for anything here to settle.
-        if (initialOrder.purchase_request_id) {
-          const pr = await getPurchaseRequestById(initialOrder.purchase_request_id)
+        // A combined order has no single header request - its requests are
+        // found through the lines' allocations, so the "this order covers the
+        // request line" box and unit warning still appear on its lines.
+        const requestIds = new Set<string>()
+        if (initialOrder.purchase_request_id) requestIds.add(initialOrder.purchase_request_id)
+        for (const orderItem of initialOrder.purchase_order_items || []) {
+          for (const alloc of orderItem.purchase_order_item_allocations || []) {
+            const requestId = alloc.purchase_request_items?.purchase_request_id
+            if (requestId) requestIds.add(requestId)
+          }
+        }
+        for (const requestId of requestIds) {
+          const pr = await getPurchaseRequestById(requestId)
           if (pr) indexRequestLines(pr)
         }
       } else if (mode === 'create' && combined) {
