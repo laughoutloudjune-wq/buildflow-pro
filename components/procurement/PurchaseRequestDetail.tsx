@@ -146,7 +146,7 @@ function poRefs(item: PurchaseRequestItem): string[] {
  * asked in - meaningless once it was bought in a different one. */
 function statusCell(item: PurchaseRequestItem, closed: 'open' | 'ordered' | 'cancelled') {
   const refs = poRefs(item)
-  const refSuffix = refs.length > 0 ? <span className="font-normal text-slate-400"> · {refs.join(', ')}</span> : null
+  const refSuffix = refs.length > 0 ? <span className="font-normal text-slate-500"> · {refs.join(', ')}</span> : null
 
   if (closed === 'ordered') {
     return (
@@ -171,7 +171,7 @@ function statusCell(item: PurchaseRequestItem, closed: 'open' | 'ordered' | 'can
       </span>
     )
   }
-  return <span className="text-xs text-slate-400">รอสั่งซื้อ</span>
+  return <span className="text-xs text-slate-500">รอสั่งซื้อ</span>
 }
 
 /** Every PO fulfilling one request line: the supplier, what purchasing
@@ -204,13 +204,19 @@ function FulfillmentTable({ links }: { links: FulfillmentLink[] }) {
             <td className="py-1 pr-3">{l.supplierName || '-'}</td>
             <td className="py-1 pr-3">
               {l.actualMaterialName}
-              {l.isSubstitute && <span className="ml-1 text-slate-400">(ขอไว้: {l.requestedMaterialName})</span>}
+              {l.isSubstitute && <span className="ml-1 text-slate-500">(ขอไว้: {l.requestedMaterialName})</span>}
             </td>
             <td className="whitespace-nowrap py-1 pr-3 text-right">
               {fmt(l.allocated)} {l.unit}
-              {l.lineOrdered !== l.allocated && <span className="text-slate-400"> / {fmt(l.lineOrdered)}</span>}
+              {l.lineOrdered !== l.allocated && <span className="text-slate-500"> / {fmt(l.lineOrdered)}</span>}
             </td>
-            <td className="whitespace-nowrap py-1 pr-3 text-right">{fmt(l.received)}</td>
+            <td
+              className="whitespace-nowrap py-1 pr-3 text-right"
+              title={l.receivedIsEstimate ? 'ประมาณตามสัดส่วน - ใบรับสินค้าบันทึกต่อรายการใน PO ไม่ได้แยกตามคำขอซื้อ' : undefined}
+            >
+              {l.receivedIsEstimate ? '≈ ' : ''}
+              {fmt(l.received)}
+            </td>
             <td className="whitespace-nowrap py-1 pr-3 text-right">{fmt(l.outstanding)}</td>
             <td className="py-1">
               <span className={`rounded-full px-2 py-0.5 ${PO_STATUS_TONE[l.poStatus]}`}>{PO_STATUS_LABEL[l.poStatus]}</span>
@@ -218,6 +224,15 @@ function FulfillmentTable({ links }: { links: FulfillmentLink[] }) {
           </tr>
         ))}
       </tbody>
+      {links.some((l) => l.receivedIsEstimate) && (
+        <tfoot>
+          <tr>
+            <td colSpan={7} className="pt-1 text-[11px] text-slate-500">
+              ≈ ประมาณตามสัดส่วนของที่สั่ง - ใบรับสินค้าบันทึกต่อรายการใน PO ไม่ได้ระบุว่าของที่รับเป็นของคำขอซื้อใบไหน
+            </td>
+          </tr>
+        </tfoot>
+      )}
     </table>
   )
 }
@@ -344,11 +359,11 @@ export default function PurchaseRequestDetail({
       <Card className="p-5">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <div className="text-xs text-slate-400">ผู้ขอซื้อ</div>
+            <div className="text-xs text-slate-500">ผู้ขอซื้อ</div>
             <div className="font-medium text-slate-800">{request.requester?.full_name || request.requester?.email || '-'}</div>
           </div>
           <div>
-            <div className="text-xs text-slate-400">ต้องการภายในวันที่</div>
+            <div className="text-xs text-slate-500">ต้องการภายในวันที่</div>
             <div className="font-medium text-slate-800">
               {request.needed_by_date ? new Date(request.needed_by_date).toLocaleDateString('th-TH') : '-'}
             </div>
@@ -360,7 +375,7 @@ export default function PurchaseRequestDetail({
             const isUrgent = byDate != null && now != null && byDate.getTime() <= now
             return (
               <div className="col-span-2">
-                <div className="text-xs text-slate-400">ระยะเวลาสั่งของ (นานสุดในรายการ {leadTime} วัน)</div>
+                <div className="text-xs text-slate-500">ระยะเวลาสั่งของ (นานสุดในรายการ {leadTime} วัน)</div>
                 {byDate ? (
                   <div className={`font-medium ${isUrgent ? 'text-red-600' : 'text-slate-800'}`}>
                     ควรสั่งภายในวันที่ {byDate.toLocaleDateString('th-TH')}
@@ -374,13 +389,13 @@ export default function PurchaseRequestDetail({
           })()}
           {request.note && (
             <div className="col-span-2">
-              <div className="text-xs text-slate-400">หมายเหตุ</div>
+              <div className="text-xs text-slate-500">หมายเหตุ</div>
               <div className="text-slate-700">{request.note}</div>
             </div>
           )}
           {request.review_note && (
             <div className="col-span-2">
-              <div className="text-xs text-slate-400">เหตุผลที่ปฏิเสธ</div>
+              <div className="text-xs text-slate-500">เหตุผลที่ปฏิเสธ</div>
               <div className="text-slate-700">{request.review_note}</div>
             </div>
           )}
@@ -411,10 +426,18 @@ export default function PurchaseRequestDetail({
                     <td className="px-4 py-2.5 text-slate-800">
                       {item.material_types?.name || '-'}
                       {item.original_material?.name && item.original_material_type_id !== item.material_type_id && (
-                        <span className="ml-2 text-xs text-slate-400">ขอไว้เดิม: {item.original_material.name}</span>
+                        <span className="ml-2 text-xs text-slate-500">ขอไว้เดิม: {item.original_material.name}</span>
+                      )}
+                      {item.fulfillment?.mixedMaterials && (
+                        <span
+                          className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                          title="มีใบสั่งซื้อที่ใช้งานอยู่มากกว่าหนึ่งใบ สั่งวัสดุต่างกัน - รายการนี้จึงแสดงวัสดุที่ขอไว้เดิม ดูวัสดุที่สั่งจริงของแต่ละใบสั่งซื้อในตารางด้านล่าง"
+                        >
+                          สั่งหลายวัสดุ
+                        </span>
                       )}
                       {item.boq_master?.item_name && (
-                        <span className="ml-2 text-xs text-slate-400">สำหรับงาน: {item.boq_master.item_name}</span>
+                        <span className="ml-2 text-xs text-slate-500">สำหรับงาน: {item.boq_master.item_name}</span>
                       )}
                       {/* Manual settlements are a human judgement call, so each
                         * one shows what was closed, why, and a way back out -
@@ -426,8 +449,8 @@ export default function PurchaseRequestDetail({
                             {item.material_types?.unit || ''}
                             {settlement.po_ref ? ` • ${settlement.po_ref}` : ''}
                           </span>
-                          {settlement.note && <span className="text-slate-400">({settlement.note})</span>}
-                          <span className="text-slate-400">
+                          {settlement.note && <span className="text-slate-500">({settlement.note})</span>}
+                          <span className="text-slate-500">
                             โดย {settlement.settler?.full_name || settlement.settler?.email || '-'}
                           </span>
                           {request.status === 'approved' && (
@@ -446,7 +469,7 @@ export default function PurchaseRequestDetail({
                     {/* An answered line reports what was actually bought, in
                       * the unit it was really bought in; an open one still
                       * reports the ask. The ask is never overwritten - it's
-                      * on the hover and on the printed ใบขอซื้อ - but the
+                      * on the hover and on the printed คำขอซื้อ - but the
                       * screen follows the order, the same way a material
                       * substitution already does. */}
                     <td

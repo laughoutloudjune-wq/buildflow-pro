@@ -1095,6 +1095,7 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
     plot_id: string | null
     plot_group_id: string | null
     material_types: { name: string; unit: string } | null
+    plot_groups: { plot_group_members: { plot_id: string }[] | null } | null
     purchase_order_item_allocations: QueriedAllocation[] | null
   }
   type QueriedOrder = {
@@ -1102,12 +1103,14 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
     po_no: string
     plot_id: string | null
     plot_group_id: string | null
+    plot_groups: { plot_group_members: { plot_id: string }[] | null } | null
     purchase_order_plots: { plot_id: string }[] | null
     purchase_order_items: QueriedItem[] | null
   }
 
   const ITEM_COLUMNS = `id, material_type_id, quantity_ordered, quantity_received, unit_price, project_id, plot_id, plot_group_id,
          material_types (name, unit),
+         plot_groups (plot_group_members (plot_id)),
          purchase_order_item_allocations (
            id, quantity_allocated,
            purchase_request_items (
@@ -1134,6 +1137,7 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
       .from('purchase_orders')
       .select(
         `id, po_no, status, plot_id, plot_group_id,
+         plot_groups (plot_group_members (plot_id)),
          purchase_order_plots (plot_id),
          purchase_order_items (${ITEM_COLUMNS})`
       )
@@ -1179,7 +1183,7 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
   // materials must still show, so its error is logged and skipped.
   if (crossRes.error) console.error('plot materials: cross-project lookup failed', crossRes.error.message)
 
-  const toLine = (item: QueriedItem, poId: string, poNo: string, remainderBelongsToPlot: boolean): PlotSummaryLine => ({
+  const toLine = (item: QueriedItem, poId: string, poNo: string, remainderWeight: number): PlotSummaryLine => ({
     poItemId: item.id,
     poId,
     poNo,
@@ -1189,7 +1193,7 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
     quantityOrdered: Number(item.quantity_ordered) || 0,
     quantityReceived: Number(item.quantity_received) || 0,
     unitPrice: Number(item.unit_price) || 0,
-    remainderBelongsToPlot,
+    remainderWeight,
     allocations: (item.purchase_order_item_allocations || []).flatMap((a) => {
       const pr = a.purchase_request_items?.purchase_requests
       if (!pr) return []
@@ -1211,30 +1215,49 @@ export async function getPlotMaterialsSummary(plotId: string, projectId: string)
     }),
   })
 
+  // Share of a line's unallocated part that lands on this plot: the whole of
+  // it for a single plot, an even split across a group's or a multi-plot
+  // selection's plots (the same split the cost-control rollup uses) - so the
+  // remainder is counted once across the header's plots, not once per plot.
+  const groupWeight = (members: { plot_id: string }[] | null | undefined, fallbackMatches: boolean): number => {
+    const ids = (members || []).map((m) => m.plot_id)
+    if (ids.length === 0) return fallbackMatches ? 1 : 0
+    return ids.includes(plotId) ? 1 / ids.length : 0
+  }
+  const orderRemainderWeight = (order: QueriedOrder): number => {
+    if (order.plot_id) return order.plot_id === plotId ? 1 : 0
+    if (order.plot_group_id) return groupWeight(order.plot_groups?.plot_group_members, groupId != null && order.plot_group_id === groupId)
+    const plots = (order.purchase_order_plots || []).map((p) => p.plot_id)
+    return plots.includes(plotId) ? 1 / plots.length : 0
+  }
+
   const lines = new Map<string, PlotSummaryLine>()
 
   const orders = (inheritedRes.data as unknown as QueriedOrder[]) || []
   for (const order of orders) {
-    const orderMatchesPlot =
-      order.plot_id === plotId ||
-      (groupId != null && order.plot_group_id === groupId) ||
-      (order.purchase_order_plots || []).some((p) => p.plot_id === plotId)
+    const orderWeight = orderRemainderWeight(order)
     for (const item of order.purchase_order_items || []) {
       // A line overridden away from this order's own scope has its remainder
       // matched by its own plot/group below instead.
-      lines.set(item.id, toLine(item, order.id, order.po_no, orderMatchesPlot && item.project_id == null))
+      lines.set(item.id, toLine(item, order.id, order.po_no, item.project_id == null ? orderWeight : 0))
     }
   }
 
   for (const item of (overriddenRes.data as unknown as (QueriedItem & { purchase_orders: { id: string; po_no: string } })[]) || []) {
-    const itemMatchesPlot = item.plot_id === plotId || (groupId != null && item.plot_group_id === groupId)
-    lines.set(item.id, toLine(item, item.purchase_orders.id, item.purchase_orders.po_no, itemMatchesPlot))
+    const itemWeight = item.plot_id
+      ? item.plot_id === plotId
+        ? 1
+        : 0
+      : item.plot_group_id
+        ? groupWeight(item.plot_groups?.plot_group_members, groupId != null && item.plot_group_id === groupId)
+        : 0
+    lines.set(item.id, toLine(item, item.purchase_orders.id, item.purchase_orders.po_no, itemWeight))
   }
 
   // Lines from other projects' orders: allocations only, never a remainder.
   for (const item of ((crossRes.error ? [] : crossRes.data) as unknown as (QueriedItem & { purchase_orders: { id: string; po_no: string } })[]) || []) {
     if (lines.has(item.id)) continue
-    lines.set(item.id, toLine(item, item.purchase_orders.id, item.purchase_orders.po_no, false))
+    lines.set(item.id, toLine(item, item.purchase_orders.id, item.purchase_orders.po_no, 0))
   }
 
   return summarizePlotMaterials(Array.from(lines.values()), plotId)

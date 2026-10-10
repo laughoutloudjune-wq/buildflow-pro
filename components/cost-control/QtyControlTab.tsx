@@ -187,7 +187,7 @@ export default function QtyControlTab({
       </div>
 
       {filteredRows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-400">
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-500">
           {rows.length === 0 ? 'ยังไม่มีข้อมูล BOQ หรือการซื้อในขอบเขตนี้' : 'ไม่พบวัสดุตามเงื่อนไขที่เลือก'}
         </div>
       ) : (
@@ -225,7 +225,7 @@ export default function QtyControlTab({
                       onClick={() => toggleExpand(row)}
                       className={`cursor-pointer transition-colors hover:bg-slate-50 ${STATUS_ROW_TONE[status]}`}
                     >
-                      <td className="px-2 py-2.5 text-slate-400">
+                      <td className="px-2 py-2.5 text-slate-500">
                         {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </td>
                       <td className="px-3 py-2.5 font-medium text-slate-800">
@@ -257,11 +257,11 @@ export default function QtyControlTab({
                       <tr>
                         <td colSpan={11} className="bg-slate-50/70 px-6 py-3">
                           {isDetailLoading && !detailByMaterial[row.materialTypeId] ? (
-                            <div className="flex items-center gap-2 py-2 text-sm text-slate-400">
+                            <div className="flex items-center gap-2 py-2 text-sm text-slate-500">
                               <Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลด...
                             </div>
                           ) : (detailByMaterial[row.materialTypeId] || []).length === 0 ? (
-                            <p className="py-2 text-sm text-slate-400">ไม่มีเอกสารที่เกี่ยวข้องในขอบเขตนี้</p>
+                            <p className="py-2 text-sm text-slate-500">ไม่มีเอกสารที่เกี่ยวข้องในขอบเขตนี้</p>
                           ) : (
                             <table className="w-full text-left text-xs">
                               <thead className="text-slate-500">
@@ -297,7 +297,7 @@ export default function QtyControlTab({
                                       <td className="px-2 py-1.5 text-slate-500">{d.plotLabel}</td>
                                       <td className="px-2 py-1.5 text-right text-slate-700">{d.quantity.toLocaleString('th-TH')}</td>
                                       <td className="px-2 py-1.5 text-right text-slate-500">
-                                        {d.weight < 1 ? `${Math.round(d.weight * 100)}%` : '100%'}
+                                        {d.weight < 1 ? `≈${Math.round(d.weight * 100)}% (แบ่งเท่ากัน)` : '100%'}
                                       </td>
                                     </tr>
                                   )
@@ -337,7 +337,7 @@ export default function QtyControlTab({
                     <Link href={`/dashboard/procurement/orders/${po.poId}`} className="font-mono text-indigo-600 hover:underline">
                       {po.poNo}
                     </Link>
-                    <p className="truncate text-xs text-slate-400">{po.reason || 'ไม่ได้ระบุเหตุผล'}</p>
+                    <p className="truncate text-xs text-slate-500">{po.reason || 'ไม่ได้ระบุเหตุผล'}</p>
                   </div>
                   <span className="shrink-0 font-medium text-slate-700">฿{formatCurrency(po.total)}</span>
                 </div>
@@ -362,7 +362,7 @@ export default function QtyControlTab({
           </button>
           {showUnassigned && (
             <div className="border-t border-slate-200 p-2">
-              <p className="mb-2 px-1 text-xs text-slate-400">
+              <p className="mb-2 px-1 text-xs text-slate-500">
                 ใบสั่งซื้อที่ไม่ได้ผูกกับแปลง/กลุ่มแปลงใดเลย (ส่วนใหญ่เป็นข้อมูลนำเข้าจากประวัติเก่า) - ไม่สามารถเทียบกับ BOQ ของแปลงใดได้ แต่ยังแสดงมูลค่าไว้ให้เห็น
               </p>
               <table className="w-full text-left text-xs">

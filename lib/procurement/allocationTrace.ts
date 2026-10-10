@@ -124,6 +124,11 @@ export type FulfillmentLink = {
   received: number
   /** Still to arrive for this slice; 0 once the PO is closed or cancelled. */
   outstanding: number
+  /** True when `received` is a proportional estimate, not an exact site
+   * receipt: receipts are recorded against the PO LINE, so when the line is
+   * shared with other requests and only part of it has arrived, each
+   * request's share is its ordered share of what came in. */
+  receivedIsEstimate: boolean
   /** The whole PO line, for context ("20 of 55"). */
   lineOrdered: number
   cancelled: boolean
@@ -131,6 +136,10 @@ export type FulfillmentLink = {
 
 export type FulfillmentSummary = {
   links: FulfillmentLink[]
+  /** More than one live order bought a different material for this request
+   * line. One material column cannot show both, so the line keeps the
+   * original request and each order's actual material is listed per link. */
+  mixedMaterials: boolean
   /** Cancelled orders are listed above for history but excluded here. */
   allocated: number
   received: number
@@ -211,6 +220,11 @@ export function buildFulfillmentLinks(item: RequestItemLike, allocations: RawReq
       allocated,
       received,
       outstanding: cancelled || closed ? 0 : Math.max(0, round4(allocated - received)),
+      receivedIsEstimate:
+        !cancelled &&
+        lineOrdered > allocated + EPS &&
+        (Number(poi.quantity_received) || 0) > 0 &&
+        (Number(poi.quantity_received) || 0) < lineOrdered - EPS,
       lineOrdered,
       cancelled,
     })
@@ -219,12 +233,66 @@ export function buildFulfillmentLinks(item: RequestItemLike, allocations: RawReq
   links.sort((x, y) => x.poNo.localeCompare(y.poNo, undefined, { numeric: true }))
 
   const counted = links.filter((l) => !l.cancelled && l.unit === requestUnit)
+  const liveMaterials = new Set(links.filter((l) => !l.cancelled && l.actualMaterialId != null).map((l) => l.actualMaterialId))
   return {
     links,
+    mixedMaterials: liveMaterials.size > 1,
     allocated: round4(counted.reduce((s, l) => s + l.allocated, 0)),
     received: round4(counted.reduce((s, l) => s + l.received, 0)),
     outstanding: round4(counted.reduce((s, l) => s + l.outstanding, 0)),
   }
+}
+
+/**
+ * Which material a request line should show, given the materials its LIVE
+ * (non-cancelled) orders bought. Mirrors _pri_resync_material in SQL:
+ *   no live order  -> the original request
+ *   exactly one    -> that material
+ *   several        -> the original request (the per-order breakdown shows
+ *                     each actual material; see FulfillmentSummary.mixedMaterials)
+ */
+export function resolveRequestMaterial(originalId: number, activeMaterialIds: number[]): number {
+  const distinct = Array.from(new Set(activeMaterialIds))
+  return distinct.length === 1 ? distinct[0] : originalId
+}
+
+export type ReceiptSlice = { projectId: string | null; plotId: string | null; plotGroupId: string | null; qty: number }
+
+/**
+ * How a direct-to-site delivery of `qty` is charged: along the line's
+ * allocations (each request's own project and plot or group; an ad-hoc
+ * multi-plot request splits evenly across its plots), the unallocated
+ * remainder to the order's own scope, and exactly `qty` in total. Mirrors
+ * _po_receipt_site_slices in SQL (last slice absorbs the rounding). A line
+ * with no allocations is one slice - the order's own scope.
+ */
+export function splitReceiptAcrossSlices(
+  qty: number,
+  lineOrdered: number,
+  allocations: { quantity: number; projectId: string | null; plotId: string | null; plotGroupId: string | null; adHocPlotIds: string[] }[],
+  fallback: { projectId: string | null; plotId: string | null; plotGroupId: string | null }
+): ReceiptSlice[] {
+  const allocTotal = allocations.reduce((s, a) => s + a.quantity, 0)
+  if (allocTotal <= 0) return [{ ...fallback, qty }]
+  const remainder = Math.max(0, lineOrdered - allocTotal)
+  const weights = [...allocations.map((a) => a.quantity), ...(remainder > 0 ? [remainder] : [])]
+  const parts = prorate(qty, weights)
+  const out: ReceiptSlice[] = []
+  allocations.forEach((a, i) => {
+    const part = parts[i]
+    if (part <= 0) return
+    if (a.plotId) out.push({ projectId: a.projectId, plotId: a.plotId, plotGroupId: null, qty: part })
+    else if (a.plotGroupId) out.push({ projectId: a.projectId, plotId: null, plotGroupId: a.plotGroupId, qty: part })
+    else if (a.adHocPlotIds.length === 0) out.push({ projectId: a.projectId, plotId: null, plotGroupId: null, qty: part })
+    else {
+      const each = prorate(part, a.adHocPlotIds.map(() => 1))
+      a.adHocPlotIds.forEach((plotId, k) => {
+        if (each[k] > 0) out.push({ projectId: a.projectId, plotId, plotGroupId: null, qty: each[k] })
+      })
+    }
+  })
+  if (remainder > 0 && parts[parts.length - 1] > 0) out.push({ ...fallback, qty: parts[parts.length - 1] })
+  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -329,10 +397,13 @@ export function lineContributionToPlot(line: AllocatedLine, plotId: string): Plo
 export type PlotSummaryLine = AllocatedLine & {
   materialName: string
   unit: string
-  /** Whether the part of the line no allocation covers belongs to this plot
-   * under the order's own header / line-override scope (the pre-allocation
-   * rule). Irrelevant for a fully allocated line. */
-  remainderBelongsToPlot: boolean
+  /** The share of the line's UNALLOCATED part that lands on this plot under
+   * the order's own header / line-override scope: 1 for a single plot, an
+   * even 1/n for a group or multi-plot scope (the same split the cost-control
+   * rollup uses), 0 when the plot is outside it. Irrelevant for a fully
+   * allocated line. Keeping it a share - not a yes/no - is what stops the
+   * remainder being counted in full on every plot of the header. */
+  remainderWeight: number
 }
 
 /** Where a number on a plot's materials row came from. */
@@ -348,6 +419,8 @@ export type PlotMaterialSource = {
   orderedQty: number
   receivedQty: number
   weight: number
+  /** receivedQty is a proportional estimate (see FulfillmentLink). */
+  receivedIsEstimate: boolean
 }
 
 export type PlotMaterialSummaryRow = {
@@ -394,16 +467,19 @@ export function summarizePlotMaterials(lines: PlotSummaryLine[], plotId: string)
         orderedQty: c.orderedQty,
         receivedQty: c.receivedQty,
         weight: c.weight,
+        receivedIsEstimate:
+          line.allocations.length > 1 && line.quantityReceived > EPS && line.quantityReceived < line.quantityOrdered - EPS,
       })
     }
 
     const remainder = unallocatedQty(line.quantityOrdered, line.allocations.map((a) => a.quantity))
-    if (remainder > 0 && line.remainderBelongsToPlot) {
+    if (remainder > 0 && line.remainderWeight > 0) {
       const row = rowFor(line)
+      const w = line.remainderWeight
       const received = receivedShare(line.quantityReceived, line.quantityOrdered, remainder)
-      row.orderedQty += remainder
-      row.receivedQty += received
-      row.orderedValue += remainder * line.unitPrice
+      row.orderedQty += remainder * w
+      row.receivedQty += received * w
+      row.orderedValue += remainder * w * line.unitPrice
       row.sources.push({
         poId: line.poId,
         poNo: line.poNo,
@@ -411,9 +487,10 @@ export function summarizePlotMaterials(lines: PlotSummaryLine[], plotId: string)
         purchaseRequestId: null,
         prNo: null,
         allocatedQty: remainder,
-        orderedQty: remainder,
-        receivedQty: received,
-        weight: 1,
+        orderedQty: round4(remainder * w),
+        receivedQty: round4(received * w),
+        weight: w,
+        receivedIsEstimate: false,
       })
     }
   }

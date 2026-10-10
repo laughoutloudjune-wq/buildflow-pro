@@ -7,6 +7,8 @@ import {
   plotWeight,
   prorate,
   receivedShare,
+  resolveRequestMaterial,
+  splitReceiptAcrossSlices,
   summarizePlotMaterials,
   unallocatedQty,
   type AllocatedLine,
@@ -210,7 +212,7 @@ test.describe('BOQ attribution by plot', () => {
   })
 
   function summaryLine(over: Partial<PlotSummaryLine> = {}): PlotSummaryLine {
-    return { ...cementLine(), materialName: 'ปูนซีเมนต์', unit: 'ถุง', remainderBelongsToPlot: true, ...over }
+    return { ...cementLine(), materialName: 'ปูนซีเมนต์', unit: 'ถุง', remainderWeight: 1, ...over }
   }
 
   test('plot summary counts allocated quantity once per plot and traces each source', () => {
@@ -229,10 +231,10 @@ test.describe('BOQ attribution by plot', () => {
   test('an unallocated line keeps the order-level rule; a partial allocation only adds its remainder', () => {
     const standalone = summaryLine({ allocations: [], quantityOrdered: 10 })
     expect(summarizePlotMaterials([standalone], PLOT_C)[0].orderedQty).toBe(10)
-    expect(summarizePlotMaterials([{ ...standalone, remainderBelongsToPlot: false }], PLOT_C)).toEqual([])
+    expect(summarizePlotMaterials([{ ...standalone, remainderWeight: 0 }], PLOT_C)).toEqual([])
 
     const partial = summaryLine({ quantityOrdered: 60 }) // 55 allocated, 5 not
-    const c = summarizePlotMaterials([{ ...partial, remainderBelongsToPlot: true }], PLOT_C)
+    const c = summarizePlotMaterials([{ ...partial, remainderWeight: 1 }], PLOT_C)
     expect(c[0].orderedQty).toBe(5)
     expect(c[0].sources[0].prNo).toBeNull()
     // Plot A still only sees its own 20 of the 60.
@@ -284,5 +286,197 @@ test.describe('payout review helpers', () => {
     expect(outstandingOnPoLine({ orderedQty: 55, totalReceivedQty: 60 })).toBe(0)
     expect(exceedsOrdered({ orderedQty: 55, totalReceivedQty: 60 })).toBe(true)
     expect(exceedsOrdered({ orderedQty: 55, totalReceivedQty: 55 })).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Audit cases (procurement / BOQ audit)
+// ---------------------------------------------------------------------------
+
+test.describe('audit: substituted material across PO lifecycle', () => {
+  const requestItem = (overrides: Record<string, unknown> = {}) => ({
+    material_type_id: 2, // cement B - what the PR line shows after the PO
+    original_material_type_id: 1, // cement A - what was asked for
+    original_material: { name: 'ปูน A' },
+    unit: null,
+    material_types: { name: 'ปูน B', unit: 'ถุง' },
+    ...overrides,
+  })
+  const alloc = (po: string, status: PurchaseOrderStatusLike, material: number, name: string, qty: number, lineOrdered: number, lineReceived = 0): RawRequestAllocation => ({
+    id: `al-${po}-${qty}`,
+    quantity_allocated: qty,
+    purchase_order_items: {
+      id: `poi-${po}`,
+      unit: null,
+      quantity_ordered: lineOrdered,
+      quantity_received: lineReceived,
+      closes_request_line: false,
+      material_type_id: material,
+      material_types: { name, unit: 'ถุง' },
+      purchase_orders: { id: po, po_no: po, status, suppliers: { name: 'ร้าน A' } },
+    },
+  })
+
+  test('PR-101 and PR-102 asked for A, one PO line buys B: both show B and keep A as history', () => {
+    // Each PR item shares the same PO line (cement B, 55 bags, 20 + 35).
+    const pr101 = buildFulfillmentLinks(requestItem(), [alloc('PO-1', 'sent', 2, 'ปูน B', 20, 55)])
+    const pr102 = buildFulfillmentLinks(requestItem(), [alloc('PO-1', 'sent', 2, 'ปูน B', 35, 55)])
+    for (const summary of [pr101, pr102]) {
+      expect(summary.links[0].actualMaterialName).toBe('ปูน B')
+      expect(summary.links[0].requestedMaterialName).toBe('ปูน A')
+      expect(summary.links[0].isSubstitute).toBe(true)
+      expect(summary.mixedMaterials).toBe(false)
+    }
+    expect(pr101.links[0].allocated).toBe(20)
+    expect(pr102.links[0].allocated).toBe(35)
+  })
+
+  test('the request line shows the one material its live orders bought, else the original', () => {
+    const A = 1
+    const B = 2
+    const C = 3
+    expect(resolveRequestMaterial(A, [])).toBe(A) // order cancelled / allocation removed -> back to the ask
+    expect(resolveRequestMaterial(A, [B])).toBe(B)
+    expect(resolveRequestMaterial(A, [B, B])).toBe(B) // two orders, same material
+    expect(resolveRequestMaterial(A, [B, C])).toBe(A) // two orders, different materials -> explicit, not silently one of them
+  })
+
+  test('a request line served by two live POs with different materials is flagged as mixed', () => {
+    const { links, mixedMaterials } = buildFulfillmentLinks(requestItem({ material_type_id: 1, original_material_type_id: 1, original_material: null, material_types: { name: 'ปูน A', unit: 'ถุง' } }), [
+      alloc('PO-1', 'sent', 2, 'ปูน B', 20, 20),
+      alloc('PO-2', 'sent', 3, 'ปูน C', 10, 10),
+    ])
+    expect(mixedMaterials).toBe(true)
+    expect(links.map((l) => l.actualMaterialName)).toEqual(['ปูน B', 'ปูน C'])
+  })
+
+  test('a cancelled PO does not make a request line "mixed"; the remaining live order decides', () => {
+    const { mixedMaterials, allocated, outstanding } = buildFulfillmentLinks(requestItem(), [
+      alloc('PO-1', 'cancelled', 3, 'ปูน C', 20, 20),
+      alloc('PO-2', 'sent', 2, 'ปูน B', 10, 10),
+    ])
+    expect(mixedMaterials).toBe(false)
+    expect(allocated).toBe(10)
+    expect(outstanding).toBe(10)
+  })
+})
+
+test.describe('audit: partial receipt on a consolidated line', () => {
+  const sharedLine = (received: number): RawRequestAllocation => ({
+    id: 'al-1',
+    quantity_allocated: 20,
+    purchase_order_items: {
+      id: 'poi-1',
+      unit: null,
+      quantity_ordered: 55,
+      quantity_received: received,
+      closes_request_line: false,
+      material_type_id: 7,
+      material_types: { name: 'ปูน', unit: 'ถุง' },
+      purchase_orders: { id: 'po-1', po_no: 'PO-1', status: 'partially_received', suppliers: null },
+    },
+  })
+  const item = { material_type_id: 7, original_material_type_id: null, original_material: null, unit: null, material_types: { name: 'ปูน', unit: 'ถุง' } }
+
+  test('11 of 55 delivered: PR-101 shows 4 and the figure is marked as an estimate', () => {
+    const [link] = buildFulfillmentLinks(item, [sharedLine(11)]).links
+    expect(link.received).toBeCloseTo(4, 4)
+    expect(link.receivedIsEstimate).toBe(true)
+  })
+
+  test('nothing delivered, or everything delivered, is exact - not an estimate', () => {
+    expect(buildFulfillmentLinks(item, [sharedLine(0)]).links[0].receivedIsEstimate).toBe(false)
+    expect(buildFulfillmentLinks(item, [sharedLine(55)]).links[0].receivedIsEstimate).toBe(false)
+  })
+
+  test('a line used by one request only is never an estimate', () => {
+    const only: RawRequestAllocation = { ...sharedLine(11), quantity_allocated: 55 }
+    expect(buildFulfillmentLinks(item, [only]).links[0].receivedIsEstimate).toBe(false)
+  })
+
+  test('direct-to-site delivery of 11 is charged 4 to Plot A and 7 to Plot B, exactly 11 in total', () => {
+    const slices = splitReceiptAcrossSlices(
+      11,
+      55,
+      [
+        { quantity: 20, projectId: 'p1', plotId: PLOT_A, plotGroupId: null, adHocPlotIds: [] },
+        { quantity: 35, projectId: 'p1', plotId: PLOT_B, plotGroupId: null, adHocPlotIds: [] },
+      ],
+      { projectId: 'p1', plotId: null, plotGroupId: null }
+    )
+    expect(slices.map((x) => [x.plotId, x.qty])).toEqual([
+      [PLOT_A, 4],
+      [PLOT_B, 7],
+    ])
+    expect(slices.reduce((t, x) => t + x.qty, 0)).toBeCloseTo(11, 4)
+  })
+
+  test('a delivery is charged to each request\'s own project, a group, or split across an ad-hoc plot list', () => {
+    const slices = splitReceiptAcrossSlices(
+      30,
+      30,
+      [
+        { quantity: 10, projectId: 'p1', plotId: null, plotGroupId: 'g1', adHocPlotIds: [] },
+        { quantity: 20, projectId: 'p2', plotId: null, plotGroupId: null, adHocPlotIds: [PLOT_A, PLOT_B] },
+      ],
+      { projectId: 'p1', plotId: null, plotGroupId: null }
+    )
+    expect(slices).toEqual([
+      { projectId: 'p1', plotId: null, plotGroupId: 'g1', qty: 10 },
+      { projectId: 'p2', plotId: PLOT_A, plotGroupId: null, qty: 10 },
+      { projectId: 'p2', plotId: PLOT_B, plotGroupId: null, qty: 10 },
+    ])
+  })
+
+  test('the unallocated part of a line keeps the order\'s scope; a line with no allocations is one slice as before', () => {
+    const withRemainder = splitReceiptAcrossSlices(
+      60,
+      60,
+      [{ quantity: 55, projectId: 'p1', plotId: PLOT_A, plotGroupId: null, adHocPlotIds: [] }],
+      { projectId: 'p1', plotId: PLOT_C, plotGroupId: null }
+    )
+    expect(withRemainder.map((x) => [x.plotId, x.qty])).toEqual([
+      [PLOT_A, 55],
+      [PLOT_C, 5],
+    ])
+    expect(splitReceiptAcrossSlices(9, 9, [], { projectId: 'p1', plotId: PLOT_C, plotGroupId: null })).toEqual([
+      { projectId: 'p1', plotId: PLOT_C, plotGroupId: null, qty: 9 },
+    ])
+  })
+})
+
+test.describe('audit: one request covering several plots', () => {
+  test('the even split is the current rule: 40 bags over two plots is 20 + 20, never 30 + 10', () => {
+    const line = cementLine({
+      quantityOrdered: 40,
+      allocations: [{ allocationId: 'al-1', quantity: 40, purchaseRequestId: 'pr-1', prNo: 1, scope: { plotId: null, plotGroupId: 'g', memberPlotIds: [PLOT_A, PLOT_B] } }],
+    })
+    const a = lineContributionToPlot(line, PLOT_A)[0]
+    const b = lineContributionToPlot(line, PLOT_B)[0]
+    expect([a.orderedQty, b.orderedQty]).toEqual([20, 20])
+    // The row says it is an even share so the screen can label it an estimate.
+    expect(a.weight).toBe(0.5)
+    expect(summarizePlotMaterials([{ ...line, materialName: 'ปูน', unit: 'ถุง', remainderWeight: 0 }], PLOT_A)[0].sources[0].weight).toBe(0.5)
+  })
+})
+
+test.describe('audit: partly allocated PO line', () => {
+  test('60 bags, 20 to A and 35 to B, 5 unallocated: the 5 is counted once and totals reconcile to 60', () => {
+    // The order header lists plots A, B and C, so the unallocated 5 splits 1/3 each.
+    const line = (): PlotSummaryLine => ({ ...cementLine({ quantityOrdered: 60 }), materialName: 'ปูน', unit: 'ถุง', remainderWeight: 1 / 3 })
+    const perPlot = [PLOT_A, PLOT_B, PLOT_C].map((p) => summarizePlotMaterials([line()], p)[0])
+    expect(perPlot.reduce((t, r) => t + r.orderedQty, 0)).toBeCloseTo(60, 3)
+    // Request-linked rows keep their PR; the remainder row has none.
+    const sources = perPlot.flatMap((r) => r.sources)
+    expect(sources.filter((x) => x.prNo == null)).toHaveLength(3)
+    expect(sources.filter((x) => x.prNo != null).reduce((t, x) => t + x.orderedQty, 0)).toBe(55)
+    expect(sources.filter((x) => x.prNo == null).reduce((t, x) => t + x.orderedQty, 0)).toBeCloseTo(5, 3)
+    // Plot A: its own 20 plus a third of the remainder.
+    expect(perPlot[0].orderedQty).toBeCloseTo(20 + 5 / 3, 3)
+  })
+
+  test('the remainder is not repeated in full on every plot of the header', () => {
+    const line: PlotSummaryLine = { ...cementLine({ quantityOrdered: 10, allocations: [] }), materialName: 'ปูน', unit: 'ถุง', remainderWeight: 0.5 }
+    expect(summarizePlotMaterials([line], PLOT_A)[0].orderedQty).toBe(5)
   })
 })

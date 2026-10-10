@@ -53,7 +53,7 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
                         onClick={() => toggle(m.materialTypeId)}
                         className="inline-flex items-center gap-1 text-left"
                         aria-expanded={isOpen}
-                        title="ดูที่มาของตัวเลข (ใบสั่งซื้อ / ใบขอซื้อ)"
+                        title="ดูที่มาของตัวเลข (ใบสั่งซื้อ / คำขอซื้อ)"
                       >
                         {isOpen ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
                         {m.name}
@@ -74,7 +74,7 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
                           <thead className="text-slate-400">
                             <tr>
                               <th className="py-1 pr-3 text-left font-medium">ใบสั่งซื้อ</th>
-                              <th className="py-1 pr-3 text-left font-medium">ใบขอซื้อ</th>
+                              <th className="py-1 pr-3 text-left font-medium">คำขอซื้อ</th>
                               <th className="py-1 pr-3 text-right font-medium">จัดสรรทั้งหมด</th>
                               <th className="py-1 pr-3 text-right font-medium">ของแปลงนี้</th>
                               <th className="py-1 text-right font-medium">รับแล้ว</th>
@@ -88,13 +88,27 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
                                     {s.poNo}
                                   </Link>
                                 </td>
-                                <td className="py-1 pr-3">{s.prNo != null ? `PR-${s.prNo}` : 'ไม่ผูกใบขอซื้อ'}</td>
+                                <td className="py-1 pr-3">{s.prNo != null ? `PR-${s.prNo}` : 'ไม่ผูกคำขอซื้อ'}</td>
                                 <td className="py-1 pr-3 text-right">{fmt(s.allocatedQty)} {m.unit}</td>
                                 <td className="py-1 pr-3 text-right font-medium">
                                   {fmt(s.orderedQty)} {m.unit}
-                                  {s.weight < 1 && <span className="text-slate-400"> ({Math.round(s.weight * 100)}%)</span>}
+                                  {s.weight < 1 && (
+                                    <span
+                                      className="text-slate-500"
+                                      title="คำขอซื้อนี้ครอบคลุมหลายแปลง ระบบแบ่งเท่ากันเพราะยังไม่ได้ระบุจำนวนจริงของแต่ละแปลง"
+                                    >
+                                      {' '}
+                                      (แบ่งเท่ากัน ≈{Math.round(s.weight * 100)}%)
+                                    </span>
+                                  )}
                                 </td>
-                                <td className="py-1 text-right">{fmt(s.receivedQty)}</td>
+                                <td
+                                  className="py-1 text-right"
+                                  title={s.receivedIsEstimate ? 'ประมาณตามสัดส่วน - ใบรับสินค้าไม่ได้แยกตามคำขอซื้อ' : undefined}
+                                >
+                                  {s.receivedIsEstimate ? '≈ ' : ''}
+                                  {fmt(s.receivedQty)}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
