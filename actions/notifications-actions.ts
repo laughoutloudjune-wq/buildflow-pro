@@ -17,9 +17,6 @@ export type NotificationType =
   | 'work_request_pending'
   | 'work_request_approved'
   | 'work_request_rejected'
-  | 'tr_submitted'
-  | 'tr_approved'
-  | 'tr_rejected'
 
 export type NotificationItem = {
   id: string
@@ -42,11 +39,6 @@ export type NotificationItem = {
     id: string
     request_no: string | null
     title: string
-    plot_name: string | null
-  } | null
-  transfer_request: {
-    id: string
-    request_no: string | null
     plot_name: string | null
   } | null
 }
@@ -98,11 +90,11 @@ type NotificationRow = {
         plots: { name: string | null } | Array<{ name: string | null }> | null
       }>
     | null
-  transfer_requests:
-    | { id: string; request_no: string | null; plots: { name: string | null } | Array<{ name: string | null }> | null }
-    | Array<{ id: string; request_no: string | null; plots: { name: string | null } | Array<{ name: string | null }> | null }>
-    | null
 }
+
+/** Notifications from the removed transfer-request feature; old rows stay in
+ * the table but are hidden because there is nothing left to open. */
+const LEGACY_TR_TYPES = '(tr_submitted,tr_approved,tr_rejected)'
 
 function asSingle<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] || null
@@ -121,16 +113,17 @@ export async function getMyNotifications(limit = 30): Promise<{ items: Notificat
         id, type, read_at, created_at,
         billings ( id, doc_no, type, contractors (name), projects (name) ),
         purchase_requests ( id, pr_no, projects (name) ),
-        sales_work_requests ( id, request_no, title, plots (name) ),
-        transfer_requests ( id, request_no, plots (name) )
+        sales_work_requests ( id, request_no, title, plots (name) )
       `)
       .eq('recipient_id', user.id)
+      .not('type', 'in', LEGACY_TR_TYPES)
       .order('created_at', { ascending: false })
       .limit(limit),
     supabase
       .from('notifications')
       .select('id', { count: 'exact', head: true })
       .eq('recipient_id', user.id)
+      .not('type', 'in', LEGACY_TR_TYPES)
       .is('read_at', null),
   ])
 
@@ -141,7 +134,6 @@ export async function getMyNotifications(limit = 30): Promise<{ items: Notificat
     const billing = asSingle(row.billings)
     const purchaseRequest = asSingle(row.purchase_requests)
     const salesWorkRequest = asSingle(row.sales_work_requests)
-    const transferRequest = asSingle(row.transfer_requests)
     return {
       id: row.id,
       type: row.type,
@@ -169,13 +161,6 @@ export async function getMyNotifications(limit = 30): Promise<{ items: Notificat
             request_no: salesWorkRequest.request_no,
             title: salesWorkRequest.title,
             plot_name: asSingle(salesWorkRequest.plots)?.name ?? null,
-          }
-        : null,
-      transfer_request: transferRequest
-        ? {
-            id: transferRequest.id,
-            request_no: transferRequest.request_no,
-            plot_name: asSingle(transferRequest.plots)?.name ?? null,
           }
         : null,
     }

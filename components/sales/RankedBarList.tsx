@@ -33,7 +33,7 @@ export default function RankedBarList({
     <Card className="p-5">
       <h3 className="mb-4 text-sm font-semibold text-slate-700">{title}</h3>
       {items.length === 0 ? (
-        <p className="py-6 text-center text-sm text-slate-400">{emptyLabel}</p>
+        <p className="py-6 text-center text-sm text-slate-500">{emptyLabel}</p>
       ) : (
         <div className="space-y-3">
           {items.map((item) => (
@@ -44,7 +44,7 @@ export default function RankedBarList({
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                 <div
-                  className={`h-full rounded-full ${item.colorClass || defaultColorClass}`}
+                  className={`h-full rounded-full transition-[width] duration-[220ms] ease-out ${item.colorClass || defaultColorClass}`}
                   style={{ width: `${Math.max(2, (item.metric / max) * 100)}%` }}
                 />
               </div>

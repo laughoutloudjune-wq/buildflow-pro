@@ -1,10 +1,17 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { AlertTriangle, Check, Link2, Loader2, Search, User, X } from 'lucide-react'
-import { Card } from '@/components/ui/Card'
+import { AlertTriangle, Check, Link2, Loader2, Plus, User, X } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
+import { TableFrame } from '@/components/ui/TableFrame'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { Button } from '@/components/ui/Button'
+import WorkRequestFormModal from '@/components/sales/WorkRequestFormModal'
+import { WORK_REQUEST_CATEGORY_LABEL as CATEGORY_LABEL } from '@/lib/sales/workRequestCategories'
 import { useToast } from '@/components/ui/Toast'
 import ReasonDialog from '@/components/ui/ReasonDialog'
 import {
@@ -17,13 +24,6 @@ import {
   type WorkRequestStatus,
 } from '@/actions/sales-work-requests'
 
-const CATEGORY_LABEL: Record<string, string> = {
-  extra_work: 'งานเพิ่มลูกค้า',
-  defect: 'แก้ Defect',
-  expedite: 'เร่งงาน',
-  handover_prep: 'เตรียมส่งมอบ',
-  other: 'อื่นๆ',
-}
 const PRIORITY_LABEL: Record<string, string> = { low: 'ต่ำ', normal: 'ปกติ', urgent: 'ด่วน' }
 const PRIORITY_TONE: Record<string, 'neutral' | 'warning' | 'danger'> = { low: 'neutral', normal: 'neutral', urgent: 'danger' }
 const STATUS_LABEL: Record<WorkRequestStatus, string> = {
@@ -62,18 +62,23 @@ export default function SalesRequestsPageClient({
   initialRequests,
   contractors,
   projects,
+  plots,
   canManage,
   canApprove,
+  canCreate,
   initialError,
 }: {
   initialRequests: WorkRequestRow[]
   contractors: { id: string; name: string }[]
   projects: { id: string; name: string }[]
+  plots: { id: string; name: string; project_id: string }[]
   canManage: boolean
   canApprove: boolean
+  canCreate: boolean
   initialError?: string | null
 }) {
   const toast = useToast()
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [requests, setRequests] = useState(initialRequests)
   const [statusFilter, setStatusFilter] = useState<'open' | WorkRequestStatus>('open')
@@ -83,6 +88,7 @@ export default function SalesRequestsPageClient({
   const [dcOptions, setDcOptions] = useState<{ id: string; docNo: number | string | null; billingDate: string | null; netAmount: number | null }[]>([])
   const [rejectTarget, setRejectTarget] = useState<WorkRequestRow | null>(null)
   const [declineTarget, setDeclineTarget] = useState<WorkRequestRow | null>(null)
+  const [isFormOpen, setIsFormOpen] = useState(false)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -192,47 +198,57 @@ export default function SalesRequestsPageClient({
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="คำขอจากฝ่ายขาย" subtitle="คำขอจากฝ่ายขาย: หัวหน้าฝ่ายขายอนุมัติก่อน แล้วจึงส่งให้หน่วยงานก่อสร้างดำเนินการ" />
+    <PageContainer width="wide">
+      <PageHeader
+        title="คำขอจากฝ่ายขาย"
+        subtitle="คำขอจากฝ่ายขาย: หัวหน้าฝ่ายขายอนุมัติก่อน แล้วจึงส่งให้หน่วยงานก่อสร้างดำเนินการ"
+        actions={
+          canCreate && (
+            <Button type="button" onClick={() => setIsFormOpen(true)}>
+              <Plus className="h-4 w-4" /> แจ้งคำขอใหม่ (SR)
+            </Button>
+          )
+        }
+      />
 
-      <Card className="flex flex-wrap items-end gap-3 p-4">
-        <div className="min-w-[160px]">
-          <label className="mb-1 block text-xs font-medium text-slate-500">สถานะ</label>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className="w-full">
-            <option value="open">ยังไม่เสร็จ (ค่าเริ่มต้น)</option>
-            {(Object.keys(STATUS_LABEL) as WorkRequestStatus[]).map((s) => (
-              <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-            ))}
-          </select>
-        </div>
-        <div className="min-w-[200px]">
-          <label className="mb-1 block text-xs font-medium text-slate-500">โครงการ</label>
-          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="w-full">
-            <option value="">ทั้งหมด</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="min-w-[200px]">
-          <label className="mb-1 block text-xs font-medium text-slate-500">ค้นหา</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9"
-              placeholder="เลขที่คำขอ / แปลง / เรื่อง"
-            />
-          </div>
-        </div>
-        <span className="ml-auto pb-2 text-xs text-slate-400">{filtered.length} รายการ</span>
-      </Card>
+      <WorkRequestFormModal
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        options={{ projects, plots }}
+        onCreated={() => router.refresh()}
+      />
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-700 border-b">
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'เลขที่คำขอ / แปลง / เรื่อง' }}
+        resultCount={filtered.length}
+        activeFilters={[
+          ...(statusFilter !== 'open' ? [{ label: STATUS_LABEL[statusFilter as WorkRequestStatus], onRemove: () => setStatusFilter('open') }] : []),
+          ...(projectFilter ? [{ label: projects.find((p) => p.id === projectFilter)?.name ?? 'โครงการ', onRemove: () => setProjectFilter('') }] : []),
+          ...(search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []),
+        ]}
+        onReset={() => {
+          setStatusFilter('open')
+          setProjectFilter('')
+          setSearch('')
+        }}
+      >
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="สถานะ" className="min-w-[10rem]">
+          <option value="open">ยังไม่เสร็จ (ค่าเริ่มต้น)</option>
+          {(Object.keys(STATUS_LABEL) as WorkRequestStatus[]).map((st) => (
+            <option key={st} value={st}>{STATUS_LABEL[st]}</option>
+          ))}
+        </select>
+        <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} aria-label="โครงการ" className="min-w-[10rem]">
+          <option value="">ทุกโครงการ</option>
+          {projects.map((pj) => (
+            <option key={pj.id} value={pj.id}>{pj.name}</option>
+          ))}
+        </select>
+      </PageToolbar>
+
+      <TableFrame>
+          <table>
+            <thead>
               <tr>
                 <th className="px-4 py-3 font-semibold">แปลง</th>
                 <th className="px-4 py-3 font-semibold">เรื่อง</th>
@@ -253,12 +269,12 @@ export default function SalesRequestsPageClient({
                   <tr key={row.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-800">{row.plotName}</div>
-                      <div className="text-xs text-slate-400">{row.projectName}</div>
+                      <div className="text-xs text-slate-500">{row.projectName}</div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-800">{row.title}</div>
-                      {row.detail && <div className="max-w-[220px] truncate text-xs text-slate-400" title={row.detail}>{row.detail}</div>}
-                      {row.requestNo && <div className="text-[11px] text-slate-400">{row.requestNo}</div>}
+                      {row.detail && <div className="max-w-[220px] truncate text-xs text-slate-500" title={row.detail}>{row.detail}</div>}
+                      {row.requestNo && <div className="text-[11px] text-slate-500">{row.requestNo}</div>}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{CATEGORY_LABEL[row.category] || row.category}</td>
                     <td className="px-4 py-3">
@@ -275,7 +291,7 @@ export default function SalesRequestsPageClient({
                     <td className="px-4 py-3">
                       <Badge tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
                       {row.status === 'rejected' && row.rejectReason && (
-                        <div className="mt-0.5 text-[11px] text-slate-400">{row.rejectReason}</div>
+                        <div className="mt-0.5 text-[11px] text-slate-500">{row.rejectReason}</div>
                       )}
                       {row.billingId && (
                         <div className="mt-0.5 flex items-center gap-1 text-[11px] text-emerald-600">
@@ -291,7 +307,7 @@ export default function SalesRequestsPageClient({
                             value={row.assignedContractorId || ''}
                             onChange={(e) => handleAssignContractor(row, e.target.value)}
                             disabled={isPending}
-                            className="w-full pl-7 pr-2 py-1.5 rounded border border-slate-200 text-xs"
+                            className="w-full pl-7 pr-2 py-1.5 rounded-lg border border-slate-200 text-xs"
                           >
                             <option value="">-- ว่าง --</option>
                             {contractors.map((c) => (
@@ -383,7 +399,7 @@ export default function SalesRequestsPageClient({
                               </button>
                             </div>
                             {dcOptions.length === 0 ? (
-                              <p className="text-[11px] text-slate-400">
+                              <p className="text-[11px] text-slate-500">
                                 ไม่พบใบ DC ที่ยังไม่ได้ผูก — ออกใบ DC ที่หน้า
                                 <a href="/dashboard/foreman/create-dc" className="ml-1 text-indigo-600 hover:underline">สร้างงานเพิ่ม/DC</a>
                                 แล้วกลับมาผูกที่นี่
@@ -395,7 +411,7 @@ export default function SalesRequestsPageClient({
                                     key={dc.id}
                                     type="button"
                                     onClick={() => handleLinkDc(row, dc.id)}
-                                    className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] hover:bg-white"
+                                    className="flex w-full items-center justify-between rounded-lg px-2 py-1 text-left text-[11px] hover:bg-white"
                                   >
                                     <span>#{dc.docNo ?? '-'} · {formatDate(dc.billingDate)}</span>
                                     <span className="font-medium">{dc.netAmount != null ? dc.netAmount.toLocaleString('th-TH') : '-'}</span>
@@ -412,9 +428,14 @@ export default function SalesRequestsPageClient({
               })}
             </tbody>
           </table>
-          {filtered.length === 0 && <div className="py-12 text-center text-slate-400">ไม่มีคำขอตามตัวกรองนี้</div>}
-        </div>
-      </Card>
+          {filtered.length === 0 && (
+            <EmptyState
+              variant={statusFilter !== 'open' || projectFilter || search.trim() ? 'no-results' : 'empty'}
+              title={statusFilter !== 'open' || projectFilter || search.trim() ? 'ไม่พบคำขอตามตัวกรองนี้' : 'ยังไม่มีคำขอที่ค้างอยู่'}
+              description={statusFilter !== 'open' || projectFilter || search.trim() ? 'ลองเปลี่ยนหรือล้างตัวกรอง' : undefined}
+            />
+          )}
+      </TableFrame>
       {isPending && (
         <div className="fixed bottom-4 right-4 flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs text-white shadow-lg">
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังบันทึก...
@@ -442,6 +463,6 @@ export default function SalesRequestsPageClient({
         onCancel={() => setDeclineTarget(null)}
         onConfirm={handleDecline}
       />
-    </div>
+    </PageContainer>
   )
 }

@@ -81,7 +81,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     sales: true,
   },
   // Sales exec: same module access as sales (never construction money);
-  // the extra powers (approve TR/SR, commission) live in RLS/RPCs, not modules.
+  // the extra powers (approve SR) live in RLS/RPCs, not modules.
   sales_exec: {
     projects: false,
     boq: false,

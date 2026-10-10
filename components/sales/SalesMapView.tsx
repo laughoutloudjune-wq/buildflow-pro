@@ -59,9 +59,9 @@ export default function SalesMapView({
           aria-valuemax={total}
           aria-valuenow={transferred}
         >
-          <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${percent}%` }} />
+          <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-[220ms] ease-out" style={{ width: `${percent}%` }} />
         </div>
-        <p className="mt-1 text-right text-[11px] text-slate-400">{percent}%</p>
+        <p className="mt-1 text-right text-[11px] text-slate-500">{percent}%</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2">

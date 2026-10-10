@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import PlotPaymentsSection from '@/components/plots/PlotPaymentsSection'
-import PlotTransferRequestSection from '@/components/plots/PlotTransferRequestSection'
 import PlotPromotionItemsSection from '@/components/plots/PlotPromotionItemsSection'
 import {
   changeSaleStatus,
@@ -269,7 +268,7 @@ export default function PlotSalesTab({
           </form>
         ) : canEdit ? (
           <form action={handleAddCustomer} className="mt-3 grid grid-cols-2 gap-3">
-            <p className="col-span-2 -mt-1 mb-1 text-xs text-slate-400">ดีลนี้ยังไม่มีข้อมูลลูกค้า - กรอกเพื่อเพิ่ม</p>
+            <p className="col-span-2 -mt-1 mb-1 text-xs text-slate-500">ดีลนี้ยังไม่มีข้อมูลลูกค้า - กรอกเพื่อเพิ่ม</p>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">ชื่อ-สกุล</label>
               <input name="full_name" required className="w-full" />
@@ -306,7 +305,7 @@ export default function PlotSalesTab({
             </div>
           </form>
         ) : (
-          <p className="mt-2 text-sm text-slate-400">ยังไม่มีข้อมูลลูกค้าผูกกับดีลนี้</p>
+          <p className="mt-2 text-sm text-slate-500">ยังไม่มีข้อมูลลูกค้าผูกกับดีลนี้</p>
         )}
       </Card>
 
@@ -314,7 +313,7 @@ export default function PlotSalesTab({
         <h3 className="text-sm font-semibold text-slate-700">ราคาและวันที่สำคัญ</h3>
         <form action={handleSaveDetails} className="mt-4 space-y-6">
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">ราคา</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">ราคา</p>
             <div className="grid grid-cols-2 gap-3">
               {PRICE_FIELDS.map((f) => (
                 <div key={f.key}>
@@ -334,7 +333,7 @@ export default function PlotSalesTab({
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">เงินที่ต้องชำระ</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">เงินที่ต้องชำระ</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {PAYMENT_FIELDS.map((f) => (
                 <div key={f.key}>
@@ -354,7 +353,7 @@ export default function PlotSalesTab({
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">สินเชื่อ</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">สินเชื่อ</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">วงเงินกู้</label>
@@ -378,11 +377,11 @@ export default function PlotSalesTab({
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">ส่วนลด / ของแถม (หมายเหตุเพิ่มเติม)</label>
             <input name="discount_note" defaultValue={sale.discountNote ?? ''} disabled={!canEdit} className="w-full" />
-            <p className="mt-1 text-xs text-slate-400">รายการของแถมแบบมีมูลค่า (แอร์ บ้านตกแต่ง ฯลฯ) อยู่ด้านล่าง</p>
+            <p className="mt-1 text-xs text-slate-500">รายการของแถมแบบมีมูลค่า (แอร์ บ้านตกแต่ง ฯลฯ) อยู่ด้านล่าง</p>
           </div>
 
           <div>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">ไทม์ไลน์สำคัญ</p>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">ไทม์ไลน์สำคัญ</p>
             <div className="space-y-3">
               {DATE_FIELDS.map((f) => {
                 const value = (sale as unknown as Record<string, string | null>)[toCamel(f.key)] ?? ''
@@ -428,8 +427,6 @@ export default function PlotSalesTab({
         canEdit={canEdit}
         onRefresh={onRefresh}
       />
-
-      <PlotTransferRequestSection plotId={plotId} plotSaleId={sale.id} canEdit={canEdit} />
 
       <PlotPaymentsSection
         plotSaleId={sale.id}

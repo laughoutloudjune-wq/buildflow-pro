@@ -5,7 +5,17 @@ import { revalidatePath } from 'next/cache'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { todayInBangkok } from '@/lib/utils'
 
-export type WorkRequestCategory = 'extra_work' | 'defect' | 'expedite' | 'handover_prep' | 'other'
+export type WorkRequestCategory =
+  | 'repair'
+  | 'common_area'
+  | 'punch_list'
+  | 'house_transfer'
+  // legacy, still on old rows
+  | 'extra_work'
+  | 'defect'
+  | 'expedite'
+  | 'handover_prep'
+  | 'other'
 export type WorkRequestPriority = 'low' | 'normal' | 'urgent'
 export type WorkRequestStatus = 'pending_approval' | 'new' | 'accepted' | 'in_progress' | 'done' | 'rejected'
 

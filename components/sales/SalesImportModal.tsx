@@ -144,7 +144,7 @@ export default function SalesImportModal({
             <span className="font-medium text-slate-700">I</span> วันที่โอน ·{' '}
             <span className="font-medium text-slate-700">J</span> หมายเหตุ
           </div>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-500">
             ชื่อแปลงและสถานะต้องตรงกับที่มีอยู่ในระบบ — แถวที่จับคู่ไม่ได้จะให้เลือกเองในขั้นตอนถัดไป ไม่มีการเดาให้อัตโนมัติ
           </p>
           <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40">
@@ -208,7 +208,7 @@ export default function SalesImportModal({
                           className="h-4 w-4 rounded border-slate-300"
                         />
                       </td>
-                      <td className="px-2 py-1.5 align-top text-slate-400">{row.rowIndex}</td>
+                      <td className="px-2 py-1.5 align-top text-slate-500">{row.rowIndex}</td>
                       <td className="px-2 py-1.5 align-top">
                         {row.plotId ? (
                           <span className="text-slate-700">{row.plotNameRaw}</span>
@@ -230,12 +230,12 @@ export default function SalesImportModal({
                           </div>
                         )}
                         {row.alreadyHasDeal && (
-                          <div className="mt-1 text-[11px] text-slate-400">มีข้อมูลการขายอยู่แล้ว - จะข้าม</div>
+                          <div className="mt-1 text-[11px] text-slate-500">มีข้อมูลการขายอยู่แล้ว - จะข้าม</div>
                         )}
                       </td>
                       <td className="px-2 py-1.5 align-top text-slate-600">
                         {row.customerName || '—'}
-                        {row.customerPhone && <div className="text-[11px] text-slate-400">{row.customerPhone}</div>}
+                        {row.customerPhone && <div className="text-[11px] text-slate-500">{row.customerPhone}</div>}
                       </td>
                       <td className="px-2 py-1.5 align-top">
                         {row.statusCode ? (
@@ -261,7 +261,7 @@ export default function SalesImportModal({
                       <td className="px-2 py-1.5 align-top text-right text-slate-600">
                         {row.salePrice != null ? formatCurrency(row.salePrice) : '—'}
                       </td>
-                      <td className="max-w-[160px] truncate px-2 py-1.5 align-top text-slate-400" title={row.note}>
+                      <td className="max-w-[160px] truncate px-2 py-1.5 align-top text-slate-500" title={row.note}>
                         {row.note || '—'}
                       </td>
                     </tr>
@@ -294,7 +294,7 @@ export default function SalesImportModal({
                 <div>นำเข้าสำเร็จ</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-slate-400">{result.skipped}</div>
+                <div className="text-2xl font-bold text-slate-500">{result.skipped}</div>
                 <div>ข้าม (มีข้อมูลอยู่แล้ว)</div>
               </div>
               <div>

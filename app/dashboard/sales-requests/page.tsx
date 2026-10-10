@@ -15,10 +15,13 @@ export default async function SalesRequestsPage() {
   const canManage = permissionsForRole(role, rolePermissions).projects
   // Sales exec (and admin) approve/reject new requests before construction sees them.
   const canApprove = role === 'admin' || role === 'sales_exec'
+  // Same roles the sales_work_request_create RPC allows, and the sales module on.
+  const canCreate = ['admin', 'pm', 'sales', 'sales_exec'].includes(role) && permissionsForRole(role, rolePermissions).sales
 
   let requests: Awaited<ReturnType<typeof getWorkRequestQueue>> = []
   let contractors: Awaited<ReturnType<typeof getContractors>> = []
   let projects: Awaited<ReturnType<typeof getSalesBoardOptions>>['projects'] = []
+  let plots: Awaited<ReturnType<typeof getSalesBoardOptions>>['plots'] = []
   let initialError: string | null = null
 
   try {
@@ -33,6 +36,7 @@ export default async function SalesRequestsPage() {
     // contractor names for the assign-to picker here.
     contractors = contractorsData.map((c) => ({ ...c, total_paid: 0, total_retention: 0 }))
     projects = optionsData.projects
+    plots = optionsData.plots
   } catch (error) {
     initialError = error instanceof Error ? error.message : 'โหลดข้อมูลไม่สำเร็จ'
   }
@@ -42,8 +46,10 @@ export default async function SalesRequestsPage() {
       initialRequests={requests}
       contractors={contractors}
       projects={projects}
+      plots={plots}
       canManage={canManage}
       canApprove={canApprove}
+      canCreate={canCreate}
       initialError={initialError}
     />
   )
