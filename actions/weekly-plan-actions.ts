@@ -15,8 +15,39 @@ export type WeeklyPlanItem = {
   title: string
   ownerId: string | null
   ownerName: string | null
+  contractorId: string | null
+  contractorName: string | null
+  carryPct: number | null
+  /** % of the work planned to be complete at the end of each day, Mon..Sun */
+  planPct: (number | null)[]
+  actualPct: (number | null)[]
+  note: string | null
   status: WeeklyPlanStatus
   createdBy: string | null
+  /** Set for BOQ work: the plot's job assignment this row schedules. Null = manual (non-BOQ) work. */
+  jobAssignmentId: string | null
+  jobQuantity: number | null
+  jobUnit: string | null
+  jobTrade: string | null
+}
+
+/** One BOQ job on a plot, offered in the plan editor. No prices are exposed. */
+export type WeeklyPlanJob = {
+  id: string
+  plotId: string
+  plotName: string
+  /** The BOQ line; the same line has a different job row on each plot */
+  boqItemId: string
+  title: string
+  trade: string | null
+  quantity: number | null
+  unit: string | null
+  /** job_assignments.status: pending / in_progress / completed - context only, not physical progress */
+  status: string
+  contractorId: string | null
+  contractorName: string | null
+  /** weeks (Mondays) in which this job already has a plan row */
+  plannedWeeks: string[]
 }
 
 export type WeeklyPlanMeeting = { projectId: string; weekStart: string; agreedAt: string; agreedByName: string | null }
@@ -50,7 +81,10 @@ export type WeeklyPlanData = {
   weeks: string[]
   projects: { id: string; name: string }[]
   plots: { id: string; name: string; projectId: string }[]
+  /** The team's plot groups (batches built together), e.g. "แปลง 103-107", with their member plots */
+  plotGroups: { id: string; name: string; projectId: string; plotIds: string[] }[]
   owners: { id: string; name: string }[]
+  contractors: { id: string; name: string }[]
   items: WeeklyPlanItem[]
   meetings: WeeklyPlanMeeting[]
   salesRequests: WeeklyPlanSalesRequest[]
@@ -61,13 +95,21 @@ export type WeeklyPlanData = {
 export type WeeklyPlanResult = { ok: true } | { error: string }
 
 const ALLOWED_ROLES = ['admin', 'pm', 'foreman']
-const KINDS = ['main', 'dc', 'other', 'inspect']
+const KINDS = ['main', 'dc', 'other', 'inspect', 'repair']
 
 async function getCaller(): Promise<{ error: string } | { userId: string; role: string }> {
   const { user, role } = await getDashboardSession()
   if (!user) return { error: 'กรุณาเข้าสู่ระบบ' }
   if (!ALLOWED_ROLES.includes(role)) return { error: 'ไม่มีสิทธิ์ใช้งานแผนงานประจำสัปดาห์' }
   return { userId: user.id, role: role as string }
+}
+
+function padDays(v: (number | null)[] | null): (number | null)[] {
+  const out: (number | null)[] = Array(7).fill(null)
+  ;(v || []).slice(0, 7).forEach((x, i) => {
+    out[i] = x == null ? null : Number(x)
+  })
+  return out
 }
 
 type RawItem = {
@@ -78,10 +120,20 @@ type RawItem = {
   kind: WeeklyPlanKind
   title: string
   owner_id: string | null
+  contractor_id: string | null
+  carry_pct: number | null
+  plan_pct: (number | null)[] | null
+  actual_pct: (number | null)[] | null
+  note: string | null
   status: WeeklyPlanStatus
   created_by: string | null
+  job_assignment_id: string | null
   plots: { name: string } | null
   owner: { full_name: string | null } | null
+  contractor: { name: string } | null
+  job_assignments: {
+    boq_master: { quantity: number | null; unit: string | null; contractor_types: { name: string } | null } | null
+  } | null
 }
 
 /** Loads everything the page needs: the whole month containing `weekStart`
@@ -97,15 +149,16 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
   const weekEnd = addDaysStr(weekStart, 6)
 
   const supabase = await createClient()
-  const [projectsRes, plotsRes, ownersRes, itemsRes, meetingsRes, requestsRes, salesPlotsRes, scheduleRes, targetRes] =
+  const [projectsRes, plotsRes, ownersRes, contractorsRes, itemsRes, meetingsRes, requestsRes, salesPlotsRes, scheduleRes, targetRes, groupsRes] =
     await Promise.all([
       supabase.from('projects').select('id, name').order('name'),
       supabase.from('plots').select('id, name, project_id').order('name'),
       supabase.from('profiles').select('id, full_name, role').in('role', ['admin', 'pm', 'foreman']),
+      supabase.from('contractors').select('id, name').order('name'),
       supabase
         .from('weekly_plan_items')
         .select(
-          'id, project_id, plot_id, week_start, kind, title, owner_id, status, created_by, plots(name), owner:profiles!weekly_plan_items_owner_id_fkey(full_name)'
+          'id, project_id, plot_id, week_start, kind, title, owner_id, contractor_id, carry_pct, plan_pct, actual_pct, note, status, created_by, job_assignment_id, plots(name), owner:profiles!weekly_plan_items_owner_id_fkey(full_name), contractor:contractors(name), job_assignments(boq_master(quantity, unit, contractor_types(name)))'
         )
         .gte('week_start', rangeStart)
         .lte('week_start', rangeEnd)
@@ -132,6 +185,7 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
         .select('id, name, project_id, target_completion_date')
         .gte('target_completion_date', weekStart)
         .lte('target_completion_date', weekEnd),
+      supabase.from('plot_groups').select('id, name, project_id, plot_group_members(plot_id)').order('name'),
     ])
 
   const firstError = [projectsRes, plotsRes, itemsRes, meetingsRes].find((r) => r.error)?.error
@@ -147,8 +201,18 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
     title: r.title,
     ownerId: r.owner_id,
     ownerName: r.owner?.full_name ?? null,
+    contractorId: r.contractor_id,
+    contractorName: r.contractor?.name ?? null,
+    carryPct: r.carry_pct == null ? null : Number(r.carry_pct),
+    planPct: padDays(r.plan_pct),
+    actualPct: padDays(r.actual_pct),
+    note: r.note,
     status: r.status,
     createdBy: r.created_by,
+    jobAssignmentId: r.job_assignment_id,
+    jobQuantity: r.job_assignments?.boq_master?.quantity == null ? null : Number(r.job_assignments.boq_master.quantity),
+    jobUnit: r.job_assignments?.boq_master?.unit ?? null,
+    jobTrade: r.job_assignments?.boq_master?.contractor_types?.name ?? null,
   }))
 
   type RawMeeting = { project_id: string; week_start: string; agreed_at: string; agreer: { full_name: string | null } | null }
@@ -223,10 +287,14 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
       name: p.name,
       projectId: p.project_id,
     })),
+    plotGroups: ((groupsRes.data || []) as unknown as { id: string; name: string; project_id: string; plot_group_members: { plot_id: string }[] }[])
+      .map((g) => ({ id: g.id, name: g.name, projectId: g.project_id, plotIds: g.plot_group_members.map((m) => m.plot_id) }))
+      .filter((g) => g.plotIds.length > 0),
     owners: ((ownersRes.data || []) as { id: string; full_name: string | null }[]).map((o) => ({
       id: o.id,
       name: o.full_name || 'ไม่ระบุชื่อ',
     })),
+    contractors: ((contractorsRes.data || []) as { id: string; name: string }[]).map((c) => ({ id: c.id, name: c.name })),
     items,
     meetings,
     salesRequests,
@@ -235,46 +303,248 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
   }
 }
 
+const MAX_PICKER_PLOTS = 100
+
+/** BOQ jobs on the given plots, for the plan editor's picker. Never returns prices. */
+export async function getPlotsJobsForPlan(plotIds: string[]): Promise<{ jobs: WeeklyPlanJob[] } | { error: string }> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  const ids = [...new Set(plotIds.filter(Boolean))]
+  if (ids.length === 0) return { jobs: [] }
+  if (ids.length > MAX_PICKER_PLOTS) return { error: `เลือกแปลงได้ไม่เกิน ${MAX_PICKER_PLOTS} แปลงต่อครั้ง` }
+
+  const supabase = await createClient()
+  type RawJob = {
+    id: string
+    plot_id: string
+    boq_item_id: string
+    status: string | null
+    contractor_id: string | null
+    contractors: { name: string } | null
+    plots: { name: string } | null
+    boq_master: { item_name: string; quantity: number | null; unit: string | null; contractor_types: { name: string } | null } | null
+  }
+  // The API returns at most 1000 rows per request, and many plots can exceed that: page through.
+  const all: RawJob[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('job_assignments')
+      .select(
+        'id, plot_id, boq_item_id, status, contractor_id, contractors(name), plots(name), boq_master(item_name, quantity, unit, contractor_types(name))'
+      )
+      .in('plot_id', ids)
+      .order('id')
+      .range(from, from + 999)
+    if (error) return { error: `โหลดงาน BOQ ไม่สำเร็จ: ${error.message}` }
+    const page = (data || []) as unknown as RawJob[]
+    all.push(...page)
+    if (page.length < 1000) break
+  }
+  const raw = all.filter((j) => j.boq_master)
+
+  const planned = new Map<string, string[]>()
+  if (raw.length > 0) {
+    const { data: rows } = await supabase
+      .from('weekly_plan_items')
+      .select('job_assignment_id, week_start')
+      .in('plot_id', ids)
+      .not('job_assignment_id', 'is', null)
+    for (const r of (rows || []) as { job_assignment_id: string; week_start: string }[]) {
+      planned.set(r.job_assignment_id, [...(planned.get(r.job_assignment_id) || []), r.week_start])
+    }
+  }
+
+  const jobs: WeeklyPlanJob[] = raw
+    .map((j) => ({
+      id: j.id,
+      plotId: j.plot_id,
+      plotName: j.plots?.name ?? '',
+      boqItemId: j.boq_item_id,
+      title: j.boq_master!.item_name,
+      trade: j.boq_master!.contractor_types?.name ?? null,
+      quantity: j.boq_master!.quantity == null ? null : Number(j.boq_master!.quantity),
+      unit: j.boq_master!.unit,
+      status: j.status || 'pending',
+      contractorId: j.contractor_id,
+      contractorName: j.contractors?.name ?? null,
+      plannedWeeks: planned.get(j.id) || [],
+    }))
+    .sort((a, b) => (a.trade || '').localeCompare(b.trade || '', 'th') || a.title.localeCompare(b.title, 'th'))
+  return { jobs }
+}
+
 export type WeeklyPlanItemInput = {
   projectId: string
   plotId: string | null
   weekStart: string
   kind: WeeklyPlanKind
   title: string
+  /** BOQ work: the job assignment being scheduled. The title is taken from the BOQ, not from `title`. */
+  jobAssignmentId?: string | null
   ownerId: string | null
+  contractorId?: string | null
+  carryPct?: number | null
+  planPct?: (number | null)[]
+  actualPct?: (number | null)[]
+  note?: string | null
+}
+
+function detailColumns(input: Pick<WeeklyPlanItemInput, 'contractorId' | 'carryPct' | 'planPct' | 'actualPct' | 'note'>) {
+  const pct = (v: (number | null)[] | undefined) => {
+    if (!v || v.every((x) => x == null)) return null
+    return v.slice(0, 7).map((x) => (x == null || Number.isNaN(x) ? null : Math.min(100, Math.max(0, x))))
+  }
+  return {
+    contractor_id: input.contractorId || null,
+    carry_pct: input.carryPct == null || Number.isNaN(input.carryPct) ? null : Math.min(100, Math.max(0, input.carryPct)),
+    plan_pct: pct(input.planPct),
+    actual_pct: pct(input.actualPct),
+    note: input.note?.trim() || null,
+  }
 }
 
 function validateInput(input: WeeklyPlanItemInput): string | null {
   if (!input.projectId) return 'กรุณาเลือกโครงการ'
   if (!KINDS.includes(input.kind)) return 'ประเภทงานไม่ถูกต้อง'
-  if (!input.title.trim()) return 'กรุณากรอกชื่องาน'
+  if (!input.jobAssignmentId && !input.title.trim()) return 'กรุณากรอกชื่องาน'
+  if (input.jobAssignmentId && !input.plotId) return 'งาน BOQ ต้องระบุแปลง'
   if (!isMonday(input.weekStart)) return 'สัปดาห์ไม่ถูกต้อง'
   return null
 }
 
-/** admin, pm and foreman may create items. */
-export async function createWeeklyPlanItem(input: WeeklyPlanItemInput): Promise<WeeklyPlanResult> {
-  const caller = await getCaller()
-  if ('error' in caller) return caller
-  const invalid = validateInput(input)
-  if (invalid) return { error: invalid }
+const DUPLICATE_MESSAGE = 'งานนี้ถูกวางแผนในสัปดาห์ที่เลือกแล้ว'
 
-  const supabase = await createClient()
-  const { error } = await supabase.from('weekly_plan_items').insert({
-    project_id: input.projectId,
-    plot_id: input.plotId || null,
-    week_start: input.weekStart,
-    kind: input.kind,
-    title: input.title.trim(),
-    owner_id: input.ownerId || null,
-    created_by: caller.userId,
-  })
-  if (error) return { error: `เพิ่มรายการไม่สำเร็จ: ${error.message}` }
-  revalidatePath('/dashboard/weekly-plan')
-  return { ok: true }
+/** Turns database errors into messages a planner can act on. */
+function planErrorMessage(prefix: string, error: { code?: string; message: string }): string {
+  if (error.code === '23505') return `${prefix}: ${DUPLICATE_MESSAGE}`
+  return `${prefix}: ${error.message}`
 }
 
-/** admin/pm edit any item; a foreman only items they created (RLS enforces). */
+type VerifiedJob = { id: string; plotId: string; title: string; contractorId: string | null }
+
+/** Loads the given job assignments from the database and checks that every one
+ * belongs to one of `plotIds` in `projectId`. Titles come from the BOQ, never the client. */
+async function verifyJobs(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  jobIds: string[],
+  plotIds: string[],
+  projectId: string
+): Promise<{ error: string } | { jobs: VerifiedJob[] }> {
+  const { data, error } = await supabase
+    .from('job_assignments')
+    .select('id, plot_id, contractor_id, plots(project_id), boq_master(item_name)')
+    .in('id', jobIds)
+  if (error) return { error: `ตรวจสอบงาน BOQ ไม่สำเร็จ: ${error.message}` }
+
+  type Row = {
+    id: string
+    plot_id: string | null
+    contractor_id: string | null
+    plots: { project_id: string } | null
+    boq_master: { item_name: string } | null
+  }
+  const rows = (data || []) as unknown as Row[]
+  const jobs: VerifiedJob[] = []
+  for (const id of jobIds) {
+    const r = rows.find((x) => x.id === id)
+    if (!r || !r.boq_master) return { error: 'ไม่พบงาน BOQ ที่เลือก' }
+    if (!r.plot_id || !plotIds.includes(r.plot_id)) return { error: 'งาน BOQ ที่เลือกไม่ใช่ของแปลงที่เลือก' }
+    if (r.plots?.project_id !== projectId) return { error: 'งาน BOQ ที่เลือกไม่ใช่ของโครงการนี้' }
+    jobs.push({ id, plotId: r.plot_id, title: r.boq_master.item_name, contractorId: r.contractor_id })
+  }
+  return { jobs }
+}
+
+export type WeeklyPlanBatchInput = Omit<WeeklyPlanItemInput, 'plotId' | 'weekStart' | 'jobAssignmentId'> & {
+  /** Manual (non-BOQ) work: one item is created per plot; empty means a single item with no plot. */
+  plotIds: string[]
+  /** BOQ work: one item is created per job per week. Each job must belong to one of `plotIds`. */
+  jobAssignmentIds?: string[]
+  /** One item is created per week (Mondays). */
+  weekStarts: string[]
+}
+
+const MAX_BATCH = 300
+
+/** Creates plan items. Manual work: the same item for every selected plot in
+ * every selected week. BOQ work: one item per selected job per selected week,
+ * with title and contractor taken from the database. */
+export async function createWeeklyPlanItems(input: WeeklyPlanBatchInput): Promise<WeeklyPlanResult & { created?: number }> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  const weeks = [...new Set(input.weekStarts)]
+  if (weeks.length === 0) return { error: 'กรุณาเลือกสัปดาห์' }
+  const jobIds = [...new Set(input.jobAssignmentIds || [])]
+  const isBoq = jobIds.length > 0
+  const plotIds = input.plotIds.length > 0 ? [...new Set(input.plotIds)] : [null]
+  if (isBoq && plotIds[0] == null) return { error: 'งาน BOQ ต้องระบุแปลง' }
+  for (const w of weeks) {
+    const invalid = validateInput({
+      ...input,
+      plotId: plotIds[0],
+      weekStart: w,
+      jobAssignmentId: isBoq ? jobIds[0] : null,
+      kind: isBoq ? 'main' : input.kind,
+    })
+    if (invalid) return { error: invalid }
+  }
+  const count = isBoq ? jobIds.length * weeks.length : plotIds.length * weeks.length
+  if (count > MAX_BATCH) return { error: `สร้างครั้งเดียวได้ไม่เกิน ${MAX_BATCH} รายการ` }
+
+  const supabase = await createClient()
+  const detail = detailColumns(input)
+  let rows: Record<string, unknown>[]
+
+  if (isBoq) {
+    const verified = await verifyJobs(supabase, jobIds, plotIds as string[], input.projectId)
+    if ('error' in verified) return verified
+    const { data: existing, error: existingError } = await supabase
+      .from('weekly_plan_items')
+      .select('job_assignment_id')
+      .in('job_assignment_id', jobIds)
+      .in('week_start', weeks)
+    if (existingError) return { error: `ตรวจสอบรายการซ้ำไม่สำเร็จ: ${existingError.message}` }
+    if ((existing || []).length > 0) return { error: DUPLICATE_MESSAGE }
+
+    rows = weeks.flatMap((week) =>
+      verified.jobs.map((job) => ({
+        project_id: input.projectId,
+        plot_id: job.plotId,
+        week_start: week,
+        kind: 'main',
+        title: job.title,
+        job_assignment_id: job.id,
+        owner_id: input.ownerId || null,
+        ...detail,
+        // Contractor chosen in the plan wins; otherwise the job's own contractor, if any.
+        contractor_id: detail.contractor_id ?? job.contractorId,
+        created_by: caller.userId,
+      }))
+    )
+  } else {
+    if (!input.title.trim()) return { error: 'กรุณากรอกชื่องาน' }
+    rows = weeks.flatMap((week) =>
+      plotIds.map((plotId) => ({
+        project_id: input.projectId,
+        plot_id: plotId,
+        week_start: week,
+        kind: input.kind,
+        title: input.title.trim(),
+        owner_id: input.ownerId || null,
+        ...detail,
+        created_by: caller.userId,
+      }))
+    )
+  }
+
+  const { error } = await supabase.from('weekly_plan_items').insert(rows)
+  if (error) return { error: planErrorMessage('เพิ่มรายการไม่สำเร็จ', error) }
+  revalidatePath('/dashboard/weekly-plan')
+  return { ok: true, created: rows.length }
+}
+
+/** admin/pm edit any item; a foreman only items they created (RLS enforces).
+ * For BOQ work the title always comes from the BOQ and the job must belong to the plot. */
 export async function updateWeeklyPlanItem(id: string, input: WeeklyPlanItemInput): Promise<WeeklyPlanResult> {
   const caller = await getCaller()
   if ('error' in caller) return caller
@@ -282,6 +552,13 @@ export async function updateWeeklyPlanItem(id: string, input: WeeklyPlanItemInpu
   if (invalid) return { error: invalid }
 
   const supabase = await createClient()
+  let title = input.title.trim()
+  if (input.jobAssignmentId) {
+    const verified = await verifyJobs(supabase, [input.jobAssignmentId], [input.plotId!], input.projectId)
+    if ('error' in verified) return verified
+    title = verified.jobs[0].title
+  }
+
   const { data, error } = await supabase
     .from('weekly_plan_items')
     .update({
@@ -289,12 +566,14 @@ export async function updateWeeklyPlanItem(id: string, input: WeeklyPlanItemInpu
       plot_id: input.plotId || null,
       week_start: input.weekStart,
       kind: input.kind,
-      title: input.title.trim(),
+      title,
+      job_assignment_id: input.jobAssignmentId || null,
       owner_id: input.ownerId || null,
+      ...detailColumns(input),
     })
     .eq('id', id)
     .select('id')
-  if (error) return { error: `แก้ไขรายการไม่สำเร็จ: ${error.message}` }
+  if (error) return { error: planErrorMessage('แก้ไขรายการไม่สำเร็จ', error) }
   if (!data || data.length === 0) return { error: 'แก้ไขได้เฉพาะรายการที่คุณสร้างเอง' }
   revalidatePath('/dashboard/weekly-plan')
   return { ok: true }
@@ -371,7 +650,7 @@ export async function getWeeklyPlanSummary(weekStart: string): Promise<WeeklyPla
     .eq('status', 'planned')
 
   for (const row of (data || []) as { kind: WeeklyPlanKind; owner_id: string | null }[]) {
-    if (row.kind in summary) summary[row.kind] += 1
+    if (row.kind in summary) summary[row.kind as keyof WeeklyPlanSummary] += 1
     if (!row.owner_id) summary.unassigned += 1
   }
   return summary
