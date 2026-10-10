@@ -72,7 +72,7 @@ export default function PurchaseRequestForm({
   const [note, setNote] = useState('')
   const [neededByDate, setNeededByDate] = useState('')
   const [lines, setLines] = useState<Line[]>([])
-  const [boqJobOptions, setBoqJobOptions] = useState<{ id: string; item_name: string }[]>([])
+  const [boqJobOptions, setBoqJobOptions] = useState<{ id: string; item_name: string; label: string }[]>([])
 
   useEffect(() => {
     async function bootstrap() {
@@ -360,7 +360,7 @@ export default function PurchaseRequestForm({
                 <div className="mt-2">
                   {boqJobOptions.length > 0 ? (
                     <SearchableSelect
-                      options={boqJobOptions.map((j) => ({ value: j.id, label: j.item_name }))}
+                      options={boqJobOptions.map((j) => ({ value: j.id, label: j.label }))}
                       value={line.boq_id || ''}
                       onChange={(v) => updateLine(i, { boq_id: v || null })}
                       placeholder="สำหรับงาน (ไม่ระบุก็ได้)"

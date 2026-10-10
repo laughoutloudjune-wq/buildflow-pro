@@ -11,6 +11,7 @@ import { PageContainer } from '@/components/ui/PageContainer'
 import { PageToolbar } from '@/components/ui/PageToolbar'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { TableFrame } from '@/components/ui/TableFrame'
+import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import type { getBillings } from '@/actions/billing-actions'
 import BillingModal from '@/components/billings/BillingModal'
 import { formatCurrency } from '@/lib/currency'
@@ -32,6 +33,8 @@ const getStatusChip = (status?: string | null) => {
     </Badge>
   )
 }
+
+const PAGE_SIZE = 25
 
 type BillingFilters = {
   month?: string
@@ -137,6 +140,27 @@ export default function BillingPageClient({
     })
   }, [billings, filters])
 
+  // PM review queue first (oldest waiting at the top), everything else keeps its order.
+  const sortedBillings = useMemo(
+    () =>
+      [...filteredBillings].sort((x, y) => {
+        const rx = x.status === 'pending_review' ? 0 : 1
+        const ry = y.status === 'pending_review' ? 0 : 1
+        if (rx !== ry) return rx - ry
+        if (rx === 0) return String(x.created_at || '').localeCompare(String(y.created_at || ''))
+        return 0
+      }),
+    [filteredBillings]
+  )
+  const [page, setPage] = useState(1)
+  // Back to page 1 whenever the filters change (adjusted during render, not in an effect).
+  const filterKey = JSON.stringify(filters)
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey)
+    setPage(1)
+  }
+  const { pageCount, currentPage, pagedRows } = usePagedRows(sortedBillings, page, PAGE_SIZE)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const selectedVisible = useMemo(
     () => filteredBillings.filter((b) => selectedIds.has(b.id)),
@@ -328,15 +352,7 @@ export default function BillingPageClient({
                 </tr>
               </thead>
               <tbody>
-                {/* PM review queue first (oldest waiting at the top), everything else keeps its order. */}
-                {[...filteredBillings]
-                  .sort((x, y) => {
-                    const rx = x.status === 'pending_review' ? 0 : 1
-                    const ry = y.status === 'pending_review' ? 0 : 1
-                    if (rx !== ry) return rx - ry
-                    if (rx === 0) return String(x.created_at || '').localeCompare(String(y.created_at || ''))
-                    return 0
-                  })
+                {pagedRows
                   .map((bill) => {
                     const waitingDays =
                       bill.status === 'pending_review' && bill.created_at
@@ -417,7 +433,11 @@ export default function BillingPageClient({
                   })}
               </tbody>
             </table>
+            <Pagination currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} />
           </TableFrame>
+          <p className="px-1 text-xs text-slate-500">
+            แสดง {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedBillings.length)} จาก {sortedBillings.length} ใบ
+          </p>
         </div>
       )}
 

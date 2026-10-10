@@ -43,7 +43,7 @@ export default function DashboardShell({
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar permissions={permissions} collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
       <div
-        className={`relative flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden transition-[margin-left] duration-200 ${
+        className={`relative flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden transition-[margin-left] duration-200 will-change-[margin-left] [transition-timing-function:var(--ease-enter)] ${
           collapsed ? 'ml-20' : 'ml-64 max-lg:ml-20'
         }`}
       >

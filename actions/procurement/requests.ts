@@ -136,7 +136,7 @@ export async function getPurchaseRequestsByIds(ids: string[]): Promise<PurchaseR
  * every boq_master row belonging to any of the given plots' house models,
  * deduped. Empty until a plot scope resolving to concrete plots is picked
  * (no plots -> no house model -> nothing to link to). */
-export async function getBoqJobOptionsForPlots(plotIds: string[]): Promise<{ id: string; item_name: string }[]> {
+export async function getBoqJobOptionsForPlots(plotIds: string[]): Promise<{ id: string; item_name: string; label: string }[]> {
   // Shared with the foreman purchase-request form (W-01) - just BOQ item
   // names, no prices, so 'foreman' is safe to let through too.
   await requireModuleAccess(['procurement', 'foreman'])
@@ -151,12 +151,34 @@ export async function getBoqJobOptionsForPlots(plotIds: string[]): Promise<{ id:
 
   const { data: jobs, error: jobsError } = await supabase
     .from('boq_master')
-    .select('id, item_name')
+    .select('id, item_name, unit, house_models (name)')
     .in('house_model_id', houseModelIds)
     .order('item_name')
   if (jobsError) throw new Error(jobsError.message)
 
-  return jobs || []
+  // Plots of different house models each bring their own BOQ rows, and many
+  // share a job name ("งานปูกระเบื้อง" exists in most models), so a bare name
+  // list shows the same job several times. Tell them apart by house model
+  // when more than one is in scope, then by unit, then by a running number
+  // for the few genuine double rows inside one model.
+  type JobRow = { id: string; item_name: string; unit: string | null; house_models: { name: string } | { name: string }[] | null }
+  const rows = ((jobs || []) as unknown as JobRow[]).map((j) => ({
+    id: j.id,
+    item_name: j.item_name,
+    unit: j.unit,
+    model: (Array.isArray(j.house_models) ? j.house_models[0]?.name : j.house_models?.name) || '',
+  }))
+  const multiModel = houseModelIds.length > 1
+  const withModel = rows.map((r) => ({ ...r, label: multiModel && r.model ? `${r.item_name} · ${r.model}` : r.item_name }))
+  const countOf = (label: string) => withModel.filter((r) => r.label === label).length
+  const withUnit = withModel.map((r) => (countOf(r.label) > 1 && r.unit ? { ...r, label: `${r.label} (${r.unit})` } : r))
+  const seen = new Map<string, number>()
+  return withUnit.map((r) => {
+    const n = (seen.get(r.label) || 0) + 1
+    seen.set(r.label, n)
+    const total = withUnit.filter((x) => x.label === r.label).length
+    return { id: r.id, item_name: r.item_name, label: total > 1 ? `${r.label} #${n}` : r.label }
+  })
 }
 
 export async function createPurchaseRequest(input: {
