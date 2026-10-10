@@ -175,7 +175,15 @@ export default function PurchaseRequestsPageClient({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => (
+              {[...filtered]
+                // Requests waiting for a decision first, oldest waiting at the top.
+                .sort((x, y) => {
+                  const rx = x.status === 'pending_review' ? 0 : 1
+                  const ry = y.status === 'pending_review' ? 0 : 1
+                  if (rx !== ry) return rx - ry
+                  return rx === 0 ? String(x.created_at).localeCompare(String(y.created_at)) : 0
+                })
+                .map((r) => (
                   <tr
                     key={r.id}
                     className="cursor-pointer transition-colors hover:bg-slate-50"
@@ -206,6 +214,14 @@ export default function PurchaseRequestsPageClient({
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[r.status]}`}>
                         {STATUS_LABEL[r.status]}
                       </span>
+                      {r.status === 'pending_review' && (() => {
+                        const days = Math.floor((Date.now() - new Date(r.created_at).getTime()) / 86_400_000)
+                        return (
+                          <span className={`ml-1.5 text-xs ${days > 3 ? 'font-medium text-amber-800' : 'text-slate-500'}`}>
+                            {days > 3 ? '⚠ ' : ''}รอมา {days} วัน
+                          </span>
+                        )
+                      })()}
                       {isPartiallyOrdered(r) && (
                         <span
                           className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"

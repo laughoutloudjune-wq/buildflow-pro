@@ -7,8 +7,13 @@ import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoAppro
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { Breadcrumb } from '@/components/ui/Breadcrumb'
+import { Badge, statusTone } from '@/components/ui/Badge'
+import { TableFrame } from '@/components/ui/TableFrame'
+import { BILLING_STATUS_LABEL } from '@/lib/status-labels'
 import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
-import { Trash2, Edit } from 'lucide-react'
+import { AlertTriangle, Edit, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Modal from '@/components/ui/Modal'
@@ -55,7 +60,7 @@ export default function ReviewBillingPageClient({
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(initialError)
-  const [confirmAction, setConfirmAction] = useState<'delete' | 'undoApprove' | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'delete' | 'undoApprove' | 'approve' | null>(null)
   const [rejectModalOpen, setRejectModalOpen] = useState(false)
   const [rejectNote, setRejectNote] = useState('')
 
@@ -122,6 +127,18 @@ export default function ReviewBillingPageClient({
 
     return { totalWorkAmount, totalAddAmount, totalDeductAmount, grossAmount, netAmount }
   }, [jobs, adjustments, retentionPercent])
+
+  // What is left of the main-work BOQ value after this approval, for the decision bar.
+  const remainingAfter = useMemo(
+    () => jobs.reduce((sum, job) => sum + Math.max(0, Number(job.totalBoq || 0) - Number(job.paid || 0) - Number(job.amount || 0)), 0),
+    [jobs]
+  )
+  const requestedPercentOf = (jobId: string) => billing?.billing_jobs?.find((bj: Job) => bj.id === jobId)?.progress_percent ?? null
+  const changedJobs = jobs.filter((job) => {
+    const requested = requestedPercentOf(job.id)
+    return requested != null && Math.abs(Number(job.progress_percent || 0) - Number(requested)) > 0.004
+  }).length
+  const isPending = billing?.status === 'pending_review'
 
   const adjustmentPlotOptions = useMemo(() => {
     const names = Array.from(
@@ -286,9 +303,22 @@ export default function ReviewBillingPageClient({
   }
 
   return (
-    <div className="container mx-auto p-4 space-y-4">
-      <PageHeader
+    <PageContainer width="wide">
+      <div>
+        <Breadcrumb items={[{ label: 'รายการเบิกจ่าย', href: '/dashboard/billing' }, { label: `ใบเบิก #${billing.doc_no}` }]} />
+        <PageHeader
         title={`ตรวจสอบใบขอเบิก #${billing.doc_no}`}
+        subtitle={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            <Badge tone={statusTone(String(billing.status))}>{BILLING_STATUS_LABEL[billing.status as keyof typeof BILLING_STATUS_LABEL] ?? billing.status}</Badge>
+            {isExtraWork && <Badge tone="neutral">งานเพิ่ม (DC)</Badge>}
+            <span className="text-slate-500">
+              {billing.projects?.name}
+              {plotNames.length ? ` · แปลง ${plotNames.join(', ')}` : ''}
+              {billing.contractors?.name ? ` · ${billing.contractors.name}` : ''}
+            </span>
+          </span>
+        }
         actions={
           <>
             {canApprove && billing.status === 'approved' && !billing.paid_out_at && (
@@ -303,36 +333,48 @@ export default function ReviewBillingPageClient({
             )}
           </>
         }
-      />
+        />
+      </div>
 
       {error ? <NoticeBanner tone="error" message={error} onClose={() => setError(null)} /> : null}
 
       <>
-          <Card className="p-4 bg-slate-50">
-            <h2 className="text-xl font-semibold mb-3">ข้อมูลจาก Foreman</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <p><span className="font-semibold">โครงการ:</span> {billing.projects?.name}</p>
-              <p><span className="font-semibold">แปลง:</span> {plotNames.length ? plotNames.join(', ') : '-'}</p>
-              <p><span className="font-semibold">ผู้รับเหมา:</span> {billing.contractors?.name}</p>
-              <p><span className="font-semibold">ผู้ส่งคำขอ:</span> {billing.submitted_by_user?.full_name || billing.submitted_by_user?.email || 'ไม่ระบุผู้ใช้'}</p>
-              <p><span className="font-semibold">วันที่ส่ง:</span> {billing.created_at ? new Date(billing.created_at).toLocaleString('th-TH') : '-'}</p>
-            </div>
-            {billing.note && <p className="mt-4"><span className="font-semibold">หมายเหตุ:</span> {billing.note}</p>}
+          <Card className="p-5">
+            <h2 className="mb-3 text-lg font-semibold text-slate-900">ข้อมูลจาก Foreman</h2>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-5">
+              {[
+                ['โครงการ', billing.projects?.name || '-'],
+                ['แปลง', plotNames.length ? plotNames.join(', ') : '-'],
+                ['ผู้รับเหมา', billing.contractors?.name || '-'],
+                ['ผู้ส่งคำขอ', billing.submitted_by_user?.full_name || billing.submitted_by_user?.email || 'ไม่ระบุผู้ใช้'],
+                ['วันที่ส่ง', billing.created_at ? new Date(billing.created_at).toLocaleString('th-TH') : '-'],
+              ].map(([label, value]) => (
+                <div key={label} className="min-w-0">
+                  <dt className="text-xs text-slate-500">{label}</dt>
+                  <dd className="mt-0.5 break-words text-sm font-medium text-slate-900">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            {billing.note && (
+              <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+                <span className="font-semibold">หมายเหตุ:</span> {billing.note}
+              </p>
+            )}
             {billing.status === 'rejected' && billing.review_note && (
-              <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-red-800">
+              <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                 <span className="font-semibold">เหตุผลที่ปฏิเสธ:</span> {billing.review_note}
               </p>
             )}
           </Card>
 
           {isExtraWork && (
-            <Card className="p-4 border-amber-200 bg-amber-50/40">
+            <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-amber-800">ตรวจสอบงานเพิ่ม (DC)</h2>
-                  <p className="text-sm text-amber-700">ปรับรายการและราคาได้ก่อนอนุมัติ</p>
+                  <h2 className="text-lg font-semibold text-slate-900">หลักฐานงานเพิ่ม (DC)</h2>
+                  <p className="text-sm text-slate-500">ตรวจเหตุผลและรูปถ่าย แล้วปรับรายการและราคาด้านล่างก่อนอนุมัติ</p>
                 </div>
-                <span className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-200 text-amber-900">งานเพิ่ม</span>
+                <Badge tone="neutral">งานเพิ่ม (DC)</Badge>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -344,7 +386,10 @@ export default function ReviewBillingPageClient({
                   {Array.isArray(billing.attachment_urls) && billing.attachment_urls.length > 0 ? (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                       {billing.attachment_urls.map((url: string, idx: number) => (
-                        <img key={idx} src={url} alt={`dc-${idx + 1}`} className="h-24 w-full object-cover rounded-lg border" />
+                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer" aria-label={`เปิดรูปงานเพิ่ม ${idx + 1} ขนาดเต็ม`}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt={`รูปงานเพิ่ม ${idx + 1}`} className="h-24 w-full rounded-lg border object-cover transition-opacity hover:opacity-90" />
+                        </a>
                       ))}
                     </div>
                   ) : (
@@ -356,24 +401,29 @@ export default function ReviewBillingPageClient({
           )}
 
           {!isExtraWork && (
-            <Card className="p-4">
-              <h2 className="text-xl font-semibold mb-2">รายการงานที่เบิก</h2>
-              <div className="overflow-x-auto mb-6">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <h2 className="text-lg font-semibold text-slate-900">รายการงานที่เบิก</h2>
+                <p className="text-xs text-slate-500">
+                  {changedJobs > 0 ? `ปรับ % แล้ว ${changedJobs} รายการ` : 'ยังไม่ได้ปรับ % จากที่ Foreman แจ้ง'} · แก้ช่อง “% อนุมัติ” เพื่อปรับยอด
+                </p>
+              </div>
+              <TableFrame>
+                <table>
+                  <thead>
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ชื่องาน</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">มูลค่าทั้งหมด</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">เบิกแล้ว</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">คงเหลือก่อนเบิก</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">% ที่แจ้ง</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">% อนุมัติ</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">ยอดเงิน</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">คงเหลือหลังเบิก</th>
+                      <th className="px-6 py-3 text-left whitespace-nowrap">ชื่องาน</th>
+                      <th className="px-6 py-3 text-right whitespace-nowrap">มูลค่าทั้งหมด</th>
+                      <th className="px-6 py-3 text-right whitespace-nowrap">เบิกแล้ว</th>
+                      <th className="px-6 py-3 text-right whitespace-nowrap">คงเหลือก่อนเบิก</th>
+                      <th className="px-6 py-3 text-right whitespace-nowrap">% ที่แจ้ง</th>
+                      <th className="px-6 py-3 text-right whitespace-nowrap">% อนุมัติ</th>
+                      <th className="px-6 py-3 text-right whitespace-nowrap">ยอดเงิน</th>
+                      <th className="px-6 py-3 text-right whitespace-nowrap">คงเหลือหลังเบิก</th>
                       <th className="px-6 py-3"></th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody>
                     {jobs.map((job) => {
                       const jobAssignmentId = job.job_assignments?.id
                       const isExpanded = expandedHistoryRows.has(jobAssignmentId)
@@ -381,9 +431,12 @@ export default function ReviewBillingPageClient({
                         (history: ProgressHistoryItem) =>
                           String(history.status || '') !== 'pending_review' || String(history.doc_no || '') !== String(billing.doc_no || '')
                       )
+                      const requestedPct = requestedPercentOf(job.id)
+                      const changed = requestedPct != null && Math.abs(Number(job.progress_percent || 0) - Number(requestedPct)) > 0.004
+                      const belowPrevious = Number(job.progress_percent || 0) < Number(job.previous_progress || 0)
                       return (
                         <Fragment key={job.id}>
-                          <tr>
+                          <tr className={changed ? 'bg-indigo-50/40' : undefined}>
                             <td className="px-6 py-4">
                               <div>{job.job_assignments.boq_master.item_name}</div>
                               <div className="text-xs text-slate-500">แปลง {job.job_assignments.plots?.name || '-'}</div>
@@ -404,13 +457,25 @@ export default function ReviewBillingPageClient({
                             <td className="px-6 py-4 text-right">
                               <input
                                 type="number"
-                                className="w-24 p-1 border border-gray-300 rounded-md text-right"
+                                className="w-24 text-right"
+                                aria-label={`% อนุมัติ ${job.job_assignments.boq_master.item_name}`}
+                                aria-invalid={belowPrevious || undefined}
                                 value={job.progress_percent || ''}
                                 onChange={(e) => handleProgressChange(job.job_assignments.id, parseFloat(e.target.value))}
                                 min={job.previous_progress.toFixed(2)}
                                 max="100"
                                 step="0.01"
                               />
+                              {changed && (
+                                <p className="mt-1 text-[11px] font-medium text-indigo-700">
+                                  ปรับจาก {Number(requestedPct).toFixed(2)}%
+                                </p>
+                              )}
+                              {belowPrevious && (
+                                <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-red-700">
+                                  <AlertTriangle className="h-3 w-3" aria-hidden /> ต้องไม่ต่ำกว่า {Number(job.previous_progress).toFixed(2)}%
+                                </p>
+                              )}
                             </td>
                             <td className="px-6 py-4 text-right font-medium">{formatCurrency(job.amount || 0)}</td>
                             <td className="px-6 py-4 text-right font-semibold text-emerald-700">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(job.paid || 0) - Number(job.amount || 0)))}</td>
@@ -419,7 +484,8 @@ export default function ReviewBillingPageClient({
                                 type="button"
                                 onClick={() => removeJob(job.id)}
                                 title="ลบรายการนี้ออกจากใบเบิก (เช่น รายการซ้ำ)"
-                                className="p-2 text-red-500 hover:text-red-700"
+                                aria-label="ลบรายการนี้ออกจากใบเบิก"
+                                className="rounded-lg p-2 text-red-500 hover:bg-red-50 hover:text-red-700"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
@@ -475,12 +541,12 @@ export default function ReviewBillingPageClient({
                     })}
                   </tbody>
                 </table>
-              </div>
-            </Card>
+              </TableFrame>
+            </div>
           )}
 
           <Card className="p-4">
-            <h2 className="text-xl font-semibold mb-2">รายการปรับปรุง (งานเพิ่ม/งานหัก)</h2>
+            <h2 className="mb-2 text-lg font-semibold text-slate-900">รายการปรับปรุง (งานเพิ่ม/งานหัก)</h2>
             <AdjustmentLineItems
               adjustments={adjustments}
               plotOptions={adjustmentPlotOptions}
@@ -492,7 +558,7 @@ export default function ReviewBillingPageClient({
               showSignature
             />
 
-            <h2 className="text-xl font-semibold mt-6 mb-2">สรุปและคำนวณยอดสุดท้าย</h2>
+            <h2 className="mb-2 mt-6 text-lg font-semibold text-slate-900">สรุปและคำนวณยอดสุดท้าย</h2>
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div><label className="block text-sm font-medium text-gray-700">วันที่เบิกจ่าย</label><input type="date" value={billingDate} onChange={(e) => setBillingDate(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" /></div>
@@ -529,18 +595,73 @@ export default function ReviewBillingPageClient({
               </div>
             </div>
 
-            {canApprove && billing.status === 'pending_review' && (
-              <div className="mt-6 flex justify-end gap-4">
-                <Button variant="danger" onClick={() => setRejectModalOpen(true)} disabled={isSubmitting}>
-                  {isSubmitting ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}
-                </Button>
-                <Button onClick={handleApprove} disabled={isSubmitting}>
-                  {isSubmitting ? 'กำลังอนุมัติ...' : 'อนุมัติและจบงาน'}
-                </Button>
-              </div>
-            )}
           </Card>
       </>
+
+      {/* Decision bar: the numbers being decided and the decision itself stay together. */}
+      <div className="sticky bottom-4 z-20">
+        <Card className="elev-floating flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-3">
+          <dl className="flex flex-wrap items-center gap-x-6 gap-y-1">
+            {totalWorkAmount > 0 && (
+              <div>
+                <dt className="text-xs text-slate-500">งานหลัก</dt>
+                <dd className="text-sm font-semibold tabular-nums text-slate-900">฿{formatCurrency(totalWorkAmount)}</dd>
+              </div>
+            )}
+            {totalAddAmount > 0 && (
+              <div>
+                <dt className="text-xs text-slate-500">งานเพิ่ม (DC)</dt>
+                <dd className="text-sm font-semibold tabular-nums text-slate-900">+฿{formatCurrency(totalAddAmount)}</dd>
+              </div>
+            )}
+            {totalDeductAmount > 0 && (
+              <div>
+                <dt className="text-xs text-slate-500">งานหัก</dt>
+                <dd className="text-sm font-semibold tabular-nums text-slate-900">−฿{formatCurrency(totalDeductAmount)}</dd>
+              </div>
+            )}
+            {!isExtraWork && (
+              <div>
+                <dt className="text-xs text-slate-500">คงเหลือหลังเบิก</dt>
+                <dd className="text-sm font-semibold tabular-nums text-slate-900">฿{formatCurrency(remainingAfter)}</dd>
+              </div>
+            )}
+            <div>
+              <dt className="text-xs text-slate-500">ยอดสุทธิอนุมัติ</dt>
+              <dd className="text-xl font-bold tabular-nums text-emerald-700">฿{formatCurrency(netAmount)}</dd>
+            </div>
+          </dl>
+          {canApprove && isPending ? (
+            <div className="flex items-center gap-3">
+              <Button variant="danger" onClick={() => setRejectModalOpen(true)} disabled={isSubmitting}>
+                {isSubmitting ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}
+              </Button>
+              <Button onClick={() => setConfirmAction('approve')} disabled={isSubmitting}>
+                {isSubmitting ? 'กำลังอนุมัติ...' : 'อนุมัติและจบงาน'}
+              </Button>
+            </div>
+          ) : (
+            <Badge tone={statusTone(String(billing.status))}>
+              {BILLING_STATUS_LABEL[billing.status as keyof typeof BILLING_STATUS_LABEL] ?? billing.status}
+            </Badge>
+          )}
+        </Card>
+      </div>
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'approve'}
+        title="อนุมัติใบเบิก"
+        message={`อนุมัติใบเบิก #${billing.doc_no} ยอดสุทธิ ฿${formatCurrency(netAmount)} ใช่หรือไม่?`}
+        confirmLabel={isSubmitting ? 'กำลังอนุมัติ...' : 'ยืนยันอนุมัติ'}
+        cancelLabel="ยกเลิก"
+        tone="primary"
+        busy={isSubmitting}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={async () => {
+          await handleApprove()
+          setConfirmAction(null)
+        }}
+      />
 
       <ConfirmDialog
         isOpen={confirmAction === 'delete'}
@@ -592,6 +713,6 @@ export default function ReviewBillingPageClient({
           </div>
         </div>
       </Modal>
-    </div>
+    </PageContainer>
   )
 }

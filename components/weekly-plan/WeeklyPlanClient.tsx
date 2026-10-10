@@ -297,35 +297,54 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
 
       {view === 'week' ? (
         <>
-          <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <div className="flex items-center gap-2 text-sm">
-              <CalendarCheck className={`h-5 w-5 ${meeting ? 'text-emerald-600' : 'text-slate-400'}`} />
-              {meeting ? (
-                <span className="text-emerald-700">
-                  ตกลงแผนในที่ประชุมแล้ว{meeting.agreedByName ? ` โดย ${meeting.agreedByName}` : ''} ·{' '}
-                  {new Date(meeting.agreedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
-                </span>
-              ) : (
-                <span className="text-slate-500">ยังไม่ได้ตกลงแผนสัปดาห์นี้</span>
+          <Card className={`p-4 ${meeting ? 'border-emerald-200' : ''}`}>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${meeting ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                  <CalendarCheck className="h-5 w-5" aria-hidden />
+                </div>
+                <div className="min-w-0 space-y-1.5 text-sm">
+                  {meeting ? (
+                    <>
+                      <p className="font-semibold text-emerald-800">
+                        ตกลงแผนในที่ประชุมแล้ว
+                        <span className="ml-2 font-normal text-slate-500">
+                          {meeting.agreedByName ? `โดย ${meeting.agreedByName} · ` : ''}
+                          {new Date(meeting.agreedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                        </span>
+                      </p>
+                      <p className="text-slate-600">
+                        <span className="font-medium text-slate-700">ล็อกอยู่:</span> เพิ่ม ลบ หรือย้ายงาน · งานที่เลือก · ผู้รับเหมา · ผู้รับผิดชอบ · PLAN รายวัน
+                      </p>
+                      <p className="text-slate-600">
+                        <span className="font-medium text-slate-700">ยังแก้ได้:</span> ยอดยกมา · ACTUAL รายวัน · หมายเหตุ · ติ๊กว่าเสร็จแล้ว
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-semibold text-slate-800">ยังไม่ได้ตกลงแผนสัปดาห์นี้</p>
+                      <p className="text-slate-600">
+                        เมื่อตกลงแผนในที่ประชุมแล้ว ระบบจะล็อกตัวแผน (เพิ่ม/ลบ/ย้ายงาน ผู้รับเหมา PLAN) โดยยังกรอก ACTUAL และหมายเหตุได้
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+              {canManage && project && (
+                <div className="flex shrink-0 gap-2">
+                  {meeting && (
+                    <Button variant="secondary" size="sm" disabled={pending} onClick={() => run(() => unagreeWeeklyPlan(projectId, weekStart), 'เปิดแก้ไขแผนแล้ว')}>
+                      เปิดแก้ไขแผน
+                    </Button>
+                  )}
+                  {!meeting && (
+                    <Button size="sm" disabled={pending} onClick={() => run(() => agreeWeeklyPlan(projectId, weekStart), 'บันทึกการตกลงแผนแล้ว')}>
+                      ตกลงแผนในที่ประชุมแล้ว
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
-            {canManage && project && (
-              <div className="flex gap-2">
-                {meeting && (
-                  <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => unagreeWeeklyPlan(projectId, weekStart))}>
-                    ยกเลิก
-                  </Button>
-                )}
-                <Button
-                  variant={meeting ? 'secondary' : 'primary'}
-                  size="sm"
-                  disabled={pending}
-                  onClick={() => run(() => agreeWeeklyPlan(projectId, weekStart), 'บันทึกการตกลงแผนแล้ว')}
-                >
-                  {meeting ? 'ตกลงแผนอีกครั้ง' : 'ตกลงแผนในที่ประชุมแล้ว'}
-                </Button>
-              </div>
-            )}
           </Card>
 
           {weekItems.some((i) => i.planPct.some((v) => v != null) || i.actualPct.some((v) => v != null)) && (

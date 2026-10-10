@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Eye, Edit, Loader2, Printer } from 'lucide-react'
+import { AlertTriangle, Plus, Eye, Edit, Loader2, Printer } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge, statusTone } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
@@ -309,7 +309,22 @@ export default function BillingPageClient({
                 </button>
               )}
             </div>
-            {filteredBillings.map((bill) => (
+            {/* PM review queue first (oldest waiting at the top), everything else keeps its order. */}
+            {[...filteredBillings]
+              .sort((x, y) => {
+                const rx = x.status === 'pending_review' ? 0 : 1
+                const ry = y.status === 'pending_review' ? 0 : 1
+                if (rx !== ry) return rx - ry
+                if (rx === 0) return String(x.created_at || '').localeCompare(String(y.created_at || ''))
+                return 0
+              })
+              .map((bill) => {
+              const waitingDays =
+                bill.status === 'pending_review' && bill.created_at
+                  ? Math.floor((Date.now() - new Date(bill.created_at).getTime()) / 86_400_000)
+                  : null
+              const stale = waitingDays != null && waitingDays > 3
+              return (
               <div
                 key={bill.id}
                 className={`flex gap-3 rounded-xl border bg-white p-4 shadow-sm hover:border-indigo-300 hover:shadow cursor-pointer transition ${
@@ -352,6 +367,16 @@ export default function BillingPageClient({
                   <div className="text-right font-bold text-emerald-600">฿{formatCurrency(bill.net_amount)}</div>
                   <div className="flex flex-col items-start gap-1 lg:items-center">
                     {getStatusChip(bill.status)}
+                    {waitingDays != null && (
+                      <span
+                        className={`inline-flex items-center gap-1 text-[11px] ${
+                          stale ? 'rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800 ring-1 ring-inset ring-amber-200' : 'text-slate-500'
+                        }`}
+                      >
+                        {stale && <AlertTriangle className="h-3 w-3" aria-hidden />}
+                        รอมา {waitingDays} วัน
+                      </span>
+                    )}
                     {bill.status === 'rejected' && bill.review_note && (
                       <div className="text-[11px] text-red-600 lg:text-center" title={bill.review_note}>
                         {bill.review_note}
@@ -364,6 +389,7 @@ export default function BillingPageClient({
                         e.stopPropagation()
                         handleRowClick(bill)
                       }}
+                      aria-label={bill.status === 'pending_review' ? `ตรวจสอบใบเบิก #${bill.doc_no}` : `ดูใบเบิก #${bill.doc_no}`}
                       className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
                     >
                       {bill.status === 'pending_review' ? <Edit className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -371,7 +397,8 @@ export default function BillingPageClient({
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </Card>

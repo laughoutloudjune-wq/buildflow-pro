@@ -65,8 +65,8 @@ export default function WorkRequestFormModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="แจ้งคำขอใหม่ (SR)">
-      <form action={handleSubmit} className="space-y-4">
+    <Modal isOpen={isOpen} onClose={onClose} title="แจ้งคำขอใหม่ (SR)" panelClassName="max-w-3xl">
+      <form action={handleSubmit} className="space-y-5 p-1">
         {!plotId && (
           <div className="grid grid-cols-2 gap-3">
             <div>

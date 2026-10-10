@@ -288,7 +288,7 @@ export default function WeeklyPlanItemModal({
 
   const lockedBanner = locked && (
     <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
-      แผนสัปดาห์นี้ตกลงในที่ประชุมแล้ว แก้ได้เฉพาะ ยอดยกมา / ACTUAL / หมายเหตุ — ถ้าต้องแก้แผนให้ แอดมิน/PM กด &quot;ยกเลิก&quot; การตกลงแผนก่อน
+      แผนสัปดาห์นี้ตกลงในที่ประชุมแล้ว แก้ได้เฉพาะ ยอดยกมา / ACTUAL / หมายเหตุ — ถ้าต้องแก้แผนให้ แอดมิน/PM กด &quot;เปิดแก้ไขแผน&quot; ก่อน
     </p>
   )
 
