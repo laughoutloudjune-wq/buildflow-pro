@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Loader2, MapPin, AlertCircle, Pencil, Users, GaugeCircle, LayoutList, Map as MapIcon } from 'lucide-react'
+import { Plus, Trash2, MapPin, AlertCircle, Pencil, Users, GaugeCircle, LayoutList, Map as MapIcon } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
@@ -208,6 +209,17 @@ export default function ProjectDetailPageClient({
         label: plot.name,
         colorClass: plot.is_sellable === false ? 'bg-slate-400' : 'bg-emerald-500',
         meta: plot.house_models?.name || undefined,
+        summary: {
+          status: (
+            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${plot.is_sellable === false ? 'bg-slate-100 text-slate-600 ring-slate-200' : 'bg-emerald-50 text-emerald-700 ring-emerald-200'}`}>
+              {plot.is_sellable === false ? 'ไม่เปิดขาย' : 'เปิดขาย'}
+            </span>
+          ),
+          lines: [
+            { label: 'แบบบ้าน', value: plot.house_models?.name || 'ไม่ระบุ' },
+            { label: 'เนื้อที่', value: plot.land_area_sqwa != null ? `${plot.land_area_sqwa} ตร.ว.` : '—' },
+          ],
+        },
         mapX: plot.map_x,
         mapY: plot.map_y,
         dimmed: hasActiveFilters && !matchesFilters(plot),
@@ -418,13 +430,13 @@ export default function ProjectDetailPageClient({
                       />
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => setDeleteTarget(plot)}
-                        disabled={isPending}
-                        className="rounded-lg p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500"
-                      >
-                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                      </button>
+                      <ActionMenu
+                        label={`ตัวเลือกของแปลง ${plot.name}`}
+                        items={[
+                          { label: 'เปิดรายละเอียด', icon: <Pencil />, href: `/dashboard/projects/${projectId}/${plot.id}` },
+                          { label: 'ลบแปลง', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeleteTarget(plot) },
+                        ]}
+                      />
                     </td>
                   </tr>
                 ))}

@@ -15,6 +15,7 @@ import { formatCurrency } from '@/lib/currency'
 import { computeActualPayout } from '@/lib/billing'
 import { todayInBangkok } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 
 type Project = { id: string; name: string }
 type Contractor = { id: string; name: string }
@@ -54,6 +55,7 @@ function isRecentlyApproved(approvedAt?: string | null) {
 
 export default function ContractorCycleReportPage() {
   const toast = useToast()
+  const { theme } = useDepartment()
   const [projects, setProjects] = useState<Project[]>([])
   const [contractors, setContractors] = useState<Contractor[]>([])
   const [filters, setFilters] = useState<Filters>({})
@@ -870,23 +872,21 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         />
       </div>
 
-      <div className="flex gap-1 rounded-lg border bg-slate-100 p-1 no-print w-fit">
-        <button
-          onClick={() => setActiveTab('unpaid')}
-          className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
-            activeTab === 'unpaid' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          รอจ่าย
-        </button>
-        <button
-          onClick={() => setActiveTab('paid')}
-          className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
-            activeTab === 'paid' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          จ่ายแล้ว
-        </button>
+      <div className="no-print flex gap-1 border-b border-slate-200" role="tablist" aria-label="สถานะการจ่าย">
+        {([['unpaid', 'รอจ่าย'], ['paid', 'จ่ายแล้ว']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === key}
+            onClick={() => setActiveTab(key)}
+            className={`border-b-2 px-4 py-2.5 text-sm font-medium transition ${
+              activeTab === key ? theme.tab : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* no-print: this toolbar must never appear on the printed report. */}
@@ -1094,16 +1094,26 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-          <div className="rounded-lg border p-3 bg-slate-50">
-            <div className="text-slate-500 text-xs">ยอดรวมทั้งหมด (ก่อนหัก)</div>
-            <div className="font-bold text-lg text-slate-700">฿{formatCurrency(grandTotals.gross_amount)}</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">งานหลัก ฿{formatCurrency(grandTotals.total_work_amount)} · งานเพิ่ม ฿{formatCurrency(grandTotals.total_add_amount)} · งานหัก −฿{formatCurrency(grandTotals.total_deduct_amount)}</div>
+        <div className="mt-4 grid grid-cols-2 gap-2 text-sm lg:grid-cols-4">
+          <div className="rounded-lg border bg-slate-50 p-3">
+            <div className="text-xs text-slate-500">ใบเบิก</div>
+            <div className="text-lg font-bold tabular-nums text-slate-800">{grandTotals.bill_count}</div>
+            <div className="mt-0.5 text-[11px] text-slate-500">{grouped.length} ผู้รับเหมา</div>
           </div>
-          <div className="rounded-lg border p-3 bg-emerald-50">
-            <div className="text-slate-500 text-xs">ยอดโอนจริง (หลังหักทั้งหมด)</div>
-            <div className="font-bold text-lg text-emerald-700">฿{formatCurrency(grandTotals.actual_transfer)}</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">{grandTotals.bill_count} ใบเบิก · {grouped.length} ผู้รับเหมา</div>
+          <div className="rounded-lg border bg-slate-50 p-3">
+            <div className="text-xs text-slate-500">ยอดรวมก่อนหัก</div>
+            <div className="text-lg font-bold tabular-nums text-slate-800">฿{formatCurrency(grandTotals.gross_amount)}</div>
+            <div className="mt-0.5 text-[11px] text-slate-500">งานหลัก ฿{formatCurrency(grandTotals.total_work_amount)} · งานเพิ่ม ฿{formatCurrency(grandTotals.total_add_amount)}</div>
+          </div>
+          <div className="rounded-lg border bg-slate-50 p-3">
+            <div className="text-xs text-slate-500">หักรวม (งานหัก / ประกัน / WHT)</div>
+            <div className="text-lg font-bold tabular-nums text-red-700">−฿{formatCurrency(Math.max(0, grandTotals.gross_amount - grandTotals.actual_transfer))}</div>
+            <div className="mt-0.5 text-[11px] text-slate-500">งานหัก −฿{formatCurrency(grandTotals.total_deduct_amount)}</div>
+          </div>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+            <div className="text-xs text-emerald-800">ยอดโอนจริง</div>
+            <div className="text-xl font-bold tabular-nums text-emerald-800">฿{formatCurrency(grandTotals.actual_transfer)}</div>
+            <div className="mt-0.5 text-[11px] text-emerald-700">หลังหักทั้งหมด</div>
           </div>
         </div>
       </Card>

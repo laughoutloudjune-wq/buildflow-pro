@@ -1,7 +1,8 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { Plus, MapPin, Trash2, Loader2, Building2, Search } from 'lucide-react'
+import ActionMenu from '@/components/ui/ActionMenu'
+import { Plus, MapPin, Trash2, Building2, Search } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -10,7 +11,7 @@ import { PageContainer } from '@/components/ui/PageContainer'
 import { useDepartment } from '@/components/layout/DepartmentContext'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
-import { createProject, deleteProject, setProjectStatus } from '@/actions/project-actions'
+import { createProject, deleteProject, setProjectStatus, type ProjectProgress } from '@/actions/project-actions'
 
 type Project = {
   id: string
@@ -56,7 +57,7 @@ function StatusToggle({ projectId, isActive, onToggled }: { projectId: string; i
   )
 }
 
-export default function ProjectsPageClient({ projects: initialProjects }: { projects: Project[] }) {
+export default function ProjectsPageClient({ projects: initialProjects, progress }: { projects: Project[]; progress: Record<string, ProjectProgress> }) {
   const { theme } = useDepartment()
   const [projects, setProjects] = useState<Project[]>(initialProjects)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -132,20 +133,38 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
               {project.location || 'ไม่ระบุทำเล'}
             </div>
 
-            <div className="flex items-center justify-end border-t pt-3 mt-2">
-               <button
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setDeleteTarget(project)
-                  }}
-                  disabled={isPending}
-                  aria-label={`ลบโครงการ ${project.name}`}
-                  title="ลบโครงการ"
-                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition z-10"
-               >
-                  {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-               </button>
+            {/* Construction progress: value-weighted across every job in the project. */}
+            <div className="mb-3">
+              {progress[project.id] ? (
+                <>
+                  <div className="mb-1 flex items-baseline justify-between text-xs">
+                    <span className="text-slate-500">ความคืบหน้างานก่อสร้าง</span>
+                    <span className="text-sm font-semibold tabular-nums text-slate-800">{Math.round(progress[project.id].progressPercent)}%</span>
+                  </div>
+                  <div
+                    className="h-2 overflow-hidden rounded-full bg-slate-100"
+                    role="progressbar"
+                    aria-valuenow={Math.round(progress[project.id].progressPercent)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`ความคืบหน้า ${project.name}`}
+                  >
+                    <div className={`h-full rounded-full ${theme.solid}`} style={{ width: `${Math.min(100, Math.max(0, progress[project.id].progressPercent))}%` }} />
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {progress[project.id].plotsWithJobs} แปลงที่มีงาน · งานเสร็จ {progress[project.id].jobsDone}/{progress[project.id].jobsTotal}
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-slate-500">ยังไม่มีงานจ้างในโครงการนี้</p>
+              )}
+            </div>
+
+            <div className="mt-2 flex items-center justify-end border-t pt-3" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
+              <ActionMenu
+                label={`ตัวเลือกของโครงการ ${project.name}`}
+                items={[{ label: 'ลบโครงการ', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeleteTarget(project) }]}
+              />
             </div>
           </div>
         </Card>

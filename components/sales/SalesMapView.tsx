@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { statusColorClasses } from '@/lib/sales/statusColors'
 import type { SitePlanData } from '@/actions/sales-actions'
+import { formatCurrency } from '@/lib/currency'
 import SitePlanMap, { type SitePlanMarker } from '@/components/plots/SitePlanMap'
 
 // Closing-pipeline statuses shown as filter buttons, in pipeline order.
@@ -31,6 +32,24 @@ export default function SalesMapView({
     label: plot.name,
     colorClass: statusColorClasses(plot.statusColor).dot,
     meta: plot.statusLabel,
+    summary: {
+      status: (
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${statusColorClasses(plot.statusColor).chip}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${statusColorClasses(plot.statusColor).dot}`} />
+          {plot.statusLabel}
+        </span>
+      ),
+      lines: [
+        { label: 'แบบบ้าน', value: plot.houseModelName || 'ไม่ระบุ' },
+        { label: 'ลูกค้า', value: plot.customerName || 'ยังไม่มีลูกค้า' },
+        {
+          label: plot.salePrice != null ? 'ราคาขาย' : 'ราคาตั้ง',
+          value: plot.salePrice != null ? `฿${formatCurrency(plot.salePrice)}` : plot.listPrice != null ? `฿${formatCurrency(plot.listPrice)}` : '—',
+        },
+      ],
+      progressPercent: plot.progressPercent,
+      progressLabel: `${plot.jobsDone}/${plot.jobsTotal} งาน · ${Math.round(plot.progressPercent)}%`,
+    },
     mapX: plot.mapX,
     mapY: plot.mapY,
     dimmed:

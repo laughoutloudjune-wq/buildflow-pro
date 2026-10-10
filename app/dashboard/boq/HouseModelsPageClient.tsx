@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Loader2, Home, Ruler, Building, RefreshCw, Pencil } from 'lucide-react'
+import { Plus, Trash2, Home, Ruler, Building, RefreshCw, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -170,34 +171,15 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
                 </div>
               </div>
             </Link>
-             {/* Visible on hover, on keyboard focus, and always on touch screens. */}
-             <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-white/90 p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
-                <button
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    openModal(model)
-                  }}
-                  aria-label={`แก้ไขแบบบ้าน ${model.name}`}
-                  title="แก้ไข"
-                  className="z-10 rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setDeleteTarget(model)
-                  }}
-                  disabled={isPending}
-                  aria-label={`ลบแบบบ้าน ${model.name}`}
-                  title="ลบ"
-                  className="z-10 rounded-full p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600"
-                >
-                  {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-                </button>
-              </div>
+             <div className="absolute right-3 top-3 rounded-full bg-white/90">
+              <ActionMenu
+                label={`ตัวเลือกของแบบบ้าน ${model.name}`}
+                items={[
+                  { label: 'แก้ไขแบบบ้าน', icon: <Pencil />, onClick: () => openModal(model) },
+                  { label: 'ลบแบบบ้าน', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeleteTarget(model) },
+                ]}
+              />
+            </div>
           </Card>
                 ))}
               </div>

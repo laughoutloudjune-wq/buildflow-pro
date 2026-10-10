@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -8,10 +8,8 @@ import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { EmptyState } from '@/components/ui/EmptyState'
-import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
-import { createForemanPurchaseRequest, type ForemanPurchaseRequestRow } from '@/actions/foreman-purchase-requests'
+import { type ForemanPurchaseRequestRow } from '@/actions/foreman-purchase-requests'
 
 const STATUS_LABEL: Record<string, string> = {
   pending_review: 'รอตรวจสอบ',
@@ -40,7 +38,6 @@ export default function ForemanPurchaseRequestPageClient({
 }) {
   const router = useRouter()
   const toast = useToast()
-  const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -59,7 +56,7 @@ export default function ForemanPurchaseRequestPageClient({
         title="ขอซื้อวัสดุ"
         subtitle="ส่งคำขอซื้อวัสดุให้ฝ่ายจัดซื้อดำเนินการ"
         actions={
-          <Button onClick={() => setIsModalOpen(true)}>
+          <Button onClick={() => router.push('/dashboard/foreman/purchase-request/create')}>
             <Plus className="h-4 w-4" /> สร้างคำขอซื้อวัสดุ
           </Button>
         }
@@ -121,18 +118,6 @@ export default function ForemanPurchaseRequestPageClient({
         )}
       </Card>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="สร้างคำขอซื้อวัสดุ" panelClassName="max-w-2xl">
-        <PurchaseRequestForm
-          mode="create"
-          createAction={createForemanPurchaseRequest}
-          onCancel={() => setIsModalOpen(false)}
-          onSaved={() => {
-            setIsModalOpen(false)
-            toast.success('ส่งคำขอซื้อวัสดุเรียบร้อยแล้ว')
-            router.refresh()
-          }}
-        />
-      </Modal>
     </PageContainer>
   )
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import { TableFrame } from '@/components/ui/TableFrame'
 import { ArrowLeft, Loader2, Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
@@ -144,7 +145,7 @@ export default function SaleStatusesPageClient({
         </form>
       </Card>
 
-      <Card className="overflow-hidden border-slate-200 shadow-sm">
+      <TableFrame>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
@@ -224,7 +225,7 @@ export default function SaleStatusesPageClient({
             </tbody>
           </table>
         </div>
-      </Card>
+      </TableFrame>
     </PageContainer>
   )
 }

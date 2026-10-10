@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
+import PlotKeyFacts from '@/components/plots/PlotKeyFacts'
 import PlotOverviewTab from '@/components/plots/PlotOverviewTab'
 import PlotSalesTab from '@/components/plots/PlotSalesTab'
 import PlotConstructionTab from '@/components/plots/PlotConstructionTab'
@@ -293,6 +294,14 @@ export default function PlotDetailPageClient({
           }
         />
       </div>
+
+      <PlotKeyFacts
+        saleDetail={saleDetail}
+        jobsDone={jobsDone}
+        jobsTotal={jobs.length}
+        targetCompletionDate={plot.target_completion_date ?? null}
+        landAreaSqwa={plot.land_area_sqwa ?? null}
+      />
 
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="หมวดข้อมูลแปลง">
         {TABS.map((t) => (

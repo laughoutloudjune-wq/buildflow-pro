@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { PageToolbar } from '@/components/ui/PageToolbar'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { TableFrame } from '@/components/ui/TableFrame'
 import type { getBillings } from '@/actions/billing-actions'
 import BillingModal from '@/components/billings/BillingModal'
 import { formatCurrency } from '@/lib/currency'
@@ -275,133 +276,150 @@ export default function BillingPageClient({
         </select>
       </PageToolbar>
 
-      <Card className="p-4 bg-slate-50/60 border-slate-200">
-        {billings.length === 0 && listError ? (
+      {billings.length === 0 && listError ? (
+        <Card>
           <div className="flex flex-col items-center gap-3 py-12">
             <p className="text-sm text-slate-600">ไม่สามารถโหลดรายการได้</p>
             <Button type="button" size="sm" onClick={refresh} disabled={isRefreshing}>
               {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'ลองโหลดใหม่'}
             </Button>
           </div>
-        ) : billings.length === 0 ? (
+        </Card>
+      ) : billings.length === 0 ? (
+        <Card>
           <EmptyState title="ยังไม่มีเอกสารเบิกจ่าย" description="ใบเบิกงวดงานและงานเพิ่ม (DC) ที่สร้างแล้วจะแสดงที่นี่" />
-        ) : filteredBillings.length === 0 ? (
+        </Card>
+      ) : filteredBillings.length === 0 ? (
+        <Card>
           <EmptyState variant="no-results" title="ไม่พบรายการที่ตรงกับตัวกรอง" description="ลองเปลี่ยนหรือล้างตัวกรอง" />
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-1">
-              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={allVisibleSelected}
-                  onChange={toggleSelectAllVisible}
-                />
-                เลือกทั้งหมดที่แสดง ({filteredBillings.length})
-              </label>
-              {selectedVisible.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedIds(new Set())}
-                  className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
-                >
-                  เลือกแล้ว {selectedVisible.length} • ล้างที่เลือก
-                </button>
-              )}
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {selectedVisible.length > 0 && (
+            <div className="flex items-center justify-between rounded-xl bg-indigo-50 px-4 py-2 text-sm text-indigo-900 ring-1 ring-inset ring-indigo-100">
+              <span>เลือกแล้ว {selectedVisible.length} ใบ</span>
+              <button type="button" onClick={() => setSelectedIds(new Set())} className="font-medium text-indigo-700 hover:text-indigo-900">
+                ล้างที่เลือก
+              </button>
             </div>
-            {/* PM review queue first (oldest waiting at the top), everything else keeps its order. */}
-            {[...filteredBillings]
-              .sort((x, y) => {
-                const rx = x.status === 'pending_review' ? 0 : 1
-                const ry = y.status === 'pending_review' ? 0 : 1
-                if (rx !== ry) return rx - ry
-                if (rx === 0) return String(x.created_at || '').localeCompare(String(y.created_at || ''))
-                return 0
-              })
-              .map((bill) => {
-              const waitingDays =
-                bill.status === 'pending_review' && bill.created_at
-                  ? Math.floor((Date.now() - new Date(bill.created_at).getTime()) / 86_400_000)
-                  : null
-              const stale = waitingDays != null && waitingDays > 3
-              return (
-              <div
-                key={bill.id}
-                className={`flex gap-3 rounded-xl border bg-white p-4 shadow-sm hover:border-indigo-300 hover:shadow cursor-pointer transition ${
-                  selectedIds.has(bill.id) ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-slate-200'
-                }`}
-                onClick={() => handleRowClick(bill)}
-              >
-                <div className="flex items-start pt-1" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    aria-label={`เลือกใบเบิก #${bill.doc_no}`}
-                    checked={selectedIds.has(bill.id)}
-                    onChange={() => toggleSelected(bill.id)}
-                  />
-                </div>
-                <div className="min-w-0 flex-1 grid grid-cols-1 gap-3 lg:grid-cols-[130px_140px_150px_1fr_150px_120px_56px]">
-                  <div className="flex items-start">
-                    <div className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-md w-fit text-xs">
-                      #{bill.doc_no?.toString().padStart(4, '0')}
-                    </div>
-                  </div>
-                  <div className="text-slate-600 text-sm">
-                    {bill.billing_date ? new Date(bill.billing_date).toLocaleDateString('th-TH') : '-'}
-                  </div>
-                  <div>
-                    <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">
-                      {getJobTypeLabel(bill)}
-                    </span>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-slate-800">{bill.contractors?.name}</div>
-                    <div className="text-xs text-slate-500">{getPlotLabel(bill)}</div>
-                    <div className="mt-1 space-y-0.5 text-[11px] text-slate-600 leading-4">
-                      {getBriefJobLines(bill).map((line: string, idx: number) => (
-                        <div key={`${bill.id}-brief-${idx}`} className="truncate">{line}</div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="text-right font-bold text-emerald-600">฿{formatCurrency(bill.net_amount)}</div>
-                  <div className="flex flex-col items-start gap-1 lg:items-center">
-                    {getStatusChip(bill.status)}
-                    {waitingDays != null && (
-                      <span
-                        className={`inline-flex items-center gap-1 text-[11px] ${
-                          stale ? 'rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800 ring-1 ring-inset ring-amber-200' : 'text-slate-500'
-                        }`}
+          )}
+          <TableFrame>
+            <table>
+              <thead>
+                <tr>
+                  <th className="w-10">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      aria-label={`เลือกทั้งหมดที่แสดง (${filteredBillings.length})`}
+                      checked={allVisibleSelected}
+                      onChange={toggleSelectAllVisible}
+                    />
+                  </th>
+                  <th>เลขที่</th>
+                  <th>วันที่</th>
+                  <th>ประเภท</th>
+                  <th>ผู้รับเหมา / รายการ</th>
+                  <th className="text-right">ยอดสุทธิ</th>
+                  <th>สถานะ</th>
+                  <th className="w-12">
+                    <span className="sr-only">การทำงาน</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* PM review queue first (oldest waiting at the top), everything else keeps its order. */}
+                {[...filteredBillings]
+                  .sort((x, y) => {
+                    const rx = x.status === 'pending_review' ? 0 : 1
+                    const ry = y.status === 'pending_review' ? 0 : 1
+                    if (rx !== ry) return rx - ry
+                    if (rx === 0) return String(x.created_at || '').localeCompare(String(y.created_at || ''))
+                    return 0
+                  })
+                  .map((bill) => {
+                    const waitingDays =
+                      bill.status === 'pending_review' && bill.created_at
+                        ? Math.floor((Date.now() - new Date(bill.created_at).getTime()) / 86_400_000)
+                        : null
+                    const stale = waitingDays != null && waitingDays > 3
+                    return (
+                      <tr
+                        key={bill.id}
+                        onClick={() => handleRowClick(bill)}
+                        className={`cursor-pointer align-top ${selectedIds.has(bill.id) ? 'bg-indigo-50/50' : ''}`}
                       >
-                        {stale && <AlertTriangle className="h-3 w-3" aria-hidden />}
-                        รอมา {waitingDays} วัน
-                      </span>
-                    )}
-                    {bill.status === 'rejected' && bill.review_note && (
-                      <div className="text-[11px] text-red-600 lg:text-center" title={bill.review_note}>
-                        {bill.review_note}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex lg:justify-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleRowClick(bill)
-                      }}
-                      aria-label={bill.status === 'pending_review' ? `ตรวจสอบใบเบิก #${bill.doc_no}` : `ดูใบเบิก #${bill.doc_no}`}
-                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
-                    >
-                      {bill.status === 'pending_review' ? <Edit className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              )
-            })}
-          </div>
-        )}
-      </Card>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            aria-label={`เลือกใบเบิก #${bill.doc_no}`}
+                            checked={selectedIds.has(bill.id)}
+                            onChange={() => toggleSelected(bill.id)}
+                          />
+                        </td>
+                        <td>
+                          <span className="whitespace-nowrap rounded-md border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700">
+                            #{bill.doc_no?.toString().padStart(4, '0')}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap text-slate-600">
+                          {bill.billing_date ? new Date(bill.billing_date).toLocaleDateString('th-TH') : '-'}
+                        </td>
+                        <td>
+                          <span className="inline-flex whitespace-nowrap rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">
+                            {getJobTypeLabel(bill)}
+                          </span>
+                        </td>
+                        <td className="min-w-[16rem]">
+                          <div className="font-semibold text-slate-800">{bill.contractors?.name}</div>
+                          <div className="text-xs text-slate-500">{getPlotLabel(bill)}</div>
+                          <div className="mt-1 space-y-0.5 text-[11px] leading-4 text-slate-600">
+                            {getBriefJobLines(bill).map((line: string, idx: number) => (
+                              <div key={`${bill.id}-brief-${idx}`} className="max-w-xs truncate">{line}</div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap text-right font-bold tabular-nums text-emerald-700">฿{formatCurrency(bill.net_amount)}</td>
+                        <td>
+                          <div className="flex flex-col items-start gap-1">
+                            {getStatusChip(bill.status)}
+                            {waitingDays != null && (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[11px] ${
+                                  stale ? 'rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800 ring-1 ring-inset ring-amber-200' : 'text-slate-500'
+                                }`}
+                              >
+                                {stale && <AlertTriangle className="h-3 w-3" aria-hidden />}
+                                รอมา {waitingDays} วัน
+                              </span>
+                            )}
+                            {bill.status === 'rejected' && bill.review_note && (
+                              <div className="max-w-[12rem] truncate text-[11px] text-red-700" title={bill.review_note}>
+                                {bill.review_note}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => handleRowClick(bill)}
+                            aria-label={bill.status === 'pending_review' ? `ตรวจสอบใบเบิก #${bill.doc_no}` : `ดูใบเบิก #${bill.doc_no}`}
+                            title={bill.status === 'pending_review' ? 'ตรวจสอบ' : 'ดูรายละเอียด'}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-indigo-50 hover:text-indigo-700"
+                          >
+                            {bill.status === 'pending_review' ? <Edit className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+              </tbody>
+            </table>
+          </TableFrame>
+        </div>
+      )}
 
       <BillingModal
         billingId={selectedBillingId}

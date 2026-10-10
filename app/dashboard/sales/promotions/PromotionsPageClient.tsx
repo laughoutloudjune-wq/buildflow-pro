@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import ActionMenu from '@/components/ui/ActionMenu'
 import { ArrowLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
@@ -217,20 +218,13 @@ export default function PromotionsPageClient({
                         <td className="py-1.5 pr-2 text-right font-medium text-slate-700">฿{formatCurrency(item.value)}</td>
                         {canManage && (
                           <td className="py-1.5 pl-2 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button type="button" onClick={() => openEditItem(bundle.id, item)} aria-label={`แก้ไข ${item.name}`} title="แก้ไข" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setDeleteItemTarget({ bundleId: bundle.id, item })}
-                                aria-label={`ลบ ${item.name}`}
-                                title="ลบ"
-                                className="rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
+                            <ActionMenu
+                              label={`ตัวเลือกของ ${item.name}`}
+                              items={[
+                                { label: 'แก้ไข', icon: <Pencil />, onClick: () => openEditItem(bundle.id, item) },
+                                { label: 'ลบ', icon: <Trash2 />, danger: true, onClick: () => setDeleteItemTarget({ bundleId: bundle.id, item }) },
+                              ]}
+                            />
                           </td>
                         )}
                       </tr>

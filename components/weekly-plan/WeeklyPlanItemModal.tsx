@@ -385,6 +385,7 @@ export default function WeeklyPlanItemModal({
         isOpen
         onClose={onClose}
         title="แก้ไขรายการ"
+        placement="right"
         panelClassName="max-w-2xl"
         footer={
           <div className="flex justify-end gap-2">
@@ -457,6 +458,7 @@ export default function WeeklyPlanItemModal({
       isOpen
       onClose={onClose}
       title="เพิ่มรายการแผนงาน"
+      placement="right"
       panelClassName="max-w-4xl"
       footer={
         <div className="space-y-2">

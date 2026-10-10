@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
+import ActionMenu from '@/components/ui/ActionMenu'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Tags, Trash2, Upload, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -516,33 +517,15 @@ export default function MaterialTypesPageClient({
                         : '-'}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => openEditModal(material)}
-                        disabled={isPending}
-                        className="rounded-lg p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
-                        title="แก้ไข"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      {material.is_active ? (
-                        <button
-                          onClick={() => setDeactivateTarget(material)}
-                          disabled={isPending}
-                          className="rounded-lg p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
-                          title="ปิดใช้งาน"
-                        >
-                          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleReactivate(material)}
-                          disabled={isPending}
-                          className="rounded-lg p-1 text-slate-300 transition hover:bg-emerald-50 hover:text-emerald-600"
-                          title="เปิดใช้งานอีกครั้ง"
-                        >
-                          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                        </button>
-                      )}
+                      <ActionMenu
+                        label={`ตัวเลือกของ ${material.name}`}
+                        items={[
+                          { label: 'แก้ไข', icon: <Pencil />, disabled: isPending, onClick: () => openEditModal(material) },
+                          material.is_active
+                            ? { label: 'ปิดใช้งาน', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeactivateTarget(material) }
+                            : { label: 'เปิดใช้งานอีกครั้ง', icon: <RotateCcw />, disabled: isPending, onClick: () => handleReactivate(material) },
+                        ]}
+                      />
                     </td>
                   </tr>
                 ))

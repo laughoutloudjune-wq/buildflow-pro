@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useMemo, useState } from 'react'
+import { TableFrame } from '@/components/ui/TableFrame'
 import Link from 'next/link'
 import { ChevronDown, ChevronRight, Download, Loader2, Search } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
@@ -191,7 +192,7 @@ export default function QtyControlTab({
           {rows.length === 0 ? 'ยังไม่มีข้อมูล BOQ หรือการซื้อในขอบเขตนี้' : 'ไม่พบวัสดุตามเงื่อนไขที่เลือก'}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200">
+        <TableFrame>
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs font-medium text-slate-500">
               <tr>
@@ -313,7 +314,7 @@ export default function QtyControlTab({
               })}
             </tbody>
           </table>
-        </div>
+        </TableFrame>
       )}
 
       {outsideBoq.length > 0 && (

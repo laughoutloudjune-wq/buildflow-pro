@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Building2, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
@@ -175,32 +176,14 @@ export default function SuppliersPageClient({
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-0.5">
-                        <button
-                          onClick={() => setBranchesFor(supplier)}
-                          disabled={isPending}
-                          className="rounded-lg p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
-                          title="จัดการสาขา"
-                        >
-                          <Building2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => openEditModal(supplier)}
-                          disabled={isPending}
-                          className="rounded-lg p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
-                          title="แก้ไข"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        {supplier.is_active && (
-                          <button
-                            onClick={() => setDeactivateTarget(supplier)}
-                            disabled={isPending}
-                            className="rounded-lg p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
-                            title="ปิดใช้งาน"
-                          >
-                            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                          </button>
-                        )}
+                        <ActionMenu
+                          label={`ตัวเลือกของ ${supplier.name}`}
+                          items={[
+                            { label: 'จัดการสาขา', icon: <Building2 />, disabled: isPending, onClick: () => setBranchesFor(supplier) },
+                            { label: 'แก้ไข', icon: <Pencil />, disabled: isPending, onClick: () => openEditModal(supplier) },
+                            ...(supplier.is_active ? [{ label: 'ปิดใช้งาน', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeactivateTarget(supplier) }] : []),
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

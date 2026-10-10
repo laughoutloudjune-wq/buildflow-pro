@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { updatePlotMapPosition, uploadSitePlan } from '@/actions/sales-actions'
 import PlotDetailModal from '@/components/plots/PlotDetailModal'
+import PlotQuickPanel, { type PlotQuickSummary } from '@/components/plots/PlotQuickPanel'
 import type { PlotDetailTab } from '@/app/dashboard/projects/[id]/[plotId]/PlotDetailPageClient'
 
 const MAX_BYTES = 1_900_000 // margin under the assets bucket's 2 MB cap
@@ -83,6 +84,8 @@ export type SitePlanMarker = {
   mapX: number | null
   mapY: number | null
   dimmed?: boolean
+  /** Facts shown in the side panel when this marker is selected. */
+  summary?: PlotQuickSummary
 }
 
 /**
@@ -128,6 +131,7 @@ export default function SitePlanMap({
   const [isUploading, setIsUploading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [viewPlotId, setViewPlotId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
     setPositions(
@@ -135,6 +139,7 @@ export default function SitePlanMap({
     )
   }, [markers])
 
+  const selectedMarker = markers.find((m) => m.id === selectedId) ?? null
   const placedMarkers = markers.filter((m) => positions[m.id])
   const unplacedMarkers = markers.filter((m) => !positions[m.id])
 
@@ -247,9 +252,25 @@ export default function SitePlanMap({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
-      {sidePanel && <div className="lg:col-start-2 lg:row-start-1">{sidePanel}</div>}
-      <Card className={`overflow-hidden p-0 ${sidePanel ? 'lg:col-start-1 lg:row-span-2 lg:row-start-1' : ''}`}>
+    <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+      <div className="space-y-3 lg:col-start-2 lg:row-start-1">
+        {selectedMarker && !editMode && (
+          <PlotQuickPanel
+            title={selectedMarker.label}
+            subtitle={selectedMarker.meta}
+            summary={selectedMarker.summary}
+            detailHref={`/dashboard/projects/${projectId}/${selectedMarker.id}`}
+            onClose={() => setSelectedId(null)}
+            actions={
+              <Button type="button" size="sm" onClick={() => setViewPlotId(selectedMarker.id)}>
+                ดูรายละเอียดเต็ม
+              </Button>
+            }
+          />
+        )}
+        {sidePanel}
+      </div>
+      <Card className="overflow-hidden p-0 lg:col-start-1 lg:row-span-2 lg:row-start-1">
         {canEdit && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5">
             <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-indigo-600">
@@ -300,11 +321,11 @@ export default function SitePlanMap({
                 onClick={(e) => {
                   if (editMode) return
                   e.stopPropagation()
-                  setViewPlotId(m.id)
+                  setSelectedId((cur) => (cur === m.id ? null : m.id))
                 }}
-                className={`absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[10px] font-bold text-white shadow ring-2 ring-white transition-opacity ${m.colorClass} ${
-                  m.dimmed ? 'opacity-30' : 'opacity-100'
-                } ${editMode ? 'cursor-move' : 'cursor-pointer'}`}
+                className={`absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[10px] font-bold text-white shadow transition-[opacity,box-shadow] ${m.colorClass} ${
+                  selectedId === m.id ? 'z-10 ring-4 ring-indigo-500 ring-offset-2 ring-offset-white' : 'ring-2 ring-white'
+                } ${m.dimmed ? 'opacity-30' : 'opacity-100'} ${editMode ? 'cursor-move' : 'cursor-pointer'}`}
                 style={{ left: `${pos.mapX * 100}%`, top: `${pos.mapY * 100}%` }}
                 title={m.meta ? `${m.label} - ${m.meta}` : m.label}
               >
@@ -327,7 +348,7 @@ export default function SitePlanMap({
         </div>
       </Card>
 
-      <div className={`space-y-3 ${sidePanel ? 'lg:col-start-2 lg:row-start-2' : 'lg:sticky lg:top-4 lg:self-start'}`}>
+      <div className="space-y-3 lg:col-start-2 lg:row-start-2">
         {isSaving && (
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <Loader2 className="h-3 w-3 animate-spin" /> กำลังบันทึก...

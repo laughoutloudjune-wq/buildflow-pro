@@ -13,7 +13,6 @@ import { TableFrame } from '@/components/ui/TableFrame'
 import { EmptyState } from '@/components/ui/EmptyState'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import PurchaseRequestDetail, {
   isPartiallyOrdered,
   partiallyOrderedHint,
@@ -51,7 +50,6 @@ export default function PurchaseRequestsPageClient({
   const { theme } = useDepartment()
   const [filter, setFilter] = useState<PurchaseRequestStatus | 'all'>('all')
   const [search, setSearch] = useState('')
-  const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   // Looked up from `requests` (not the status-filtered `filtered` list) so
   // an approve/reject inside the modal that moves the request out of the
@@ -102,7 +100,7 @@ export default function PurchaseRequestsPageClient({
         title="คำขอซื้อ (PR)"
         subtitle="คำขอซื้อที่ส่งเข้ามา รอตรวจสอบและอนุมัติก่อนออกใบสั่งซื้อ"
         actions={
-          <Button onClick={() => setIsModalOpen(true)}>
+          <Button onClick={() => router.push('/dashboard/procurement/requests/create')}>
             <Plus className="h-4 w-4" /> สร้างคำขอซื้อ
           </Button>
         }
@@ -238,17 +236,6 @@ export default function PurchaseRequestsPageClient({
           </table>
         </TableFrame>
       )}
-
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="สร้างคำขอซื้อ" panelClassName="max-w-2xl">
-        <PurchaseRequestForm
-          mode="create"
-          onCancel={() => setIsModalOpen(false)}
-          onSaved={() => {
-            setIsModalOpen(false)
-            router.refresh()
-          }}
-        />
-      </Modal>
 
       <Modal
         isOpen={selectedRequest != null}

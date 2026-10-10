@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { TableFrame } from '@/components/ui/TableFrame'
 import { formatCurrency } from '@/lib/currency'
 import { PO_STATUS_LABEL } from '@/lib/status-labels'
 import type { MaterialsSummaryRow } from '@/actions/procurement/materials-summary'
@@ -18,7 +19,7 @@ export default function MaterialCostTab({ rows }: { rows: MaterialsSummaryRow[] 
   }
 
   return (
-    <div className="max-h-[55vh] overflow-y-auto rounded-lg border border-slate-200">
+    <TableFrame stickyHeader maxHeight="55vh">
       <table className="w-full text-left text-sm">
         <thead className="sticky top-0 bg-slate-50 text-xs font-medium text-slate-500">
           <tr>
@@ -65,6 +66,6 @@ export default function MaterialCostTab({ rows }: { rows: MaterialsSummaryRow[] 
           </tr>
         </tfoot>
       </table>
-    </div>
+    </TableFrame>
   )
 }

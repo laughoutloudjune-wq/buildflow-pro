@@ -1,5 +1,9 @@
+'use client'
+
 import { Calendar, Tag, User } from 'lucide-react'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 import { Card } from '@/components/ui/Card'
+import { PageSection } from '@/components/ui/PageSection'
 import { formatCurrency } from '@/lib/currency'
 import { statusColorClasses } from '@/lib/sales/statusColors'
 import PlotProgressCurveChart, { buildSaleMarkers } from '@/components/plots/PlotProgressCurveChart'
@@ -49,6 +53,7 @@ export default function PlotOverviewTab({
   phaseSchedule: PlotPhaseScheduleRow[]
   canEditConstruction: boolean
 }) {
+  const { theme } = useDepartment()
   const sale = saleDetail.sale
   const c = statusColorClasses(sale?.statusColor)
   const setDates = DATE_FIELDS.filter((f) => sale?.[f.key])
@@ -56,7 +61,8 @@ export default function PlotOverviewTab({
   const promotionTotal = promotionItems.reduce((sum, i) => sum + i.value, 0)
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="space-y-8">
+      <PageSection title="การขาย" description="สถานะดีล ลูกค้า ราคา และวันสำคัญ">
       <Card className="p-5">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-700">สถานะการขาย</h3>
@@ -126,6 +132,10 @@ export default function PlotOverviewTab({
         )}
       </Card>
 
+      </PageSection>
+
+      <PageSection title="การก่อสร้าง" description="ความคืบหน้า กราฟแผนเทียบจริง และแผนงานตามเฟส">
+      <div className="grid gap-4 md:grid-cols-2">
       <Card className="p-5">
         <h3 className="text-sm font-semibold text-slate-700">ความคืบหน้าก่อสร้าง</h3>
         <div className="mt-4 flex items-baseline gap-2">
@@ -133,7 +143,7 @@ export default function PlotOverviewTab({
           <span className="text-sm text-slate-500">งานเสร็จ</span>
         </div>
         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-indigo-500 transition-[width] duration-[220ms] ease-out" style={{ width: `${progressPercent}%` }} />
+          <div className={`h-full rounded-full ${theme.solid} transition-[width] duration-[220ms] ease-out`} style={{ width: `${progressPercent}%` }} />
         </div>
         <div className="mt-1 text-right text-xs text-slate-500">{progressPercent}%</div>
         {!canSeeCost && (
@@ -168,6 +178,8 @@ export default function PlotOverviewTab({
           </div>
         </Card>
       )}
+      </div>
+      </PageSection>
     </div>
   )
 }

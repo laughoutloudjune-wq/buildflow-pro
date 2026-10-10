@@ -31,6 +31,7 @@ import {
   WEEKLY_PLAN_KINDS,
   WEEK_DAY_LABELS,
 } from '@/lib/weekly-plan'
+import ActionMenu from '@/components/ui/ActionMenu'
 import WeeklyPlanItemModal from './WeeklyPlanItemModal'
 
 /** Latest filled-in value of a Mon..Sun % row. */
@@ -123,26 +124,13 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
         {item.note && <p className="mt-0.5 text-xs text-slate-500">{item.note}</p>}
       </div>
       {canEdit(item) && (
-        <div className="flex shrink-0 gap-1">
-          <button
-            type="button"
-            onClick={() => setModal({ open: true, item })}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-            aria-label="แก้ไข"
-          >
-            <Pencil className="h-4 w-4" />
-          </button>
-          {!isAgreed(item.weekStart) && (
-            <button
-              type="button"
-              onClick={() => setDeleting([item])}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
-              aria-label="ลบ"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+        <ActionMenu
+          label={`ตัวเลือก: ${item.title}`}
+          items={[
+            { label: 'แก้ไขรายการ', icon: <Pencil />, onClick: () => setModal({ open: true, item }) },
+            ...(!isAgreed(item.weekStart) ? [{ label: 'ลบรายการ', icon: <Trash2 />, danger: true, onClick: () => setDeleting([item]) }] : []),
+          ]}
+        />
       )}
     </li>
   )

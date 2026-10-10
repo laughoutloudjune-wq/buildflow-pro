@@ -3,12 +3,15 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { AlertTriangle, LayoutGrid, List, Loader2, Map as MapIcon, Pencil, Tag, Upload } from 'lucide-react'
+import { AlertTriangle, ExternalLink, LayoutGrid, List, Loader2, Map as MapIcon, Pencil, Tag, Upload } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { TableFrame } from '@/components/ui/TableFrame'
+import ActionMenu from '@/components/ui/ActionMenu'
+import PlotQuickPanel from '@/components/plots/PlotQuickPanel'
 import NoticeBanner from '@/components/ui/NoticeBanner'
 import { useDepartment } from '@/components/layout/DepartmentContext'
 import { useToast } from '@/components/ui/Toast'
@@ -117,6 +120,7 @@ export default function SalesBoardPageClient({
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
+  const [selectedPlotId, setSelectedPlotId] = useState<string | null>(null)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -170,6 +174,7 @@ export default function SalesBoardPageClient({
     return Array.from(groups.values())
   }, [filteredBoard])
 
+  const selectedRow = selectedPlotId ? filteredBoard.find((r) => r.plot_id === selectedPlotId) ?? null : null
   const editingRow = editTarget ? board.find((r) => r.plot_id === editTarget.plotId) || null : null
 
   async function handleStatusSave(formData: FormData) {
@@ -367,6 +372,8 @@ export default function SalesBoardPageClient({
             <span className="ml-auto pb-2 text-xs text-slate-500">{filteredBoard.length} / {board.length} แปลง</span>
           </Card>
 
+          <div className={selectedRow && view !== 'map' ? 'grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]' : ''}>
+          <div className="min-w-0">
           {view === 'cards' ? (
             <div className="space-y-6">
               {grouped.map((group) => (
@@ -377,25 +384,31 @@ export default function SalesBoardPageClient({
                       const c = statusColorClasses(row.status_color)
                       const milestone = latestMilestone(row)
                       return (
-                        <Card key={row.plot_id} className="p-4">
+                        <Card
+                          key={row.plot_id}
+                          className={`cursor-pointer p-4 transition ${selectedPlotId === row.plot_id ? 'ring-2 ring-indigo-400' : 'hover:border-slate-300'}`}
+                          onClick={() => setSelectedPlotId((cur) => (cur === row.plot_id ? null : row.plot_id))}
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <Link
                                 href={`/dashboard/projects/${scope.projectId}/${row.plot_id}`}
+                                onClick={(e) => e.stopPropagation()}
                                 className="font-bold text-slate-800 hover:text-indigo-600"
                               >
                                 {row.plot_name}
                               </Link>
                               <div className="text-xs text-slate-500">{row.house_model_name || 'ไม่ระบุแบบ'}</div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => setEditTarget({ plotId: row.plot_id, plotName: row.plot_name })}
-                              className="rounded-lg p-1 text-slate-300 hover:bg-indigo-50 hover:text-indigo-600"
-                              title="เปลี่ยนสถานะ"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <ActionMenu
+                                label={`ตัวเลือกของแปลง ${row.plot_name}`}
+                                items={[
+                                  { label: 'เปลี่ยนสถานะ', icon: <Pencil />, onClick: () => setEditTarget({ plotId: row.plot_id, plotName: row.plot_name }) },
+                                  { label: 'เปิดหน้ารายละเอียด', icon: <ExternalLink />, href: `/dashboard/projects/${scope.projectId}/${row.plot_id}` },
+                                ]}
+                              />
+                            </div>
                           </div>
 
                           <div className="mt-2">
@@ -422,7 +435,7 @@ export default function SalesBoardPageClient({
                             </div>
                             <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                               <div
-                                className="h-full rounded-full bg-indigo-500 transition-[width] duration-[220ms] ease-out"
+                                className={`h-full rounded-full ${theme.solid} transition-[width] duration-[220ms] ease-out`}
                                 style={{ width: `${Math.max(0, Math.min(100, row.progress_percent))}%` }}
                               />
                             </div>
@@ -438,71 +451,76 @@ export default function SalesBoardPageClient({
               )}
             </div>
           ) : view === 'table' ? (
-            <Card className="overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-700 border-b">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">แปลง</th>
-                      <th className="px-4 py-3 font-semibold">กลุ่ม</th>
-                      <th className="px-4 py-3 font-semibold">แบบบ้าน</th>
-                      <th className="px-4 py-3 font-semibold">สถานะ</th>
-                      <th className="px-4 py-3 font-semibold">ลูกค้า</th>
-                      <th className="px-4 py-3 font-semibold">พนักงานขาย</th>
-                      <th className="px-4 py-3 font-semibold text-right">ราคาขาย</th>
-                      <th className="px-4 py-3 font-semibold text-right">ก่อสร้าง</th>
-                      <th className="px-4 py-3 font-semibold w-[60px]" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {filteredBoard.map((row) => {
-                      const c = statusColorClasses(row.status_color)
-                      return (
-                        <tr key={row.plot_id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-4 py-3">
-                            <Link
-                              href={`/dashboard/projects/${scope.projectId}/${row.plot_id}`}
-                              className="font-medium text-slate-800 hover:text-indigo-600"
-                            >
-                              {row.plot_name}
-                            </Link>
-                          </td>
-                          <td className="px-4 py-3 text-slate-500">{row.plot_group_name || '—'}</td>
-                          <td className="px-4 py-3 text-slate-500">{row.house_model_name || '—'}</td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${c.chip}`}>
-                              <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
-                              {row.status_label}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">{row.customer_name || '—'}</td>
-                          <td className="px-4 py-3 text-slate-500">{row.sales_rep_name || '—'}</td>
-                          <td className="px-4 py-3 text-right font-medium text-slate-700">
-                            {row.sale_price != null ? `฿${formatCurrency(row.sale_price)}` : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-right text-slate-500">
-                            {row.jobs_done}/{row.jobs_total} · {Math.round(row.progress_percent)}%
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => setEditTarget({ plotId: row.plot_id, plotName: row.plot_name })}
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
-                              title="เปลี่ยนสถานะ"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-                {filteredBoard.length === 0 && (
-                  <div className="py-12 text-center text-slate-500">ไม่พบแปลงตามตัวกรองนี้</div>
-                )}
-              </div>
-            </Card>
+            <TableFrame>
+              <table>
+                <thead>
+                  <tr>
+                    <th>แปลง</th>
+                    <th>กลุ่ม</th>
+                    <th>แบบบ้าน</th>
+                    <th>สถานะ</th>
+                    <th>ลูกค้า</th>
+                    <th>พนักงานขาย</th>
+                    <th className="text-right">ราคาขาย</th>
+                    <th className="text-right">ก่อสร้าง</th>
+                    <th className="w-12">
+                      <span className="sr-only">ตัวเลือก</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBoard.map((row) => {
+                    const c = statusColorClasses(row.status_color)
+                    return (
+                      <tr
+                        key={row.plot_id}
+                        onClick={() => setSelectedPlotId((cur) => (cur === row.plot_id ? null : row.plot_id))}
+                        className={`cursor-pointer ${selectedPlotId === row.plot_id ? 'bg-indigo-50/60' : ''}`}
+                        aria-selected={selectedPlotId === row.plot_id}
+                      >
+                        <td>
+                          <Link
+                            href={`/dashboard/projects/${scope.projectId}/${row.plot_id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-medium text-slate-800 hover:text-indigo-600"
+                          >
+                            {row.plot_name}
+                          </Link>
+                        </td>
+                        <td className="text-slate-500">{row.plot_group_name || '—'}</td>
+                        <td className="text-slate-500">{row.house_model_name || '—'}</td>
+                        <td>
+                          <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${c.chip}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
+                            {row.status_label}
+                          </span>
+                        </td>
+                        <td className="text-slate-600">{row.customer_name || '—'}</td>
+                        <td className="text-slate-500">{row.sales_rep_name || '—'}</td>
+                        <td className="whitespace-nowrap text-right font-medium tabular-nums text-slate-700">
+                          {row.sale_price != null ? `฿${formatCurrency(row.sale_price)}` : '—'}
+                        </td>
+                        <td className="whitespace-nowrap text-right tabular-nums text-slate-500">
+                          {row.jobs_done}/{row.jobs_total} · {Math.round(row.progress_percent)}%
+                        </td>
+                        <td onClick={(e) => e.stopPropagation()} className="text-center">
+                          <ActionMenu
+                            label={`ตัวเลือกของแปลง ${row.plot_name}`}
+                            items={[
+                              { label: 'เปลี่ยนสถานะ', icon: <Pencil />, onClick: () => setEditTarget({ plotId: row.plot_id, plotName: row.plot_name }) },
+                              { label: 'เปิดหน้ารายละเอียด', icon: <ExternalLink />, href: `/dashboard/projects/${scope.projectId}/${row.plot_id}` },
+                            ]}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              {filteredBoard.length === 0 && (
+                <div className="py-12 text-center text-slate-500">ไม่พบแปลงตามตัวกรองนี้</div>
+              )}
+            </TableFrame>
           ) : sitePlanData ? (
             <SalesMapView
               projectId={scope.projectId}
@@ -511,6 +529,49 @@ export default function SalesBoardPageClient({
               visiblePlotIds={new Set(filteredBoard.map((r) => r.plot_id))}
             />
           ) : null}
+          </div>
+          {selectedRow && view !== 'map' && (
+            <div className="xl:sticky xl:top-20">
+              <PlotQuickPanel
+                title={selectedRow.plot_name}
+                subtitle={selectedRow.house_model_name || 'ไม่ระบุแบบ'}
+                detailHref={`/dashboard/projects/${scope.projectId}/${selectedRow.plot_id}`}
+                onClose={() => setSelectedPlotId(null)}
+                summary={{
+                  status: (
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${statusColorClasses(selectedRow.status_color).chip}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${statusColorClasses(selectedRow.status_color).dot}`} />
+                      {selectedRow.status_label}
+                    </span>
+                  ),
+                  lines: [
+                    { label: 'ลูกค้า', value: selectedRow.customer_name || 'ยังไม่มีลูกค้า' },
+                    { label: 'พนักงานขาย', value: selectedRow.sales_rep_name || '—' },
+                    {
+                      label: selectedRow.sale_price != null ? 'ราคาขาย' : 'ราคาตั้ง',
+                      value:
+                        selectedRow.sale_price != null
+                          ? `฿${formatCurrency(selectedRow.sale_price)}`
+                          : selectedRow.list_price != null
+                            ? `฿${formatCurrency(selectedRow.list_price)}`
+                            : '—',
+                    },
+                    ...(latestMilestone(selectedRow)
+                      ? [{ label: latestMilestone(selectedRow)!.label, value: formatDate(latestMilestone(selectedRow)!.date) }]
+                      : []),
+                  ],
+                  progressPercent: selectedRow.progress_percent,
+                  progressLabel: `${selectedRow.jobs_done}/${selectedRow.jobs_total} งาน · ${Math.round(selectedRow.progress_percent)}%`,
+                }}
+                actions={
+                  <Button type="button" size="sm" onClick={() => setEditTarget({ plotId: selectedRow.plot_id, plotName: selectedRow.plot_name })}>
+                    <Pencil className="h-3.5 w-3.5" /> เปลี่ยนสถานะ
+                  </Button>
+                }
+              />
+            </div>
+          )}
+          </div>
         </>
       )}
 

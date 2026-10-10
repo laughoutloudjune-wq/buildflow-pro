@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Pencil, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -95,12 +96,13 @@ export default function ContractorTypesPageClient({
                   <td className="px-4 py-3 font-medium text-slate-800">{type.name}</td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => handleOpenModal(type)} className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50">
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button onClick={() => setDeleteTarget(type)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50" disabled={isPending}>
-                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                      </button>
+                      <ActionMenu
+                        label={`ตัวเลือกของ ${type.name}`}
+                        items={[
+                          { label: 'แก้ไข', icon: <Pencil />, onClick: () => handleOpenModal(type) },
+                          { label: 'ลบ', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeleteTarget(type) },
+                        ]}
+                      />
                     </div>
                   </td>
                 </tr>

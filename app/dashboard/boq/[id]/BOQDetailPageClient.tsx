@@ -1,8 +1,9 @@
 'use client'
 
 import { Fragment, useMemo, useState, useTransition } from 'react'
+import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes, Upload, PackageSearch, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes, Upload, PackageSearch, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -22,6 +23,7 @@ import { getContractorTypes } from '@/actions/contractor-type-actions'
 import type { HouseModelPhaseTemplateRow } from '@/actions/house-model-phase-template'
 import { formatCurrency } from '@/lib/currency'
 import { TableFrame } from '@/components/ui/TableFrame'
+import { PageSection } from '@/components/ui/PageSection'
 
 type HouseModel = Awaited<ReturnType<typeof getHouseModelById>>
 type BOQItem = Awaited<ReturnType<typeof getBOQItems>>[number]
@@ -312,20 +314,13 @@ export default function BOQDetailPageClient({
         </dl>
       </Card>
 
+      <PageSection title="รายการงาน BOQ" description="จัดกลุ่มตามประเภทช่าง ราคากลางต่อหน่วยและยอดรวม">
       <PageToolbar
         search={{ value: search, onChange: setSearch, placeholder: 'ค้นหารายการงาน...' }}
         resultCount={filteredItems.length}
         activeFilters={search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []}
         onReset={() => setSearch('')}
       />
-
-      {/* เทมเพลตแผนงาน - ใช้สร้างกำหนดการให้ทุกแปลงของแบบบ้านนี้อัตโนมัติ */}
-      <Card className="p-5">
-        <h3 className="text-sm font-semibold text-slate-700">เทมเพลตแผนงาน (สร้างกำหนดการให้แปลงอัตโนมัติตอนดึง BOQ)</h3>
-        <div className="mt-3">
-          <HouseModelPhaseTemplateEditor houseModelId={id} usedTypes={usedTypes} template={phaseTemplate} canEdit />
-        </div>
-      </Card>
 
       {/* ตาราง BOQ - จัดกลุ่มตามประเภทช่าง */}
       <TableFrame>
@@ -387,30 +382,14 @@ export default function BOQDetailPageClient({
                               ฿{formatCurrency(item.total_price || 0)}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <button
-                                onClick={() => setMaterialsBoqItem({ id: item.id, item_name: item.item_name })}
-                                disabled={isPending}
-                                className="rounded-lg p-1 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition"
-                                title="วัสดุที่ใช้ในงานนี้"
-                              >
-                                <Boxes className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => openEditModal(item)}
-                                disabled={isPending}
-                                className="rounded-lg p-1 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition"
-                                title="แก้ไข"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => setDeleteTarget(item)}
-                                disabled={isPending}
-                                className="rounded-lg p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 transition"
-                                title="ลบ"
-                              >
-                                {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-                              </button>
+                              <ActionMenu
+                                label={`ตัวเลือกของ ${item.item_name}`}
+                                items={[
+                                  { label: 'วัสดุที่ใช้ในงานนี้', icon: <Boxes />, disabled: isPending, onClick: () => setMaterialsBoqItem({ id: item.id, item_name: item.item_name }) },
+                                  { label: 'แก้ไข', icon: <Pencil />, disabled: isPending, onClick: () => openEditModal(item) },
+                                  { label: 'ลบรายการ', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeleteTarget(item) },
+                                ]}
+                              />
                             </td>
                           </tr>
                         ))}
@@ -432,6 +411,13 @@ export default function BOQDetailPageClient({
           </table>
         
       </TableFrame>
+      </PageSection>
+
+      <PageSection title="แผนงานของแบบบ้าน" description="เทมเพลตกำหนดการ ใช้สร้างกำหนดการให้แปลงอัตโนมัติตอนดึง BOQ">
+        <Card className="p-5">
+          <HouseModelPhaseTemplateEditor houseModelId={id} usedTypes={usedTypes} template={phaseTemplate} canEdit />
+        </Card>
+      </PageSection>
 
       {/* Modal เพิ่มรายการ */}
       <Modal

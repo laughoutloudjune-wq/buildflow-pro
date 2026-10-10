@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { TableFrame } from '@/components/ui/TableFrame'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, ArrowRight, Layers, Loader2 } from 'lucide-react'
@@ -224,7 +225,7 @@ export default function CombineRequestsForm({
             ไม่มีรายการที่ยังสั่งซื้อได้ในโครงการนี้ (คำขอซื้อต้องอนุมัติแล้วและมียอดคงเหลือ)
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-100">
+          <TableFrame>
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50">
                 <tr className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -279,7 +280,7 @@ export default function CombineRequestsForm({
                 })}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         )}
       </Card>
 

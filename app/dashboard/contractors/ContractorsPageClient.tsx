@@ -11,6 +11,7 @@ import { PageToolbar } from '@/components/ui/PageToolbar'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useDepartment } from '@/components/layout/DepartmentContext'
 import Modal from '@/components/ui/Modal'
+import ActionMenu from '@/components/ui/ActionMenu'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { createContractor, deleteContractor, updateContractor, getContractorApprovedHistory } from '@/actions/contractor-actions'
 import { formatCurrency } from '@/lib/currency'
@@ -24,6 +25,11 @@ type Contractor = {
   tax_id: string
   total_paid: number
   total_retention: number
+  active_jobs: number
+  waiting_review_count: number
+  waiting_payout_count: number
+  waiting_payout_amount: number
+  last_paid_at: string | null
   contractor_types: { name: string } | null
 }
 
@@ -236,15 +242,36 @@ export default function ContractorsPageClient({
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => openModal(c)} aria-label={`แก้ไข ${c.name}`} title="แก้ไข" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => setDeleteTarget(c)} disabled={isPending} aria-label={`ลบ ${c.name}`} title="ลบ" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600">
-                    {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  </button>
-                </div>
+                <ActionMenu
+                  label={`ตัวเลือกของ ${c.name}`}
+                  items={[
+                    { label: 'แก้ไขข้อมูล', icon: <Pencil />, onClick: () => openModal(c) },
+                    { label: 'ประวัติการจ่าย', icon: <Wallet />, onClick: () => openHistory(c) },
+                    { label: 'เงินประกันสะสม', icon: <ShieldCheck />, onClick: () => openRetention(c) },
+                    { label: 'ลบผู้รับเหมา', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeleteTarget(c) },
+                  ]}
+                />
               </div>
+
+              {/* Workload and payment cycle: what is happening with this contractor right now. */}
+              <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg bg-slate-50 px-2 py-2">
+                  <dt className="text-[11px] text-slate-500">งานที่ทำอยู่</dt>
+                  <dd className="text-base font-semibold tabular-nums text-slate-800">{c.active_jobs}</dd>
+                </div>
+                <div className={`rounded-lg px-2 py-2 ${c.waiting_review_count > 0 ? 'bg-amber-50' : 'bg-slate-50'}`}>
+                  <dt className="text-[11px] text-slate-500">รอ PM ตรวจ</dt>
+                  <dd className={`text-base font-semibold tabular-nums ${c.waiting_review_count > 0 ? 'text-amber-800' : 'text-slate-800'}`}>{c.waiting_review_count}</dd>
+                </div>
+                <div className={`rounded-lg px-2 py-2 ${c.waiting_payout_count > 0 ? 'bg-blue-50' : 'bg-slate-50'}`}>
+                  <dt className="text-[11px] text-slate-500">รอจ่ายเงิน</dt>
+                  <dd className={`text-base font-semibold tabular-nums ${c.waiting_payout_count > 0 ? 'text-blue-800' : 'text-slate-800'}`}>{c.waiting_payout_count}</dd>
+                </div>
+              </dl>
+              <p className="mt-2 text-xs text-slate-500">
+                {c.waiting_payout_count > 0 ? `ค้างจ่าย ฿${formatCurrency(c.waiting_payout_amount)} · ` : ''}
+                {c.last_paid_at ? `จ่ายล่าสุด ${new Date(c.last_paid_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}` : 'ยังไม่เคยจ่ายเงิน'}
+              </p>
 
               <div className="space-y-2 text-sm text-slate-500 mt-4 pt-4 border-t border-slate-50">
                 <button

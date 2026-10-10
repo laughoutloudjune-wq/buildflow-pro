@@ -47,11 +47,62 @@ export async function getContractors() {
     }
   }
 
-  return (data || []).map((contractor) => ({
-    ...contractor,
-    total_paid: paidByContractor.get(String(contractor.id)) || 0,
-    total_retention: retentionByContractor.get(String(contractor.id)) || 0,
-  }))
+  // Workload and payment-cycle context for the contractor cards: how many
+  // jobs are being worked now, how many claims wait on the PM, how many are
+  // approved but not yet paid out, and when the last payout happened.
+  const [openJobsRes, openBillsRes, lastPaidRes] = await Promise.all([
+    supabase.from('job_assignments').select('contractor_id').eq('status', 'in_progress').not('contractor_id', 'is', null),
+    supabase
+      .from('billings')
+      .select('contractor_id, status, net_amount, paid_out_at')
+      .or('status.eq.pending_review,and(status.eq.approved,paid_out_at.is.null)')
+      .not('contractor_id', 'is', null),
+    supabase
+      .from('billings')
+      .select('contractor_id, paid_out_at')
+      .not('paid_out_at', 'is', null)
+      .not('contractor_id', 'is', null)
+      .order('paid_out_at', { ascending: false })
+      .limit(2000),
+  ])
+
+  const activeJobs = new Map<string, number>()
+  for (const row of openJobsRes.data || []) {
+    const id = String(row.contractor_id)
+    activeJobs.set(id, (activeJobs.get(id) || 0) + 1)
+  }
+  const waitingReview = new Map<string, number>()
+  const waitingPayout = new Map<string, { count: number; amount: number }>()
+  for (const bill of openBillsRes.data || []) {
+    const id = String(bill.contractor_id)
+    if (bill.status === 'pending_review') {
+      waitingReview.set(id, (waitingReview.get(id) || 0) + 1)
+    } else {
+      const cur = waitingPayout.get(id) || { count: 0, amount: 0 }
+      cur.count += 1
+      cur.amount += Number(bill.net_amount || 0)
+      waitingPayout.set(id, cur)
+    }
+  }
+  const lastPaid = new Map<string, string>()
+  for (const row of lastPaidRes.data || []) {
+    const id = String(row.contractor_id)
+    if (!lastPaid.has(id) && row.paid_out_at) lastPaid.set(id, String(row.paid_out_at))
+  }
+
+  return (data || []).map((contractor) => {
+    const id = String(contractor.id)
+    return {
+      ...contractor,
+      total_paid: paidByContractor.get(id) || 0,
+      total_retention: retentionByContractor.get(id) || 0,
+      active_jobs: activeJobs.get(id) || 0,
+      waiting_review_count: waitingReview.get(id) || 0,
+      waiting_payout_count: waitingPayout.get(id)?.count || 0,
+      waiting_payout_amount: waitingPayout.get(id)?.amount || 0,
+      last_paid_at: lastPaid.get(id) || null,
+    }
+  })
 }
 
 export async function getContractorApprovedHistory(contractorId: string) {

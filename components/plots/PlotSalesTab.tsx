@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Loader2 } from 'lucide-react'
+import { PageSection } from '@/components/ui/PageSection'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
@@ -196,7 +197,9 @@ export default function PlotSalesTab({
   const customer = saleDetail.customer
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
+      <PageSection title="สถานะและลูกค้า" description="สถานะของดีลและข้อมูลผู้ซื้อ">
+      <div className="space-y-4">
       <Card className="p-5">
         <h3 className="text-sm font-semibold text-slate-700">เปลี่ยนสถานะ</h3>
         <div className="mt-3 flex flex-wrap items-end gap-3">
@@ -310,6 +313,11 @@ export default function PlotSalesTab({
         )}
       </Card>
 
+      </div>
+      </PageSection>
+
+      <PageSection title="ราคา วันสำคัญ และของแถม" description="ราคาขาย ส่วนลด วันที่สำคัญของดีล และโปรโมชันที่ลูกค้าได้รับ">
+      <div className="space-y-4">
       <Card className="p-5">
         <h3 className="text-sm font-semibold text-slate-700">ราคาและวันที่สำคัญ</h3>
         <form action={handleSaveDetails} className="mt-4 space-y-6">
@@ -429,6 +437,10 @@ export default function PlotSalesTab({
         onRefresh={onRefresh}
       />
 
+      </div>
+      </PageSection>
+
+      <PageSection title="การชำระเงิน" description="งวดเงินจอง ทำสัญญา ดาวน์ และวันโอน">
       <PlotPaymentsSection
         plotSaleId={sale.id}
         payments={payments}
@@ -437,6 +449,7 @@ export default function PlotSalesTab({
         canEdit={canEdit}
         onRefresh={onRefresh}
       />
+      </PageSection>
     </div>
   )
 }

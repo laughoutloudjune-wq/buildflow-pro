@@ -39,7 +39,7 @@ Modernize the visual feel with deliberate layers and highlights, not a full neum
 - **Radii:** cards 16px, controls 10px, compact/icon buttons 8px (`rounded-lg`), pills full. No bare `rounded`.
 - **Text contrast:** muted text on white is `text-slate-500` or darker. `text-slate-400` is for icons and placeholders only.
 
-## Department identity ✅ (contract) / ☐ (wider use)
+## Department identity ✅
 
 The mapping lives in `lib/navigation.ts` (one source of truth for route ownership and theme): construction **orange**, BOQ and cost **violet**, procurement **blue**, stock **cyan**, sales **pink**, reports and settings **slate**, overview **indigo**. Shared routes (e.g. คำขอจากฝ่ายขาย) appear under the department the viewer's sidebar places them in.
 
@@ -50,7 +50,7 @@ Used for identity only:
 - ✅ top-bar stripe, tint and department label
 - ✅ `PageHeader`: slim accent rule and department eyebrow above the title (every page that uses it)
 - ✅ `PageToolbar` active-filter chips; the PR list's selected status pill; weekly plan modal selection and step markers
-- ✅ icon surfaces on the dashboard KPI tiles, action queue and week panels (`theme.soft`); selected tabs (`theme.tab`). ☐ chart/section accents
+- ✅ icon surfaces on the dashboard KPI tiles, action queue and week panels (`theme.soft`); selected tabs (`theme.tab`). ✅ section titles (`PageSection` marker), progress bars and ranked bars take the department colour (built, not yet pushed); the progress S-curve keeps fixed meaning colours (planned / actual / cost) on purpose
 
 Never used for: primary/secondary/danger buttons, focus rings, status colours, whole-page tints.
 
@@ -72,7 +72,7 @@ Defined in `app/globals.css`: `--radius-card/control/compact`, `--motion-fast` 1
 | Loading | page-shaped skeleton (list / detail / dashboard); spinner only for short actions | ✅ |
 | Reduced motion | no slide/scale, transitions instant, pulse off, spinners slow but keep turning | ✅ |
 
-Modal exit animation is not implemented (most modals unmount on close). ☐ optional.
+✅ Modal exit animation: panels fade and settle out over 150 ms when a modal stays mounted and `isOpen` turns false (modals that unmount on close just disappear, as before); reduced motion falls back to a plain fade. `Modal` also takes `placement="right"` for a docked side panel (used by the weekly plan item editor). Built, not yet pushed.
 
 Modal surface (2026-10-08): frosted gaussian-blur backdrop (light tint, 14px blur, dark fallback without `backdrop-filter`), `elev-modal` panel shadow with a soft indigo-tinted ground glow and a faint top-edge highlight, subtle gradient header. Reflection is limited to that highlight and shadow, per the surface rules.
 
@@ -80,15 +80,15 @@ Modal surface (2026-10-08): frosted gaussian-blur backdrop (light tint, 14px blu
 
 `Button` (40px / 32px, focus ring), `Card` (`interactive` prop), `PageHeader`, `Badge`, `Modal` (focus capture, Tab containment, focus restore, top-most-only Escape, unique title id), `SearchableSelect` (native-select look, Escape closes only the list, Enter picks first), `Toast`, `NoticeBanner` (icon, role), global form defaults with `aria-invalid` error state, `focus-visible` outline for links/buttons.
 
-### Shared page patterns ✅ (built) / ☐ (adoption)
+### Shared page patterns ✅
 
 `PageContainer`, `PageSection`, `PageToolbar`, `TableFrame`, `EmptyState`, `PageSkeleton`, `Breadcrumb` live in `components/ui/`. Adoption:
 - ✅ `PageContainer`: used by about 35 pages (settings, stock, procurement, billing, BOQ, contractors, projects, reports, foreman, both dashboards, sales requests).
 - ✅ `PageToolbar` + `TableFrame` + `EmptyState`: procurement PR / PO / RI / PP lists and the sales-requests list.
 - ✅ `TableFrame`: DC report, companies, contractor types.
-- ✅ `TableFrame` also on suppliers, materials, project detail, plot construction tab, stock overview/movements/reports/material detail and BOQ detail; stock overview and movements use `PageToolbar`. ✅ plot materials tab, permission matrix (sticky header and module column), users table also on `TableFrame`; ☐ still on their own styling: contractors cards, sales board table (each has bespoke content inside the card). Billing now uses `PageToolbar` + `EmptyState`.
+- ✅ `TableFrame` also on suppliers, materials, project detail, plot construction tab, stock overview/movements/reports/material detail and BOQ detail; stock overview and movements use `PageToolbar`. ✅ plot materials tab, permission matrix (sticky header and module column), users table also on `TableFrame`; ✅ sales board table, billing list, cost-control tabs, sale statuses and the combine-requests table also on `TableFrame` (built, not yet pushed). Decision: contractors stay as cards, because identity, workload and payment-cycle content does not fit table columns; the labour-budget ledger and plot payments tables sit inside their own cards and keep that frame. Billing now uses `PageToolbar` + `EmptyState`.
 - ✅ `Breadcrumb` on project, plot, PO, PR, BOQ and stock detail pages (replaces the "back" links; the PO modal keeps its close button).
-- ☐ `PageSection` has not yet been used to regroup long pages.
+- ✅ `PageSection` regroups the plot overview and sales tabs, BOQ detail (items / phase template) and the PM review page (foreman data / adjustments / final summary); it now carries the department accent marker. Built, not yet pushed.
 
 ## Page archetypes
 
@@ -96,10 +96,10 @@ Apply the structure that fits the task; do not make every screen the same card g
 
 1. **Overview/dashboard:** title and context; compact KPI strip (tiles needing attention weigh more); one summary visualisation if useful; action queue/alerts; recent and per-project detail below. ✅ Dashboard overview redesigned 2026-10-08: neutral KPI tiles with the department accent on icon surfaces, amber only on tiles that need attention, and a "งานที่ต้องจัดการ" action queue (pending approvals, stale requests, SR new/overdue, warnings first) directly under the KPI strip; the old bottom work-request card was folded into it.
 2. **List/management:** one create action in the header; one `PageToolbar` above results with count, active-filter chips and reset; table in `TableFrame`; `EmptyState` distinguishing no-data from no-results; bulk actions only when something is selected. ✅ Reference pages: `procurement/requests`, `procurement/orders`, `sales-requests`.
-3. **Detail/workspace:** breadcrumb, entity title, status and primary actions in the header, key facts summarised, related content in consistent tabs/sections. ✅ Breadcrumbs on all detail pages; selected tabs use the department accent (`theme.tab`) on plot detail, billing, cost control, foreman history and signature settings. ☐ Key-facts summary regions not redone.
-4. **Create/edit workflow:** named field groups, validation beside fields, conditional fields only when relevant, visible save/cancel, a dedicated page (not a cramped modal) for genuinely complex flows. ✅ settings forms use the `form`/`narrow` widths. ☐ No full reference redo.
-5. **Report/ledger:** filters and period at top, summary before the table, aligned numbers, export/print separated from filtering, existing calculations and print output untouched. ✅ Reference: `reports/dc-history` (toolbar with explicit search action and filter chips, neutral summary tiles before the table, table in `TableFrame`; the amber tints were removed because amber is reserved for warnings). ✅ labor budget, house-history and contractor-cycle filters moved onto the shared toolbar (the cycle toolbar is wrapped in `no-print`, so printing is unchanged); ☐ contractor-cycle reconciliation layout and the rest of that page untouched.
-6. **Map/planning:** map or schedule gets the dominant canvas, filters and selection summary stay visible, detail in a connected side panel. ☐ Sales board and weekly plan not yet reworked into a side-panel layout.
+3. **Detail/workspace:** breadcrumb, entity title, status and primary actions in the header, key facts summarised, related content in consistent tabs/sections. ✅ Breadcrumbs on all detail pages; selected tabs use the department accent (`theme.tab`) on plot detail, billing, cost control, foreman history and signature settings. ✅ Key-facts strips on plot detail (status, customer, price, construction, target date, size) and the PO page (supplier, total, dates, lines received); PR, BOQ detail, project detail and the PM review page already lead with their facts. Built, not yet pushed.
+4. **Create/edit workflow:** named field groups, validation beside fields, conditional fields only when relevant, visible save/cancel, a dedicated page (not a cramped modal) for genuinely complex flows. ✅ settings forms use the `form`/`narrow` widths. ✅ Purchase request creation (procurement and foreman) moved from a cramped modal to its own page (`/dashboard/procurement/requests/create`, `/dashboard/foreman/purchase-request/create`); PO, billing request, progress and DC creation were already pages; the weekly plan item editor is a docked side panel. Built, not yet pushed.
+5. **Report/ledger:** filters and period at top, summary before the table, aligned numbers, export/print separated from filtering, existing calculations and print output untouched. ✅ Reference: `reports/dc-history` (toolbar with explicit search action and filter chips, neutral summary tiles before the table, table in `TableFrame`; the amber tints were removed because amber is reserved for warnings). ✅ labor budget, house-history and contractor-cycle filters moved onto the shared toolbar (the cycle toolbar is wrapped in `no-print`, so printing is unchanged); ✅ contractor-cycle: unpaid / paid tabs use the accent tab style, the summary is four tiles (bills, gross, deductions, transfer) with the transfer figure highlighted; print output, pay-out confirmation and calculations untouched (built, not yet pushed).
+6. **Map/planning:** map or schedule gets the dominant canvas, filters and selection summary stay visible, detail in a connected side panel. ✅ Map: selecting a marker opens a connected plot panel beside the map (full detail one click away); sales board cards and table open the same panel beside the list; the weekly plan item editor is a docked right-hand panel. Built, not yet pushed.
 
 ## Dashboard week panels ✅
 
@@ -121,12 +121,12 @@ Order: procurement → projects/plots/BOQ → stock and cost control → billing
 
 | Module | State |
 | --- | --- |
-| Procurement | ✅ Apple theme removed; four lists on shared patterns; bare radii fixed; icon buttons labelled. ☐ detail pages (PO, PR) not redesigned |
-| Projects / plots / BOQ | ✅ width frames, breadcrumb on project and plot detail. ☐ tables, tab accents, BOQ detail |
-| Stock / cost control | ✅ width frames, dashboard skeleton for cost control. ☐ tables to `TableFrame` |
-| Billing / foreman | ✅ width frames; foreman banner removed, tab bar kept; billing filters on `PageToolbar`, empty states, accent tabs. ☐ billing card list not converted to a table |
-| Sales / reports / settings / contractors | ✅ sales requests list; settings widths and header cleanup; DC report table. ☐ remaining tables, report reference page |
-| Login / password | ☐ shared hard-coded background replaced with the token; otherwise untouched |
+| Procurement | ✅ Apple theme removed; four lists on shared patterns; bare radii fixed; icon buttons labelled. ✅ PO and PR detail: decision/lifecycle, key facts, sticky bars (built, not yet pushed) |
+| Projects / plots / BOQ | ✅ width frames, breadcrumb on project and plot detail. ✅ tables, tab accents, BOQ detail (built, not yet pushed) |
+| Stock / cost control | ✅ width frames, dashboard skeleton for cost control. ✅ tables on `TableFrame` (built, not yet pushed) |
+| Billing / foreman | ✅ width frames; foreman banner removed, tab bar kept; billing filters on `PageToolbar`, empty states, accent tabs. ✅ billing list is a table with row selection and a labelled action (built, not yet pushed) |
+| Sales / reports / settings / contractors | ✅ sales requests list; settings widths and header cleanup; DC report table. ✅ remaining tables, reports on the shared toolbar and tabs (built, not yet pushed) |
+| Login / password | ✅ token background, notice banners, live password feedback (built, not yet pushed) |
 
 Repo-wide cleanups already applied: bare `rounded` → `rounded-lg` (checkboxes excluded), `transition-all` removed, hand-made h1 headings replaced by `PageHeader`, muted text darkened, department colours moved to theme tokens.
 
@@ -151,9 +151,9 @@ The earlier plan named modules but did not fully audit the screens inside them. 
 | Screen family | Routes covered | Audit finding / build direction |
 | --- | --- | --- |
 | Dashboard overview | `/dashboard` | The page has KPI tiles, a prioritized action queue, and four department panels for the week. Preserve the department panel treatment and theme accents. Make the actionable queue the clear first-read region; weight overdue/attention KPIs above informational totals and avoid seven equally prominent tiles. Keep permission-filtered financial data understandable. |
-| Project list/workspace ✅ cards state open/closed in words (switch has role and label), department icon surface, labelled delete (built, not yet pushed); ☐ no progress figure because the list has no progress data | `/dashboard/projects`, `/dashboard/projects/[id]` | Project cards need a repeatable scan order: project/name/location, status, progress, then edit/delete actions. Project detail should establish project identity and summary before tabs/content; group long sections instead of stacking unrelated cards. |
+| Project list/workspace ✅ cards state open/closed in words (switch has role and label), department icon surface, labelled delete (built, not yet pushed); ✅ progress figure from a value-weighted `get_projects_progress()` database function (applied live; additive, nothing existing changed): percent bar, plots with jobs, jobs done/total | `/dashboard/projects`, `/dashboard/projects/[id]` | Project cards need a repeatable scan order: project/name/location, status, progress, then edit/delete actions. Project detail should establish project identity and summary before tabs/content; group long sections instead of stacking unrelated cards. |
 | Plot workspace | `/dashboard/projects/[id]/[plotId]`, `components/plots/*` | The plot has overview, sales, construction, materials, requests and history tabs with separate editing permissions. Keep project breadcrumb and plot identity/status prominent; use the construction department accent for selected tab/context. Apply consistent section headings, table shells, empty states and permission-aware actions within every tab. |
-| Site plan/map ☐ NOT done: plot detail still opens in a pop-up; a connected side panel needs a layout change to the zoom/pan canvas that must be checked on screen | `components/plots/SitePlanMap.tsx`, project site-plan modal | Keep the map as the primary canvas and connect selected plot detail to it in a side panel. Make map legend, plot selection, status, zoom and edit affordances distinguishable; avoid placing a floating opaque card over important map content. |
+| Site plan/map ✅ marker click selects the plot (ring on the marker) and fills a connected side panel: status, model, customer, price and progress on the sales map; status, model and size on the construction map; "full detail" opens the existing dialog. The image canvas itself is unchanged (the zoom/pan viewer is the separate header site-plan modal). Built, not yet pushed | `components/plots/SitePlanMap.tsx`, project site-plan modal | Keep the map as the primary canvas and connect selected plot detail to it in a side panel. Make map legend, plot selection, status, zoom and edit affordances distinguishable; avoid placing a floating opaque card over important map content. |
 | Sales board | `/dashboard/sales` | Grid/table/map views represent the same plots with different density. Use one scope/filter bar and preserve its state when switching views. Cards emphasize status, customer, price and construction progress; table uses aligned columns; map selection opens a connected detail panel. |
 | Sales dashboard/promotions ✅ promotions: value received shown before the controls, active/disabled badge in words, disabled cards stay readable (no 60% fade), labelled item actions, empty state (built, not yet pushed); ✅ sales dashboard: overdue alert first, neutral tiles with the money headline emphasised, "current status" section (built, not yet pushed) | `/dashboard/sales/dashboard`, `/dashboard/sales/promotions` | Dashboard should distinguish trend/performance from current plot status and avoid a wall of equal KPI cards. Promotion cards need offer/benefit, date range and active state before edit/activate actions; expired/disabled items should remain readable. |
 | Sales requests | `/dashboard/sales-requests`, plot request tab/form | Make category, plot, due date, owner and next status/action scannable. Distinguish overdue via semantic warning, not department tint. Preserve plot context when viewing a request from a plot. |
@@ -167,7 +167,7 @@ The earlier plan named modules but did not fully audit the screens inside them. 
 
 | Screen family | Routes covered | Audit finding / build direction |
 | --- | --- | --- |
-| Contractors ✅ search and trade filter on the shared toolbar, labelled edit/delete, retention box neutral (amber is for warnings), empty state (built, not yet pushed); ☐ workload / payment-cycle context | `/dashboard/contractors` | Lead with contractor identity, type/trade, active status, current workload and payment-cycle context. Separate edit, history and destructive actions; keep history legible in dialogs and provide a useful empty state. |
+| Contractors ✅ search and trade filter on the shared toolbar, labelled edit/delete, retention box neutral (amber is for warnings), empty state (built, not yet pushed); ✅ workload / payment-cycle context on each card (jobs in progress, claims waiting for the PM, approved awaiting payout and amount owed, last payout date); edit / history / retention / delete in one labelled action menu (built, not yet pushed) | `/dashboard/contractors` | Lead with contractor identity, type/trade, active status, current workload and payment-cycle context. Separate edit, history and destructive actions; keep history legible in dialogs and provide a useful empty state. |
 | Reports/ledgers | `/dashboard/reports/dc-history`, `/house-history`, `/contractor-cycle`, `/labor-budget`; print routes are excluded from redesign | Every report starts with scope/period and filters, then summary, then detailed data. House-history drilldown needs clear linkage to the selected plot/house. Contractor cycle and labor budget must make gross, deductions/retention, paid and payable values easy to reconcile. Preserve calculations and print layouts. |
 | Settings ✅ index cards take their group's department colour instead of six competing colours (built, not yet pushed) | `/dashboard/settings` and `/companies`, `/contractor-types`, `/financial-defaults`, `/materials`, `/permissions`, `/sale-statuses`, `/signatures`, `/suppliers`, `/billing-info`, `/users` | Group settings index by task. Lists use shared toolbar/table/empty patterns; forms use readable widths and named sections. Permission matrix keeps role and module headers visible while scanning. Signature/billing-info pages show upload, ordering, preview and save state. User management separates invite/edit/disable/delete and makes role/status explicit. |
 | Login/password ✅ shared notice banners, autocomplete attributes, live password-length and match feedback beside the fields (built, not yet pushed) | `/login`, `/set-password` | Apply shared type, field, error and button patterns while keeping authentication visually focused. Distinguish invalid credentials, expired links and password requirements with local explanatory feedback. |

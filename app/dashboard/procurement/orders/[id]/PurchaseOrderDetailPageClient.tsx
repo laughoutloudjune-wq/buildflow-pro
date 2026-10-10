@@ -222,6 +222,11 @@ export default function PurchaseOrderDetailPageClient({
   const canCloseShort = order.status === 'partially_received'
   const isFormReadOnly = order.status === 'paid' || order.status === 'cancelled'
 
+  const totalLineCount = (order.purchase_order_items || []).length
+  const receivedLineCount = (order.purchase_order_items || []).filter(
+    (item) => Number(item.quantity_received || 0) >= Number(item.quantity_ordered || 0) && Number(item.quantity_ordered || 0) > 0
+  ).length
+
   const lifecycleIndex = ({ draft: 0, sent: 1, partially_received: 2, received: 2, paid: 3, cancelled: -1 } as Record<string, number>)[order.status] ?? 0
   const lifecycle = [
     { label: 'ร่าง', date: formatDate(order.created_at), by: undefined as string | undefined },
@@ -273,6 +278,34 @@ export default function PurchaseOrderDetailPageClient({
           }
         />
       </div>
+
+      {/* Key facts: who we are buying from, how much, and how much has arrived. */}
+      <dl className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3 lg:grid-cols-5">
+        <div className="min-w-0">
+          <dt className="text-xs text-slate-500">ผู้จำหน่าย</dt>
+          <dd className="mt-1 truncate text-sm font-medium text-slate-800" title={order.suppliers?.name || undefined}>
+            {order.suppliers?.name || '-'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-slate-500">มูลค่ารวม (รวม VAT)</dt>
+          <dd className="mt-1 text-sm font-semibold tabular-nums text-slate-900">฿{formatCurrency(Number(order.total_amount || 0))}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-slate-500">วันที่สั่ง</dt>
+          <dd className="mt-1 text-sm font-medium text-slate-800">{formatDate(order.order_date) || '-'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-slate-500">กำหนดส่งของ</dt>
+          <dd className="mt-1 text-sm font-medium text-slate-800">{formatDate(order.expected_delivery_date) || 'ไม่ระบุ'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-slate-500">รับของแล้ว</dt>
+          <dd className="mt-1 text-sm font-semibold tabular-nums text-slate-900">
+            {receivedLineCount}/{totalLineCount} รายการ
+          </dd>
+        </div>
+      </dl>
 
       {/* Lifecycle: where this order is, when each step happened, and what can still be done. */}
       <Card className="p-5">

@@ -32,6 +32,34 @@ export async function getProjects(opts: { includeOverhead?: boolean; onlyProject
   return data
 }
 
+export type ProjectProgress = {
+  plotsWithJobs: number
+  jobsTotal: number
+  jobsDone: number
+  progressPercent: number
+}
+
+/** Value-weighted construction progress per project (see the
+ * get_projects_progress SQL function). Projects without jobs are absent. */
+export async function getProjectsProgress(): Promise<Record<string, ProjectProgress>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_projects_progress')
+  if (error) {
+    console.error('Error fetching project progress:', error)
+    return {}
+  }
+  const out: Record<string, ProjectProgress> = {}
+  for (const row of (data || []) as Array<{ project_id: string; plots_with_jobs: number; jobs_total: number; jobs_done: number; progress_percent: number | string }>) {
+    out[row.project_id] = {
+      plotsWithJobs: row.plots_with_jobs,
+      jobsTotal: row.jobs_total,
+      jobsDone: row.jobs_done,
+      progressPercent: Number(row.progress_percent) || 0,
+    }
+  }
+  return out
+}
+
 // ดึงโครงการรายตัว (Get By ID)
 export async function getProjectById(id: string) {
   const supabase = await createClient()

@@ -11,6 +11,7 @@ import { PageContainer } from '@/components/ui/PageContainer'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Badge, statusTone } from '@/components/ui/Badge'
 import { TableFrame } from '@/components/ui/TableFrame'
+import { PageSection } from '@/components/ui/PageSection'
 import { BILLING_STATUS_LABEL } from '@/lib/status-labels'
 import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
 import { AlertTriangle, Edit, Trash2 } from 'lucide-react'
@@ -339,8 +340,8 @@ export default function ReviewBillingPageClient({
       {error ? <NoticeBanner tone="error" message={error} onClose={() => setError(null)} /> : null}
 
       <>
+          <PageSection title="ข้อมูลจาก Foreman" description="สิ่งที่ผู้ส่งคำขอแจ้งไว้ ก่อนที่ PM จะปรับ">
           <Card className="p-5">
-            <h2 className="mb-3 text-lg font-semibold text-slate-900">ข้อมูลจาก Foreman</h2>
             <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-5">
               {[
                 ['โครงการ', billing.projects?.name || '-'],
@@ -366,6 +367,7 @@ export default function ReviewBillingPageClient({
               </p>
             )}
           </Card>
+          </PageSection>
 
           {isExtraWork && (
             <Card className="p-5">
@@ -545,8 +547,8 @@ export default function ReviewBillingPageClient({
             </div>
           )}
 
+          <PageSection title="รายการปรับปรุง (งานเพิ่ม/งานหัก)" description="เพิ่มหรือหักรายการนอกเหนือจากงานที่เบิก">
           <Card className="p-4">
-            <h2 className="mb-2 text-lg font-semibold text-slate-900">รายการปรับปรุง (งานเพิ่ม/งานหัก)</h2>
             <AdjustmentLineItems
               adjustments={adjustments}
               plotOptions={adjustmentPlotOptions}
@@ -557,8 +559,11 @@ export default function ReviewBillingPageClient({
               totalDeductAmount={totalDeductAmount}
               showSignature
             />
+          </Card>
+          </PageSection>
 
-            <h2 className="mb-2 mt-6 text-lg font-semibold text-slate-900">สรุปและคำนวณยอดสุดท้าย</h2>
+          <PageSection title="สรุปและคำนวณยอดสุดท้าย" description="ยอดที่จะอนุมัติ หลังปรับ % และรายการปรับปรุง">
+          <Card className="p-4">
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div><label className="block text-sm font-medium text-gray-700">วันที่เบิกจ่าย</label><input type="date" value={billingDate} onChange={(e) => setBillingDate(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" /></div>
@@ -594,8 +599,8 @@ export default function ReviewBillingPageClient({
                 </table>
               </div>
             </div>
-
           </Card>
+          </PageSection>
       </>
 
       {/* Decision bar: the numbers being decided and the decision itself stay together. */}
