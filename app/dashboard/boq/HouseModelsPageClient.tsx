@@ -2,12 +2,15 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Loader2, Home, Ruler, Building, RefreshCw, Pencil, Search } from 'lucide-react'
+import { Plus, Trash2, Loader2, Home, Ruler, Building, RefreshCw, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
@@ -31,6 +34,7 @@ type Project = {
 
 export default function HouseModelsPageClient({ models, projects }: { models: HouseModel[]; projects: Project[] }) {
   const router = useRouter()
+  const { theme } = useDepartment()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<HouseModel | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -117,18 +121,17 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
         }
       />
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9"
-          placeholder="ค้นหาชื่อแบบบ้าน / รหัสแบบ / โครงการ"
-        />
-      </div>
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาชื่อแบบบ้าน / รหัสแบบ / โครงการ' }}
+        resultCount={searchedModels.length}
+        activeFilters={search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []}
+        onReset={() => setSearch('')}
+      />
 
-      {searchedModels.length === 0 && (
-        <p className="text-sm text-slate-500">ไม่พบแบบบ้านที่ค้นหา</p>
+      {models.length > 0 && searchedModels.length === 0 && (
+        <Card>
+          <EmptyState variant="no-results" title="ไม่พบแบบบ้านที่ค้นหา" description="ลองเปลี่ยนคำค้นหา" />
+        </Card>
       )}
 
       <div className="space-y-6">
@@ -137,19 +140,19 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
           return (
             <div key={groupKey} className="space-y-3">
               <div className="px-1">
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{locationLabel}</div>
+                <div className="text-xs font-semibold text-slate-500">{locationLabel}</div>
                 <div className="text-sm font-bold text-slate-800">{projectLabel}</div>
               </div>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {groupModels.map((model) => (
-          <Card key={model.id} className="group relative overflow-hidden transition-[color,background-color,border-color,box-shadow,transform] hover:shadow-md hover:border-indigo-300 cursor-pointer h-full flex flex-col">
+          <Card key={model.id} className="group relative overflow-hidden transition-[color,background-color,border-color,box-shadow,transform] hover:shadow-md hover:border-slate-300 cursor-pointer h-full flex flex-col">
             <Link href={`/dashboard/boq/${model.id}`} className="flex-grow">
               <div className="p-5 space-y-4">
-                  <div className="h-10 w-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${theme.soft}`}>
                     <Home className="h-6 w-6" />
                   </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
+                  <h3 className="text-lg font-bold text-slate-800 group-hover:text-slate-950 transition-colors">
                     {model.name}
                   </h3>
                   <p className="text-sm text-slate-500">รหัสแบบ: {model.code || '-'}</p>
@@ -167,14 +170,17 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
                 </div>
               </div>
             </Link>
-             <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/50 backdrop-blur-sm rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+             {/* Visible on hover, on keyboard focus, and always on touch screens. */}
+             <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-white/90 p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
                 <button
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                     openModal(model)
                   }}
-                  className="text-slate-500 hover:text-indigo-600 p-2 hover:bg-indigo-50 rounded-full transition z-10"
+                  aria-label={`แก้ไขแบบบ้าน ${model.name}`}
+                  title="แก้ไข"
+                  className="z-10 rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
                 >
                   <Pencil className="h-4 w-4" />
                 </button>
@@ -185,7 +191,9 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
                     setDeleteTarget(model)
                   }}
                   disabled={isPending}
-                  className="text-slate-500 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition z-10"
+                  aria-label={`ลบแบบบ้าน ${model.name}`}
+                  title="ลบ"
+                  className="z-10 rounded-full p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600"
                 >
                   {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                 </button>
@@ -198,13 +206,18 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
         })}
 
         {models.length === 0 && (
-          <div className="col-span-full py-16 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500">
-            <Home className="h-12 w-12 mx-auto mb-3 opacity-20" />
-            <p className="mb-4">ยังไม่มีแบบบ้าน</p>
-             <button onClick={() => router.refresh()} className="text-indigo-600 hover:underline text-sm inline-flex items-center gap-1">
-              <RefreshCw className="h-3 w-3"/> ลองโหลดใหม่
-            </button>
-          </div>
+          <Card className="col-span-full">
+            <EmptyState
+              icon={Home}
+              title="ยังไม่มีแบบบ้าน"
+              description='กด "สร้างแบบบ้านใหม่" เพื่อเริ่มต้น หรือโหลดข้อมูลใหม่'
+              action={
+                <Button type="button" variant="secondary" size="sm" onClick={() => router.refresh()}>
+                  <RefreshCw className="h-3.5 w-3.5" /> ลองโหลดใหม่
+                </Button>
+              }
+            />
+          </Card>
         )}
       </div>
 

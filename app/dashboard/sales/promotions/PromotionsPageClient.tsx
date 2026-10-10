@@ -10,6 +10,8 @@ import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { Badge } from '@/components/ui/Badge'
 import {
   addPromotionItem,
   createPromotion,
@@ -162,21 +164,27 @@ export default function PromotionsPageClient({
       )}
 
       {sorted.length === 0 && (
-        <Card className="p-8 text-center text-slate-400">ยังไม่มีโปรโมชั่น</Card>
+        <Card>
+          <EmptyState title="ยังไม่มีโปรโมชั่น" description={canManage ? 'เพิ่มโปรโมชั่นชุดแรกจากฟอร์มด้านบน' : undefined} />
+        </Card>
       )}
 
       {sorted.map((bundle) => {
         const total = bundle.items.reduce((s, i) => s + i.value, 0)
         return (
-          <Card key={bundle.id} className={`overflow-hidden border-slate-200 shadow-sm ${!bundle.isActive ? 'opacity-60' : ''}`}>
+          <Card key={bundle.id} className={`overflow-hidden border-slate-200 shadow-sm ${!bundle.isActive ? 'bg-slate-50/70' : ''}`}>
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-5">
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-semibold text-slate-900">{bundle.name}</h3>
-                  {!bundle.isActive && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">ปิดใช้งาน</span>}
+                  <Badge tone={bundle.isActive ? 'success' : 'neutral'}>{bundle.isActive ? 'ใช้งานอยู่' : 'ปิดใช้งาน'}</Badge>
                 </div>
                 {bundle.description && <p className="mt-1 text-sm text-slate-500">{bundle.description}</p>}
-                <p className="mt-1 text-xs text-slate-500">{bundle.items.length} รายการ - มูลค่ารวม ฿{formatCurrency(total)}</p>
+              </div>
+              {/* The benefit comes first, then the controls. */}
+              <div className="ml-auto text-right">
+                <p className="text-xs text-slate-500">มูลค่าที่ลูกค้าได้รับ · {bundle.items.length} รายการ</p>
+                <p className="text-lg font-semibold tabular-nums text-slate-900">฿{formatCurrency(total)}</p>
               </div>
               {canManage && (
                 <div className="flex items-center gap-2">
@@ -210,13 +218,15 @@ export default function PromotionsPageClient({
                         {canManage && (
                           <td className="py-1.5 pl-2 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <button type="button" onClick={() => openEditItem(bundle.id, item)} className="text-slate-300 hover:text-indigo-600">
+                              <button type="button" onClick={() => openEditItem(bundle.id, item)} aria-label={`แก้ไข ${item.name}`} title="แก้ไข" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setDeleteItemTarget({ bundleId: bundle.id, item })}
-                                className="text-slate-300 hover:text-red-500"
+                                aria-label={`ลบ ${item.name}`}
+                                title="ลบ"
+                                className="rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>

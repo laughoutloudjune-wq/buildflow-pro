@@ -357,7 +357,7 @@ export default function PurchaseRequestDetail({
       </div>
 
       <Card className="p-5">
-        <div className="grid grid-cols-2 gap-4 text-sm">
+        <div className="grid grid-cols-2 gap-4 text-sm lg:grid-cols-4">
           <div>
             <div className="text-xs text-slate-500">ผู้ขอซื้อ</div>
             <div className="font-medium text-slate-800">{request.requester?.full_name || request.requester?.email || '-'}</div>
@@ -501,42 +501,61 @@ export default function PurchaseRequestDetail({
 
       {boqCheck && boqCheck.lines.length > 0 && <BoqCheckPanel lines={boqCheck.lines} scopeLabel={boqCheck.scopeLabel} />}
 
-      {request.status === 'pending_review' && (
-        <Card className="p-5">
-          {showRejectBox ? (
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-slate-700">เหตุผลที่ปฏิเสธ</label>
-              <textarea value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} className="w-full" rows={2} />
-              <div className="flex justify-end gap-3">
-                <Button type="button" variant="secondary" onClick={() => setShowRejectBox(false)}>
-                  ยกเลิก
-                </Button>
-                <Button type="button" variant="danger" onClick={handleReject} disabled={isPending}>
-                  {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'ยืนยันปฏิเสธ'}
-                </Button>
+      {/* Decision / next-step bar: stays in view so the decision never sits below a long scroll. */}
+      {(request.status === 'pending_review' || request.status === 'approved') && (
+        <div className="sticky bottom-0 z-10 -mx-1 pb-1">
+          <Card className="elev-floating space-y-3 px-5 py-3">
+            {request.status === 'pending_review' && showRejectBox && (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-700">เหตุผลที่ปฏิเสธ (แจ้งกลับให้ผู้ขอซื้อ)</label>
+                <textarea value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} className="w-full" rows={2} autoFocus />
               </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 text-sm">
+                <p className="font-semibold text-slate-900">
+                  {request.status === 'pending_review' ? 'รอการตัดสินใจ' : 'อนุมัติแล้ว — พร้อมสั่งซื้อ'}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {(request.purchase_request_items || []).length} รายการวัสดุ
+                  {request.requester?.full_name || request.requester?.email ? ` · ผู้ขอซื้อ ${request.requester?.full_name || request.requester?.email}` : ''}
+                  {request.needed_by_date ? ` · ต้องการภายใน ${new Date(request.needed_by_date).toLocaleDateString('th-TH')}` : ''}
+                </p>
+              </div>
+              {request.status === 'pending_review' ? (
+                <div className="flex items-center gap-3">
+                  {showRejectBox ? (
+                    <>
+                      <Button type="button" variant="secondary" onClick={() => setShowRejectBox(false)}>
+                        ยกเลิก
+                      </Button>
+                      <Button type="button" variant="danger" onClick={handleReject} disabled={isPending}>
+                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'ยืนยันปฏิเสธ'}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button type="button" variant="danger" onClick={() => setShowRejectBox(true)} disabled={isPending}>
+                        ปฏิเสธ
+                      </Button>
+                      <Button type="button" onClick={handleApprove} disabled={isPending}>
+                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'อนุมัติ'}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="button" variant="secondary" onClick={() => setIsSettleModalOpen(true)}>
+                    <ListChecks className="h-4 w-4" /> เลือกรายการที่จัดการแล้ว
+                  </Button>
+                  <Button type="button" onClick={() => router.push(`/dashboard/procurement/orders/create?fromRequest=${request.id}`)}>
+                    <ShoppingCart className="h-4 w-4" /> สร้างใบสั่งซื้อจากคำขอนี้
+                  </Button>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="flex justify-end gap-3">
-              <Button type="button" variant="danger" onClick={() => setShowRejectBox(true)} disabled={isPending}>
-                ปฏิเสธ
-              </Button>
-              <Button type="button" onClick={handleApprove} disabled={isPending}>
-                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'อนุมัติ'}
-              </Button>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {request.status === 'approved' && (
-        <div className="flex flex-wrap justify-end gap-3">
-          <Button type="button" variant="secondary" onClick={() => setIsSettleModalOpen(true)}>
-            <ListChecks className="h-4 w-4" /> เลือกรายการที่จัดการแล้ว
-          </Button>
-          <Button type="button" onClick={() => router.push(`/dashboard/procurement/orders/create?fromRequest=${request.id}`)}>
-            <ShoppingCart className="h-4 w-4" /> สร้างใบสั่งซื้อจากคำขอนี้
-          </Button>
+          </Card>
         </div>
       )}
 

@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { createProject, deleteProject, setProjectStatus } from '@/actions/project-actions'
@@ -42,6 +43,9 @@ function StatusToggle({ projectId, isActive, onToggled }: { projectId: string; i
       type="button"
       onClick={handleClick}
       disabled={pending}
+      role="switch"
+      aria-checked={isActive}
+      aria-label={isActive ? 'โครงการกำลังดำเนินการ - กดเพื่อปิดโครงการ' : 'โครงการปิดแล้ว - กดเพื่อเปิดดำเนินการต่อ'}
       title={isActive ? 'กำลังดำเนินการ - คลิกเพื่อปิดโครงการ' : 'ปิดโครงการแล้ว - คลิกเพื่อเปิดดำเนินการต่อ'}
       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
         isActive ? 'bg-emerald-500' : 'bg-slate-300'
@@ -53,6 +57,7 @@ function StatusToggle({ projectId, isActive, onToggled }: { projectId: string; i
 }
 
 export default function ProjectsPageClient({ projects: initialProjects }: { projects: Project[] }) {
+  const { theme } = useDepartment()
   const [projects, setProjects] = useState<Project[]>(initialProjects)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -103,16 +108,22 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
     const isActive = project.status !== 'completed'
     return (
       <Link key={project.id} href={`/dashboard/projects/${project.id}`}>
-        <Card className="group relative overflow-hidden transition-[color,background-color,border-color,box-shadow,transform] hover:shadow-md hover:border-indigo-200 cursor-pointer h-full">
+        <Card className="group relative overflow-hidden transition-[color,background-color,border-color,box-shadow,transform] hover:shadow-md hover:border-slate-300 cursor-pointer h-full">
           <div className="p-5">
             <div className="flex items-start justify-between mb-4">
-              <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+              <div className={`rounded-lg p-2 ${theme.soft}`}>
                 <Building2 className="h-6 w-6" />
               </div>
-              <StatusToggle projectId={project.id} isActive={isActive} onToggled={(next) => handleStatusToggled(project.id, next)} />
+              {/* Status is stated in words as well as by the switch colour. */}
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-medium ${isActive ? 'text-emerald-700' : 'text-slate-500'}`}>
+                  {isActive ? 'กำลังดำเนินการ' : 'ปิดโครงการแล้ว'}
+                </span>
+                <StatusToggle projectId={project.id} isActive={isActive} onToggled={(next) => handleStatusToggled(project.id, next)} />
+              </div>
             </div>
 
-            <h3 className="text-lg font-bold text-slate-800 mb-1 group-hover:text-indigo-600 transition-colors">
+            <h3 className="text-lg font-bold text-slate-800 mb-1 group-hover:text-slate-950 transition-colors">
               {project.name}
             </h3>
 
@@ -129,7 +140,9 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
                     setDeleteTarget(project)
                   }}
                   disabled={isPending}
-                  className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition z-10"
+                  aria-label={`ลบโครงการ ${project.name}`}
+                  title="ลบโครงการ"
+                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition z-10"
                >
                   {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                </button>

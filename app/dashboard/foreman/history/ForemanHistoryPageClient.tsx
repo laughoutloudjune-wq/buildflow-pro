@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { EmptyState } from '@/components/ui/EmptyState'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { Loader2, Trash2, Pencil, Search } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
@@ -195,15 +196,19 @@ export default function ForemanHistoryPageClient({
             </Button>
           </div>
         ) : filteredBillings.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">{search ? 'ไม่พบคำขอที่ค้นหา' : 'ไม่มีคำขอในหมวดนี้'}</div>
+          <EmptyState
+            variant={search ? 'no-results' : 'empty'}
+            title={search ? 'ไม่พบคำขอที่ค้นหา' : 'ไม่มีคำขอในหมวดนี้'}
+            description={search ? 'ลองเปลี่ยนคำค้นหา' : 'คำขอที่คุณสร้างจะแสดงตามสถานะที่นี่'}
+          />
         ) : (
           <div className="space-y-3">
             {filteredBillings.map((bill) => (
-              <div key={bill.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-blue-300 transition">
+              <div key={bill.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-[130px_160px_1fr_150px_120px_130px]">
                   <div className="text-slate-500 text-sm">{new Date(bill.created_at || bill.billing_date || '').toLocaleDateString('th-TH')}</div>
                   <div>
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${bill.type === 'extra_work' ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">
                       {getJobTypeLabel(bill)}
                     </span>
                   </div>
@@ -219,6 +224,16 @@ export default function ForemanHistoryPageClient({
                   <div className="text-right font-semibold text-emerald-600">฿{formatCurrency(bill.net_amount ?? 0)}</div>
                   <div className="flex flex-col items-start gap-1 lg:items-center">
                     {getStatusChip(bill.status || '')}
+                    {/* What happens next, so the list says more than a status colour. */}
+                    <span className="text-[11px] text-slate-500 lg:text-center">
+                      {bill.status === 'pending_review'
+                        ? 'รอ PM ตรวจสอบ'
+                        : bill.status === 'rejected'
+                          ? 'แก้ไขแล้วส่งใหม่ได้'
+                          : bill.status === 'approved'
+                            ? 'PM อนุมัติแล้ว รอบัญชีจ่าย'
+                            : ''}
+                    </span>
                     {bill.status === 'rejected' && bill.review_note && (
                       <div className="text-[11px] text-red-600 lg:text-center" title={bill.review_note}>
                         {bill.review_note}
@@ -228,8 +243,8 @@ export default function ForemanHistoryPageClient({
                   <div className="flex lg:justify-center">
                     {bill.status === 'pending_review' ? (
                       <div className="flex items-center gap-2">
-                        <button onClick={() => handleEdit(bill)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-100"><Pencil className="h-4 w-4"/></button>
-                        <button onClick={() => setDeleteTargetId(bill.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-100"><Trash2 className="h-4 w-4"/></button>
+                        <button onClick={() => handleEdit(bill)} aria-label="แก้ไขคำขอ" title="แก้ไข" className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><Pencil className="h-4 w-4"/></button>
+                        <button onClick={() => setDeleteTargetId(bill.id)} aria-label="ลบคำขอ" title="ลบ" className="flex h-11 w-11 items-center justify-center rounded-lg border border-red-100 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4"/></button>
                       </div>
                     ) : bill.status === 'rejected' ? (
                       <Button size="sm" variant="secondary" onClick={() => handleEdit(bill)}>

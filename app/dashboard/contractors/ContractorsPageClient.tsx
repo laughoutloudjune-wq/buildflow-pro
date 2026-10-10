@@ -7,6 +7,9 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { createContractor, deleteContractor, updateContractor, getContractorApprovedHistory } from '@/actions/contractor-actions'
@@ -40,6 +43,17 @@ export default function ContractorsPageClient({
   types: ContractorType[]
 }) {
   const router = useRouter()
+  const { theme } = useDepartment()
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+  const visibleContractors = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return contractors.filter((c) => {
+      if (typeFilter && String(c.type_id) !== typeFilter) return false
+      if (!q) return true
+      return `${c.name} ${c.phone || ''} ${c.tax_id || ''}`.toLowerCase().includes(q)
+    })
+  }, [contractors, search, typeFilter])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingContractor, setEditingContractor] = useState<Contractor | null>(null)
   const [historyContractor, setHistoryContractor] = useState<Contractor | null>(null)
@@ -184,13 +198,35 @@ export default function ContractorsPageClient({
         }
       />
 
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาชื่อ / เบอร์โทร / เลขภาษี' }}
+        resultCount={visibleContractors.length}
+        activeFilters={[
+          ...(search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []),
+          ...(typeFilter ? [{ label: types.find((t) => String(t.id) === typeFilter)?.name ?? 'ประเภท', onRemove: () => setTypeFilter('') }] : []),
+        ]}
+        onReset={() => {
+          setSearch('')
+          setTypeFilter('')
+        }}
+      >
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="ประเภทงาน" className="min-w-[10rem]">
+          <option value="">ทุกประเภทงาน</option>
+          {types.map((t) => (
+            <option key={t.id} value={String(t.id)}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </PageToolbar>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {contractors.map((c) => (
-          <Card key={c.id} className="group relative overflow-hidden hover:border-indigo-300 transition-[color,background-color,border-color,box-shadow,transform] p-5 flex flex-col justify-between">
+        {visibleContractors.map((c) => (
+          <Card key={c.id} className="group relative overflow-hidden hover:border-slate-300 transition-[color,background-color,border-color,box-shadow,transform] p-5 flex flex-col justify-between">
             <div>
               <div className="flex justify-between items-start mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-full ${theme.soft}`}>
                     <User className="h-5 w-5" />
                   </div>
                   <div>
@@ -201,10 +237,10 @@ export default function ContractorsPageClient({
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => openModal(c)} className="text-slate-300 hover:text-indigo-500 p-1 rounded-lg hover:bg-indigo-50 transition">
+                  <button onClick={() => openModal(c)} aria-label={`แก้ไข ${c.name}`} title="แก้ไข" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
                     <Pencil className="h-4 w-4" />
                   </button>
-                  <button onClick={() => setDeleteTarget(c)} disabled={isPending} className="text-slate-300 hover:text-red-500 p-1 rounded-lg hover:bg-red-50 transition">
+                  <button onClick={() => setDeleteTarget(c)} disabled={isPending} aria-label={`ลบ ${c.name}`} title="ลบ" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600">
                     {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   </button>
                 </div>
@@ -227,13 +263,13 @@ export default function ContractorsPageClient({
 
                 <button
                   onClick={() => openRetention(c)}
-                  className="w-full flex items-center justify-between rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 hover:bg-amber-100 transition"
+                  className="w-full flex items-center justify-between rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 hover:bg-slate-100 transition"
                 >
-                  <div className="flex items-center gap-2 text-amber-700">
+                  <div className="flex items-center gap-2 text-slate-700">
                     <ShieldCheck className="h-4 w-4" />
                     <span className="text-sm">เงินประกันสะสม</span>
                   </div>
-                  <span className="font-semibold text-amber-700">฿{formatCurrency(c.total_retention || 0)}</span>
+                  <span className="font-semibold tabular-nums text-slate-800">฿{formatCurrency(c.total_retention || 0)}</span>
                 </button>
 
                 <div className="flex items-center gap-2">
@@ -262,10 +298,14 @@ export default function ContractorsPageClient({
           </Card>
         ))}
 
-        {contractors.length === 0 && (
-          <div className="col-span-full py-12 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500">
-            ยังไม่มีข้อมูลผู้รับเหมา
-          </div>
+        {visibleContractors.length === 0 && (
+          <Card className="col-span-full">
+            <EmptyState
+              variant={contractors.length === 0 ? 'empty' : 'no-results'}
+              title={contractors.length === 0 ? 'ยังไม่มีข้อมูลผู้รับเหมา' : 'ไม่พบผู้รับเหมาตามตัวกรองนี้'}
+              description={contractors.length === 0 ? 'กด "เพิ่มผู้รับเหมา" เพื่อเริ่มต้น' : 'ลองเปลี่ยนหรือล้างตัวกรอง'}
+            />
+          </Card>
         )}
       </div>
 
