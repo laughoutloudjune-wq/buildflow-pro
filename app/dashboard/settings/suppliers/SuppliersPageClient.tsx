@@ -4,9 +4,9 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Building2, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Pagination, { usePagedRows } from '@/components/ui/Pagination'
@@ -15,6 +15,7 @@ import { useToast } from '@/components/ui/Toast'
 import SupplierFormFields from '@/components/procurement/SupplierFormFields'
 import { createSupplier, deactivateSupplier, updateSupplier } from '@/actions/procurement-actions'
 import type { Supplier, SupplierInput } from '@/lib/types/procurement'
+import { TableFrame } from '@/components/ui/TableFrame'
 
 const PAGE_SIZE = 25
 
@@ -115,7 +116,7 @@ export default function SuppliersPageClient({
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <PageContainer width="standard">
       <div>
         <Link
           href="/dashboard/settings"
@@ -136,10 +137,10 @@ export default function SuppliersPageClient({
       </div>
 
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-slate-700">
+      <TableFrame>
+        
+          <table>
+            <thead>
               <tr>
                 <th className="px-4 py-3 font-semibold">ชื่อผู้จำหน่าย</th>
                 <th className="px-4 py-3 font-semibold">ประเภท</th>
@@ -152,7 +153,7 @@ export default function SuppliersPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {suppliers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center italic text-slate-400">
+                  <td colSpan={6} className="px-4 py-8 text-center italic text-slate-500">
                     ยังไม่มีผู้จำหน่ายในระบบ กดปุ่ม &quot;เพิ่มผู้จำหน่ายใหม่&quot; เพื่อเริ่มต้น
                   </td>
                 </tr>
@@ -177,7 +178,7 @@ export default function SuppliersPageClient({
                         <button
                           onClick={() => setBranchesFor(supplier)}
                           disabled={isPending}
-                          className="rounded p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                          className="rounded-lg p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
                           title="จัดการสาขา"
                         >
                           <Building2 className="h-4 w-4" />
@@ -185,7 +186,7 @@ export default function SuppliersPageClient({
                         <button
                           onClick={() => openEditModal(supplier)}
                           disabled={isPending}
-                          className="rounded p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                          className="rounded-lg p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
                           title="แก้ไข"
                         >
                           <Pencil className="h-4 w-4" />
@@ -194,7 +195,7 @@ export default function SuppliersPageClient({
                           <button
                             onClick={() => setDeactivateTarget(supplier)}
                             disabled={isPending}
-                            className="rounded p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                            className="rounded-lg p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
                             title="ปิดใช้งาน"
                           >
                             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -207,9 +208,9 @@ export default function SuppliersPageClient({
               )}
             </tbody>
           </table>
-        </div>
+        
         <Pagination currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} />
-      </Card>
+      </TableFrame>
 
       {branchesFor && (
         <SupplierBranchesModal supplier={branchesFor} onClose={() => setBranchesFor(null)} />
@@ -217,7 +218,7 @@ export default function SuppliersPageClient({
 
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editing ? 'แก้ไขผู้จำหน่าย' : 'เพิ่มผู้จำหน่ายใหม่'}>
         <div className="space-y-4">
-          <p className="text-xs text-slate-400">เพิ่มซัพพลายเออร์ในนามบริษัทหรือบุคคลธรรมดา</p>
+          <p className="text-xs text-slate-500">เพิ่มซัพพลายเออร์ในนามบริษัทหรือบุคคลธรรมดา</p>
           <SupplierFormFields value={draft} onChange={(patch) => setDraft((prev) => ({ ...prev, ...patch }))} />
           <div className="flex justify-end gap-3 border-t pt-4">
             <Button type="button" variant="secondary" onClick={closeModal}>
@@ -241,6 +242,6 @@ export default function SuppliersPageClient({
         onCancel={() => setDeactivateTarget(null)}
         onConfirm={handleConfirmDeactivate}
       />
-    </div>
+    </PageContainer>
   )
 }

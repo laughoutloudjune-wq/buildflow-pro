@@ -122,7 +122,7 @@ export default function SupplierBranchesModal({
             <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
           </div>
         ) : branches.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">
+          <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-500">
             ยังไม่มีสาขา — ผู้จำหน่ายรายนี้ใช้ที่อยู่และรหัสสาขาในข้อมูลหลัก
           </p>
         ) : (
@@ -144,7 +144,7 @@ export default function SupplierBranchesModal({
                     <td className="px-3 py-2 text-slate-500">
                       {branch.branch_code}
                       {branch.branch_code === '00000' && (
-                        <span className="ml-1 text-xs text-slate-400">(สนญ.)</span>
+                        <span className="ml-1 text-xs text-slate-500">(สนญ.)</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-slate-500">{branch.address || '-'}</td>
@@ -162,7 +162,7 @@ export default function SupplierBranchesModal({
                         type="button"
                         onClick={() => openEdit(branch)}
                         disabled={isPending}
-                        className="rounded p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                        className="rounded-lg p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
                         title="แก้ไข"
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -172,7 +172,7 @@ export default function SupplierBranchesModal({
                           type="button"
                           onClick={() => handleDeactivate(branch)}
                           disabled={isPending}
-                          className="rounded p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                          className="rounded-lg p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
                           title="ปิดใช้งาน"
                         >
                           <Trash2 className="h-3.5 w-3.5" />

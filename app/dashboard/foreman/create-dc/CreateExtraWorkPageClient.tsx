@@ -230,7 +230,7 @@ export default function CreateExtraWorkPageClient({
         </Modal>
       )}
 
-      <PageHeader title="สร้างใบงานเพิ่ม (Extra Work / DC)" className="mb-4" />
+      <PageHeader title="สร้างงานเพิ่ม (DC)" className="mb-4" />
       <Card className="p-5 border-amber-200 bg-amber-50/40">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div>

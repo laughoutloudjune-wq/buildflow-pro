@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { ArrowLeft, Loader2, Pencil, Plus, Tag, Trash2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import {
   addPromotionItem,
   createPromotion,
@@ -131,25 +133,19 @@ export default function PromotionsPageClient({
   const sorted = [...promotions].sort((a, b) => a.name.localeCompare(b.name, 'th'))
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-medium text-indigo-600">
-            <Tag className="h-4 w-4" aria-hidden />
-            ฝ่ายขาย
-          </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">โปรโมชั่น</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            แต่ละโปรโมชั่นเป็นชุด (bundle) ของรายการของแถม แต่ละรายการมีมูลค่าของตัวเอง เช่น
-            &quot;แถมแอร์ 4 เครื่อง = 48,000 บาท&quot; + &quot;แถมบ้านตกแต่งครบ = 200,000 บาท&quot;
-            เมื่อนำไปใช้กับดีลจริง ฝ่ายขายปรับรายการ/มูลค่า หรือเพิ่มรายการเองได้ตามที่เจรจากับลูกค้า
-          </p>
-        </div>
+    <PageContainer width="standard">
+      <PageHeader
+        title="โปรโมชั่น"
+        subtitle="แต่ละโปรโมชั่นเป็นชุด (bundle) ของรายการของแถม แต่ละรายการมีมูลค่าของตัวเอง เช่น &quot;แถมแอร์ 4 เครื่อง = 48,000 บาท&quot; + &quot;แถมบ้านตกแต่งครบ = 200,000 บาท&quot; เมื่อนำไปใช้กับดีลจริง ฝ่ายขายปรับรายการ/มูลค่า หรือเพิ่มรายการเองได้ตามที่เจรจากับลูกค้า"
+        actions={
+          <>
         <ButtonLink href="/dashboard/sales" variant="secondary">
           <ArrowLeft className="h-4 w-4" aria-hidden />
           กลับไปผังการขาย
         </ButtonLink>
-      </div>
+          </>
+        }
+      />
 
       {canManage && (
         <Card className="border-slate-200 p-6 shadow-sm">
@@ -180,7 +176,7 @@ export default function PromotionsPageClient({
                   {!bundle.isActive && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">ปิดใช้งาน</span>}
                 </div>
                 {bundle.description && <p className="mt-1 text-sm text-slate-500">{bundle.description}</p>}
-                <p className="mt-1 text-xs text-slate-400">{bundle.items.length} รายการ - มูลค่ารวม ฿{formatCurrency(total)}</p>
+                <p className="mt-1 text-xs text-slate-500">{bundle.items.length} รายการ - มูลค่ารวม ฿{formatCurrency(total)}</p>
               </div>
               {canManage && (
                 <div className="flex items-center gap-2">
@@ -203,7 +199,7 @@ export default function PromotionsPageClient({
 
             <div className="p-5">
               {bundle.items.length === 0 ? (
-                <p className="text-sm text-slate-400">ยังไม่มีรายการของแถมในโปรโมชั่นนี้</p>
+                <p className="text-sm text-slate-500">ยังไม่มีรายการของแถมในโปรโมชั่นนี้</p>
               ) : (
                 <table className="w-full text-left text-sm">
                   <tbody className="divide-y divide-slate-100">
@@ -299,6 +295,6 @@ export default function PromotionsPageClient({
         onCancel={() => setDeleteItemTarget(null)}
         onConfirm={handleDeleteItem}
       />
-    </div>
+    </PageContainer>
   )
 }

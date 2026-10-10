@@ -36,7 +36,7 @@ export default function PlotPhaseScheduleEditor({
   const [drafts, setDrafts] = useState<Record<number, Draft>>(() => buildDrafts(phases))
 
   if (phases.length === 0) {
-    return <p className="text-sm text-slate-400">ยังไม่มีรายการงาน (กด &quot;ดึง BOQ&quot;) จึงยังไม่มีเฟสให้กำหนดแผนงาน</p>
+    return <p className="text-sm text-slate-500">ยังไม่มีรายการงาน (กด &quot;ดึง BOQ&quot;) จึงยังไม่มีเฟสให้กำหนดแผนงาน</p>
   }
 
   const handleChange = (typeId: number, field: keyof Draft, value: string) => {
@@ -83,7 +83,7 @@ export default function PlotPhaseScheduleEditor({
                   />
                 </>
               ) : (
-                <span className="col-span-2 text-right text-xs text-slate-400">
+                <span className="col-span-2 text-right text-xs text-slate-500">
                   {p.plannedStartDate && p.plannedEndDate
                     ? `${p.plannedStartDate} – ${p.plannedEndDate}`
                     : 'ยังไม่กำหนด'}

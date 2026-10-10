@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { createProject, deleteProject, setProjectStatus } from '@/actions/project-actions'
@@ -102,7 +103,7 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
     const isActive = project.status !== 'completed'
     return (
       <Link key={project.id} href={`/dashboard/projects/${project.id}`}>
-        <Card className="group relative overflow-hidden transition-all hover:shadow-md hover:border-indigo-200 cursor-pointer h-full">
+        <Card className="group relative overflow-hidden transition-[color,background-color,border-color,box-shadow,transform] hover:shadow-md hover:border-indigo-200 cursor-pointer h-full">
           <div className="p-5">
             <div className="flex items-start justify-between mb-4">
               <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
@@ -140,7 +141,7 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
   }
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="wide">
       <PageHeader
         title="จัดการโครงการ"
         subtitle="รายชื่อโครงการก่อสร้างทั้งหมด"
@@ -177,7 +178,7 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
               กำลังดำเนินการ ({ongoing.length})
             </h2>
             {ongoing.length === 0 ? (
-              <p className="text-sm text-slate-400">{search ? 'ไม่พบโครงการที่ค้นหา' : 'ไม่มีโครงการที่กำลังดำเนินการ'}</p>
+              <p className="text-sm text-slate-500">{search ? 'ไม่พบโครงการที่ค้นหา' : 'ไม่มีโครงการที่กำลังดำเนินการ'}</p>
             ) : (
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">{ongoing.map(renderCard)}</div>
             )}
@@ -226,6 +227,6 @@ export default function ProjectsPageClient({ projects: initialProjects }: { proj
         onCancel={() => setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
       />
-    </div>
+    </PageContainer>
   )
 }

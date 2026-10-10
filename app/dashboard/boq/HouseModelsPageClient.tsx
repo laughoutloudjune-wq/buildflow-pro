@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
@@ -104,7 +105,7 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
     }, new Map<string, HouseModel[]>())
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="wide">
       <PageHeader
         title="แบบบ้าน & BOQ"
         subtitle="จัดการแบบบ้านและราคากลางก่อสร้าง"
@@ -127,7 +128,7 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
       </div>
 
       {searchedModels.length === 0 && (
-        <p className="text-sm text-slate-400">ไม่พบแบบบ้านที่ค้นหา</p>
+        <p className="text-sm text-slate-500">ไม่พบแบบบ้านที่ค้นหา</p>
       )}
 
       <div className="space-y-6">
@@ -141,7 +142,7 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
               </div>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {groupModels.map((model) => (
-          <Card key={model.id} className="group relative overflow-hidden transition-all hover:shadow-md hover:border-indigo-300 cursor-pointer h-full flex flex-col">
+          <Card key={model.id} className="group relative overflow-hidden transition-[color,background-color,border-color,box-shadow,transform] hover:shadow-md hover:border-indigo-300 cursor-pointer h-full flex flex-col">
             <Link href={`/dashboard/boq/${model.id}`} className="flex-grow">
               <div className="p-5 space-y-4">
                   <div className="h-10 w-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
@@ -197,7 +198,7 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
         })}
 
         {models.length === 0 && (
-          <div className="col-span-full py-16 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">
+          <div className="col-span-full py-16 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500">
             <Home className="h-12 w-12 mx-auto mb-3 opacity-20" />
             <p className="mb-4">ยังไม่มีแบบบ้าน</p>
              <button onClick={() => router.refresh()} className="text-indigo-600 hover:underline text-sm inline-flex items-center gap-1">
@@ -259,6 +260,6 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
         onCancel={() => setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
       />
-    </div>
+    </PageContainer>
   )
 }

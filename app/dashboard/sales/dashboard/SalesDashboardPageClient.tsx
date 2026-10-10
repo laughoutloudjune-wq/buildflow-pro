@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { AlertTriangle, Building2, CheckCircle2, Clock, Home, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import { statusColorClasses } from '@/lib/sales/statusColors'
@@ -75,7 +76,7 @@ export default function SalesDashboardPageClient({
   const p = data?.payments
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="wide">
       <PageHeader
         title="แดชบอร์ดขาย"
         subtitle="ภาพรวมยอดขาย สถานะแปลง และเงินที่เก็บได้"
@@ -95,7 +96,7 @@ export default function SalesDashboardPageClient({
       />
 
       {!data ? (
-        <div className="py-12 text-center text-slate-400">โหลดข้อมูลไม่สำเร็จ</div>
+        <div className="py-12 text-center text-slate-500">โหลดข้อมูลไม่สำเร็จ</div>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
@@ -133,7 +134,7 @@ export default function SalesDashboardPageClient({
               <Card className="p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">แปลงตามสถานะ</h3>
                 {data.byStatus.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</p>
+                  <p className="py-6 text-center text-sm text-slate-500">ยังไม่มีข้อมูล</p>
                 ) : (
                   <div className="space-y-3">
                     {data.byStatus.map((row) => {
@@ -148,11 +149,11 @@ export default function SalesDashboardPageClient({
                             </span>
                             <span className="text-slate-500">
                               {row.n.toLocaleString('th-TH')} แปลง
-                              {row.value > 0 && <span className="ml-2 text-slate-400">฿{formatCurrency(row.value)}</span>}
+                              {row.value > 0 && <span className="ml-2 text-slate-500">฿{formatCurrency(row.value)}</span>}
                             </span>
                           </div>
                           <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                            <div className={`h-full rounded-full ${c.dot}`} style={{ width: `${Math.max(2, (row.n / max) * 100)}%` }} />
+                            <div className={`h-full rounded-full transition-[width] duration-[220ms] ease-out ${c.dot}`} style={{ width: `${Math.max(2, (row.n / max) * 100)}%` }} />
                           </div>
                         </div>
                       )
@@ -198,6 +199,6 @@ export default function SalesDashboardPageClient({
           </div>
         </>
       )}
-    </div>
+    </PageContainer>
   )
 }

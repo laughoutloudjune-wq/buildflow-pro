@@ -1,14 +1,20 @@
 import Link from 'next/link'
-import { Activity, AlertTriangle, BadgeCheck, Building2, CheckCircle2, Clock3, ClipboardCheck, Home, ShieldAlert, Sparkles, TrendingUp, Wallet } from 'lucide-react'
+import { redirect } from 'next/navigation'
+import { Activity, AlertTriangle, BadgeCheck, Building2, CheckCircle2, Clock3, Home, ShieldAlert, Sparkles, TrendingUp, Wallet, ChevronRight, HardHat, ShoppingCart, Tag, UserX } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge, statusTone } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { PageSection } from '@/components/ui/PageSection'
+import { DEFAULT_THEME, getThemeByDepartmentId, type DepartmentTheme } from '@/lib/navigation'
 import { ButtonLink } from '@/components/ui/Button'
 import { getDashboardStats } from '@/actions/dashboard-actions'
 import { getDashboardWeek } from '@/actions/dashboard-week-actions'
 import { getWorkRequestCounts } from '@/actions/sales-work-requests'
 import { getDashboardSession, permissionsForRole } from '@/lib/auth/route-access'
 import { formatCurrency } from '@/lib/currency'
+import { WORK_REQUEST_CATEGORY_LABEL } from '@/lib/sales/workRequestCategories'
+import { formatWeekRange } from '@/lib/weekly-plan'
 
 function riskLevelTone(level: string) {
   if (level === 'high') return 'danger'
@@ -20,23 +26,16 @@ export default async function DashboardPage() {
   const { role, permissions: rolePermissions } = await getDashboardSession()
   const perms = permissionsForRole(role, rolePermissions)
 
-  // Sales never sees construction money (Q-08) - rather than picking through
-  // a big nested stats object to hide every baht figure in it, sales gets
-  // its own lightweight dashboard entirely and never calls getDashboardStats.
-  if (role === 'sales' || role === 'sales_exec') {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="ภาพรวม" subtitle="ยินดีต้อนรับ" />
-        <Card className="p-6 text-center">
-          <p className="text-sm text-slate-600">หน้านี้สำหรับฝ่ายก่อสร้าง กรุณาไปที่แดชบอร์ดฝ่ายขาย</p>
-          <ButtonLink href="/dashboard/sales/dashboard" className="mt-4 inline-flex">
-            ไปที่แดชบอร์ดฝ่ายขาย
-          </ButtonLink>
-        </Card>
-      </div>
-    )
+  // Sales never sees construction money (Q-08), and this page is the
+  // construction overview - so sales roles go straight to their own
+  // dashboard instead of landing on a "go somewhere else" card. The
+  // permission check avoids a redirect loop: a sales role with the sales
+  // module switched off is sent back here by requireModuleAccess.
+  if ((role === 'sales' || role === 'sales_exec') && perms.sales) {
+    redirect('/dashboard/sales/dashboard')
   }
 
+  const theme = DEFAULT_THEME // the overview's accent is indigo
   const [stats, week] = await Promise.all([getDashboardStats(), getDashboardWeek()])
   // Not everyone who lands on /dashboard cares about the work-request queue
   // (an accountant, say) - only show the card to roles that can actually do
@@ -47,70 +46,67 @@ export default async function DashboardPage() {
   // only the modules that have any legitimate reason to see it get it.
   const showMoney = perms.billing || perms.reports || perms.cost_control || perms.foreman
 
-  const kpis = [
+  type Kpi = { title: string; value: string | number; hint: string; icon: React.ReactNode; href: string; attention?: boolean }
+  const staleCount = stats.foremanQuality?.summary?.stale_requests || 0
+
+  const kpis: Kpi[] = [
     {
       title: 'โครงการทั้งหมด',
       value: stats.projectCount,
       hint: `${stats.plotCount} แปลง`,
       icon: <Building2 className="h-5 w-5 text-blue-600" />,
-      bg: 'bg-blue-50',
       href: '/dashboard/projects',
     },
     {
       title: 'งานที่กำลังดำเนินการ',
       value: stats.activeJobs,
       hint: `${stats.pendingApprovals} รายการรอ PM อนุมัติ`,
-      icon: <Activity className="h-5 w-5 text-indigo-600" />,
-      bg: 'bg-indigo-50',
+      icon: <Activity className="h-5 w-5" />,
       href: '/dashboard/billing',
     },
   ]
 
-  const moneyKpis = [
+  const moneyKpis: Kpi[] = [
     {
       title: 'จ่ายผู้รับเหมาแล้ว',
       value: `฿${formatCurrency(stats.paidOutTotal)}`,
       hint: 'ยอดที่โอนจ่ายจริงสะสม',
-      icon: <Wallet className="h-5 w-5 text-emerald-600" />,
-      bg: 'bg-emerald-50',
+      icon: <Wallet className="h-5 w-5" />,
       href: '/dashboard/reports/house-history',
     },
     {
       title: 'อนุมัติเดือนนี้',
       value: `฿${formatCurrency(stats.approvedThisMonth || 0)}`,
       hint: 'ยอดสุทธิใบเบิกที่อนุมัติแล้ว',
-      icon: <TrendingUp className="h-5 w-5 text-teal-600" />,
-      bg: 'bg-teal-50',
+      icon: <TrendingUp className="h-5 w-5" />,
       href: '/dashboard/reports/contractor-cycle',
     },
     {
       title: 'จ่ายเดือนนี้',
       value: stats.paidOutThisMonth?.count || 0,
       hint: `฿${formatCurrency(stats.paidOutThisMonth?.amount || 0)} • รายการที่จ่ายแล้ว`,
-      icon: <BadgeCheck className="h-5 w-5 text-emerald-600" />,
-      bg: 'bg-emerald-50',
+      icon: <BadgeCheck className="h-5 w-5" />,
       href: '/dashboard/reports/contractor-cycle',
     },
     {
       title: 'อนุมัติล่าสุด',
       value: stats.recentlyApproved?.count || 0,
       hint: `฿${formatCurrency(stats.recentlyApproved?.amount || 0)} • 7 วันล่าสุด${stats.recentlyApproved?.unpaidCount ? ` • รอจ่าย ${stats.recentlyApproved.unpaidCount} รายการ` : ''}`,
-      icon: <Sparkles className="h-5 w-5 text-sky-600" />,
-      bg: 'bg-sky-50',
+      icon: <Sparkles className="h-5 w-5" />,
       href: '/dashboard/reports/contractor-cycle',
     },
     {
       title: 'ต้องตรวจสอบ',
-      value: stats.foremanQuality?.summary?.stale_requests || 0,
+      value: staleCount,
       hint: 'คำขอที่รอเกิน 3 วัน',
-      icon: <AlertTriangle className="h-5 w-5 text-amber-600" />,
-      bg: 'bg-amber-50',
+      attention: staleCount > 0,
+      icon: <AlertTriangle className="h-5 w-5" />,
       href: '/dashboard/billing',
     },
   ]
 
   return (
-    <div className="space-y-8">
+    <PageContainer width="wide" className="space-y-8">
       <PageHeader
         title="ภาพรวม"
         subtitle="ภาพรวม KPI ความเสี่ยง คุณภาพงาน และกิจกรรมล่าสุด"
@@ -125,84 +121,126 @@ export default async function DashboardPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {[...kpis, ...(showMoney ? moneyKpis : [])].map((kpi) => (
           <Link key={kpi.title} href={kpi.href} className="group block h-full">
-            <Card className="flex h-full min-h-[132px] flex-col p-4 transition-shadow group-hover:shadow-md group-hover:border-slate-300">
+            <Card
+              interactive
+              className={`flex h-full min-h-[132px] flex-col p-4 ${kpi.attention ? 'border-amber-300 bg-amber-50/50' : ''}`}
+            >
               <div className="flex items-start justify-between gap-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{kpi.title}</p>
-                <div className={`rounded-lg p-2 ${kpi.bg}`}>{kpi.icon}</div>
+                <p className="text-xs font-medium text-slate-500">{kpi.title}</p>
+                <div className={`rounded-lg p-2 ${kpi.attention ? 'bg-amber-100 text-amber-700' : theme.soft}`}>{kpi.icon}</div>
               </div>
-              <p className="mt-1 text-xl font-semibold text-slate-900">{kpi.value}</p>
-              <p className="mt-1 text-xs text-slate-500">{kpi.hint}</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{kpi.value}</p>
+              <p className={`mt-1 text-xs ${kpi.attention ? 'font-medium text-amber-800' : 'text-slate-500'}`}>{kpi.hint}</p>
             </Card>
           </Link>
         ))}
       </div>
 
+      {(() => {
+        const queue = [
+          ...(perms.billing && stats.pendingApprovals > 0
+            ? [{ key: 'approvals', title: 'ใบเบิกรอ PM ตรวจสอบ', value: stats.pendingApprovals, hint: 'ตรวจสอบและอนุมัติ', href: '/dashboard/billing', warn: false }]
+            : []),
+          ...(showMoney && staleCount > 0
+            ? [{ key: 'stale', title: 'คำขอที่รอเกิน 3 วัน', value: staleCount, hint: 'ควรตามเรื่อง', href: '/dashboard/billing', warn: true }]
+            : []),
+          ...(workRequestCounts && workRequestCounts.newCount > 0
+            ? [{ key: 'sr-new', title: 'คำขอจากฝ่ายขาย (SR) ใหม่', value: workRequestCounts.newCount, hint: 'รอหน่วยงานก่อสร้างรับเรื่อง', href: '/dashboard/sales-requests', warn: false }]
+            : []),
+          ...(workRequestCounts && workRequestCounts.overdueCount > 0
+            ? [{ key: 'sr-late', title: 'คำขอจากฝ่ายขาย (SR) เกินกำหนด', value: workRequestCounts.overdueCount, hint: 'เกินวันที่ต้องเสร็จ', href: '/dashboard/sales-requests', warn: true }]
+            : []),
+        ]
+        if (queue.length === 0) return null
+        return (
+          <PageSection title="งานที่ต้องจัดการ" description="รายการที่รอการตัดสินใจหรือเกินกำหนด เรียงจากสิ่งที่ควรทำก่อน">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {queue
+                .sort((x, y) => Number(y.warn) - Number(x.warn))
+                .map((q) => (
+                  <Link key={q.key} href={q.href} className="group block">
+                    <Card interactive className={`flex items-center gap-3 p-4 ${q.warn ? 'border-amber-300 bg-amber-50/50' : ''}`}>
+                      <div className={`flex h-11 min-w-11 items-center justify-center rounded-xl px-2 text-lg font-semibold tabular-nums ${q.warn ? 'bg-amber-100 text-amber-800' : theme.soft}`}>
+                        {q.value}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">{q.title}</p>
+                        <p className={`text-xs ${q.warn ? 'font-medium text-amber-800' : 'text-slate-500'}`}>{q.hint}</p>
+                      </div>
+                    </Card>
+                  </Link>
+                ))}
+            </div>
+          </PageSection>
+        )
+      })()}
+
       {week && !('error' in week) && (
         <Card className="p-5">
-          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold text-slate-900">สัปดาห์นี้</h2>
-            <span className="text-xs text-slate-500">{week.weekStart} ถึง {week.weekEnd}</span>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">{formatWeekRange(week.weekStart)}</span>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {week.sales && (
-              <WeekColumn title="งานขาย">
-                <WeekRow href="/dashboard/sales-requests" label="Sale Request (SR)" value={week.sales.srCount} />
-                {week.sales.srItems.map((item) => (
-                  <Link key={item.id} href="/dashboard/sales-requests" className="block truncate pl-2 text-xs text-slate-600 hover:underline">
-                    • {item.title} <span className="text-slate-400">({WORK_REQUEST_CATEGORY_LABEL[item.category] || item.category})</span>
-                  </Link>
-                ))}
-                <WeekRow href="/dashboard/sales/transfer-requests" label="Transfer Request (TR)" value={week.sales.trCount} />
-              </WeekColumn>
+              <WeekPanel
+                title="งานขาย"
+                icon={<Tag className="h-[18px] w-[18px]" />}
+                theme={getThemeByDepartmentId('sales')}
+                total={week.sales.srCount}
+              >
+                <WeekRow href="/dashboard/sales-requests" label="คำขอจากฝ่ายขาย (SR)" value={week.sales.srCount} />
+                {week.sales.srItems.length > 0 && (
+                  <li className="space-y-1 px-2 pb-1 pt-0.5">
+                    {week.sales.srItems.map((item) => (
+                      <Link key={item.id} href="/dashboard/sales-requests" className="flex items-center gap-2 rounded-md px-2 py-1 text-xs hover:bg-slate-50">
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 font-medium ${getThemeByDepartmentId('sales').chip}`}>
+                          {WORK_REQUEST_CATEGORY_LABEL[item.category] || item.category}
+                        </span>
+                        <span className="min-w-0 truncate text-slate-600">{item.title}</span>
+                      </Link>
+                    ))}
+                  </li>
+                )}
+              </WeekPanel>
             )}
             {week.construction && (
-              <WeekColumn title="งานก่อสร้าง">
+              <WeekPanel
+                title="งานก่อสร้าง"
+                icon={<HardHat className="h-[18px] w-[18px]" />}
+                theme={getThemeByDepartmentId('construction')}
+                total={week.construction.main + week.construction.inspect + week.construction.repair + week.construction.other + week.construction.dc}
+              >
                 <WeekRow href="/dashboard/weekly-plan" label="งานหลัก" value={week.construction.main} />
                 <WeekRow href="/dashboard/weekly-plan" label="ตรวจบ้าน" value={week.construction.inspect} />
+                <WeekRow href="/dashboard/weekly-plan" label="งานซ่อม" value={week.construction.repair} />
                 <WeekRow href="/dashboard/weekly-plan" label="งานอื่นๆ" value={week.construction.other} />
-                <WeekRow href="/dashboard/weekly-plan" label="DC" value={week.construction.dc} />
-              </WeekColumn>
+                <WeekRow href="/dashboard/weekly-plan" label="งานเพิ่ม (DC)" value={week.construction.dc} />
+              </WeekPanel>
             )}
             {week.procurement && (
-              <WeekColumn title="บัญชี/จัดซื้อ">
-                <WeekRow href="/dashboard/procurement/requests" label="ใบขอซื้อ (PR) ที่ยังเปิดอยู่" value={week.procurement.openPrCount} />
-              </WeekColumn>
+              <WeekPanel
+                title="บัญชี / จัดซื้อ"
+                icon={<ShoppingCart className="h-[18px] w-[18px]" />}
+                theme={getThemeByDepartmentId('procurement')}
+                total={week.procurement.openPrCount}
+              >
+                <WeekRow href="/dashboard/procurement/requests" label="คำขอซื้อ (PR) ที่ยังเปิดอยู่" value={week.procurement.openPrCount} />
+              </WeekPanel>
             )}
             {week.unassigned && (
-              <WeekColumn title="ยังไม่ได้มอบหมาย">
-                <WeekRow href="/dashboard/weekly-plan" label="รายการแผนงานที่ไม่มีผู้รับผิดชอบ" value={week.unassigned.count} />
-              </WeekColumn>
+              <WeekPanel
+                title="ยังไม่ได้มอบหมาย"
+                icon={<UserX className="h-[18px] w-[18px]" />}
+                theme={getThemeByDepartmentId('admin')}
+                total={week.unassigned.count}
+                warn={week.unassigned.count > 0}
+              >
+                <WeekRow href="/dashboard/weekly-plan" label="รายการแผนงานที่ไม่มีผู้รับผิดชอบ" value={week.unassigned.count} warn />
+              </WeekPanel>
             )}
           </div>
         </Card>
-      )}
-
-      {workRequestCounts && (
-        <Link href="/dashboard/sales-requests" className="group block">
-          <Card className="flex items-center justify-between gap-4 p-4 transition-shadow group-hover:shadow-md group-hover:border-slate-300">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-violet-50 p-2">
-                <ClipboardCheck className="h-5 w-5 text-violet-600" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">คำขอจากฝ่ายขาย</p>
-                <p className="text-xs text-slate-500">งานเพิ่มลูกค้า แก้ defect และคำขออื่นๆ ที่รอหน่วยงานก่อสร้าง</p>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-4">
-              <div className="text-center">
-                <p className="text-xl font-semibold text-slate-900">{workRequestCounts.newCount}</p>
-                <p className="text-xs text-slate-500">ใหม่</p>
-              </div>
-              <div className="text-center">
-                <p className={`text-xl font-semibold ${workRequestCounts.overdueCount > 0 ? 'text-red-600' : 'text-slate-900'}`}>
-                  {workRequestCounts.overdueCount}
-                </p>
-                <p className="text-xs text-slate-500">เกินกำหนด</p>
-              </div>
-            </div>
-          </Card>
-        </Link>
       )}
 
       {showMoney && (
@@ -224,7 +262,7 @@ export default async function DashboardPage() {
                     <span>{project.completion_rate}%</span>
                   </div>
                   <div className="h-2 rounded-full bg-slate-100">
-                    <div className="h-2 rounded-full bg-slate-900" style={{ width: `${Math.max(4, project.completion_rate)}%` }} />
+                    <div className="h-2 rounded-full bg-slate-900 transition-[width] duration-[220ms] ease-out" style={{ width: `${Math.max(4, project.completion_rate)}%` }} />
                   </div>
                 </div>
 
@@ -254,7 +292,7 @@ export default async function DashboardPage() {
             <Card className="p-5">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900">สัญญาณคุณภาพงานของ Foreman</h2>
-                <ShieldAlert className="h-5 w-5 text-amber-600" />
+                <ShieldAlert className="h-5 w-5" />
               </div>
 
               <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -352,33 +390,61 @@ export default async function DashboardPage() {
           </Card>
         </>
       )}
-    </div>
+    </PageContainer>
   )
 }
 
-const WORK_REQUEST_CATEGORY_LABEL: Record<string, string> = {
-  extra_work: 'งานเพิ่ม',
-  defect: 'แก้ defect',
-  expedite: 'เร่งงาน',
-  handover_prep: 'เตรียมส่งมอบ',
-  other: 'อื่นๆ',
-}
-
-function WeekColumn({ title, children }: { title: string; children: React.ReactNode }) {
+/** One department's slice of the week: accent strip, icon surface, a total and
+ * its rows. `warn` switches to amber when the panel holds something unresolved. */
+function WeekPanel({
+  title,
+  icon,
+  theme,
+  total,
+  warn,
+  children,
+}: {
+  title: string
+  icon: React.ReactNode
+  theme: DepartmentTheme
+  total: number
+  warn?: boolean
+  children: React.ReactNode
+}) {
   return (
-    <div className="rounded-lg border border-slate-200 p-3">
-      <p className="mb-2 text-sm font-semibold text-slate-900">{title}</p>
-      <div className="space-y-1.5">{children}</div>
-    </div>
+    <section className={`overflow-hidden rounded-xl border ${warn ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200/70 bg-white'}`}>
+      <div aria-hidden className={`h-[3px] ${warn ? 'bg-amber-400' : theme.solid}`} />
+      <header className="flex items-center gap-3 px-4 pb-2 pt-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${warn ? 'bg-amber-100 text-amber-700' : theme.soft}`}>{icon}</div>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-sm font-semibold text-slate-900">{title}</h3>
+          <p className={`text-xs ${warn ? 'font-medium text-amber-800' : 'text-slate-500'}`}>
+            {warn ? `ต้องจัดการ ${total} รายการ` : total > 0 ? `${total} รายการ` : 'ไม่มีรายการ'}
+          </p>
+        </div>
+      </header>
+      <ul className="px-2 pb-2">{children}</ul>
+    </section>
   )
 }
 
-function WeekRow({ href, label, value }: { href: string; label: string; value: number }) {
+function WeekRow({ href, label, value, warn }: { href: string; label: string; value: number; warn?: boolean }) {
   return (
-    <Link href={href} className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-slate-50">
-      <span className="text-sm text-slate-700">{label}</span>
-      <span className="text-lg font-semibold text-slate-900">{value}</span>
-    </Link>
+    <li>
+      <Link href={href} className="group flex items-center justify-between gap-3 rounded-lg px-2 py-2.5 hover:bg-slate-900/[0.04]">
+        <span className={`text-sm ${value > 0 ? 'text-slate-800' : 'text-slate-500'}`}>{label}</span>
+        <span className="flex items-center gap-1">
+          <span
+            className={`min-w-9 rounded-md px-2 py-0.5 text-center text-sm font-semibold tabular-nums ${
+              value === 0 ? 'text-slate-500' : warn ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-900'
+            }`}
+          >
+            {value}
+          </span>
+          <ChevronRight className="h-4 w-4 text-slate-400 transition-colors group-hover:text-slate-600" aria-hidden />
+        </span>
+      </Link>
+    </li>
   )
 }
 

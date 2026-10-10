@@ -95,7 +95,11 @@ export default function SearchableSelect({ options, value, onChange, placeholder
         type="button"
         disabled={disabled}
         onClick={() => (isOpen ? setIsOpen(false) : openDropdown())}
-        className="flex w-full items-center justify-between rounded border border-gray-300 bg-white px-2 py-1.5 text-left text-sm disabled:bg-slate-50 disabled:text-slate-400"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        // Same look as a native <select> (global form defaults): 10px radius,
+        // slate border, indigo focus ring.
+        className="flex w-full items-center justify-between gap-2 rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-left text-sm transition-[border-color,box-shadow] duration-[120ms] focus-visible:border-indigo-400 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500/15 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
       >
         <span className={selected ? 'truncate text-slate-800' : 'truncate text-slate-400'}>
           {selected ? selected.label : placeholder || '-- เลือก --'}
@@ -108,20 +112,35 @@ export default function SearchableSelect({ options, value, onChange, placeholder
           <div
             ref={panelRef}
             style={{ position: 'fixed', top: coords.top, left: coords.left, width: coords.width }}
-            className="z-50 rounded-md border border-slate-200 bg-white shadow-lg"
+            className="anim-pop glass-popover elev-floating z-50 rounded-[10px] border border-slate-200"
           >
             <input
               autoFocus
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  // Close the list only - not an enclosing modal.
+                  e.stopPropagation()
+                  setIsOpen(false)
+                  setQuery('')
+                  buttonRef.current?.focus()
+                } else if (e.key === 'Enter' && filtered[0]) {
+                  e.preventDefault()
+                  onChange(filtered[0].value)
+                  setIsOpen(false)
+                  setQuery('')
+                  buttonRef.current?.focus()
+                }
+              }}
               placeholder="พิมพ์เพื่อค้นหา..."
-              className="w-full rounded-t-md border-b border-slate-200 px-2 py-1.5 text-sm outline-none"
+              className="w-full !rounded-b-none !rounded-t-[10px] !border-0 !border-b !border-slate-200 !px-3 !py-2 text-sm !ring-0"
             />
             <div className="max-h-56 overflow-y-auto">
               {filtered.length === 0 ? (
                 renderCreate ? null : (
-                  <div className="px-2 py-2 text-sm text-slate-400">ไม่พบรายการ</div>
+                  <div className="px-2 py-2 text-sm text-slate-500">ไม่พบรายการ</div>
                 )
               ) : (
                 filtered.map((option) => (
@@ -138,7 +157,7 @@ export default function SearchableSelect({ options, value, onChange, placeholder
                     }`}
                   >
                     <div className="truncate">{option.label}</div>
-                    {option.sublabel && <div className="truncate text-xs text-slate-400">{option.sublabel}</div>}
+                    {option.sublabel && <div className="truncate text-xs text-slate-500">{option.sublabel}</div>}
                   </button>
                 ))
               )}

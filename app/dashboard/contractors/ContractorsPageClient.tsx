@@ -6,6 +6,7 @@ import { Plus, Trash2, Loader2, HardHat, Phone, CreditCard, User, Pencil, Wallet
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { createContractor, deleteContractor, updateContractor, getContractorApprovedHistory } from '@/actions/contractor-actions'
@@ -172,7 +173,7 @@ export default function ContractorsPageClient({
   }, [filteredHistoryRows])
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="wide">
       <PageHeader
         title="ผู้รับเหมา"
         subtitle="จัดการรายชื่อช่างและทีมงาน"
@@ -185,7 +186,7 @@ export default function ContractorsPageClient({
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {contractors.map((c) => (
-          <Card key={c.id} className="group relative overflow-hidden hover:border-indigo-300 transition-all p-5 flex flex-col justify-between">
+          <Card key={c.id} className="group relative overflow-hidden hover:border-indigo-300 transition-[color,background-color,border-color,box-shadow,transform] p-5 flex flex-col justify-between">
             <div>
               <div className="flex justify-between items-start mb-3">
                 <div className="flex items-center gap-3">
@@ -200,10 +201,10 @@ export default function ContractorsPageClient({
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => openModal(c)} className="text-slate-300 hover:text-indigo-500 p-1 rounded hover:bg-indigo-50 transition">
+                  <button onClick={() => openModal(c)} className="text-slate-300 hover:text-indigo-500 p-1 rounded-lg hover:bg-indigo-50 transition">
                     <Pencil className="h-4 w-4" />
                   </button>
-                  <button onClick={() => setDeleteTarget(c)} disabled={isPending} className="text-slate-300 hover:text-red-500 p-1 rounded hover:bg-red-50 transition">
+                  <button onClick={() => setDeleteTarget(c)} disabled={isPending} className="text-slate-300 hover:text-red-500 p-1 rounded-lg hover:bg-red-50 transition">
                     {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   </button>
                 </div>
@@ -246,7 +247,7 @@ export default function ContractorsPageClient({
                       c.bank_account.includes(' || ')
                         ? <>
                             <div>{c.bank_account.split(' || ')[0]}</div>
-                            <div className="text-xs text-slate-400">{c.bank_account.split(' || ')[1]}</div>
+                            <div className="text-xs text-slate-500">{c.bank_account.split(' || ')[1]}</div>
                           </>
                         : <div>{c.bank_account}</div>
                     ) : '-'}
@@ -262,7 +263,7 @@ export default function ContractorsPageClient({
         ))}
 
         {contractors.length === 0 && (
-          <div className="col-span-full py-12 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">
+          <div className="col-span-full py-12 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500">
             ยังไม่มีข้อมูลผู้รับเหมา
           </div>
         )}
@@ -330,7 +331,7 @@ export default function ContractorsPageClient({
         {isRetentionLoading ? (
           <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
         ) : retentionRows.length === 0 ? (
-          <div className="text-center text-slate-400 py-10">ไม่พบรายการที่มีเงินประกัน</div>
+          <div className="text-center text-slate-500 py-10">ไม่พบรายการที่มีเงินประกัน</div>
         ) : (
           <div className="space-y-3">
             <p className="text-xs text-slate-500">เงินประกันผลงานที่หักจริงโดยบัญชี (เฉพาะใบเบิกที่จ่ายแล้วและหักประกัน)</p>
@@ -363,7 +364,7 @@ export default function ContractorsPageClient({
                         </td>
                         <td className="px-3 py-2">
                           <div className="font-medium">{row.projects?.name || '-'}</div>
-                          {row.plots?.name && <div className="text-xs text-slate-400">แปลง {row.plots.name}</div>}
+                          {row.plots?.name && <div className="text-xs text-slate-500">แปลง {row.plots.name}</div>}
                           {jobNames.length > 0 && (
                             <div className="mt-1 space-y-0.5">
                               {jobNames.map((name: string, i: number) => (
@@ -402,11 +403,11 @@ export default function ContractorsPageClient({
       >
         <div className="p-4 bg-slate-50/40">
           {isHistoryLoading ? (
-            <div className="flex min-h-[40vh] items-center justify-center text-slate-400">
+            <div className="flex min-h-[40vh] items-center justify-center text-slate-500">
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>
           ) : historyRows.length === 0 ? (
-            <div className="text-center text-slate-400 py-12">ไม่พบงานที่อนุมัติแล้ว</div>
+            <div className="text-center text-slate-500 py-12">ไม่พบงานที่อนุมัติแล้ว</div>
           ) : (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
@@ -453,7 +454,7 @@ export default function ContractorsPageClient({
               </Card>
 
               {filteredHistoryRows.length === 0 ? (
-                <div className="text-center text-slate-400 py-12">ไม่พบข้อมูลตามเงื่อนไข</div>
+                <div className="text-center text-slate-500 py-12">ไม่พบข้อมูลตามเงื่อนไข</div>
               ) : (
                 filteredHistoryRows.map((row: any) => {
                   const plot = row.plots?.name ? `แปลง ${row.plots.name}` : 'ไม่ระบุแปลง'
@@ -491,7 +492,7 @@ export default function ContractorsPageClient({
                     <Card key={row.id} className="p-4 border-slate-200">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <div className="inline-flex rounded bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">
+                          <div className="inline-flex rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">
                             #{String(row.doc_no || '-').padStart(4, '0')}
                           </div>
                           <div className="mt-2 text-sm text-slate-600">{row.billing_date ? new Date(row.billing_date).toLocaleDateString('th-TH') : '-'}</div>
@@ -515,21 +516,21 @@ export default function ContractorsPageClient({
                           <div className={`mt-2 text-lg font-bold ${isPaid ? 'text-emerald-700' : 'text-slate-400'}`}>
                             ฿{formatCurrency(displayAmount)}
                           </div>
-                          {!isPaid && <div className="text-[11px] text-slate-400">ยอดที่ PM อนุมัติ ยังไม่หัก WHT/ประกัน</div>}
+                          {!isPaid && <div className="text-[11px] text-slate-500">ยอดที่ PM อนุมัติ ยังไม่หัก WHT/ประกัน</div>}
                           {isPaid && (showWhtBadge || showRetentionBadge || showDeductBadge) && (
                             <div className="mt-1 flex items-center justify-end gap-1 flex-wrap">
                               {showWhtBadge && (
-                                <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200">
+                                <span className="rounded-lg bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200">
                                   WHT {row.wht_percent}% (−฿{formatCurrency(whtAmt)})
                                 </span>
                               )}
                               {showRetentionBadge && (
-                                <span className="rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 ring-1 ring-orange-200">
+                                <span className="rounded-lg bg-orange-50 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 ring-1 ring-orange-200">
                                   ประกัน {row.retention_percent}% (−฿{formatCurrency(retentionAmt)})
                                 </span>
                               )}
                               {showDeductBadge && (
-                                <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700 ring-1 ring-red-200">
+                                <span className="rounded-lg bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700 ring-1 ring-red-200">
                                   หักงาน (−฿{formatCurrency(Number(row.total_deduct_amount || 0))})
                                 </span>
                               )}
@@ -569,6 +570,6 @@ export default function ContractorsPageClient({
         onCancel={() => setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
       />
-    </div>
+    </PageContainer>
   )
 }

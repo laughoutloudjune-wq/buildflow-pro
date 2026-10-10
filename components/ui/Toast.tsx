@@ -12,6 +12,8 @@ export type Toast = {
   message: string
   /** Milliseconds before auto-dismiss. 0 keeps the toast until dismissed. */
   duration: number
+  /** Set while the exit animation plays, just before removal. */
+  leaving?: boolean
 }
 
 type ToastOptions = { duration?: number }
@@ -44,6 +46,7 @@ const TONE_STYLES: Record<ToastTone, { ring: string; icon: string; Icon: typeof 
 }
 
 const MAX_VISIBLE = 4
+const TOAST_EXIT_MS = 160
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -51,12 +54,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
 
   const dismiss = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
     const timer = timers.current.get(id)
     if (timer) {
       clearTimeout(timer)
       timers.current.delete(id)
     }
+    // Play the exit animation, then remove.
+    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, leaving: true } : t)))
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), TOAST_EXIT_MS)
   }, [])
 
   const show = useCallback(
@@ -129,7 +134,9 @@ function ToastViewport({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id:
           <div
             key={toast.id}
             role={toast.tone === 'error' ? 'alert' : 'status'}
-            className={`pointer-events-auto flex w-full max-w-sm animate-[toast-in_160ms_ease-out] items-start gap-3 rounded-xl bg-white px-4 py-3 shadow-lg ring-1 ${ring}`}
+            className={`pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl bg-white px-4 py-3 shadow-lg ring-1 ${ring} ${
+              toast.leaving ? 'animate-[toast-out_160ms_ease-in_forwards]' : 'animate-[toast-in_180ms_ease-out]'
+            }`}
           >
             <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${icon}`} />
             <p className="flex-1 text-sm leading-snug text-slate-700">{toast.message}</p>
@@ -137,7 +144,7 @@ function ToastViewport({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id:
               type="button"
               onClick={() => onDismiss(toast.id)}
               aria-label="ปิดการแจ้งเตือน"
-              className="-mr-1 shrink-0 rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              className="-mr-1 shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
             >
               <X className="h-3.5 w-3.5" />
             </button>

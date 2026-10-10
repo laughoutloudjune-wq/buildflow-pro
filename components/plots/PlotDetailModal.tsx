@@ -60,7 +60,7 @@ export default function PlotDetailModal({
       bodyClassName="p-4 sm:p-6"
     >
       {isLoading || !bundle ? (
-        <div className="flex h-full items-center justify-center text-slate-400">
+        <div className="flex h-full items-center justify-center text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : (

@@ -909,13 +909,13 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           </div>
         </div>
         {activeTab === 'unpaid' && !filters.month && (
-          <p className="mt-2 text-xs text-slate-400">ไม่ได้เลือกเดือน — แสดงทุกใบเบิกที่รออนุมัติจ่าย</p>
+          <p className="mt-2 text-xs text-slate-500">ไม่ได้เลือกเดือน — แสดงทุกใบเบิกที่รออนุมัติจ่าย</p>
         )}
         <div className="mt-3 flex items-center justify-end gap-2">
           {(() => {
             const selectedCount = selectedGrouped.reduce((s, g) => s + g.bills.length, 0)
             return selectedCount < rows.length ? (
-              <span className="text-xs text-slate-400">เลือกพิมพ์ {selectedCount}/{rows.length} ใบเบิก</span>
+              <span className="text-xs text-slate-500">เลือกพิมพ์ {selectedCount}/{rows.length} ใบเบิก</span>
             ) : null
           })()}
           <Button variant="secondary" onClick={runReport}>ค้นหา</Button>
@@ -1089,12 +1089,12 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           <div className="rounded-lg border p-3 bg-slate-50">
             <div className="text-slate-500 text-xs">ยอดรวมทั้งหมด (ก่อนหัก)</div>
             <div className="font-bold text-lg text-slate-700">฿{formatCurrency(grandTotals.gross_amount)}</div>
-            <div className="text-[11px] text-slate-400 mt-0.5">งานหลัก ฿{formatCurrency(grandTotals.total_work_amount)} · งานเพิ่ม ฿{formatCurrency(grandTotals.total_add_amount)} · งานหัก −฿{formatCurrency(grandTotals.total_deduct_amount)}</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">งานหลัก ฿{formatCurrency(grandTotals.total_work_amount)} · งานเพิ่ม ฿{formatCurrency(grandTotals.total_add_amount)} · งานหัก −฿{formatCurrency(grandTotals.total_deduct_amount)}</div>
           </div>
           <div className="rounded-lg border p-3 bg-emerald-50">
             <div className="text-slate-500 text-xs">ยอดโอนจริง (หลังหักทั้งหมด)</div>
             <div className="font-bold text-lg text-emerald-700">฿{formatCurrency(grandTotals.actual_transfer)}</div>
-            <div className="text-[11px] text-slate-400 mt-0.5">{grandTotals.bill_count} ใบเบิก · {grouped.length} ผู้รับเหมา</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">{grandTotals.bill_count} ใบเบิก · {grouped.length} ผู้รับเหมา</div>
           </div>
         </div>
       </Card>
@@ -1341,13 +1341,13 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                                       onChange={() => toggleBillExcluded(bill.id)}
                                     />
                                   </td>
-                                  <td className="px-3 py-2 text-slate-400">
+                                  <td className="px-3 py-2 text-slate-500">
                                     {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                                   </td>
                                   <td className="px-3 py-2 font-semibold">#{String(bill.doc_no || '-').padStart(4, '0')}</td>
                                   <td className="px-3 py-2">
                                     <div>{bill.billing_date ? new Date(bill.billing_date).toLocaleDateString('th-TH') : '-'}</div>
-                                    <div className="text-xs text-slate-400">
+                                    <div className="text-xs text-slate-500">
                                       อนุมัติ {bill.approved_at ? new Date(bill.approved_at).toLocaleDateString('th-TH') : '-'}
                                     </div>
                                   </td>
@@ -1631,7 +1631,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                               </div>
                             ) : (
                               <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                                <div className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
+                                <div className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
                                   รอจ่าย
                                 </div>
                                 {isRecentlyApproved(bill.approved_at) && (
@@ -1644,7 +1644,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                           </td>
                           <td className="px-3 py-2">
                             <div>{bill.billing_date ? new Date(bill.billing_date).toLocaleDateString('th-TH') : '-'}</div>
-                            <div className="text-xs text-slate-400">
+                            <div className="text-xs text-slate-500">
                               อนุมัติ {bill.approved_at ? new Date(bill.approved_at).toLocaleDateString('th-TH') : '-'}
                             </div>
                           </td>
@@ -1653,7 +1653,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
                             <div className="text-xs text-slate-500">แปลง {plotLabel}</div>
                           </td>
                           <td className="px-3 py-2">
-                            <div>{isExtra ? 'งานเพิ่ม / DC' : 'งวดงานหลัก'}</div>
+                            <div>{isExtra ? 'งานเพิ่ม (DC)' : 'งวดงานหลัก'}</div>
                             {bill.reason_for_dc && <div className="text-xs text-slate-500">{bill.reason_for_dc}</div>}
                           </td>
                           {/* ยอดรวม = gross before any deductions */}

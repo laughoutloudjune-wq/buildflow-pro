@@ -13,7 +13,6 @@ import { todayInBangkok } from '@/lib/utils'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import InlineMaterialCreate from '@/components/procurement/InlineMaterialCreate'
 import SupplierFormFields from '@/components/procurement/SupplierFormFields'
-import { appleCard, appleCardLabel, appleDivider } from '@/components/procurement/appleTheme'
 import { getProjects } from '@/actions/project-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
 import { getMaterialPickerOptions, getPlotGroups, createMaterialType } from '@/actions/material-actions'
@@ -131,8 +130,8 @@ type Line = {
   intended_destination: 'store' | 'site' | null
 }
 
-const fieldLabel = 'mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#86868b]'
-const readOnlyBox = 'rounded-[10px] border border-[#e8e8ed] bg-[#f5f5f7] px-3 py-2 text-[13px] text-[#1d1d1f]'
+const fieldLabel = 'mb-1 block text-xs font-medium text-slate-500'
+const readOnlyBox = 'rounded-[10px] border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900'
 const readOnlyRow = 'flex items-center justify-between gap-3'
 
 function lineDiscountAmount(line: Line, gross: number, mode: DiscountMode): number {
@@ -179,7 +178,7 @@ function RequestLinkNote({
   return (
     <p
       className={`mt-1.5 flex items-start gap-1 text-[11px] leading-tight ${
-        substituted ? 'text-indigo-600' : 'text-[#86868b]'
+        substituted ? 'text-indigo-600' : 'text-slate-500'
       }`}
     >
       {substituted ? (
@@ -538,7 +537,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             }))
           )
         } else {
-          toast.error('ไม่พบข้อมูลที่เลือกไว้ กรุณาเลือกรายการจากใบขอซื้ออีกครั้ง')
+          toast.error('ไม่พบข้อมูลที่เลือกไว้ กรุณาเลือกรายการจากคำขอซื้ออีกครั้ง')
         }
       } else if (mode === 'create' && fromRequestId) {
         const pr = await getPurchaseRequestById(fromRequestId)
@@ -1323,11 +1322,11 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       )}
 
 
-      <div className={`mt-5 ${appleDivider}`} />
+      <div className="mt-5 h-px bg-slate-100" />
 
       {/* Top section: order date (+ status, create mode only - in edit mode
           the merged detail page owns the status pill/history/actions). */}
-      <Card className={`mt-5 p-5 ${appleCard}`}>
+      <Card className="mt-5 p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <label className={fieldLabel}>วันที่สั่งซื้อ</label>
@@ -1366,8 +1365,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         {/* Vendor card */}
-        <Card className={`p-5 ${appleCard}`}>
-          <div className={appleCardLabel}>ผู้จำหน่าย</div>
+        <Card className="p-5">
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-indigo-700">ผู้จำหน่าย</div>
           <div className="space-y-3">
             <div>
               <div className="mb-1 flex items-center justify-between">
@@ -1411,30 +1410,30 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
               </div>
             )}
             {selectedSupplier ? (
-              <div className="space-y-1.5 rounded-[14px] border border-[#f0f0f2] bg-[#f5f5f7] p-3 text-sm">
+              <div className="space-y-1.5 rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
                 <div className={readOnlyRow}>
-                  <span className="text-[#86868b]">ที่อยู่</span>
+                  <span className="text-slate-500">ที่อยู่</span>
                   {/* The branch's address is the one the tax invoice carries,
                     * so show that rather than the parent's when one is picked. */}
-                  <span className="text-right text-[#1d1d1f]">
+                  <span className="text-right text-slate-900">
                     {selectedBranch?.address || selectedSupplier.address || '-'}
                   </span>
                 </div>
                 <div className={readOnlyRow}>
-                  <span className="text-[#86868b]">เลขผู้เสียภาษี</span>
-                  <span className="text-[#1d1d1f]">{selectedSupplier.tax_id || '-'}</span>
+                  <span className="text-slate-500">เลขผู้เสียภาษี</span>
+                  <span className="text-slate-900">{selectedSupplier.tax_id || '-'}</span>
                 </div>
                 {(selectedBranch?.branch_code || selectedSupplier.branch_code) && (
                   <div className={readOnlyRow}>
-                    <span className="text-[#86868b]">สาขาเลขที่</span>
-                    <span className="text-[#1d1d1f]">
+                    <span className="text-slate-500">สาขาเลขที่</span>
+                    <span className="text-slate-900">
                       {selectedBranch?.branch_code || selectedSupplier.branch_code}
                     </span>
                   </div>
                 )}
                 <div className={readOnlyRow}>
-                  <span className="text-[#86868b]">ผู้ติดต่อ</span>
-                  <span className="text-[#1d1d1f]">
+                  <span className="text-slate-500">ผู้ติดต่อ</span>
+                  <span className="text-slate-900">
                     {[
                       selectedBranch?.contact_name || selectedSupplier.contact_name,
                       selectedBranch?.phone || selectedSupplier.phone,
@@ -1445,7 +1444,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                 </div>
               </div>
             ) : (
-              <p className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400">
+              <p className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500">
                 เลือกผู้จำหน่ายเพื่อแสดงข้อมูลที่อยู่และเลขผู้เสียภาษี
               </p>
             )}
@@ -1453,8 +1452,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         </Card>
 
         {/* Buyer company card */}
-        <Card className={`p-5 ${appleCard}`}>
-          <div className={appleCardLabel}>บริษัทผู้ซื้อ</div>
+        <Card className="p-5">
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-indigo-700">บริษัทผู้ซื้อ</div>
           <div className="space-y-3">
             <div>
               <div className="mb-1 flex items-center justify-between">
@@ -1478,22 +1477,22 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
               />
             </div>
             {selectedCompany ? (
-              <div className="space-y-1.5 rounded-[14px] border border-[#f0f0f2] bg-[#f5f5f7] p-3 text-sm">
+              <div className="space-y-1.5 rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
                 <div className={readOnlyRow}>
-                  <span className="text-[#86868b]">ที่อยู่</span>
-                  <span className="text-right text-[#1d1d1f]">{selectedCompany.address || '-'}</span>
+                  <span className="text-slate-500">ที่อยู่</span>
+                  <span className="text-right text-slate-900">{selectedCompany.address || '-'}</span>
                 </div>
                 <div className={readOnlyRow}>
-                  <span className="text-[#86868b]">เลขผู้เสียภาษี</span>
-                  <span className="text-[#1d1d1f]">{selectedCompany.tax_id || '-'}</span>
+                  <span className="text-slate-500">เลขผู้เสียภาษี</span>
+                  <span className="text-slate-900">{selectedCompany.tax_id || '-'}</span>
                 </div>
                 <div className={readOnlyRow}>
-                  <span className="text-[#86868b]">โทรศัพท์</span>
-                  <span className="text-[#1d1d1f]">{selectedCompany.phone || '-'}</span>
+                  <span className="text-slate-500">โทรศัพท์</span>
+                  <span className="text-slate-900">{selectedCompany.phone || '-'}</span>
                 </div>
               </div>
             ) : (
-              <p className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400">
+              <p className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500">
                 เลือกบริษัทที่จะใช้ซื้อวัสดุครั้งนี้
               </p>
             )}
@@ -1502,8 +1501,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       </div>
 
       {/* Terms card */}
-      <Card className={`mt-5 p-5 ${appleCard}`}>
-        <div className={appleCardLabel}>เงื่อนไขใบสั่งซื้อ</div>
+      <Card className="mt-5 p-5">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-indigo-700">เงื่อนไขใบสั่งซื้อ</div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={fieldLabel}>โครงการ</label>
@@ -1534,7 +1533,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             <div className="col-span-2">
               <div className={plotScope === 'multi' ? 'w-full' : 'w-full sm:max-w-xs'}>
                 {isPlotsLoading ? (
-                  <div className="flex items-center gap-2 text-xs text-[#86868b]">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังโหลดข้อมูลแปลง...
                   </div>
                 ) : plotScope === 'plot' ? (
@@ -1545,7 +1544,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                 ) : plotScope === 'multi' ? (
                   <>
                     <label className={fieldLabel}>เลือกแปลง (เลือกได้หลายแปลง)</label>
-                    <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-[10px] border border-[#e8e8ed] p-2">
+                    <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-[10px] border border-slate-200 p-2">
                       {plots.map((p) => {
                         const checked = plotIds.includes(p.id)
                         return (
@@ -1565,7 +1564,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                         )
                       })}
                     </div>
-                    {plotIds.length > 0 && <p className="mt-1 text-xs text-[#86868b]">เลือกแล้ว {plotIds.length} แปลง</p>}
+                    {plotIds.length > 0 && <p className="mt-1 text-xs text-slate-500">เลือกแล้ว {plotIds.length} แปลง</p>}
                   </>
                 ) : (
                   <>
@@ -1593,7 +1592,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
               />
               ซื้อนอก BOQ (พื้นที่ส่วนกลาง / ของใช้สำนักงาน / เครื่องจักร ฯลฯ)
             </label>
-            <p className="mt-0.5 text-xs text-[#86868b]">รายการนี้จะไม่ถูกนำไปเทียบกับ BOQ ในหน้าควบคุมต้นทุน</p>
+            <p className="mt-0.5 text-xs text-slate-500">รายการนี้จะไม่ถูกนำไปเทียบกับ BOQ ในหน้าควบคุมต้นทุน</p>
             {isOutsideBoq && (
               <textarea
                 value={outsideBoqReason}
@@ -1633,8 +1632,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       </Card>
 
       {/* Payment conditions card */}
-      <Card className={`mt-5 p-5 ${appleCard}`}>
-        <div className={appleCardLabel}>เงื่อนไขการชำระเงิน</div>
+      <Card className="mt-5 p-5">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-indigo-700">เงื่อนไขการชำระเงิน</div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
             <label className={fieldLabel}>สกุลเงิน</label>
@@ -1709,8 +1708,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       </Card>
 
       {/* Products card */}
-      <Card className={`mt-5 p-5 ${appleCard}`}>
-        <div className={appleCardLabel}>รายการสินค้า</div>
+      <Card className="mt-5 p-5">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-indigo-700">รายการสินค้า</div>
 
         {!readOnly && lines.some((l) => l.quantity_received > 0) && (
           <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
@@ -1719,23 +1718,23 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         )}
 
         {lines.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">
+          <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-500">
             ยังไม่มีรายการ กดเพิ่มรายการสินค้าเพื่อเริ่มต้น
           </p>
         ) : (
-          <div className={`overflow-hidden ${appleCard}`}>
+          <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
             <table className="w-full table-fixed text-left text-sm">
-              <thead style={{ backgroundColor: '#f5f5f7' }}>
+              <thead className="bg-slate-50">
                 <tr>
-                  <th className="w-10 px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">#</th>
-                  <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">สินค้า</th>
-                  <th className="w-36 px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">จำนวน</th>
-                  <th className="w-32 px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">ราคาต่อหน่วย</th>
-                  <th className="w-32 px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">ราคารวม</th>
+                  <th className="w-10 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">#</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">สินค้า</th>
+                  <th className="w-36 px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">จำนวน</th>
+                  <th className="w-32 px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">ราคาต่อหน่วย</th>
+                  <th className="w-32 px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">ราคารวม</th>
                   {!readOnly && <th className="w-10 px-2 py-2.5" />}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#f0f0f2] bg-white">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {lines.map((line, i) => {
                   const gross = (Number(line.quantity_ordered) || 0) * (Number(line.unit_price) || 0)
                   const netLineTotal = gross - lineDiscountAmount(line, gross, discountMode)
@@ -1757,7 +1756,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                       : materialOptions
                   return (
                     <tr key={i} className="align-top">
-                      <td className="px-3 py-2 text-slate-400">{i + 1}</td>
+                      <td className="px-3 py-2 text-slate-500">{i + 1}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
                           <SearchableSelect
@@ -1788,7 +1787,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                               onClick={() => openMaterialModal(i)}
                               title="เพิ่มวัสดุใหม่"
                               disabled={isMaterialsLoading}
-                              className="shrink-0 rounded p-1.5 text-indigo-600 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="shrink-0 rounded-lg p-1.5 text-indigo-600 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               <Plus className="h-3.5 w-3.5" />
                             </button>
@@ -1797,11 +1796,11 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                         {line.allocations && (
                           <div className="mt-1.5 rounded-[10px] border border-indigo-100 bg-indigo-50/50 p-2">
                             <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
-                              <Link2 className="h-3 w-3" /> จัดสรรจากใบขอซื้อ
+                              <Link2 className="h-3 w-3" /> จัดสรรจากคำขอซื้อ
                             </div>
                             <div className="space-y-1">
                               {line.allocations.map((a, j) => (
-                                <div key={a.purchase_request_item_id} className="flex items-center gap-2 text-[11px] text-[#1d1d1f]">
+                                <div key={a.purchase_request_item_id} className="flex items-center gap-2 text-[11px] text-slate-900">
                                   <span className="min-w-0 flex-1 truncate">
                                     PR-{a.pr_no ?? '?'}
                                     {a.plot_label ? ` · ${a.plot_label}` : ''}
@@ -1815,13 +1814,13 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                                     className="w-20 text-right text-xs"
                                     disabled={readOnly}
                                   />
-                                  <span className="w-10 shrink-0 text-[#86868b]">{materialUnit(line) || '-'}</span>
+                                  <span className="w-10 shrink-0 text-slate-500">{materialUnit(line) || '-'}</span>
                                   {!readOnly && line.allocations && line.allocations.length > 1 && (
                                     <button
                                       type="button"
                                       onClick={() => removeAllocation(i, j)}
                                       title="เอารายการนี้ออกจากใบสั่งซื้อ"
-                                      className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                      className="shrink-0 rounded-lg p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                                     >
                                       <X className="h-3 w-3" />
                                     </button>
@@ -1838,7 +1837,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                           * unticked; when they don't, it's the only thing
                           * that can - so it arrives ticked and explains why. */}
                         {line.purchase_request_item_id && requestLines[line.purchase_request_item_id] && (
-                          <label className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-tight text-[#1d1d1f]">
+                          <label className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-tight text-slate-900">
                             <input
                               type="checkbox"
                               checked={line.closes_request_line}
@@ -1915,13 +1914,13 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                                     type="button"
                                     onClick={() => updateLine(i, { project_id: null, plot_id: null, plot_group_id: null })}
                                     title="ยกเลิก - ใช้โครงการ/แปลงของใบสั่งซื้อหลัก"
-                                    className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                    className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                                   >
                                     <X className="h-3.5 w-3.5" />
                                   </button>
                                 </div>
                                 {loadingAltScopes[line.project_id] ? (
-                                  <div className="flex items-center gap-1 text-[10px] text-[#86868b]">
+                                  <div className="flex items-center gap-1 text-xs text-slate-500">
                                     <Loader2 className="h-3 w-3 animate-spin" /> กำลังโหลดแปลง...
                                   </div>
                                 ) : (
@@ -1955,7 +1954,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                                 className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition ${
                                   line.intended_destination === d
                                     ? 'bg-indigo-600 text-white'
-                                    : 'bg-white text-[#86868b] ring-1 ring-[#e8e8ed] hover:bg-slate-50'
+                                    : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50'
                                 }`}
                               >
                                 {d === 'store' ? 'เข้าสโตร์' : 'ส่งตรงหน้างาน'}
@@ -1975,9 +1974,9 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             className="w-full text-right"
                             disabled={readOnly}
                             readOnly={Boolean(line.allocations)}
-                            title={line.allocations ? 'ผลรวมของจำนวนที่จัดสรรจากใบขอซื้อแต่ละใบ' : undefined}
+                            title={line.allocations ? 'ผลรวมของจำนวนที่จัดสรรจากคำขอซื้อแต่ละใบ' : undefined}
                           />
-                          <span className="shrink-0 text-xs text-[#86868b]">{materialUnit(line) || '-'}</span>
+                          <span className="shrink-0 text-xs text-slate-500">{materialUnit(line) || '-'}</span>
                         </div>
                         {line.quantity_received > 0 && (
                           <div className="mt-1 text-right text-[10px] text-emerald-600">
@@ -2019,7 +2018,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                       <td className="px-3 py-2 text-right font-medium text-slate-700">฿{formatMoney(netLineTotal)}</td>
                       {!readOnly && (
                         <td className="px-1 py-2 text-center">
-                          <button type="button" onClick={() => removeLine(i)} className="rounded p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500">
+                          <button type="button" aria-label="ลบรายการ" onClick={() => removeLine(i)} className="rounded-lg p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </td>
@@ -2043,7 +2042,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                 onClick={() => setIsAddRequestsOpen(true)}
                 className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800"
               >
-                <Link2 className="h-4 w-4" /> เพิ่มจากใบขอซื้อ
+                <Link2 className="h-4 w-4" /> เพิ่มจากคำขอซื้อ
               </button>
             )}
           </div>

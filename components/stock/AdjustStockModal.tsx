@@ -72,7 +72,7 @@ export default function AdjustStockModal({
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">จำนวนที่นับได้จริง</label>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">จำนวนที่นับได้จริง</label>
           <input
             type="number"
             min="0"
@@ -89,10 +89,10 @@ export default function AdjustStockModal({
             {delta > 0 ? 'เพิ่มขึ้น' : 'ลดลง'} {numberFormat.format(Math.abs(delta))} {unit}
           </div>
         )}
-        {isValidQty && delta === 0 && <p className="text-sm text-slate-400">จำนวนตรงกับระบบอยู่แล้ว ไม่ต้องปรับยอด</p>}
+        {isValidQty && delta === 0 && <p className="text-sm text-slate-500">จำนวนตรงกับระบบอยู่แล้ว ไม่ต้องปรับยอด</p>}
 
         <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">เหตุผล (ต้องระบุ)</label>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">เหตุผล (ต้องระบุ)</label>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}

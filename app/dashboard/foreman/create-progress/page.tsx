@@ -19,7 +19,7 @@ export default async function CreateProgressPage({
     <Card className="p-5">
       <PageHeader
         title="สร้างคำขอเบิก"
-        subtitle="เลือกประเภทคำขอที่ต้องการสร้างได้เหมือนเดิม ระหว่างงวดงานหลักและงานเพิ่ม / DC"
+        subtitle="เลือกประเภทคำขอที่ต้องการสร้างได้เหมือนเดิม ระหว่างงวดงานหลักและงานเพิ่ม (DC)"
       />
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -35,7 +35,7 @@ export default async function CreateProgressPage({
           href="/dashboard/foreman/create-dc"
           className="rounded-xl border border-amber-200 bg-amber-50 p-5 transition hover:border-amber-300 hover:bg-amber-100/70"
         >
-          <div className="text-lg font-bold text-amber-900">งานเพิ่ม / DC</div>
+          <div className="text-lg font-bold text-amber-900">งานเพิ่ม (DC)</div>
           <p className="mt-2 text-sm text-amber-800">ใช้สำหรับส่งคำขอ DC อย่างเดียวได้ แม้ไม่มีคำของานหลักในรอบนั้น</p>
         </Link>
       </div>

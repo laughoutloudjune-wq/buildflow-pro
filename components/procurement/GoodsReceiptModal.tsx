@@ -160,7 +160,7 @@ export default function GoodsReceiptModal({
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-slate-500">เลือกสินค้าที่ได้รับหรือต้องการระบุในใบรับสินค้า</p>
-          <span className="shrink-0 text-xs font-medium text-slate-400">เลือก {selectedCount} รายการ</span>
+          <span className="shrink-0 text-xs font-medium text-slate-500">เลือก {selectedCount} รายการ</span>
         </div>
 
         <div>
@@ -184,7 +184,7 @@ export default function GoodsReceiptModal({
         </div>
 
         {receivableItems.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
+          <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-500">
             ไม่มีรายการที่รอรับของแล้ว
           </p>
         ) : (
@@ -214,7 +214,7 @@ export default function GoodsReceiptModal({
                           className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
                       </td>
-                      <td className="px-1 py-2 text-slate-400">{i + 1}</td>
+                      <td className="px-1 py-2 text-slate-500">{i + 1}</td>
                       <td className="px-2 py-2 text-slate-800">{item.material_types?.name || '-'}</td>
                       <td className="px-3 py-2 text-right">
                         {checked ? (
@@ -234,7 +234,7 @@ export default function GoodsReceiptModal({
                             )}
                           </>
                         ) : (
-                          <span className="text-slate-400">
+                          <span className="text-slate-500">
                             {remaining.toLocaleString('th-TH')} {item.unit || item.material_types?.unit}
                           </span>
                         )}

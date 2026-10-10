@@ -4,11 +4,15 @@ import { useMemo, useState, useEffect } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
+import { EmptyState } from '@/components/ui/EmptyState'
 import Modal from '@/components/ui/Modal'
 import { getExtraWorkReport, getBillingOptions } from '@/actions/billing-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
 import { Loader2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
+import { TableFrame } from '@/components/ui/TableFrame'
 
 type Project = { id: string; name: string }
 type Plot = { id: string; name: string }
@@ -138,72 +142,68 @@ export default function DCHistoryReportPageClient({
   const selectedGroup = totalsByPlot.find((g) => g.key === selectedGroupKey) || null
 
   return (
-    <div className="space-y-4">
+    <PageContainer width="wide">
       <PageHeader
         title="รายงานประวัติงานเพิ่ม (DC)"
-        subtitle="สรุปงานเพิ่ม (Extra Work) ตามแปลงและเงื่อนไขที่เลือก"
+        subtitle="สรุปงานเพิ่ม (DC) ตามแปลงและเงื่อนไขที่เลือก"
       />
 
-      <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">โครงการ</label>
-            <select className="mt-1 w-full" value={filters.projectId || ''} onChange={(e) => setFilters((prev) => ({ ...prev, projectId: e.target.value || undefined }))}>
-              <option value="">ทั้งหมด</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">แปลง</label>
-            <select className="mt-1 w-full" value={filters.plotId || ''} onChange={(e) => setFilters((prev) => ({ ...prev, plotId: e.target.value || undefined }))}>
-              <option value="">ทั้งหมด</option>
-              {plots.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">เหตุผล</label>
-            <input className="mt-1 w-full" placeholder="เช่น Owner Request" value={filters.reason || ''} onChange={(e) => setFilters((prev) => ({ ...prev, reason: e.target.value || undefined }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">ตั้งแต่</label>
-            <input type="date" className="mt-1 w-full" value={filters.dateFrom || ''} onChange={(e) => setFilters((prev) => ({ ...prev, dateFrom: e.target.value || undefined }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">ถึง</label>
-            <input type="date" className="mt-1 w-full" value={filters.dateTo || ''} onChange={(e) => setFilters((prev) => ({ ...prev, dateTo: e.target.value || undefined }))} />
-          </div>
+      <PageToolbar
+        actions={
+          <Button onClick={runReport} disabled={loading}>
+            {loading ? 'กำลังค้นหา...' : 'ค้นหา'}
+          </Button>
+        }
+        resultCount={data.length}
+        activeFilters={[
+          ...(filters.projectId ? [{ label: projects.find((p) => p.id === filters.projectId)?.name ?? 'โครงการ', onRemove: () => setFilters((prev) => ({ ...prev, projectId: undefined })) }] : []),
+          ...(filters.plotId ? [{ label: `แปลง ${plots.find((p) => p.id === filters.plotId)?.name ?? ''}`, onRemove: () => setFilters((prev) => ({ ...prev, plotId: undefined })) }] : []),
+          ...(filters.reason ? [{ label: `เหตุผล: ${filters.reason}`, onRemove: () => setFilters((prev) => ({ ...prev, reason: undefined })) }] : []),
+          ...(filters.dateFrom || filters.dateTo ? [{ label: `${filters.dateFrom || '…'} – ${filters.dateTo || '…'}`, onRemove: () => setFilters((prev) => ({ ...prev, dateFrom: undefined, dateTo: undefined })) }] : []),
+        ]}
+        onReset={() => setFilters({})}
+      >
+        <select aria-label="โครงการ" className="min-w-[10rem]" value={filters.projectId || ''} onChange={(e) => setFilters((prev) => ({ ...prev, projectId: e.target.value || undefined }))}>
+          <option value="">ทุกโครงการ</option>
+          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select aria-label="แปลง" className="min-w-[8rem]" value={filters.plotId || ''} onChange={(e) => setFilters((prev) => ({ ...prev, plotId: e.target.value || undefined }))}>
+          <option value="">ทุกแปลง</option>
+          {plots.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <input aria-label="เหตุผล" className="min-w-[10rem]" placeholder="เหตุผล เช่น Owner Request" value={filters.reason || ''} onChange={(e) => setFilters((prev) => ({ ...prev, reason: e.target.value || undefined }))} />
+        <div className="flex items-center gap-1.5">
+          <input type="date" aria-label="ตั้งแต่" value={filters.dateFrom || ''} onChange={(e) => setFilters((prev) => ({ ...prev, dateFrom: e.target.value || undefined }))} />
+          <span className="text-slate-400" aria-hidden>–</span>
+          <input type="date" aria-label="ถึง" value={filters.dateTo || ''} onChange={(e) => setFilters((prev) => ({ ...prev, dateTo: e.target.value || undefined }))} />
         </div>
-        <div className="mt-3 flex justify-end">
-          <Button onClick={runReport}>ค้นหา</Button>
-        </div>
-      </Card>
+      </PageToolbar>
 
-      <Card className="p-4">
-        <h2 className="text-lg font-semibold mb-3">สรุปต้นทุนตามแปลง</h2>
+      <Card className="p-5">
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">สรุปต้นทุนตามแปลง</h2>
         {totalsByPlot.length === 0 ? (
-          <p className="text-sm text-slate-400">ยังไม่มีข้อมูล</p>
+          <EmptyState title="ยังไม่มีข้อมูลงานเพิ่ม (DC)" description="ลองเปลี่ยนเงื่อนไขแล้วกดค้นหา" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {totalsByPlot.map((entry) => (
-              <button key={entry.key} className="p-3 border rounded-lg text-left hover:border-amber-300 hover:bg-amber-50/40 transition" onClick={() => setSelectedGroupKey(entry.key)}>
+              <button key={entry.key} className="rounded-xl border border-slate-200 p-3 text-left transition-colors hover:border-slate-300 hover:bg-slate-50" onClick={() => setSelectedGroupKey(entry.key)}>
                 <p className="text-xs text-slate-500">{entry.project}</p>
                 <p className="font-semibold text-slate-800">{entry.plot}</p>
-                <p className="text-lg font-bold text-amber-700">฿{formatCurrency(entry.value)}</p>
+                <p className="text-lg font-bold tabular-nums text-slate-900">฿{formatCurrency(entry.value)}</p>
                 <p className="text-xs text-slate-500 mt-1">ดูประวัติ {entry.rows.length} รายการ</p>
               </button>
             ))}
-            <div className="p-3 border rounded-lg bg-amber-50">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs text-slate-500">รวมทั้งหมด</p>
-              <p className="text-lg font-bold text-amber-800">฿{formatCurrency(totalAll)}</p>
+              <p className="text-lg font-bold tabular-nums text-slate-900">฿{formatCurrency(totalAll)}</p>
             </div>
           </div>
         )}
       </Card>
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b text-slate-700">
+      <TableFrame>
+        <table>
+            <thead>
               <tr>
                 <th className="px-4 py-3 font-semibold">วันที่</th>
                 <th className="px-4 py-3 font-semibold">โครงการ</th>
@@ -216,7 +216,7 @@ export default function DCHistoryReportPageClient({
               {loading ? (
                 <tr><td colSpan={5} className="p-8 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto"/></td></tr>
               ) : data.length === 0 ? (
-                <tr><td colSpan={5} className="p-8 text-center text-slate-400">ไม่มีข้อมูล</td></tr>
+                <tr><td colSpan={5} className="p-8 text-center text-slate-500">ไม่มีข้อมูล</td></tr>
               ) : (
                 reportRows.map((row) => (
                   <tr key={row._row_key} className="hover:bg-slate-50 cursor-pointer" onClick={() => setSelectedGroupKey(`${row.projects?.name || 'ไม่ระบุโครงการ'}|||${row._plot_name || row.plots?.name || 'ไม่ระบุแปลง'}`)}>
@@ -230,8 +230,7 @@ export default function DCHistoryReportPageClient({
               )}
             </tbody>
           </table>
-        </div>
-      </Card>
+      </TableFrame>
 
       <Modal
         isOpen={!!selectedGroup}
@@ -287,7 +286,7 @@ export default function DCHistoryReportPageClient({
                           )
                         })}
                         {(!row.billing_adjustments || row.billing_adjustments.length === 0) && (
-                          <tr><td colSpan={5} className="px-2 py-2 text-center text-slate-400">ไม่มีรายการย่อย</td></tr>
+                          <tr><td colSpan={5} className="px-2 py-2 text-center text-slate-500">ไม่มีรายการย่อย</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -297,6 +296,6 @@ export default function DCHistoryReportPageClient({
           </div>
         )}
       </Modal>
-    </div>
+    </PageContainer>
   )
 }

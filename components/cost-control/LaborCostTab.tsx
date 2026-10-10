@@ -7,7 +7,7 @@ export default function LaborCostTab({ entries }: { entries: LaborLedgerEntry[] 
 
   if (entries.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-400">
+      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-500">
         ยังไม่มีงานผู้รับเหมาที่เกี่ยวข้องกับขอบเขตนี้
       </div>
     )
@@ -32,7 +32,7 @@ export default function LaborCostTab({ entries }: { entries: LaborLedgerEntry[] 
               <td className="px-3 py-2.5 text-slate-700">{entry.contractorName}</td>
               <td className="px-3 py-2.5">
                 <div className="font-medium text-slate-800">{entry.itemName}</div>
-                <div className="text-xs text-slate-400">แปลง {entry.plotName}</div>
+                <div className="text-xs text-slate-500">แปลง {entry.plotName}</div>
               </td>
               <td className="px-3 py-2.5 text-right text-slate-700">฿{formatCurrency(entry.budget)}</td>
               <td className="px-3 py-2.5 text-right text-emerald-700">฿{formatCurrency(entry.approved)}</td>

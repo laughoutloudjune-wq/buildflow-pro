@@ -6,12 +6,14 @@ import { ArrowLeft, ArrowDown, ArrowUp, Loader2, Plus, Trash2 } from 'lucide-rea
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
 import { getSignatureSlots, replaceSignatureSlots, uploadSignatureSlotAsset } from '@/actions/signature-slots-actions'
 import type { SignatureDocumentType, SignatureSystemKey } from '@/lib/types/signatures'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 
 const TABS: { key: SignatureDocumentType; label: string }[] = [
-  { key: 'purchase_request', label: 'ใบขอซื้อ (PR)' },
+  { key: 'purchase_request', label: 'คำขอซื้อ (PR)' },
   { key: 'purchase_order', label: 'ใบสั่งซื้อ (PO)' },
   { key: 'billing', label: 'ใบเบิกงวดงาน / DC' },
   { key: 'sale_receipt', label: 'ใบเสร็จรับเงิน (ฝ่ายขาย)' },
@@ -51,6 +53,7 @@ export default function SignatureSettingsPageClient({
   initialError?: string | null
 }) {
   const toast = useToast()
+  const { theme } = useDepartment()
   const [activeTab, setActiveTab] = useState<SignatureDocumentType>(initialTab)
   const [slots, setSlots] = useState<SlotDraft[]>(() => toDrafts(initialSlots))
   const [isLoading, setIsLoading] = useState(false)
@@ -144,7 +147,7 @@ export default function SignatureSettingsPageClient({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <PageContainer width="form">
       <div>
         <Link
           href="/dashboard/settings"
@@ -164,7 +167,7 @@ export default function SignatureSettingsPageClient({
             key={t.key}
             onClick={() => setActiveTab(t.key)}
             className={`relative -mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition ${
-              activeTab === t.key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+              activeTab === t.key ? theme.tab : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
             {t.label}
@@ -173,14 +176,14 @@ export default function SignatureSettingsPageClient({
       </div>
 
       {isLoading ? (
-        <div className="flex h-40 items-center justify-center text-slate-400">
+        <div className="flex h-40 items-center justify-center text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : (
         <Card className="p-4">
           <div className="space-y-3">
             {slots.length === 0 && (
-              <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
+              <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-500">
                 ยังไม่มีช่องลายเซ็น กดเพิ่มด้านล่างเพื่อเริ่มต้น
               </p>
             )}
@@ -191,7 +194,7 @@ export default function SignatureSettingsPageClient({
                     type="button"
                     onClick={() => move(slot._key, -1)}
                     disabled={index === 0}
-                    className="rounded p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-30"
+                    className="rounded-lg p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-30"
                   >
                     <ArrowUp className="h-3.5 w-3.5" />
                   </button>
@@ -199,7 +202,7 @@ export default function SignatureSettingsPageClient({
                     type="button"
                     onClick={() => move(slot._key, 1)}
                     disabled={index === slots.length - 1}
-                    className="rounded p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-30"
+                    className="rounded-lg p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-30"
                   >
                     <ArrowDown className="h-3.5 w-3.5" />
                   </button>
@@ -228,7 +231,7 @@ export default function SignatureSettingsPageClient({
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={slot.signature_url} alt={slot.label} className="max-h-full max-w-full object-contain" />
                       ) : (
-                        <span className="text-center text-[10px] leading-tight text-slate-400">ไม่มีรูป
+                        <span className="text-center text-[10px] leading-tight text-slate-500">ไม่มีรูป
                           <br />(เซ็นสด)</span>
                       )}
                     </div>
@@ -256,7 +259,7 @@ export default function SignatureSettingsPageClient({
                 <button
                   type="button"
                   onClick={() => removeSlot(slot._key)}
-                  className="mt-1 rounded p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                  className="mt-1 rounded-lg p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
                   title="ลบช่องลายเซ็นนี้"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -276,6 +279,6 @@ export default function SignatureSettingsPageClient({
           </div>
         </Card>
       )}
-    </div>
+    </PageContainer>
   )
 }

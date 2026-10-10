@@ -213,10 +213,10 @@ export default function PurchaseRequestForm({
           toast.error(result.error)
           return
         }
-        toast.success(mode === 'edit' ? 'บันทึกการแก้ไขแล้ว' : 'ส่งใบขอซื้อเรียบร้อยแล้ว')
+        toast.success(mode === 'edit' ? 'บันทึกการแก้ไขแล้ว' : 'ส่งคำขอซื้อเรียบร้อยแล้ว')
         onSaved(result)
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : mode === 'edit' ? 'บันทึกการแก้ไขไม่สำเร็จ' : 'ส่งใบขอซื้อไม่สำเร็จ')
+        toast.error(error instanceof Error ? error.message : mode === 'edit' ? 'บันทึกการแก้ไขไม่สำเร็จ' : 'ส่งคำขอซื้อไม่สำเร็จ')
       }
     })
   }
@@ -251,7 +251,7 @@ export default function PurchaseRequestForm({
       {plotScope !== 'none' && (
         <div>
           {isPlotsLoading ? (
-            <div className="flex items-center gap-2 text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังโหลดข้อมูลแปลง...
             </div>
           ) : plotScope === 'plot' ? (
@@ -279,7 +279,7 @@ export default function PurchaseRequestForm({
                   )
                 })}
               </div>
-              {plotIds.length > 0 && <p className="mt-1 text-xs text-slate-400">เลือกแล้ว {plotIds.length} แปลง</p>}
+              {plotIds.length > 0 && <p className="mt-1 text-xs text-slate-500">เลือกแล้ว {plotIds.length} แปลง</p>}
             </>
           ) : (
             <>
@@ -303,7 +303,7 @@ export default function PurchaseRequestForm({
           </Button>
         </div>
         {lines.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
+          <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-500">
             ยังไม่มีรายการ กดเพิ่มรายการเพื่อเริ่มต้น
           </p>
         ) : (
@@ -353,7 +353,7 @@ export default function PurchaseRequestForm({
                     title="หน่วยนับสำหรับรายการนี้ - แก้ไขได้ถ้าต้องการนับต่างจากหน่วยของวัสดุในระบบ"
                     className="w-20"
                   />
-                  <button type="button" onClick={() => removeLine(i)} className="rounded p-2 text-slate-300 hover:bg-red-50 hover:text-red-500">
+                  <button type="button" aria-label="ลบรายการ" onClick={() => removeLine(i)} className="rounded-lg p-2 text-slate-300 hover:bg-red-50 hover:text-red-500">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
@@ -366,7 +366,7 @@ export default function PurchaseRequestForm({
                       placeholder="สำหรับงาน (ไม่ระบุก็ได้)"
                     />
                   ) : (
-                    <p className="text-xs text-slate-400">เลือกแปลงก่อน จึงจะระบุได้ว่าวัสดุนี้สำหรับงานใด (ไม่บังคับ)</p>
+                    <p className="text-xs text-slate-500">เลือกแปลงก่อน จึงจะระบุได้ว่าวัสดุนี้สำหรับงานใด (ไม่บังคับ)</p>
                   )}
                 </div>
                 <input

@@ -112,7 +112,7 @@ export default function ReceiptDetailModal({ receipt, onClose }: { receipt: Good
         <PayoutPoComparison receiptIds={[receipt.id]} />
 
         {isLoading ? (
-          <div className="flex items-center gap-2 py-2 text-sm text-slate-400">
+          <div className="flex items-center gap-2 py-2 text-sm text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" /> กำลังตรวจสอบ BOQ...
           </div>
         ) : (

@@ -3,10 +3,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Loader2, Search, Wallet } from 'lucide-react'
+import { Loader2, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
+import { TableFrame } from '@/components/ui/TableFrame'
+import { EmptyState } from '@/components/ui/EmptyState'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
@@ -162,23 +166,17 @@ export default function ReceiptsPageClient({
   }
 
   return (
-    <div className="mx-auto max-w-screen-2xl space-y-6">
+    <PageContainer width="wide">
       <PageHeader
-        title="ใบรับสินค้า (Goods Receipts)"
+        title="ใบรับสินค้า (RI)"
         subtitle="ทุกครั้งที่รับของจาก PO จะสร้างใบรับสินค้า (RI) - เลือกใบที่ยังไม่จ่ายเพื่อสร้างใบสำคัญจ่าย"
       />
 
-      <Card className="border-slate-200 p-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9"
-            placeholder="ค้นหาเลขที่ RI / PO / ผู้จำหน่าย / วัสดุ"
-          />
-        </div>
-      </Card>
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาเลขที่ RI / PO / ผู้จำหน่าย / วัสดุ' }}
+        activeFilters={search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []}
+        onReset={() => setSearch('')}
+      />
 
       {selected.size > 0 && (
         <Card className="flex flex-wrap items-center justify-between gap-3 border-indigo-100 bg-indigo-50/60 px-4 py-3">
@@ -192,15 +190,14 @@ export default function ReceiptsPageClient({
         </Card>
       )}
 
-      <Card className="overflow-hidden">
+      <TableFrame>
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 text-sm">
           <span className="text-slate-500">
             ผลลัพธ์ <span className="font-semibold text-slate-700">{rows.length}</span> รายการ
           </span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+          <table>
+            <thead>
               <tr>
                 <th className="w-10 px-4 py-3" />
                 <th className="px-4 py-3">เลขที่ RI</th>
@@ -215,8 +212,12 @@ export default function ReceiptsPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center italic text-slate-400">
-                    ยังไม่มีใบรับสินค้า
+                  <td colSpan={8} className="p-0">
+                    <EmptyState
+                      variant={search.trim() ? 'no-results' : 'empty'}
+                      title={search.trim() ? 'ไม่พบใบรับสินค้าตามคำค้นหา' : 'ยังไม่มีใบรับสินค้า'}
+                      description={search.trim() ? 'ลองเปลี่ยนคำค้นหา' : 'ใบรับสินค้าจะถูกสร้างเมื่อรับของจาก PO'}
+                    />
                   </td>
                 </tr>
               ) : (
@@ -253,7 +254,7 @@ export default function ReceiptsPageClient({
                       <td className="whitespace-nowrap px-4 py-3 text-slate-700">{r.purchase_orders?.suppliers?.name || '-'}</td>
                       <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">
                         {label}
-                        {extra > 0 && <span className="ml-1 text-xs text-slate-400">+{extra}</span>}
+                        {extra > 0 && <span className="ml-1 text-xs text-slate-500">+{extra}</span>}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(receiptAmount(r))}</td>
                       <td className="whitespace-nowrap px-4 py-3">
@@ -262,7 +263,7 @@ export default function ReceiptsPageClient({
                             {voucher?.pp_no || 'จ่ายแล้ว'}
                           </Link>
                         ) : (
-                          <span className="text-xs text-slate-400">ยังไม่จ่าย</span>
+                          <span className="text-xs text-slate-500">ยังไม่จ่าย</span>
                         )}
                       </td>
                     </tr>
@@ -271,8 +272,7 @@ export default function ReceiptsPageClient({
               )}
             </tbody>
           </table>
-        </div>
-      </Card>
+      </TableFrame>
 
       <Modal isOpen={isPayModalOpen} onClose={() => setIsPayModalOpen(false)} title="สร้างใบสำคัญจ่าย" panelClassName="max-w-2xl">
         <div className="space-y-4">
@@ -295,7 +295,7 @@ export default function ReceiptsPageClient({
           {isPayModalOpen && <PayoutPoComparison receiptIds={Array.from(selected)} />}
 
           {isBoqCheckLoading ? (
-            <div className="flex items-center gap-2 py-2 text-sm text-slate-400">
+            <div className="flex items-center gap-2 py-2 text-sm text-slate-500">
               <Loader2 className="h-4 w-4 animate-spin" /> กำลังตรวจสอบ BOQ...
             </div>
           ) : (
@@ -357,6 +357,6 @@ export default function ReceiptsPageClient({
       </Modal>
 
       {detailReceipt && <ReceiptDetailModal receipt={detailReceipt} onClose={() => setDetailReceipt(null)} />}
-    </div>
+    </PageContainer>
   )
 }

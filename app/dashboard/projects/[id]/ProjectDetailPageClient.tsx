@@ -2,11 +2,12 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, Loader2, MapPin, AlertCircle, Pencil, Users, GaugeCircle, LayoutList, Map as MapIcon, Search } from 'lucide-react'
+import { Plus, Trash2, Loader2, MapPin, AlertCircle, Pencil, Users, GaugeCircle, LayoutList, Map as MapIcon, Search } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import PlotGroupManager from '@/components/plots/PlotGroupManager'
@@ -16,6 +17,7 @@ import { getPlotsByProjectId, createPlot, deletePlot, setPlotSellable } from '@/
 import { getHouseModels } from '@/actions/boq-actions'
 import { getPlotGroups } from '@/actions/material-actions'
 import type { PlotGroup } from '@/lib/types/materials'
+import { TableFrame } from '@/components/ui/TableFrame'
 
 type Project = Awaited<ReturnType<typeof getProjectById>>
 type Plot = Awaited<ReturnType<typeof getPlotsByProjectId>>[number]
@@ -237,12 +239,7 @@ export default function ProjectDetailPageClient({
       ) : null}
 
       <div>
-        <button
-          onClick={() => router.push('/dashboard/projects')}
-          className="mb-2 flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition"
-        >
-          <ArrowLeft className="h-4 w-4" /> กลับหน้ารวม
-        </button>
+        <Breadcrumb items={[{ label: 'โครงการ', href: '/dashboard/projects' }, { label: project.name }]} />
         <PageHeader
           title={
             <span className="flex items-center gap-3">
@@ -359,7 +356,7 @@ export default function ProjectDetailPageClient({
           </button>
         </div>
         {viewMode === 'list' && (
-          <span className="w-full text-right text-xs text-slate-400">{filteredPlots.length} / {plots.length} แปลง</span>
+          <span className="w-full text-right text-xs text-slate-500">{filteredPlots.length} / {plots.length} แปลง</span>
         )}
       </Card>
 
@@ -376,10 +373,10 @@ export default function ProjectDetailPageClient({
           plotDetailTabs={['overview', 'construction', 'materials', 'requests', 'history']}
         />
       ) : (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b bg-slate-50 text-slate-700">
+        <TableFrame>
+          
+            <table>
+              <thead>
                 <tr>
                   <th className="px-4 py-3 font-semibold">แปลง</th>
                   <th className="px-4 py-3 font-semibold">แบบบ้าน</th>
@@ -421,7 +418,7 @@ export default function ProjectDetailPageClient({
                       <button
                         onClick={() => setDeleteTarget(plot)}
                         disabled={isPending}
-                        className="rounded p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500"
+                        className="rounded-lg p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500"
                       >
                         {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                       </button>
@@ -431,12 +428,12 @@ export default function ProjectDetailPageClient({
               </tbody>
             </table>
             {filteredPlots.length === 0 && (
-              <div className="py-12 text-center text-slate-400">
+              <div className="py-12 text-center text-slate-500">
                 {plots.length === 0 ? 'ยังไม่มีแปลงที่ดินในโครงการนี้' : 'ไม่พบแปลงตามตัวกรองนี้'}
               </div>
             )}
-          </div>
-        </Card>
+          
+        </TableFrame>
       )}
 
       <Modal

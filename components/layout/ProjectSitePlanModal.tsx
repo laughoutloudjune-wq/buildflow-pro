@@ -117,7 +117,7 @@ export default function ProjectSitePlanModal({
       }
     >
       {isLoading || !project ? (
-        <div className="flex h-full items-center justify-center text-slate-400">
+        <div className="flex h-full items-center justify-center text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : project.site_plan_url ? (
@@ -136,7 +136,7 @@ export default function ProjectSitePlanModal({
           />
         </div>
       ) : (
-        <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-400">
+        <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-500">
           <MapPinOff className="h-8 w-8" />
           <p>โครงการนี้ยังไม่มีแผนผัง</p>
         </div>

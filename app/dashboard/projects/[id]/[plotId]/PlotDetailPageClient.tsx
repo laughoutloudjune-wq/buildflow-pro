@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ClipboardCheck, ClipboardList, Hammer, History, LayoutGrid, Pencil, Tag } from 'lucide-react'
+import { ClipboardCheck, ClipboardList, Hammer, History, LayoutGrid, Pencil, Tag } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -34,6 +35,7 @@ import type { PlotPhaseScheduleRow } from '@/actions/plot-phase-schedule'
 import type { WorkRequestRow } from '@/actions/sales-work-requests'
 import type { SalePaymentRow } from '@/actions/sale-payments-actions'
 import type { PlotHistoryRowView, PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 
 type Plot = Awaited<ReturnType<typeof getPlotById>>
 type Contractor = Awaited<ReturnType<typeof getContractors>>[number]
@@ -118,6 +120,7 @@ export default function PlotDetailPageClient({
   visibleTabs?: PlotDetailTab[]
 }) {
   const router = useRouter()
+  const { theme } = useDepartment()
   const refresh = onRefresh ?? (() => router.refresh())
   const toast = useToast()
   const [isPending, startTransition] = useTransition()
@@ -252,12 +255,13 @@ export default function PlotDetailPageClient({
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
         {!onClose && (
-          <button
-            onClick={() => router.push(`/dashboard/projects/${projectId}`)}
-            className="text-sm text-slate-500 hover:text-indigo-600 w-fit flex gap-1 items-center"
-          >
-            <ArrowLeft className="h-4 w-4" /> กลับหน้ารายการ
-          </button>
+          <Breadcrumb
+            items={[
+              { label: 'โครงการ', href: '/dashboard/projects' },
+              { label: plot?.projects?.name ?? 'โครงการ', href: `/dashboard/projects/${projectId}` },
+              { label: `แปลง ${plot?.name ?? ''}` },
+            ]}
+          />
         )}
 
         <PageHeader
@@ -297,7 +301,7 @@ export default function PlotDetailPageClient({
             type="button"
             onClick={() => setTab(t.key)}
             className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition ${
-              tab === t.key ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+              tab === t.key ? theme.tab : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <t.icon className="h-4 w-4" /> {t.label}

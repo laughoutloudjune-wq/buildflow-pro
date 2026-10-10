@@ -213,7 +213,7 @@ export default function PurchaseRequestSettleModal({
         {reason === 'ordered' && (
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              เลขที่ใบสั่งซื้ออ้างอิง <span className="font-normal text-slate-400">(ถ้ามี)</span>
+              เลขที่ใบสั่งซื้ออ้างอิง <span className="font-normal text-slate-500">(ถ้ามี)</span>
             </label>
             <input
               type="text"
@@ -227,7 +227,7 @@ export default function PurchaseRequestSettleModal({
 
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            หมายเหตุ <span className="font-normal text-slate-400">(ถ้ามี)</span>
+            หมายเหตุ <span className="font-normal text-slate-500">(ถ้ามี)</span>
           </label>
           <textarea
             value={note}

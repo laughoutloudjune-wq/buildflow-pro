@@ -344,7 +344,7 @@ export default function ReviewBillingPageClient({
                   {Array.isArray(billing.attachment_urls) && billing.attachment_urls.length > 0 ? (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                       {billing.attachment_urls.map((url: string, idx: number) => (
-                        <img key={idx} src={url} alt={`dc-${idx + 1}`} className="h-24 w-full object-cover rounded border" />
+                        <img key={idx} src={url} alt={`dc-${idx + 1}`} className="h-24 w-full object-cover rounded-lg border" />
                       ))}
                     </div>
                   ) : (
@@ -444,7 +444,7 @@ export default function ReviewBillingPageClient({
                                       <tbody>
                                         {historyRows.length === 0 ? (
                                           <tr>
-                                            <td colSpan={5} className="px-2 py-2 text-center text-slate-400">ยังไม่มีประวัติก่อนหน้า</td>
+                                            <td colSpan={5} className="px-2 py-2 text-center text-slate-500">ยังไม่มีประวัติก่อนหน้า</td>
                                           </tr>
                                         ) : historyRows.map((history: ProgressHistoryItem) => (
                                           <tr key={history.id} className="border-t border-slate-100">

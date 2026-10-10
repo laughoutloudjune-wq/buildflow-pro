@@ -68,7 +68,7 @@ export default function SetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f5f5f7] p-4">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-md space-y-5 rounded-2xl border border-slate-200/70 bg-white/90 p-8 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_24px_48px_-16px_rgba(0,0,0,0.12)] backdrop-blur-xl"

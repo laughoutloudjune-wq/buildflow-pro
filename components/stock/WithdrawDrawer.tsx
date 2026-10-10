@@ -227,7 +227,7 @@ export default function WithdrawDrawer({
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="เบิกวัสดุให้ผู้รับเหมา" panelClassName="max-w-2xl">
       {isLoading ? (
-        <div className="flex items-center justify-center py-10 text-slate-400">
+        <div className="flex items-center justify-center py-10 text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : (
@@ -236,7 +236,7 @@ export default function WithdrawDrawer({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">โครงการ</label>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">โครงการ</label>
               <SearchableSelect
                 options={projects.map((p) => ({ value: p.id, label: p.name }))}
                 value={projectId}
@@ -245,7 +245,7 @@ export default function WithdrawDrawer({
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">ผู้รับเหมา</label>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">ผู้รับเหมา</label>
               <SearchableSelect
                 options={contractors.map((c) => ({ value: c.id, label: c.name }))}
                 value={contractorId}
@@ -257,9 +257,9 @@ export default function WithdrawDrawer({
 
           {projectId && (
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">แปลง</label>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">แปลง</label>
               {isPlotsLoading ? (
-                <div className="flex items-center gap-2 text-sm text-slate-400">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังโหลดข้อมูลแปลง...
                 </div>
               ) : (
@@ -313,7 +313,7 @@ export default function WithdrawDrawer({
                     />
                   )}
                   {plots.length === 0 && plotGroups.length === 0 && (
-                    <p className="mt-1 text-xs text-slate-400">โครงการนี้ยังไม่มีแปลงหรือกลุ่มแปลงให้เลือก</p>
+                    <p className="mt-1 text-xs text-slate-500">โครงการนี้ยังไม่มีแปลงหรือกลุ่มแปลงให้เลือก</p>
                   )}
                 </>
               )}
@@ -322,14 +322,14 @@ export default function WithdrawDrawer({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">รายการวัสดุ</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">รายการวัสดุ</label>
               <Button type="button" size="sm" variant="secondary" onClick={addLine}>
                 <Plus className="h-3.5 w-3.5" /> เพิ่มรายการ
               </Button>
             </div>
 
             {lines.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
+              <div className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-500">
                 ยังไม่มีรายการวัสดุ
               </div>
             ) : (
@@ -381,7 +381,7 @@ export default function WithdrawDrawer({
           {boqLines.length > 0 && <BoqCheckPanel lines={boqLines} scopeLabel="เบิกครั้งนี้" />}
 
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">หมายเหตุ</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">หมายเหตุ</label>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}

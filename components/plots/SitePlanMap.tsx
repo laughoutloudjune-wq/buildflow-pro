@@ -240,7 +240,7 @@ export default function SitePlanMap({
             />
           </label>
         ) : (
-          <p className="mt-1 text-xs text-slate-400">ให้แอดมินอัปโหลดผังโครงการก่อน</p>
+          <p className="mt-1 text-xs text-slate-500">ให้แอดมินอัปโหลดผังโครงการก่อน</p>
         )}
       </Card>
     )
@@ -329,7 +329,7 @@ export default function SitePlanMap({
 
       <div className={`space-y-3 ${sidePanel ? 'lg:col-start-2 lg:row-start-2' : 'lg:sticky lg:top-4 lg:self-start'}`}>
         {isSaving && (
-          <div className="flex items-center gap-2 text-xs text-slate-400">
+          <div className="flex items-center gap-2 text-xs text-slate-500">
             <Loader2 className="h-3 w-3 animate-spin" /> กำลังบันทึก...
           </div>
         )}
@@ -338,7 +338,7 @@ export default function SitePlanMap({
             ยังไม่ได้วางผัง ({unplacedMarkers.length})
           </h3>
           {unplacedMarkers.length === 0 ? (
-            <p className="text-xs text-slate-400">{unplacedEmptyLabel}</p>
+            <p className="text-xs text-slate-500">{unplacedEmptyLabel}</p>
           ) : (
             <div className="max-h-[420px] space-y-1 overflow-y-auto">
               {unplacedMarkers.map((m) => (
@@ -357,13 +357,13 @@ export default function SitePlanMap({
                 >
                   <span className={`h-2 w-2 shrink-0 rounded-full ${m.colorClass}`} />
                   <span className="flex-1 truncate">{m.label}</span>
-                  {m.meta && <span className="text-slate-400">{m.meta}</span>}
+                  {m.meta && <span className="text-slate-500">{m.meta}</span>}
                 </button>
               ))}
             </div>
           )}
           {editMode && unplacedMarkers.length > 0 && (
-            <p className="mt-2 text-[11px] text-slate-400">
+            <p className="mt-2 text-[11px] text-slate-500">
               {armedPlotId ? 'คลิกตำแหน่งบนผังเพื่อวางแปลงนี้' : 'เลือกแปลงแล้วคลิกบนผังเพื่อวาง'}
             </p>
           )}

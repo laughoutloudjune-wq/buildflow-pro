@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { AlertTriangle, Coins, Loader2, MapPinOff, PackageCheck, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import ScopePicker, { type CostControlOptions } from '@/components/cost-control/ScopePicker'
@@ -16,6 +17,7 @@ import { excessValue, rowStatus, type BoqControlOutsideBoqRow, type BoqControlRo
 import type { getBoqControl } from '@/actions/procurement/boq-control'
 import type { MaterialsSummaryRow } from '@/actions/procurement/materials-summary'
 import type { LaborLedgerEntry } from '@/lib/labor-budget'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 
 export type CostControlTab = 'qty' | 'material-cost' | 'labor-cost'
 
@@ -63,6 +65,7 @@ export default function CostControlPageClient({
   initialError,
 }: Props) {
   const router = useRouter()
+  const { theme } = useDepartment()
   const toast = useToast()
   const [isPending, startTransition] = useTransition()
 
@@ -98,7 +101,7 @@ export default function CostControlPageClient({
   const visibleTabs: CostControlTab[] = canSeeLabor ? ['qty', 'material-cost', 'labor-cost'] : ['qty', 'material-cost']
 
   return (
-    <div className="mx-auto max-w-screen-2xl space-y-6 pb-10">
+    <PageContainer width="wide">
       <PageHeader title="ควบคุมต้นทุน" subtitle="เทียบ BOQ กับของที่ซื้อจริง และรายงานต้นทุนโครงการในที่เดียว" />
 
       <Card className="p-4">
@@ -106,7 +109,7 @@ export default function CostControlPageClient({
       </Card>
 
       {!scope.projectId ? (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-12 text-center text-sm text-slate-400">
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-12 text-center text-sm text-slate-500">
           เลือกโครงการเพื่อดูข้อมูล
         </div>
       ) : (
@@ -122,7 +125,7 @@ export default function CostControlPageClient({
               </Card>
             ))}
           </div>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-slate-500">
             ยังไม่รวมค่าใช้จ่ายอื่น (เช่น ค่าเช่ารถเครน ค่าขนส่ง) และค่าเครื่องจักร เนื่องจากระบบยังไม่มีการบันทึกส่วนนี้
           </p>
 
@@ -133,7 +136,7 @@ export default function CostControlPageClient({
                   key={t}
                   onClick={() => navigate(scope, t)}
                   className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition ${
-                    tab === t ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+                    tab === t ? theme.tab : 'border-transparent text-slate-500 hover:text-slate-700'
                   }`}
                 >
                   {TAB_LABEL[t]}
@@ -149,12 +152,12 @@ export default function CostControlPageClient({
             (canSeeLabor ? (
               <LaborCostTab entries={laborEntries} />
             ) : (
-              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-400">
+              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-500">
                 ไม่มีสิทธิ์ดูต้นทุนค่าแรง
               </div>
             ))}
 
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-500">
             ต้องการหน้าจัดซื้อแบบเต็ม? ไปที่{' '}
             <Link href="/dashboard/procurement/orders" className="text-indigo-600 hover:underline">
               ใบสั่งซื้อ
@@ -162,6 +165,6 @@ export default function CostControlPageClient({
           </p>
         </>
       )}
-    </div>
+    </PageContainer>
   )
 }

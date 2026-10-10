@@ -6,6 +6,7 @@ import { Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
@@ -52,7 +53,7 @@ export default function ForemanPurchaseRequestPageClient({
   }
 
   return (
-    <div className="space-y-4">
+    <PageContainer width="standard">
       <PageHeader
         title="ขอซื้อวัสดุ"
         subtitle="ส่งคำขอซื้อวัสดุให้ฝ่ายจัดซื้อดำเนินการ"
@@ -66,7 +67,7 @@ export default function ForemanPurchaseRequestPageClient({
       <Card className="p-4 bg-slate-50/60 border-slate-200">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">คำขอของฉัน</h2>
         {initialRequests.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">ยังไม่มีคำขอซื้อวัสดุ</div>
+          <div className="p-8 text-center text-slate-500">ยังไม่มีคำขอซื้อวัสดุ</div>
         ) : (
           <div className="space-y-3">
             {initialRequests.map((r) => (
@@ -83,10 +84,10 @@ export default function ForemanPurchaseRequestPageClient({
                     </div>
                     <p className="mt-1 text-sm text-slate-600">{getScopeLabel(r)}</p>
                     {r.needed_by_date && (
-                      <p className="text-xs text-slate-400">ต้องการภายใน {new Date(r.needed_by_date).toLocaleDateString('th-TH')}</p>
+                      <p className="text-xs text-slate-500">ต้องการภายใน {new Date(r.needed_by_date).toLocaleDateString('th-TH')}</p>
                     )}
                   </div>
-                  <p className="text-xs text-slate-400">{new Date(r.created_at).toLocaleDateString('th-TH')}</p>
+                  <p className="text-xs text-slate-500">{new Date(r.created_at).toLocaleDateString('th-TH')}</p>
                 </div>
 
                 <div className="mt-2 space-y-0.5 text-sm text-slate-700">
@@ -120,6 +121,6 @@ export default function ForemanPurchaseRequestPageClient({
           }}
         />
       </Modal>
-    </div>
+    </PageContainer>
   )
 }

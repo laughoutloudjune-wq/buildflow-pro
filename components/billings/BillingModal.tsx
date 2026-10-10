@@ -112,9 +112,9 @@ export default function BillingModal({ billingId, onClose, onDeleted, onStatus }
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto bg-[#f5f5f7] p-6">
+        <div className="flex-1 overflow-auto bg-background p-6">
           {loading ? (
-            <div className="flex h-full items-center justify-center text-slate-400">
+            <div className="flex h-full items-center justify-center text-slate-500">
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : (
@@ -158,7 +158,7 @@ export default function BillingModal({ billingId, onClose, onDeleted, onStatus }
                           <tr key={`job-${job.id}`}>
                             <td className="p-3">
                               <div className="font-medium text-slate-700">{job.job_assignments?.boq_master?.item_name}</div>
-                              <div className="text-xs text-slate-400">แปลง {job.job_assignments?.plots?.name}</div>
+                              <div className="text-xs text-slate-500">แปลง {job.job_assignments?.plots?.name}</div>
                             </td>
                             <td className="p-3 text-right">฿{formatCurrency(job.amount)}</td>
                           </tr>
@@ -179,7 +179,7 @@ export default function BillingModal({ billingId, onClose, onDeleted, onStatus }
                                     {isAddition ? <Plus className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
                                   </span>
                                   <span className={isAddition ? 'text-emerald-700' : 'text-red-700'}>
-                                    {adj.description} <span className="text-slate-400">({adj.quantity} {adj.unit})</span>
+                                    {adj.description} <span className="text-slate-500">({adj.quantity} {adj.unit})</span>
                                   </span>
                                 </div>
                               </td>

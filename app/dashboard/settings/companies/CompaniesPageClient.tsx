@@ -4,14 +4,15 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { createCompany, deactivateCompany, updateCompany, uploadCompanyAsset } from '@/actions/procurement-actions'
 import type { Company } from '@/lib/types/procurement'
+import { TableFrame } from '@/components/ui/TableFrame'
 
 const emptyDraft = { name: '', tax_id: '', address: '', phone: '', logo_url: '', signature_url: '' }
 
@@ -109,7 +110,7 @@ export default function CompaniesPageClient({
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <PageContainer width="standard">
       <div>
         <Link
           href="/dashboard/settings"
@@ -130,10 +131,9 @@ export default function CompaniesPageClient({
       </div>
 
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-slate-700">
+      <TableFrame>
+        <table>
+            <thead>
               <tr>
                 <th className="px-4 py-3 font-semibold">ชื่อบริษัท</th>
                 <th className="px-4 py-3 font-semibold">เลขผู้เสียภาษี</th>
@@ -145,7 +145,7 @@ export default function CompaniesPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {companies.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center italic text-slate-400">
+                  <td colSpan={5} className="px-4 py-8 text-center italic text-slate-500">
                     ยังไม่มีบริษัทในระบบ กดปุ่ม &quot;เพิ่มบริษัทใหม่&quot; เพื่อเริ่มต้น
                   </td>
                 </tr>
@@ -168,7 +168,7 @@ export default function CompaniesPageClient({
                       <button
                         onClick={() => openEditModal(company)}
                         disabled={isPending}
-                        className="rounded p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                        className="rounded-lg p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
                         title="แก้ไข"
                       >
                         <Pencil className="h-4 w-4" />
@@ -177,7 +177,7 @@ export default function CompaniesPageClient({
                         <button
                           onClick={() => setDeactivateTarget(company)}
                           disabled={isPending}
-                          className="rounded p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                          className="rounded-lg p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
                           title="ปิดใช้งาน"
                         >
                           {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -189,8 +189,7 @@ export default function CompaniesPageClient({
               )}
             </tbody>
           </table>
-        </div>
-      </Card>
+      </TableFrame>
 
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editing ? 'แก้ไขบริษัท' : 'เพิ่มบริษัทใหม่'}>
         <div className="space-y-4">
@@ -234,7 +233,7 @@ export default function CompaniesPageClient({
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={url} alt={label} className="max-h-full max-w-full object-contain" />
                     ) : (
-                      <span className="text-xs text-slate-400">ยังไม่ได้อัปโหลด</span>
+                      <span className="text-xs text-slate-500">ยังไม่ได้อัปโหลด</span>
                     )}
                   </div>
                   <div className="mt-1.5 flex items-center gap-2">
@@ -281,6 +280,6 @@ export default function CompaniesPageClient({
         onCancel={() => setDeactivateTarget(null)}
         onConfirm={handleConfirmDeactivate}
       />
-    </div>
+    </PageContainer>
   )
 }

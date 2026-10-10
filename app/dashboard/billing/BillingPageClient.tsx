@@ -7,11 +7,15 @@ import { Card } from '@/components/ui/Card'
 import { Badge, statusTone } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
+import { EmptyState } from '@/components/ui/EmptyState'
 import type { getBillings } from '@/actions/billing-actions'
 import BillingModal from '@/components/billings/BillingModal'
 import { formatCurrency } from '@/lib/currency'
 import NoticeBanner, { type NoticeTone } from '@/components/ui/NoticeBanner'
 import { BILLING_STATUS_LABEL, BILLING_STATUS_TONE } from '@/lib/status-labels'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 
 type BillingListItem = Awaited<ReturnType<typeof getBillings>>[number]
 type BillingJobLine = NonNullable<BillingListItem['billing_jobs']>[number]
@@ -52,6 +56,7 @@ export default function BillingPageClient({
   const [filters, setFilters] = useState<BillingFilters>({})
   const [flash, setFlash] = useState<{ tone: 'success' | 'error' | 'info' | 'warning'; message: string } | null>(null)
   const router = useRouter()
+  const { theme } = useDepartment()
   const searchParams = useSearchParams()
   const [isRefreshing, startTransition] = useTransition()
 
@@ -174,7 +179,7 @@ export default function BillingPageClient({
   }
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="wide">
       <PageHeader
         title="รายการเบิกจ่ายงวดงาน"
         subtitle="จัดการใบเบิกงวดงานหลักและงานเพิ่ม (DC) พร้อมติดตามสถานะอนุมัติ"
@@ -229,75 +234,46 @@ export default function BillingPageClient({
               type="button"
               onClick={() => setFilters((p) => ({ ...p, status: t.key }))}
               className={`px-4 py-2.5 text-sm font-semibold transition ${
-                isActive ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'
+                isActive ? 'border-b-2 ' + theme.tab : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              {t.label} <span className="text-xs font-normal text-slate-400">({count})</span>
+              {t.label} <span className="text-xs font-normal text-slate-500">({count})</span>
             </button>
           )
         })}
       </div>
 
-      <Card className="p-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">เดือนของบิล</label>
-            <input
-              type="month"
-              className="mt-1 w-full"
-              value={filters.month || ''}
-              onChange={(e) => setFilters((p) => ({ ...p, month: e.target.value || undefined }))}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">โครงการ</label>
-            <select
-              className="mt-1 w-full"
-              value={filters.projectId || ''}
-              onChange={(e) => setFilters((p) => ({ ...p, projectId: e.target.value || undefined }))}
-            >
-              <option value="">ทั้งหมด</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">ผู้รับเหมา</label>
-            <select
-              className="mt-1 w-full"
-              value={filters.contractorId || ''}
-              onChange={(e) => setFilters((p) => ({ ...p, contractorId: e.target.value || undefined }))}
-            >
-              <option value="">ทั้งหมด</option>
-              {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">สถานะ</label>
-            <select
-              className="mt-1 w-full"
-              value={filters.status || ''}
-              onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value || undefined }))}
-            >
-              <option value="">ทั้งหมด</option>
-              {Object.entries(statusLabels).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        {(filters.month || filters.projectId || filters.contractorId || filters.status) && (
-          <div className="mt-3 flex items-center justify-between">
-            <p className="text-xs text-slate-400">แสดง {filteredBillings.length} จาก {billings.length} รายการ</p>
-            <button
-              type="button"
-              onClick={() => setFilters({})}
-              className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
-            >
-              ล้างตัวกรอง
-            </button>
-          </div>
-        )}
-      </Card>
+      <PageToolbar
+        resultCount={filteredBillings.length}
+        activeFilters={[
+          ...(filters.month ? [{ label: `เดือน ${filters.month}`, onRemove: () => setFilters((p) => ({ ...p, month: undefined })) }] : []),
+          ...(filters.projectId ? [{ label: projects.find((x) => x.id === filters.projectId)?.name ?? 'โครงการ', onRemove: () => setFilters((p) => ({ ...p, projectId: undefined })) }] : []),
+          ...(filters.contractorId ? [{ label: contractors.find((x) => x.id === filters.contractorId)?.name ?? 'ผู้รับเหมา', onRemove: () => setFilters((p) => ({ ...p, contractorId: undefined })) }] : []),
+          ...(filters.status ? [{ label: statusLabels[filters.status as keyof typeof statusLabels] ?? filters.status, onRemove: () => setFilters((p) => ({ ...p, status: undefined })) }] : []),
+        ]}
+        onReset={() => setFilters({})}
+      >
+        <input
+          type="month"
+          aria-label="เดือนของบิล"
+          value={filters.month || ''}
+          onChange={(e) => setFilters((p) => ({ ...p, month: e.target.value || undefined }))}
+        />
+        <select aria-label="โครงการ" className="min-w-[10rem]" value={filters.projectId || ''} onChange={(e) => setFilters((p) => ({ ...p, projectId: e.target.value || undefined }))}>
+          <option value="">ทุกโครงการ</option>
+          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select aria-label="ผู้รับเหมา" className="min-w-[10rem]" value={filters.contractorId || ''} onChange={(e) => setFilters((p) => ({ ...p, contractorId: e.target.value || undefined }))}>
+          <option value="">ทุกผู้รับเหมา</option>
+          {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select aria-label="สถานะ" className="min-w-[10rem]" value={filters.status || ''} onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value || undefined }))}>
+          <option value="">ทุกสถานะ</option>
+          {Object.entries(statusLabels).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+      </PageToolbar>
 
       <Card className="p-4 bg-slate-50/60 border-slate-200">
         {billings.length === 0 && listError ? (
@@ -308,9 +284,9 @@ export default function BillingPageClient({
             </Button>
           </div>
         ) : billings.length === 0 ? (
-          <div className="p-12 text-center text-slate-400">ยังไม่มีเอกสารเบิกจ่าย</div>
+          <EmptyState title="ยังไม่มีเอกสารเบิกจ่าย" description="ใบเบิกงวดงานและงานเพิ่ม (DC) ที่สร้างแล้วจะแสดงที่นี่" />
         ) : filteredBillings.length === 0 ? (
-          <div className="p-12 text-center text-slate-400">ไม่พบรายการที่ตรงกับตัวกรอง</div>
+          <EmptyState variant="no-results" title="ไม่พบรายการที่ตรงกับตัวกรอง" description="ลองเปลี่ยนหรือล้างตัวกรอง" />
         ) : (
           <div className="space-y-3">
             <div className="flex items-center justify-between px-1">
@@ -388,7 +364,7 @@ export default function BillingPageClient({
                         e.stopPropagation()
                         handleRowClick(bill)
                       }}
-                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
                     >
                       {bill.status === 'pending_review' ? <Edit className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -406,6 +382,6 @@ export default function BillingPageClient({
         onDeleted={refresh}
         onStatus={(status) => setFlash(status)}
       />
-    </div>
+    </PageContainer>
   )
 }

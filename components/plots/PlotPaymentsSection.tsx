@@ -175,7 +175,7 @@ export default function PlotPaymentsSection({
       </div>
 
       {payments.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-400">ยังไม่มีรายการชำระเงิน</p>
+        <p className="mt-3 text-sm text-slate-500">ยังไม่มีรายการชำระเงิน</p>
       ) : (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -335,7 +335,7 @@ export default function PlotPaymentsSection({
                 <option value="บัตร">บัตร</option>
               </select>
             </div>
-            <p className="text-xs text-slate-400">การบันทึกจะออกเลขที่ใบเสร็จอัตโนมัติ และพิมพ์ได้ทันที</p>
+            <p className="text-xs text-slate-500">การบันทึกจะออกเลขที่ใบเสร็จอัตโนมัติ และพิมพ์ได้ทันที</p>
             <div className="flex justify-end gap-3 pt-4 border-t">
               <Button type="button" variant="secondary" onClick={() => setMarkPayingId(null)}>ยกเลิก</Button>
               <Button type="submit" disabled={isPending}>

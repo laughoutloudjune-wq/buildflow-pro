@@ -12,7 +12,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const success = typeof params.success === 'string' ? params.success : ''
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f5f5f7] p-4">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <form className="w-full max-w-md space-y-5 rounded-2xl border border-slate-200/70 bg-white/90 p-8 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_24px_48px_-16px_rgba(0,0,0,0.12)] backdrop-blur-xl">
         <div className="flex flex-col items-center text-center">
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[14px] bg-indigo-600 shadow-[0_4px_12px_-2px_rgba(79,70,229,0.5)]">
@@ -57,7 +57,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           เข้าสู่ระบบ
         </Button>
 
-        <p className="text-center text-xs text-slate-400">ยังไม่มีบัญชี? ติดต่อผู้ดูแลระบบเพื่อขอลิงก์เชิญเข้าใช้งาน</p>
+        <p className="text-center text-xs text-slate-500">ยังไม่มีบัญชี? ติดต่อผู้ดูแลระบบเพื่อขอลิงก์เชิญเข้าใช้งาน</p>
       </form>
     </div>
   )

@@ -7,10 +7,12 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { Loader2, Trash2, Pencil, Search } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import { BILLING_STATUS_LABEL, BILLING_STATUS_TONE } from '@/lib/status-labels'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 
 type Billing = Awaited<ReturnType<typeof getBillingsByCreator>>[number]
 
@@ -39,6 +41,7 @@ export default function ForemanHistoryPageClient({
   initialError?: string | null
 }) {
   const router = useRouter()
+  const { theme } = useDepartment()
   const [billings, setBillings] = useState<Billing[]>(initialBillings)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(initialError ?? null)
@@ -139,7 +142,7 @@ export default function ForemanHistoryPageClient({
   const tabCount = (key: Tab) => billings.filter((bill) => bill.status === key).length
 
   return (
-    <div className="space-y-4">
+    <PageContainer width="standard">
       <PageHeader
         title="ประวัติคำขอ"
         subtitle="รวมทุกคำขอที่คุณสร้างไว้"
@@ -163,10 +166,10 @@ export default function ForemanHistoryPageClient({
               type="button"
               onClick={() => setTab(t.key)}
               className={`px-4 py-2.5 text-sm font-semibold transition ${
-                tab === t.key ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'
+                tab === t.key ? 'border-b-2 ' + theme.tab : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              {t.label} <span className="text-xs font-normal text-slate-400">({tabCount(t.key)})</span>
+              {t.label} <span className="text-xs font-normal text-slate-500">({tabCount(t.key)})</span>
             </button>
           ))}
         </div>
@@ -192,7 +195,7 @@ export default function ForemanHistoryPageClient({
             </Button>
           </div>
         ) : filteredBillings.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">{search ? 'ไม่พบคำขอที่ค้นหา' : 'ไม่มีคำขอในหมวดนี้'}</div>
+          <div className="p-8 text-center text-slate-500">{search ? 'ไม่พบคำขอที่ค้นหา' : 'ไม่มีคำขอในหมวดนี้'}</div>
         ) : (
           <div className="space-y-3">
             {filteredBillings.map((bill) => (
@@ -232,7 +235,7 @@ export default function ForemanHistoryPageClient({
                       <Button size="sm" variant="secondary" onClick={() => handleEdit(bill)}>
                         <Pencil className="h-3.5 w-3.5" /> แก้ไขแล้วส่งใหม่
                       </Button>
-                    ) : <span className="text-xs text-slate-400">-</span>}
+                    ) : <span className="text-xs text-slate-500">-</span>}
                   </div>
                 </div>
               </div>
@@ -252,6 +255,6 @@ export default function ForemanHistoryPageClient({
         onCancel={() => setDeleteTargetId(null)}
         onConfirm={handleDelete}
       />
-    </div>
+    </PageContainer>
   )
 }

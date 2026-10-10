@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Loader2, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import { getLaborLedger } from '@/actions/labor-budget-actions'
 import { formatCurrency } from '@/lib/currency'
 import { UNGROUPED_BATCH_ID, type LaborLedgerEntry } from '@/lib/labor-budget'
@@ -200,7 +201,7 @@ export default function LaborBudgetLedgerPageClient({
   }
 
   return (
-    <div className="space-y-4">
+    <PageContainer width="wide">
       <PageHeader
         title="สมุดบัญชีค่าแรง (งบ / เบิกแล้ว / คงเหลือ)"
         subtitle="ยอดค่าแรงตาม BOQ เทียบกับใบเบิกที่ PM อนุมัติแล้ว แยกตามผู้รับเหมาและกลุ่มแปลง (ไม่รวมงานเพิ่ม/DC — ดูที่รายงาน DC)"
@@ -303,7 +304,7 @@ export default function LaborBudgetLedgerPageClient({
         <Card className="p-4">
           <div className="text-xs text-slate-500">เบิกแล้ว (PM อนุมัติ)</div>
           <div className="mt-1 text-xl font-bold text-emerald-700">฿{formatCurrency(grand.approved)}</div>
-          <div className="mt-1 text-[11px] text-slate-400">{grand.percent.toFixed(1)}% ของงบ</div>
+          <div className="mt-1 text-[11px] text-slate-500">{grand.percent.toFixed(1)}% ของงบ</div>
         </Card>
         <Card className="p-4">
           <div className="text-xs text-slate-500">คงเหลือ</div>
@@ -314,7 +315,7 @@ export default function LaborBudgetLedgerPageClient({
         <Card className="p-4">
           <div className="text-xs text-slate-500">รออนุมัติ</div>
           <div className="mt-1 text-xl font-bold text-amber-600">฿{formatCurrency(grand.pending)}</div>
-          <div className="mt-1 text-[11px] text-slate-400">ยังไม่นับเป็นยอดเบิก</div>
+          <div className="mt-1 text-[11px] text-slate-500">ยังไม่นับเป็นยอดเบิก</div>
         </Card>
       </div>
 
@@ -378,7 +379,7 @@ export default function LaborBudgetLedgerPageClient({
                   <div className="w-28">
                     <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
                       <div
-                        className={`h-full rounded-full ${overBudget ? 'bg-red-500' : 'bg-emerald-500'}`}
+                        className={`h-full rounded-full transition-[width] duration-[220ms] ease-out ${overBudget ? 'bg-red-500' : 'bg-emerald-500'}`}
                         style={{ width: `${Math.min(100, Math.max(0, section.percent))}%` }}
                       />
                     </div>
@@ -417,21 +418,21 @@ export default function LaborBudgetLedgerPageClient({
                               className="cursor-pointer align-top hover:bg-slate-50"
                               onClick={() => toggleJob(entry.jobId)}
                             >
-                              <td className="px-2 py-2 text-slate-400">
+                              <td className="px-2 py-2 text-slate-500">
                                 {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                               </td>
                               <td className="px-3 py-2">
                                 <div className="font-medium text-slate-800">
                                   {entry.plotName}
                                   {entry.houseModel && (
-                                    <span className="ml-1 text-xs font-normal text-slate-400">({entry.houseModel})</span>
+                                    <span className="ml-1 text-xs font-normal text-slate-500">({entry.houseModel})</span>
                                   )}
                                 </div>
                                 <div className="text-xs text-slate-500">{entry.itemName}</div>
-                                <div className="text-[11px] text-slate-400">
+                                <div className="text-[11px] text-slate-500">
                                   {entry.quantity} {entry.unit} × ฿{formatCurrency(entry.pricePerUnit)}
                                   {entry.pricingSource === 'assignment' && (
-                                    <span className="ml-1 rounded bg-indigo-50 px-1 text-indigo-600">ราคาตกลง</span>
+                                    <span className="ml-1 rounded-lg bg-indigo-50 px-1 text-indigo-600">ราคาตกลง</span>
                                   )}
                                 </div>
                               </td>
@@ -452,7 +453,7 @@ export default function LaborBudgetLedgerPageClient({
                               <td className="px-3 py-2 text-right text-slate-700">฿{formatCurrency(entry.budget)}</td>
                               <td className="px-3 py-2 text-right font-semibold text-emerald-700">
                                 ฿{formatCurrency(entry.approved)}
-                                <div className="text-[11px] font-normal text-slate-400">
+                                <div className="text-[11px] font-normal text-slate-500">
                                   {entry.percent.toFixed(1)}%
                                 </div>
                               </td>
@@ -474,7 +475,7 @@ export default function LaborBudgetLedgerPageClient({
                                 <td></td>
                                 <td colSpan={8} className="px-3 py-3">
                                   {entry.transactions.length === 0 ? (
-                                    <div className="text-xs text-slate-400">ยังไม่มีการเบิกสำหรับงานนี้</div>
+                                    <div className="text-xs text-slate-500">ยังไม่มีการเบิกสำหรับงานนี้</div>
                                   ) : (
                                     <table className="w-full text-xs">
                                       <thead className="border-b text-slate-500">
@@ -509,11 +510,11 @@ export default function LaborBudgetLedgerPageClient({
                                                 </td>
                                                 <td className="px-2 py-1">
                                                   {tx.paidOutAt ? (
-                                                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">
+                                                    <span className="rounded-lg bg-emerald-100 px-1.5 py-0.5 text-emerald-700">
                                                       จ่ายแล้ว {formatDate(tx.paidOutAt)}
                                                     </span>
                                                   ) : (
-                                                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700">
+                                                    <span className="rounded-lg bg-amber-100 px-1.5 py-0.5 text-amber-700">
                                                       รอจ่าย
                                                     </span>
                                                   )}
@@ -553,6 +554,6 @@ export default function LaborBudgetLedgerPageClient({
             </Card>
           )
         })}
-    </div>
+    </PageContainer>
   )
 }

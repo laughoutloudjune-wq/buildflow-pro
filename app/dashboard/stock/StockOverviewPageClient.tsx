@@ -8,10 +8,13 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
 import WithdrawDrawer from '@/components/stock/WithdrawDrawer'
 import AdjustStockModal from '@/components/stock/AdjustStockModal'
 import type { StockOverviewRow } from '@/lib/types/stock'
+import { TableFrame } from '@/components/ui/TableFrame'
+import { PageToolbar } from '@/components/ui/PageToolbar'
 
 const numberFormat = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 })
 
@@ -61,7 +64,7 @@ export default function StockOverviewPageClient({
   const zeroCount = rows.filter((r) => r.tracked && r.quantity_on_hand === 0).length
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <PageContainer width="standard">
       <PageHeader
         title="สต็อกวัสดุ"
         subtitle="ปริมาณคงเหลือของแต่ละวัสดุ ณ ปัจจุบัน"
@@ -84,58 +87,53 @@ export default function StockOverviewPageClient({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Card className="p-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">วัสดุที่มีการเคลื่อนไหว</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">วัสดุที่มีการเคลื่อนไหว</div>
           <div className="mt-1 text-2xl font-semibold text-slate-900">{trackedCount.toLocaleString('th-TH')}</div>
         </Card>
         <Card className="p-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">สต็อกติดลบ</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">สต็อกติดลบ</div>
           <div className={`mt-1 text-2xl font-semibold ${negativeCount > 0 ? 'text-red-600' : 'text-slate-900'}`}>
             {negativeCount.toLocaleString('th-TH')}
           </div>
         </Card>
         <Card className="p-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">สต็อกหมด (0)</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">สต็อกหมด (0)</div>
           <div className={`mt-1 text-2xl font-semibold ${zeroCount > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
             {zeroCount.toLocaleString('th-TH')}
           </div>
         </Card>
       </div>
 
-      <Card className="overflow-hidden">
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาวัสดุ..."
-            className="min-w-[200px] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
-          />
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
-          >
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
-            แสดงวัสดุทั้งหมด (รวมที่ยังไม่มีการเคลื่อนไหว)
-          </label>
-        </div>
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาวัสดุ...' }}
+        resultCount={filtered.length}
+        activeFilters={[
+          ...(search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []),
+          ...(category !== 'ทั้งหมด' ? [{ label: category, onRemove: () => setCategory('ทั้งหมด') }] : []),
+          ...(showAll ? [{ label: 'แสดงวัสดุทั้งหมด', onRemove: () => setShowAll(false) }] : []),
+        ]}
+        onReset={() => {
+          setSearch('')
+          setCategory('ทั้งหมด')
+          setShowAll(false)
+        }}
+      >
+        <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="หมวดวัสดุ" className="min-w-[10rem]">
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <label className="mb-0 flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+          แสดงวัสดุทั้งหมด (รวมที่ยังไม่มีการเคลื่อนไหว)
+        </label>
+      </PageToolbar>
 
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5 text-sm text-slate-500">
-          <span>
-            ผลลัพธ์ <span className="font-semibold text-slate-700">{filtered.length}</span> รายการ
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+      <TableFrame>
+          <table>
+            <thead>
               <tr>
                 <th className="px-4 py-3">วัสดุ</th>
                 <th className="px-4 py-3">หมวดหมู่</th>
@@ -147,7 +145,7 @@ export default function StockOverviewPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={canAdjust ? 5 : 4} className="px-4 py-8 text-center italic text-slate-400">
+                  <td colSpan={canAdjust ? 5 : 4} className="px-4 py-8 text-center italic text-slate-500">
                     ไม่พบวัสดุที่ตรงกับเงื่อนไข
                   </td>
                 </tr>
@@ -199,7 +197,7 @@ export default function StockOverviewPageClient({
                           type="button"
                           onClick={() => setAdjustingRow(r)}
                           title="ปรับยอดสต็อก"
-                          className="rounded p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition"
                         >
                           <ClipboardEdit className="h-4 w-4" />
                         </button>
@@ -210,8 +208,7 @@ export default function StockOverviewPageClient({
               )}
             </tbody>
           </table>
-        </div>
-      </Card>
+      </TableFrame>
 
       {adjustingRow && (
         <AdjustStockModal
@@ -227,6 +224,6 @@ export default function StockOverviewPageClient({
           currentQty={adjustingRow.quantity_on_hand}
         />
       )}
-    </div>
+    </PageContainer>
   )
 }

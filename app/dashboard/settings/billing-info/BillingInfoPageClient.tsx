@@ -2,11 +2,13 @@
 
 import { useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Building2, ImageIcon, Save } from 'lucide-react'
+import { ArrowLeft, ImageIcon, Save } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { getOrganizationSettings, updateBillingInfo } from '@/actions/settings-actions'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 
 type Settings = Awaited<ReturnType<typeof getOrganizationSettings>>
 
@@ -44,24 +46,19 @@ export default function BillingInfoPageClient({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-medium text-indigo-600">
-            <Building2 className="h-4 w-4" aria-hidden />
-            ข้อมูลใบเบิก
-          </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">ข้อมูลบริษัทสำหรับใบเบิก</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            ชื่อบริษัทและเลขผู้เสียภาษีที่แสดงบนหัวกระดาษใบเบิกงวดงาน — ข้อมูลบริษัทที่ใช้ซื้อวัสดุ (โลโก้/ลายเซ็นรายบริษัท) อยู่ที่เมนู
-            &quot;บริษัทในเครือ&quot;
-          </p>
-        </div>
+    <PageContainer width="narrow">
+      <PageHeader
+        title="ข้อมูลบริษัทสำหรับใบเบิก"
+        subtitle="ชื่อบริษัทและเลขผู้เสียภาษีที่แสดงบนหัวกระดาษใบเบิกงวดงาน — ข้อมูลบริษัทที่ใช้ซื้อวัสดุ (โลโก้/ลายเซ็นรายบริษัท) อยู่ที่เมนู &quot;บริษัทในเครือ&quot;"
+        actions={
+          <>
         <ButtonLink href="/dashboard/settings" variant="secondary">
           <ArrowLeft className="h-4 w-4" aria-hidden />
           กลับไปตั้งค่า
         </ButtonLink>
-      </div>
+          </>
+        }
+      />
 
       <form onSubmit={handleSubmit}>
         <Card className="border-slate-200 p-6 shadow-sm">
@@ -89,7 +86,7 @@ export default function BillingInfoPageClient({
               <label htmlFor="signature_url" className="text-sm font-medium text-slate-700">
                 ลายเซ็นสำรอง
               </label>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500">
                 ใช้กับใบสั่งซื้อเฉพาะเมื่อบริษัทในเครือที่ออกใบสั่งซื้อนั้นยังไม่มีลายเซ็นของตัวเอง
               </p>
               <div className="mt-2 flex flex-col gap-4 rounded-lg border border-dashed border-slate-200 bg-slate-50/80 p-4 sm:flex-row sm:items-center">
@@ -103,7 +100,7 @@ export default function BillingInfoPageClient({
                     />
                   </div>
                 ) : (
-                  <div className="flex h-16 w-24 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400">
+                  <div className="flex h-16 w-24 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500">
                     <ImageIcon className="h-8 w-8" aria-hidden />
                   </div>
                 )}
@@ -128,6 +125,6 @@ export default function BillingInfoPageClient({
           </div>
         </Card>
       </form>
-    </div>
+    </PageContainer>
   )
 }

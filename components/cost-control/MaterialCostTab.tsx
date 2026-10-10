@@ -11,7 +11,7 @@ export default function MaterialCostTab({ rows }: { rows: MaterialsSummaryRow[] 
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-400">
+      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-500">
         ยังไม่มีใบสั่งซื้อที่เกี่ยวข้องกับขอบเขตนี้
       </div>
     )

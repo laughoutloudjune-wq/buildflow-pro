@@ -2,10 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { PackageCheck, Plus, Printer, Search } from 'lucide-react'
+import { PackageCheck, Plus, Printer } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { useDepartment } from '@/components/layout/DepartmentContext'
+import { PageToolbar } from '@/components/ui/PageToolbar'
+import { TableFrame } from '@/components/ui/TableFrame'
+import { EmptyState } from '@/components/ui/EmptyState'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
@@ -43,6 +48,7 @@ export default function PurchaseRequestsPageClient({
 }) {
   const router = useRouter()
   const toast = useToast()
+  const { theme } = useDepartment()
   const [filter, setFilter] = useState<PurchaseRequestStatus | 'all'>('all')
   const [search, setSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -91,9 +97,9 @@ export default function PurchaseRequestsPageClient({
   const printSelectedUrl = `/api/procurement/requests/pdf?ids=${Array.from(checked).join(',')}`
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <PageContainer width="wide">
       <PageHeader
-        title="คำขอซื้อ (Purchase Requests)"
+        title="คำขอซื้อ (PR)"
         subtitle="คำขอซื้อที่ส่งเข้ามา รอตรวจสอบและอนุมัติก่อนออกใบสั่งซื้อ"
         actions={
           <Button onClick={() => setIsModalOpen(true)}>
@@ -102,28 +108,34 @@ export default function PurchaseRequestsPageClient({
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-              filter === f.key ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-        <div className="relative ml-auto w-full max-w-xs">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9"
-            placeholder="ค้นหาเลขที่คำขอ / โครงการ / แปลง / วัสดุ"
-          />
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาเลขที่คำขอ / โครงการ / แปลง / วัสดุ' }}
+        resultCount={filtered.length}
+        activeFilters={[
+          ...(filter !== 'all' ? [{ label: FILTERS.find((f) => f.key === filter)?.label ?? filter, onRemove: () => setFilter('all') }] : []),
+          ...(search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []),
+        ]}
+        onReset={() => {
+          setFilter('all')
+          setSearch('')
+        }}
+      >
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="สถานะ">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              aria-pressed={filter === f.key}
+              onClick={() => setFilter(f.key)}
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                filter === f.key ? theme.pill : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
-      </div>
+      </PageToolbar>
 
       {checked.size > 0 && (
         <Card className="flex flex-wrap items-center justify-between gap-3 border-indigo-100 bg-indigo-50/60 px-4 py-3">
@@ -138,10 +150,18 @@ export default function PurchaseRequestsPageClient({
         </Card>
       )}
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-slate-700">
+      {filtered.length === 0 ? (
+        <Card>
+          <EmptyState
+            variant={filter !== 'all' || search.trim() ? 'no-results' : 'empty'}
+            title={filter !== 'all' || search.trim() ? 'ไม่พบคำขอซื้อตามตัวกรองนี้' : 'ยังไม่มีคำขอซื้อ'}
+            description={filter !== 'all' || search.trim() ? 'ลองเปลี่ยนสถานะหรือคำค้นหา' : 'กด "สร้างคำขอซื้อ" เพื่อเริ่มต้น'}
+          />
+        </Card>
+      ) : (
+        <TableFrame>
+          <table>
+            <thead>
               <tr>
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" checked={allChecked} onChange={toggleAll} disabled={filtered.length === 0} />
@@ -154,15 +174,8 @@ export default function PurchaseRequestsPageClient({
                 <th className="px-4 py-3 font-semibold">วันที่</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center italic text-slate-400">
-                    ไม่มีคำขอซื้อในสถานะนี้
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((r) => (
+            <tbody>
+              {filtered.map((r) => (
                   <tr
                     key={r.id}
                     className="cursor-pointer transition-colors hover:bg-slate-50"
@@ -184,7 +197,7 @@ export default function PurchaseRequestsPageClient({
                         return (
                           <>
                             {label}
-                            {extra > 0 && <span className="text-slate-400"> +{extra}</span>}
+                            {extra > 0 && <span className="text-slate-500"> +{extra}</span>}
                           </>
                         )
                       })()}
@@ -204,12 +217,11 @@ export default function PurchaseRequestsPageClient({
                     </td>
                     <td className="px-4 py-3 text-slate-500">{new Date(r.created_at).toLocaleDateString('th-TH')}</td>
                   </tr>
-                ))
-              )}
+                ))}
             </tbody>
           </table>
-        </div>
-      </Card>
+        </TableFrame>
+      )}
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="สร้างคำขอซื้อ" panelClassName="max-w-2xl">
         <PurchaseRequestForm
@@ -230,6 +242,6 @@ export default function PurchaseRequestsPageClient({
       >
         {selectedRequest && <PurchaseRequestDetail request={selectedRequest} onChanged={() => router.refresh()} />}
       </Modal>
-    </div>
+    </PageContainer>
   )
 }

@@ -34,7 +34,7 @@ export function isSameUnit(item: PurchaseRequestItem, line: PoLine): boolean {
  * po_create/po_update subtract whatever made it onto a PO in the same unit,
  * and a manual settlement subtracts the rest. A fully-ordered request
  * therefore stores 0 on every line, which is the right answer for "what's
- * left to buy" and the wrong one for a printed ใบขอซื้อ, which is a record of
+ * left to buy" and the wrong one for a printed คำขอซื้อ, which is a record of
  * the ask.
  *
  * The original is reconstructed rather than stored, by adding back everything

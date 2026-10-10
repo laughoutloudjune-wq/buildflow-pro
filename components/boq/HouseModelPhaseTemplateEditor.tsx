@@ -66,7 +66,7 @@ export default function HouseModelPhaseTemplateEditor({
   })
 
   if (usedTypes.length === 0) {
-    return <p className="text-sm text-slate-400">ยังไม่มีรายการ BOQ จึงยังไม่มีเฟสให้กำหนดระยะเวลา</p>
+    return <p className="text-sm text-slate-500">ยังไม่มีรายการ BOQ จึงยังไม่มีเฟสให้กำหนดระยะเวลา</p>
   }
 
   const typeNameById = new Map(usedTypes.map((u) => [u.typeId, u.typeName]))
@@ -134,7 +134,7 @@ export default function HouseModelPhaseTemplateEditor({
 
   return (
     <div>
-      <p className="mb-3 text-xs text-slate-400">
+      <p className="mb-3 text-xs text-slate-500">
         แต่ละขั้นตอนคือช่วงงานที่ทำ - ใส่เฟสมากกว่า 1 อย่างในขั้นตอนเดียวกันหมายถึงทำพร้อมกัน ใช้ลูกศรจัดลำดับขั้นตอนก่อน-หลัง
       </p>
       <div className="space-y-2">
@@ -151,7 +151,7 @@ export default function HouseModelPhaseTemplateEditor({
                     type="button"
                     onClick={() => moveStep(stepIndex, -1)}
                     disabled={stepIndex === 0}
-                    className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                    className="rounded-lg p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
                   >
                     <ArrowUp className="h-3.5 w-3.5" />
                   </button>
@@ -159,7 +159,7 @@ export default function HouseModelPhaseTemplateEditor({
                     type="button"
                     onClick={() => moveStep(stepIndex, 1)}
                     disabled={stepIndex === steps.length - 1}
-                    className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                    className="rounded-lg p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
                   >
                     <ArrowDown className="h-3.5 w-3.5" />
                   </button>
@@ -180,7 +180,7 @@ export default function HouseModelPhaseTemplateEditor({
                         value={durations[typeId] ?? ''}
                         onChange={(e) => handleDurationChange(typeId, e.target.value)}
                       />
-                      <span className="text-xs text-slate-400">วัน</span>
+                      <span className="text-xs text-slate-500">วัน</span>
                       <select
                         className="text-xs"
                         value={stepIndex}
@@ -195,7 +195,7 @@ export default function HouseModelPhaseTemplateEditor({
                       </select>
                     </>
                   ) : (
-                    <span className="text-xs text-slate-400">
+                    <span className="text-xs text-slate-500">
                       {durations[typeId] ? `${durations[typeId]} วัน` : 'ยังไม่กำหนด'}
                     </span>
                   )}

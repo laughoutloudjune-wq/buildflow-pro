@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { ArrowLeft, Loader2, Plus, Tag } from 'lucide-react'
+import { ArrowLeft, Loader2, Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { STATUS_COLOR_KEYS, statusColorClasses } from '@/lib/sales/statusColors'
 import { createSaleStatus, updateSaleStatus, type SaleStatus } from '@/actions/sales-actions'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 
 const STAGE_LABELS: Record<string, string> = {
   open: 'ว่าง (open)',
@@ -103,24 +105,19 @@ export default function SaleStatusesPageClient({
   const sorted = [...statuses].sort((a, b) => a.sort_order - b.sort_order)
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-medium text-indigo-600">
-            <Tag className="h-4 w-4" aria-hidden />
-            ฝ่ายขาย
-          </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">สถานะการขาย</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            เพิ่ม เปลี่ยนชื่อ และเปลี่ยนสีสถานะได้เอง — รหัส (code) แก้ไม่ได้เพราะเป็นตัวอ้างอิงของประวัติการขายเดิม
-            ทุกสถานะต้องระบุ stage เพื่อให้รายงานสรุปได้แม้เพิ่มสถานะใหม่ทีหลัง
-          </p>
-        </div>
+    <PageContainer width="standard">
+      <PageHeader
+        title="สถานะการขาย"
+        subtitle="เพิ่ม เปลี่ยนชื่อ และเปลี่ยนสีสถานะได้เอง — รหัส (code) แก้ไม่ได้เพราะเป็นตัวอ้างอิงของประวัติการขายเดิม ทุกสถานะต้องระบุ stage เพื่อให้รายงานสรุปได้แม้เพิ่มสถานะใหม่ทีหลัง"
+        actions={
+          <>
         <ButtonLink href="/dashboard/settings" variant="secondary">
           <ArrowLeft className="h-4 w-4" aria-hidden />
           กลับไปตั้งค่า
         </ButtonLink>
-      </div>
+          </>
+        }
+      />
 
       <Card className="border-slate-200 p-6 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">เพิ่มสถานะใหม่</h2>
@@ -228,6 +225,6 @@ export default function SaleStatusesPageClient({
           </table>
         </div>
       </Card>
-    </div>
+    </PageContainer>
   )
 }

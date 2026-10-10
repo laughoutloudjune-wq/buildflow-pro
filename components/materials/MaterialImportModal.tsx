@@ -130,13 +130,13 @@ export default function MaterialImportModal({
           <div>
             <div className="mb-2 flex items-center justify-between">
               <label className="text-sm font-medium text-slate-700">หน่วยของแต่ละหมวดหมู่</label>
-              <span className="text-xs text-slate-400">เว้นว่างได้ - จะใช้ &quot;unit&quot; ชั่วคราวและแก้ทีหลังได้</span>
+              <span className="text-xs text-slate-500">เว้นว่างได้ - จะใช้ &quot;unit&quot; ชั่วคราวและแก้ทีหลังได้</span>
             </div>
             <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-3">
               {preview.categories.map((cat) => (
                 <div key={cat.name} className="flex items-center gap-3">
                   <div className="min-w-0 flex-1 truncate text-sm text-slate-700" title={cat.name}>
-                    {cat.name} <span className="text-xs text-slate-400">({cat.count})</span>
+                    {cat.name} <span className="text-xs text-slate-500">({cat.count})</span>
                   </div>
                   <input
                     value={unitByCategory[cat.name] || ''}
@@ -226,7 +226,7 @@ export default function MaterialImportModal({
                 <div>อัปเดต</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-slate-400">{result.skipped}</div>
+                <div className="text-2xl font-bold text-slate-500">{result.skipped}</div>
                 <div>ข้าม</div>
               </div>
             </div>

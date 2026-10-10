@@ -419,7 +419,7 @@ export default function CreateBillingRequestPageClient({
                                     <tbody>
                                       {historyRows.length === 0 ? (
                                         <tr>
-                                          <td colSpan={9} className="px-2 py-2 text-center text-slate-400">ยังไม่มีประวัติ</td>
+                                          <td colSpan={9} className="px-2 py-2 text-center text-slate-500">ยังไม่มีประวัติ</td>
                                         </tr>
                                       ) : (() => {
                                         const asc = [...historyRows].sort((a: ProgressHistoryItem, b: ProgressHistoryItem) => {
@@ -462,7 +462,7 @@ export default function CreateBillingRequestPageClient({
 
                   {filteredBillableJobs.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-6 py-4 text-center text-slate-400">ไม่พบงานตามตัวกรอง</td>
+                      <td colSpan={10} className="px-6 py-4 text-center text-slate-500">ไม่พบงานตามตัวกรอง</td>
                     </tr>
                   )}
                 </tbody>

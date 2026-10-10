@@ -91,7 +91,7 @@ export default function PlotProgressCurveChart({
 }) {
   if (!curve.startDate) {
     return (
-      <p className="py-10 text-center text-sm text-slate-400">
+      <p className="py-10 text-center text-sm text-slate-500">
         ยังไม่มีรายการงาน (กด &quot;ดึง BOQ&quot;) จึงยังไม่มีข้อมูลสำหรับกราฟความคืบหน้า
       </p>
     )
@@ -222,7 +222,7 @@ export default function PlotProgressCurveChart({
       </svg>
 
       {lastActual && (
-        <p className="mt-1 text-right text-xs text-slate-400">
+        <p className="mt-1 text-right text-xs text-slate-500">
           ล่าสุด {fmtShort(lastActual.date)}: ความคืบหน้า {lastActual.actualPercent}%
         </p>
       )}

@@ -76,9 +76,9 @@ export default function PlotOverviewTab({
             ? `฿${formatCurrency(sale.salePrice)}`
             : sale?.listPrice != null
               ? <span className="text-base font-medium text-slate-500">ราคาตั้ง ฿{formatCurrency(sale.listPrice)}</span>
-              : <span className="text-base font-medium text-slate-400">ยังไม่ระบุราคา</span>}
+              : <span className="text-base font-medium text-slate-500">ยังไม่ระบุราคา</span>}
         </div>
-        {sale?.salesRepName && <div className="mt-1 text-xs text-slate-400">พนักงานขาย: {sale.salesRepName}</div>}
+        {sale?.salesRepName && <div className="mt-1 text-xs text-slate-500">พนักงานขาย: {sale.salesRepName}</div>}
 
         {promotionItems.length > 0 && (
           <div className="mt-2">
@@ -92,7 +92,7 @@ export default function PlotOverviewTab({
               {promotionItems.map((item) => (
                 <li key={item.id} className="flex items-center justify-between gap-2">
                   <span>• {item.name}</span>
-                  <span className="shrink-0 text-slate-400">฿{formatCurrency(item.value)}</span>
+                  <span className="shrink-0 text-slate-500">฿{formatCurrency(item.value)}</span>
                 </li>
               ))}
             </ul>
@@ -102,11 +102,11 @@ export default function PlotOverviewTab({
         {sale && (
           <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
             <div>
-              <div className="text-xs text-slate-400">นัดตรวจบ้าน</div>
+              <div className="text-xs text-slate-500">นัดตรวจบ้าน</div>
               <div className="text-sm font-medium text-slate-700">{sale.inspectionAt ? formatDate(sale.inspectionAt) : 'ยังไม่กำหนด'}</div>
             </div>
             <div>
-              <div className="text-xs text-slate-400">วันโอนกรรมสิทธิ์</div>
+              <div className="text-xs text-slate-500">วันโอนกรรมสิทธิ์</div>
               <div className="text-sm font-medium text-slate-700">{sale.transferAt ? formatDate(sale.transferAt) : 'ยังไม่กำหนด'}</div>
             </div>
           </div>
@@ -133,11 +133,11 @@ export default function PlotOverviewTab({
           <span className="text-sm text-slate-500">งานเสร็จ</span>
         </div>
         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-indigo-500" style={{ width: `${progressPercent}%` }} />
+          <div className="h-full rounded-full bg-indigo-500 transition-[width] duration-[220ms] ease-out" style={{ width: `${progressPercent}%` }} />
         </div>
-        <div className="mt-1 text-right text-xs text-slate-400">{progressPercent}%</div>
+        <div className="mt-1 text-right text-xs text-slate-500">{progressPercent}%</div>
         {!canSeeCost && (
-          <p className="mt-4 text-xs text-slate-400">ราคาต้นทุนก่อสร้างไม่แสดงในมุมมองนี้</p>
+          <p className="mt-4 text-xs text-slate-500">ราคาต้นทุนก่อสร้างไม่แสดงในมุมมองนี้</p>
         )}
       </Card>
 

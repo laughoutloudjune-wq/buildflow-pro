@@ -6,8 +6,10 @@ import { ArrowLeft, Settings } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
 import type { ConsumptionReport, LowStockRow } from '@/lib/types/stock'
+import { TableFrame } from '@/components/ui/TableFrame'
 
 const numberFormat = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 })
 
@@ -28,18 +30,18 @@ export default function StockReportsPageClient({
   }, [initialError])
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <PageContainer width="standard">
       <Link href="/dashboard/stock" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800">
         <ArrowLeft className="h-4 w-4" /> กลับไปหน้าสต็อกวัสดุ
       </Link>
 
       <PageHeader title="รายงานสต็อก" subtitle="วัสดุใกล้หมด และการเบิกจ่ายตามโครงการ/ผู้รับเหมา" />
 
-      <Card className="overflow-hidden">
+      <TableFrame>
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">วัสดุใกล้หมด</h3>
-            <p className="text-xs text-slate-400">คงเหลือถึงหรือต่ำกว่าจุดสั่งซื้อขั้นต่ำที่ตั้งไว้</p>
+            <p className="text-xs text-slate-500">คงเหลือถึงหรือต่ำกว่าจุดสั่งซื้อขั้นต่ำที่ตั้งไว้</p>
           </div>
           <Link
             href="/dashboard/settings/materials"
@@ -49,15 +51,15 @@ export default function StockReportsPageClient({
           </Link>
         </div>
         {lowStock.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-slate-400">
+          <div className="px-4 py-8 text-center text-sm text-slate-500">
             ไม่มีวัสดุที่ต่ำกว่าจุดสั่งซื้อขั้นต่ำ - หรือยังไม่ได้ตั้งจุดสั่งซื้อให้วัสดุใดเลย
             <br />
             ตั้งค่าได้จากหน้ารายการวัสดุ โดยแก้ไขวัสดุแล้วระบุ &quot;จุดสั่งซื้อขั้นต่ำ&quot;
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+          
+            <table>
+              <thead>
                 <tr>
                   <th className="px-4 py-3">วัสดุ</th>
                   <th className="px-4 py-3">หมวดหมู่</th>
@@ -89,9 +91,9 @@ export default function StockReportsPageClient({
                 ))}
               </tbody>
             </table>
-          </div>
+          
         )}
-      </Card>
+      </TableFrame>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="overflow-hidden">
@@ -99,14 +101,14 @@ export default function StockReportsPageClient({
             <h3 className="text-sm font-semibold text-slate-800">การเบิกจ่ายตามโครงการ</h3>
           </div>
           {!consumption || consumption.byProject.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-slate-400">ยังไม่มีการเบิกวัสดุจริงในระบบ</div>
+            <div className="px-4 py-8 text-center text-sm text-slate-500">ยังไม่มีการเบิกวัสดุจริงในระบบ</div>
           ) : (
             <ul className="divide-y divide-slate-100">
               {consumption.byProject.map((row) => (
                 <li key={row.name} className="px-4 py-2.5 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-slate-700">{row.name}</span>
-                    <span className="text-xs text-slate-400">{row.movement_count} รายการ</span>
+                    <span className="text-xs text-slate-500">{row.movement_count} รายการ</span>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                     {row.materials.map((m) => (
@@ -126,14 +128,14 @@ export default function StockReportsPageClient({
             <h3 className="text-sm font-semibold text-slate-800">การเบิกจ่ายตามผู้รับเหมา</h3>
           </div>
           {!consumption || consumption.byContractor.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-slate-400">ยังไม่มีการเบิกวัสดุจริงในระบบ</div>
+            <div className="px-4 py-8 text-center text-sm text-slate-500">ยังไม่มีการเบิกวัสดุจริงในระบบ</div>
           ) : (
             <ul className="divide-y divide-slate-100">
               {consumption.byContractor.map((row) => (
                 <li key={row.name} className="px-4 py-2.5 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-slate-700">{row.name}</span>
-                    <span className="text-xs text-slate-400">{row.movement_count} รายการ</span>
+                    <span className="text-xs text-slate-500">{row.movement_count} รายการ</span>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                     {row.materials.map((m) => (
@@ -149,19 +151,19 @@ export default function StockReportsPageClient({
         </Card>
       </div>
 
-      <Card className="overflow-hidden">
+      <TableFrame>
         <div className="border-b border-slate-100 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-800">วัสดุที่มีการเคลื่อนไหวมากที่สุด</h3>
-          <p className="text-xs text-slate-400">นับเฉพาะการรับเข้า/เบิกออกจริง ไม่รวมยอดยกมาตอนย้ายระบบ</p>
+          <p className="text-xs text-slate-500">นับเฉพาะการรับเข้า/เบิกออกจริง ไม่รวมยอดยกมาตอนย้ายระบบ</p>
         </div>
         {consumption && consumption.mostActiveMaterials.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-slate-400">
+          <div className="px-4 py-8 text-center text-sm text-slate-500">
             ยังไม่มีการรับเข้าหรือเบิกออกจริงในระบบ (ยอดปัจจุบันทั้งหมดมาจากการย้ายระบบครั้งเดียว)
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+          
+            <table>
+              <thead>
                 <tr>
                   <th className="px-4 py-3">วัสดุ</th>
                   <th className="px-4 py-3 text-right">จำนวนรายการ</th>
@@ -184,9 +186,9 @@ export default function StockReportsPageClient({
                 ))}
               </tbody>
             </table>
-          </div>
+          
         )}
-      </Card>
-    </div>
+      </TableFrame>
+    </PageContainer>
   )
 }

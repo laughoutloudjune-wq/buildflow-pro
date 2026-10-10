@@ -5,6 +5,7 @@ import { Building2, FileText, Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import Modal from '@/components/ui/Modal'
 import { getPlotHistoryReport } from '@/actions/billing-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
@@ -223,7 +224,7 @@ export default function HouseHistoryReportPageClient({
   }
 
   return (
-    <div className="space-y-4">
+    <PageContainer width="wide">
       <PageHeader
         title="ประวัติงานตามบ้านเลขที่"
         subtitle="ใช้การ์ดบ้านเหมือนหน้าแปลงที่ดิน แล้วกดเพื่อดูประวัติงานครบทั้งหมด"
@@ -254,9 +255,9 @@ export default function HouseHistoryReportPageClient({
 
       <Card className="p-4 bg-slate-50/70 border-slate-200">
         {loading ? (
-          <div className="py-12 text-center text-slate-400"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>
+          <div className="py-12 text-center text-slate-500"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>
         ) : cards.length === 0 ? (
-          <div className="py-12 text-center text-slate-400">ไม่พบประวัติงาน</div>
+          <div className="py-12 text-center text-slate-500">ไม่พบประวัติงาน</div>
         ) : (
           <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
             {cards.map((card) => (
@@ -266,7 +267,7 @@ export default function HouseHistoryReportPageClient({
                 onClick={() => openHouseHistory(card)}
                 className="text-left"
               >
-                <Card className="group h-full overflow-hidden transition-all hover:shadow-md hover:border-indigo-300 cursor-pointer">
+                <Card className="group h-full overflow-hidden transition-[color,background-color,border-color,box-shadow,transform] hover:shadow-md hover:border-indigo-300 cursor-pointer">
                   <div className="p-4 flex flex-col items-center text-center space-y-3">
                     <div className="h-12 w-12 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm">
                       {String(card.label || '-').slice(0, 3)}
@@ -274,7 +275,7 @@ export default function HouseHistoryReportPageClient({
                     <div>
                       <h3 className="font-bold text-slate-800 text-lg">{card.label}</h3>
                       <p className="text-sm text-slate-500">{card.subtitle || '-'}</p>
-                      <p className="text-xs text-slate-400 mt-1 inline-flex items-center gap-1"><Building2 className="h-3 w-3" /> {card.projectName}</p>
+                      <p className="text-xs text-slate-500 mt-1 inline-flex items-center gap-1"><Building2 className="h-3 w-3" /> {card.projectName}</p>
                     </div>
                     <div className="w-full pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                       <span className="rounded-full bg-indigo-100 px-2 py-1 text-indigo-700">{card.records.length} รายการ</span>
@@ -309,7 +310,7 @@ export default function HouseHistoryReportPageClient({
                   <Card key={`${bill.id}-${idx}`} className="p-4 border-slate-200">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <div className="inline-flex rounded bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">#{String(bill.doc_no || '-').padStart(4, '0')}</div>
+                        <div className="inline-flex rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">#{String(bill.doc_no || '-').padStart(4, '0')}</div>
                         <div className="mt-2 text-sm text-slate-600">{bill.billing_date ? new Date(bill.billing_date).toLocaleDateString('th-TH') : '-'}</div>
                         <div className="text-sm font-medium text-slate-800">{record.projectName} • แปลง {record.plotName} • {record.plotType || '-'}</div>
                       </div>
@@ -336,7 +337,7 @@ export default function HouseHistoryReportPageClient({
                     </div>
 
                     {bill.note ? (
-                      <div className="mt-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-700 inline-flex items-center gap-2">
+                      <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 inline-flex items-center gap-2">
                         <FileText className="h-3.5 w-3.5" /> {bill.note}
                       </div>
                     ) : null}
@@ -346,6 +347,6 @@ export default function HouseHistoryReportPageClient({
           </div>
         </div>
       </Modal>
-    </div>
+    </PageContainer>
   )
 }

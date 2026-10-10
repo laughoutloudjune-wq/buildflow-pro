@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Search, Undo2 } from 'lucide-react'
-import { Card } from '@/components/ui/Card'
+import { Loader2, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
+import { TableFrame } from '@/components/ui/TableFrame'
+import { EmptyState } from '@/components/ui/EmptyState'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
@@ -67,25 +70,19 @@ export default function PaymentsPageClient({
   }
 
   return (
-    <div className="mx-auto max-w-screen-2xl space-y-6">
+    <PageContainer width="wide">
       <PageHeader
-        title="ใบสำคัญจ่าย (Payment Vouchers)"
+        title="ใบสำคัญจ่าย (PP)"
         subtitle="การจ่ายเงินให้ผู้จำหน่าย แต่ละใบอาจรวมหลายใบรับสินค้า (RI) ของผู้จำหน่ายเดียวกัน"
       />
 
-      <Card className="border-slate-200 p-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9"
-            placeholder="ค้นหาเลขที่ PP / RI / ผู้จำหน่าย / บริษัท"
-          />
-        </div>
-      </Card>
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาเลขที่ PP / RI / ผู้จำหน่าย / บริษัท' }}
+        activeFilters={search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []}
+        onReset={() => setSearch('')}
+      />
 
-      <Card className="overflow-hidden">
+      <TableFrame>
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 text-sm">
           <span className="text-slate-500">
             ผลลัพธ์ <span className="font-semibold text-slate-700">{rows.length}</span> รายการ
@@ -94,9 +91,8 @@ export default function PaymentsPageClient({
             ยอดรวมทั้งหมด: <span className="font-semibold text-slate-800">฿{formatCurrency(grandTotal)}</span>
           </span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+          <table>
+            <thead>
               <tr>
                 <th className="px-4 py-3">เลขที่ PP</th>
                 <th className="px-4 py-3">วันที่</th>
@@ -111,8 +107,12 @@ export default function PaymentsPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center italic text-slate-400">
-                    ยังไม่มีใบสำคัญจ่าย
+                  <td colSpan={8} className="p-0">
+                    <EmptyState
+                      variant={search.trim() ? 'no-results' : 'empty'}
+                      title={search.trim() ? 'ไม่พบใบสำคัญจ่ายตามคำค้นหา' : 'ยังไม่มีใบสำคัญจ่าย'}
+                      description={search.trim() ? 'ลองเปลี่ยนคำค้นหา' : 'สร้างใบสำคัญจ่ายจากหน้าใบรับสินค้า (RI)'}
+                    />
                   </td>
                 </tr>
               ) : (
@@ -127,7 +127,7 @@ export default function PaymentsPageClient({
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{PAYMENT_METHOD_LABEL[v.payment_method]}</td>
                       <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">
                         {ris[0]?.goods_receipts?.ri_no || '-'}
-                        {ris.length > 1 && <span className="ml-1 text-xs text-slate-400">+{ris.length - 1}</span>}
+                        {ris.length > 1 && <span className="ml-1 text-xs text-slate-500">+{ris.length - 1}</span>}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(v.total_amount)}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
@@ -141,8 +141,7 @@ export default function PaymentsPageClient({
               )}
             </tbody>
           </table>
-        </div>
-      </Card>
+      </TableFrame>
 
       <ConfirmDialog
         isOpen={voidTarget !== null}
@@ -155,6 +154,6 @@ export default function PaymentsPageClient({
         onCancel={() => setVoidTarget(null)}
         onConfirm={handleConfirmVoid}
       />
-    </div>
+    </PageContainer>
   )
 }

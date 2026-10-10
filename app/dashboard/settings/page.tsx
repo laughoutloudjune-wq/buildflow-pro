@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 
 type SettingsLink = {
   href: string
@@ -46,7 +47,7 @@ const TONE_CLASSES: Record<SettingsLink['tone'], { chip: string; hover: string; 
 const SETTINGS_GROUPS: SettingsGroup[] = [
   {
     title: 'จัดซื้อ',
-    description: 'ข้อมูลที่ใช้ในใบขอซื้อและใบสั่งซื้อ',
+    description: 'ข้อมูลที่ใช้ในคำขอซื้อและใบสั่งซื้อ',
     links: [
       { href: '/dashboard/settings/suppliers', label: 'ผู้จำหน่าย', description: 'จัดการรายชื่อผู้จำหน่ายวัสดุ', icon: Truck, tone: 'sky' },
       { href: '/dashboard/settings/companies', label: 'บริษัทในเครือ', description: 'รายชื่อนิติบุคคล โลโก้ และลายเซ็นที่ใช้ซื้อวัสดุ', icon: Landmark, tone: 'violet' },
@@ -88,7 +89,7 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
 
 export default function SettingsPage() {
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <PageContainer width="standard">
       <PageHeader title="ตั้งค่าระบบ" subtitle="ข้อมูลบริษัท ค่าเริ่มต้นทางบัญชี การจัดการผู้ใช้ และการตั้งค่าทั้งหมดของระบบ" />
 
       <div className="space-y-5">
@@ -96,7 +97,7 @@ export default function SettingsPage() {
           <div key={group.title}>
             <div className="mb-2 flex items-baseline gap-2">
               <h2 className="text-sm font-semibold text-slate-700">{group.title}</h2>
-              <span className="text-xs text-slate-400">{group.description}</span>
+              <span className="text-xs text-slate-500">{group.description}</span>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {group.links.map((link) => {
@@ -125,6 +126,6 @@ export default function SettingsPage() {
           </div>
         ))}
       </div>
-    </div>
+    </PageContainer>
   )
 }

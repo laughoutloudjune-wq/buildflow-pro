@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { ArrowLeft, ClipboardEdit } from 'lucide-react'
+import { ClipboardEdit } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Breadcrumb } from '@/components/ui/Breadcrumb'
+import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
 import type { getMaterialStockDetail } from '@/actions/stock-actions'
 import AdjustStockModal from '@/components/stock/AdjustStockModal'
 import type { StockMovement } from '@/lib/types/stock'
+import { TableFrame } from '@/components/ui/TableFrame'
 
 const numberFormat = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 })
 
@@ -63,17 +65,15 @@ export default function MaterialStockDetailPageClient({
   }, [initialError])
 
   if (!detail) {
-    return <div className="mx-auto max-w-3xl py-12 text-center text-slate-400">ไม่พบวัสดุนี้</div>
+    return <div className="mx-auto max-w-3xl py-12 text-center text-slate-500">ไม่พบวัสดุนี้</div>
   }
 
   const { material, quantity_on_hand: quantityOnHand, movements: rawMovements, canAdjust } = detail
   const movements = collapseDirectToSite(rawMovements)
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <Link href="/dashboard/stock" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800">
-        <ArrowLeft className="h-4 w-4" /> กลับไปหน้าสต็อกวัสดุ
-      </Link>
+    <PageContainer width="standard">
+      <Breadcrumb items={[{ label: 'สต็อกวัสดุ', href: '/dashboard/stock' }, { label: material.name }]} />
 
       <PageHeader
         title={material.name}
@@ -91,7 +91,7 @@ export default function MaterialStockDetailPageClient({
       />
 
       <Card className="p-6">
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
           {material.is_requestable ? 'คงเหลือปัจจุบัน' : 'ยอดรับเข้าสะสม'}
         </div>
         <div
@@ -99,7 +99,7 @@ export default function MaterialStockDetailPageClient({
             quantityOnHand < 0 ? 'text-red-600' : quantityOnHand === 0 ? 'text-amber-600' : 'text-slate-900'
           }`}
         >
-          {numberFormat.format(quantityOnHand)} <span className="text-lg font-normal text-slate-400">{material.unit}</span>
+          {numberFormat.format(quantityOnHand)} <span className="text-lg font-normal text-slate-500">{material.unit}</span>
         </div>
         {!material.is_requestable ? (
           <p className="mt-2 text-sm text-slate-500">
@@ -112,13 +112,13 @@ export default function MaterialStockDetailPageClient({
         )}
       </Card>
 
-      <Card className="overflow-hidden">
+      <TableFrame>
         <div className="border-b border-slate-100 px-4 py-3 text-sm text-slate-500">
           ประวัติการเคลื่อนไหว <span className="font-semibold text-slate-700">{movements.length}</span> รายการ
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+        
+          <table>
+            <thead>
               <tr>
                 <th className="px-4 py-3">วันที่</th>
                 <th className="px-4 py-3">ประเภท</th>
@@ -131,7 +131,7 @@ export default function MaterialStockDetailPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {movements.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center italic text-slate-400">
+                  <td colSpan={6} className="px-4 py-8 text-center italic text-slate-500">
                     ยังไม่มีการเคลื่อนไหวของวัสดุนี้
                   </td>
                 </tr>
@@ -156,8 +156,8 @@ export default function MaterialStockDetailPageClient({
               )}
             </tbody>
           </table>
-        </div>
-      </Card>
+        
+      </TableFrame>
 
       {canAdjust && (
         <AdjustStockModal
@@ -170,6 +170,6 @@ export default function MaterialStockDetailPageClient({
           currentQty={quantityOnHand}
         />
       )}
-    </div>
+    </PageContainer>
   )
 }

@@ -10,8 +10,8 @@ export type DashboardWeek = {
   weekStart: string
   weekEnd: string
   show: { sales: boolean; construction: boolean; procurement: boolean; unassigned: boolean }
-  sales: { srCount: number; srItems: WeekSrItem[]; trCount: number } | null
-  construction: { main: number; inspect: number; other: number; dc: number } | null
+  sales: { srCount: number; srItems: WeekSrItem[] } | null
+  construction: { main: number; inspect: number; repair: number; other: number; dc: number } | null
   procurement: { openPrCount: number } | null
   unassigned: { count: number } | null
 }
@@ -27,7 +27,7 @@ function bangkokWeekRange(): { start: string; end: string } {
   return { start: iso(monday), end: iso(sunday) }
 }
 
-// weekly_plan_items / transfer_requests may not exist in the database yet
+// weekly_plan_items may not exist in the database yet
 // (and are not in the generated types), so every read on them is untyped and
 // any failure - missing table included - falls back to an empty result
 // instead of breaking the dashboard.
@@ -89,15 +89,12 @@ export async function getDashboardWeek(): Promise<DashboardWeek | { error: strin
             } catch {
               // leave zero
             }
-            const trCount = await safeCount(() =>
-              db.from('transfer_requests').select('id', { count: 'exact', head: true }).in('status', ['draft', 'submitted', 'approved']),
-            )
-            return { srCount, srItems, trCount }
+            return { srCount, srItems }
           })()
         : null,
       show.construction
-        ? Promise.all([planCount('main'), planCount('inspect'), planCount('other'), planCount('dc')]).then(
-            ([main, inspect, other, dc]) => ({ main, inspect, other, dc }),
+        ? Promise.all([planCount('main'), planCount('inspect'), planCount('repair'), planCount('other'), planCount('dc')]).then(
+            ([main, inspect, repair, other, dc]) => ({ main, inspect, repair, other, dc }),
           )
         : null,
       show.procurement

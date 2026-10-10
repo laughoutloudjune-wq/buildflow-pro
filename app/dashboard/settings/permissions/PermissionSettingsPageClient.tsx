@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { ArrowLeft, Info, Save, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Info, Save } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { updateRolePermissions } from '@/actions/settings-actions'
 import { type PermissionModule, type RolePermissions } from '@/lib/permissions'
 import type { UserRole } from '@/lib/types/billing'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 
 const roleLabels: Record<UserRole, string> = {
   admin: 'Admin',
@@ -81,18 +83,12 @@ export default function PermissionSettingsPageClient({
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-medium text-indigo-600">
-            <ShieldCheck className="h-4 w-4" aria-hidden />
-            สิทธิ์ตามบทบาท
-          </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">กำหนดการเข้าถึงโมดูล</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            เลือกว่าแต่ละตำแหน่งเปิดเมนูและหน้าไหนได้ — ใช้คู่กับบทบาทผู้ใช้ในหน้า &quot;ผู้ใช้และบทบาท&quot;
-          </p>
-        </div>
+    <PageContainer width="standard">
+      <PageHeader
+        title="กำหนดการเข้าถึงโมดูล"
+        subtitle="เลือกว่าแต่ละตำแหน่งเปิดเมนูและหน้าไหนได้ — ใช้คู่กับบทบาทผู้ใช้ในหน้า &quot;ผู้ใช้และบทบาท&quot;"
+        actions={
+          <>
         <div className="flex flex-wrap items-center gap-2">
           <ButtonLink href="/dashboard/settings" variant="secondary">
             <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -103,7 +99,9 @@ export default function PermissionSettingsPageClient({
             {isPending ? 'กำลังบันทึก...' : 'บันทึกสิทธิ์'}
           </Button>
         </div>
-      </div>
+          </>
+        }
+      />
 
 
       <Card className="flex gap-3 border-sky-100 bg-sky-50/80 p-4 shadow-sm">
@@ -174,6 +172,6 @@ export default function PermissionSettingsPageClient({
           </table>
         </div>
       </Card>
-    </div>
+    </PageContainer>
   )
 }

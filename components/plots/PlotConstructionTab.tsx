@@ -1,7 +1,7 @@
 import { User } from 'lucide-react'
-import { Card } from '@/components/ui/Card'
 import { formatCurrency } from '@/lib/currency'
 import type { PlotJobRow } from '@/lib/types/plotDetail'
+import { TableFrame } from '@/components/ui/TableFrame'
 
 const STATUS_LABEL: Record<string, string> = {
   pending: 'รอเริ่ม',
@@ -46,10 +46,10 @@ export default function PlotConstructionTab({
   const showCostColumns = jobs.length === 0 || jobs.some((j) => j.cost)
 
   return (
-    <Card className="overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-700 border-b">
+    <TableFrame>
+      
+        <table>
+          <thead>
             <tr>
               <th className="px-4 py-3 font-semibold">รายการงาน</th>
               {showCostColumns && <th className="px-4 py-3 font-semibold w-[220px]">Variable Price / Unit</th>}
@@ -67,7 +67,7 @@ export default function PlotConstructionTab({
                 <tr key={job.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-800">{job.itemName}</div>
-                    <div className="text-xs text-slate-400">
+                    <div className="text-xs text-slate-500">
                       {job.quantity} {job.unit}
                       {job.cost && ` x ${formatCurrency(job.cost.boqPricePerUnit)}`}
                     </div>
@@ -85,7 +85,7 @@ export default function PlotConstructionTab({
                               placeholder={String(job.cost.boqPricePerUnit || 0)}
                               value={priceDrafts[job.id] ?? ''}
                               onChange={(e) => onPriceDraftChange(job.id, e.target.value)}
-                              className="w-28 rounded border border-slate-300 px-2 py-1 text-xs"
+                              className="w-28 rounded-lg border border-slate-300 px-2 py-1 text-xs"
                             />
                             <button
                               type="button"
@@ -129,7 +129,7 @@ export default function PlotConstructionTab({
 
                   <td className="px-4 py-3">
                     {!job.cost ? (
-                      <span className="text-xs text-slate-400">—</span>
+                      <span className="text-xs text-slate-500">—</span>
                     ) : canEdit ? (
                       <div className="relative">
                         <User className="absolute left-2 top-2.5 h-3 w-3 text-slate-400" />
@@ -174,8 +174,8 @@ export default function PlotConstructionTab({
             })}
           </tbody>
         </table>
-        {jobs.length === 0 && <div className="py-12 text-center text-slate-400">ยังไม่มีรายการงาน</div>}
-      </div>
-    </Card>
+        {jobs.length === 0 && <div className="py-12 text-center text-slate-500">ยังไม่มีรายการงาน</div>}
+      
+    </TableFrame>
   )
 }

@@ -1,5 +1,5 @@
-import PageLoading from '@/components/ui/PageLoading'
+import PageSkeleton from '@/components/ui/PageSkeleton'
 
 export default function DashboardLoading() {
-  return <PageLoading />
+  return <PageSkeleton />
 }

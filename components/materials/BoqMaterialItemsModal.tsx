@@ -153,7 +153,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`วัสดุที่ใช้ในงาน: ${boqItemName}`} panelClassName="max-w-2xl">
       {isLoading ? (
-        <div className="flex items-center justify-center py-10 text-slate-400">
+        <div className="flex items-center justify-center py-10 text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : (
@@ -175,7 +175,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
               <tbody className="divide-y divide-slate-100">
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
+                    <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
                       ยังไม่มีรายการวัสดุสำหรับงานนี้
                     </td>
                   </tr>
@@ -194,7 +194,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
                             value={quantityDrafts[item.id] ?? ''}
                             onChange={(e) => setQuantityDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
                             onBlur={() => handleSaveQuantity(item.id)}
-                            className="w-24 rounded border border-slate-300 px-2 py-1 text-right text-sm"
+                            className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm"
                           />
                         </td>
                         <td className="px-3 py-2 text-slate-500">{item.material_types?.unit || '-'}</td>
@@ -205,7 +205,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
                             type="button"
                             onClick={() => setDeleteTarget(item)}
                             disabled={isSaving}
-                            className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
+                            className="rounded-lg p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -241,7 +241,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
                   min="0"
                   value={plannedQuantity}
                   onChange={(e) => setPlannedQuantity(e.target.value)}
-                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                  className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                 />
               </div>
               <button
@@ -270,7 +270,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
                     type="text"
                     value={newMaterialName}
                     onChange={(e) => setNewMaterialName(e.target.value)}
-                    className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                     placeholder="เช่น สีรองพื้น"
                   />
                 </div>
@@ -280,7 +280,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
                     type="text"
                     value={newMaterialUnit}
                     onChange={(e) => setNewMaterialUnit(e.target.value)}
-                    className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                     placeholder="แกลลอน"
                   />
                 </div>
@@ -292,7 +292,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
                     min="0"
                     value={newMaterialPrice}
                     onChange={(e) => setNewMaterialPrice(e.target.value)}
-                    className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                   />
                 </div>
                 <button

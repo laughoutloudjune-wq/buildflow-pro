@@ -136,7 +136,7 @@ export default function InlineMaterialCreate({
             type="button"
             onClick={handleUnitNext}
             disabled={isSaving || !unit.trim()}
-            className="shrink-0 rounded bg-indigo-600 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+            className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
           >
             ถัดไป
           </button>
@@ -191,7 +191,7 @@ export default function InlineMaterialCreate({
           type="button"
           onClick={() => setStep('unit')}
           disabled={isSaving}
-          className="shrink-0 rounded px-2 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40"
+          className="shrink-0 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40"
         >
           ย้อนกลับ
         </button>
@@ -199,7 +199,7 @@ export default function InlineMaterialCreate({
           type="button"
           onClick={handleCreate}
           disabled={isSaving}
-          className="shrink-0 rounded bg-indigo-600 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+          className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
         >
           {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'เพิ่ม'}
         </button>

@@ -24,9 +24,6 @@ const TYPE_LABEL: Record<NotificationItem['type'], string> = {
   work_request_pending: 'มีคำขอจากฝ่ายขายรออนุมัติ',
   work_request_approved: 'คำขอของคุณได้รับการอนุมัติแล้ว',
   work_request_rejected: 'คำขอของคุณไม่ได้รับการอนุมัติ',
-  tr_submitted: 'มีใบขอโอนรออนุมัติ',
-  tr_approved: 'ใบขอโอนได้รับการอนุมัติแล้ว',
-  tr_rejected: 'ใบขอโอนไม่ได้รับการอนุมัติ',
 }
 
 const POLL_INTERVAL_MS = 45_000
@@ -52,10 +49,6 @@ function notificationSubtitle(item: NotificationItem): string {
     const swr = item.sales_work_request
     const parts = [swr.request_no, swr.plot_name ? `แปลง ${swr.plot_name}` : null, swr.title].filter(Boolean)
     return parts.join(' • ')
-  }
-  if (item.transfer_request) {
-    const tr = item.transfer_request
-    return [tr.request_no, tr.plot_name ? `แปลง ${tr.plot_name}` : null].filter(Boolean).join(' • ')
   }
   const billing = item.billing
   if (!billing) return ''
@@ -116,7 +109,6 @@ export default function NotificationBell({ role }: { role?: string }) {
       return role === 'foreman' ? '/dashboard/foreman/purchase-request' : `/dashboard/procurement/requests/${item.purchase_request.id}`
     }
     if (item.sales_work_request) return '/dashboard/sales-requests'
-    if (item.transfer_request) return '/dashboard/sales/transfer-requests'
     if (!item.billing) return null
     return role === 'foreman' ? '/dashboard/foreman/history' : `/dashboard/billing/${item.billing.id}/review`
   }
@@ -155,7 +147,7 @@ export default function NotificationBell({ role }: { role?: string }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-40 mt-2 w-80 rounded-xl border border-slate-200 bg-white shadow-lg">
+        <div className="absolute right-0 top-full z-40 mt-2 w-80 glass-popover elev-floating rounded-xl border border-slate-200">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
             <p className="text-sm font-semibold text-slate-800">การแจ้งเตือน</p>
             {unreadCount > 0 && (
@@ -171,7 +163,7 @@ export default function NotificationBell({ role }: { role?: string }) {
 
           <div className="max-h-96 overflow-y-auto">
             {items.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-slate-400">ไม่มีการแจ้งเตือน</p>
+              <p className="px-4 py-8 text-center text-sm text-slate-500">ไม่มีการแจ้งเตือน</p>
             ) : (
               items.map((item) => (
                 <button
@@ -189,7 +181,7 @@ export default function NotificationBell({ role }: { role?: string }) {
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-slate-800">{TYPE_LABEL[item.type]}</span>
                     <span className="mt-0.5 block truncate text-xs text-slate-500">{notificationSubtitle(item)}</span>
-                    <span className="mt-0.5 block text-[11px] text-slate-400">{timeAgo(item.created_at)}</span>
+                    <span className="mt-0.5 block text-[11px] text-slate-500">{timeAgo(item.created_at)}</span>
                   </span>
                 </button>
               ))

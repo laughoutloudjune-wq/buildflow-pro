@@ -3,13 +3,13 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Pencil, Loader2 } from 'lucide-react'
-import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { createContractorType, updateContractorType, deleteContractorType } from '@/actions/contractor-type-actions'
+import { TableFrame } from '@/components/ui/TableFrame'
 
 type ContractorType = {
   id: number;
@@ -79,10 +79,9 @@ export default function ContractorTypesPageClient({
         }
       />
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-700 border-b">
+      <TableFrame>
+        <table>
+            <thead>
               <tr>
                 <th className="px-4 py-3 font-semibold">#ID</th>
                 <th className="px-4 py-3 font-semibold">ชื่อประเภท</th>
@@ -96,10 +95,10 @@ export default function ContractorTypesPageClient({
                   <td className="px-4 py-3 font-medium text-slate-800">{type.name}</td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => handleOpenModal(type)} className="p-1.5 rounded text-slate-500 hover:text-indigo-600 hover:bg-indigo-50">
+                      <button onClick={() => handleOpenModal(type)} className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50">
                         <Pencil className="h-4 w-4" />
                       </button>
-                      <button onClick={() => setDeleteTarget(type)} className="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-red-50" disabled={isPending}>
+                      <button onClick={() => setDeleteTarget(type)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50" disabled={isPending}>
                         {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                       </button>
                     </div>
@@ -108,8 +107,7 @@ export default function ContractorTypesPageClient({
               ))}
             </tbody>
           </table>
-        </div>
-      </Card>
+      </TableFrame>
 
       <Modal
         isOpen={isModalOpen}

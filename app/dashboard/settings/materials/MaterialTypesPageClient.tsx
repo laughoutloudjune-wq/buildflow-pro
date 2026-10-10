@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
@@ -26,6 +27,7 @@ import {
 } from '@/actions/material-actions'
 import MaterialImportModal from '@/components/materials/MaterialImportModal'
 import type { MaterialCatalogRow, MaterialType } from '@/lib/types/materials'
+import { TableFrame } from '@/components/ui/TableFrame'
 
 const PAGE_SIZE = 25
 
@@ -363,7 +365,7 @@ export default function MaterialTypesPageClient({
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <PageContainer width="standard">
       <div>
         <Link
           href="/dashboard/settings"
@@ -407,7 +409,7 @@ export default function MaterialTypesPageClient({
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
           แสดงรายการที่ปิดใช้งานแล้ว
         </label>
-        <span className="ml-auto text-sm text-slate-400">{filtered.length} รายการ</span>
+        <span className="ml-auto text-sm text-slate-500">{filtered.length} รายการ</span>
       </div>
 
       {selected.size > 0 && (
@@ -441,7 +443,7 @@ export default function MaterialTypesPageClient({
               type="button"
               onClick={() => setSelected(new Set())}
               disabled={isBulkPending}
-              className="rounded p-1.5 text-indigo-400 transition hover:bg-indigo-100 hover:text-indigo-700"
+              className="rounded-lg p-1.5 text-indigo-400 transition hover:bg-indigo-100 hover:text-indigo-700"
               title="ล้างการเลือก"
             >
               <X className="h-4 w-4" />
@@ -450,10 +452,10 @@ export default function MaterialTypesPageClient({
         </Card>
       )}
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-slate-700">
+      <TableFrame>
+        
+          <table>
+            <thead>
               <tr>
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" checked={allFilteredSelected} ref={(el) => { if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected }} onChange={toggleSelectAll} disabled={filtered.length === 0} />
@@ -471,7 +473,7 @@ export default function MaterialTypesPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center italic text-slate-400">
+                  <td colSpan={9} className="px-4 py-8 text-center italic text-slate-500">
                     {materials.length === 0
                       ? 'ยังไม่มีวัสดุในระบบ กดปุ่ม "เพิ่มวัสดุใหม่" หรือ "นำเข้าจาก Excel" เพื่อเริ่มต้น'
                       : 'ไม่พบวัสดุที่ตรงกับตัวกรอง'}
@@ -517,7 +519,7 @@ export default function MaterialTypesPageClient({
                       <button
                         onClick={() => openEditModal(material)}
                         disabled={isPending}
-                        className="rounded p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                        className="rounded-lg p-1 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
                         title="แก้ไข"
                       >
                         <Pencil className="h-4 w-4" />
@@ -526,7 +528,7 @@ export default function MaterialTypesPageClient({
                         <button
                           onClick={() => setDeactivateTarget(material)}
                           disabled={isPending}
-                          className="rounded p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                          className="rounded-lg p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
                           title="ปิดใช้งาน"
                         >
                           {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -535,7 +537,7 @@ export default function MaterialTypesPageClient({
                         <button
                           onClick={() => handleReactivate(material)}
                           disabled={isPending}
-                          className="rounded p-1 text-slate-300 transition hover:bg-emerald-50 hover:text-emerald-600"
+                          className="rounded-lg p-1 text-slate-300 transition hover:bg-emerald-50 hover:text-emerald-600"
                           title="เปิดใช้งานอีกครั้ง"
                         >
                           {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
@@ -547,9 +549,9 @@ export default function MaterialTypesPageClient({
               )}
             </tbody>
           </table>
-        </div>
+        
         <Pagination currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} />
-      </Card>
+      </TableFrame>
 
       <Modal
         isOpen={isModalOpen}
@@ -776,6 +778,6 @@ export default function MaterialTypesPageClient({
         onCancel={() => setDeactivateTarget(null)}
         onConfirm={handleConfirmDeactivate}
       />
-    </div>
+    </PageContainer>
   )
 }

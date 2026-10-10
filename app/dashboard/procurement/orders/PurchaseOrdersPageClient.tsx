@@ -3,11 +3,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowDown, ArrowUp, ArrowUpDown, Copy, Layers, Loader2, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Copy, Layers, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
+import { TableFrame } from '@/components/ui/TableFrame'
+import { EmptyState } from '@/components/ui/EmptyState'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
@@ -233,15 +237,15 @@ export default function PurchaseOrdersPageClient({
   const dateHeader = 'วันที่สั่งซื้อ'
 
   return (
-    <div className="mx-auto max-w-screen-2xl space-y-6">
+    <PageContainer width="wide">
       <PageHeader
-        title="ใบสั่งซื้อ (Purchase Orders)"
+        title="ใบสั่งซื้อ (PO)"
         subtitle="ใบสั่งซื้อวัสดุที่ออกให้ผู้จำหน่าย ติดตามสถานะจนถึงชำระเงิน"
         actions={
           <div className="flex items-center gap-2">
             <Link href="/dashboard/procurement/orders/combine">
               <Button variant="secondary">
-                <Layers className="h-4 w-4" /> รวมใบขอซื้อ
+                <Layers className="h-4 w-4" /> รวมคำขอซื้อ
               </Button>
             </Link>
             <Link href="/dashboard/procurement/orders/create">
@@ -254,48 +258,41 @@ export default function PurchaseOrdersPageClient({
       />
 
 
-      <Card className="border-slate-200 p-3">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-6">
-          <div className="relative md:col-span-2">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9"
-              placeholder="ค้นหาเลขที่ PO / ผู้จำหน่าย / โครงการ / วัสดุ"
-            />
-          </div>
-          <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)} className="w-full">
-            <option value="">ทุกผู้จำหน่าย</option>
-            {supplierOptions.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="w-full">
-            <option value="">ทุกโครงการ</option>
-            {projectOptions.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="w-full">
-            <option value="">ทุกบริษัทผู้ซื้อ</option>
-            {companyOptions.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <div className="grid grid-cols-2 gap-2">
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} title={`${dateHeader} จาก`} />
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} title={`${dateHeader} ถึง`} />
-          </div>
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาเลขที่ PO / ผู้จำหน่าย / โครงการ / วัสดุ' }}
+        activeFilters={[
+          ...(search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []),
+          ...(supplierFilter ? [{ label: supplierFilter, onRemove: () => setSupplierFilter('') }] : []),
+          ...(projectFilter ? [{ label: projectFilter, onRemove: () => setProjectFilter('') }] : []),
+          ...(companyFilter ? [{ label: companyFilter, onRemove: () => setCompanyFilter('') }] : []),
+          ...(dateFrom || dateTo ? [{ label: `${dateHeader} ${dateFrom || '…'} – ${dateTo || '…'}`, onRemove: () => { setDateFrom(''); setDateTo('') } }] : []),
+        ]}
+        onReset={clearFilters}
+      >
+        <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)} aria-label="ผู้จำหน่าย" className="min-w-[10rem]">
+          <option value="">ทุกผู้จำหน่าย</option>
+          {supplierOptions.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+        <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} aria-label="โครงการ" className="min-w-[10rem]">
+          <option value="">ทุกโครงการ</option>
+          {projectOptions.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+        <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} aria-label="บริษัทผู้ซื้อ" className="min-w-[10rem]">
+          <option value="">ทุกบริษัทผู้ซื้อ</option>
+          {companyOptions.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+        <div className="flex items-center gap-1.5">
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label={`${dateHeader} จาก`} title={`${dateHeader} จาก`} />
+          <span className="text-slate-400" aria-hidden>–</span>
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label={`${dateHeader} ถึง`} title={`${dateHeader} ถึง`} />
         </div>
-        {(search || supplierFilter || projectFilter || companyFilter || dateFrom || dateTo) && (
-          <div className="mt-2 flex justify-end">
-            <button type="button" onClick={clearFilters} className="text-xs font-medium text-indigo-600 hover:underline">
-              ล้างตัวกรอง
-            </button>
-          </div>
-        )}
-      </Card>
+      </PageToolbar>
 
       {selected.size > 0 && (
         <Card className="flex flex-wrap items-center justify-between gap-3 border-indigo-100 bg-indigo-50/60 px-4 py-3">
@@ -314,7 +311,7 @@ export default function PurchaseOrdersPageClient({
         </Card>
       )}
 
-      <Card className="overflow-hidden">
+      <TableFrame>
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 text-sm">
           <span className="text-slate-500">
             ผลลัพธ์ <span className="font-semibold text-slate-700">{rows.length}</span> รายการ
@@ -323,9 +320,8 @@ export default function PurchaseOrdersPageClient({
             ยอดรวมทั้งหมด: <span className="font-semibold text-slate-800">฿{formatCurrency(grandTotal)}</span>
           </span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+          <table>
+            <thead>
               <tr>
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={rows.length === 0} />
@@ -343,8 +339,12 @@ export default function PurchaseOrdersPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center italic text-slate-400">
-                    ไม่พบใบสั่งซื้อ
+                  <td colSpan={9} className="p-0">
+                    <EmptyState
+                      variant={search.trim() || supplierFilter || projectFilter || companyFilter || dateFrom || dateTo ? 'no-results' : 'empty'}
+                      title={search.trim() || supplierFilter || projectFilter || companyFilter || dateFrom || dateTo ? 'ไม่พบใบสั่งซื้อตามตัวกรองนี้' : 'ยังไม่มีใบสั่งซื้อ'}
+                      description={search.trim() || supplierFilter || projectFilter || companyFilter || dateFrom || dateTo ? 'ลองเปลี่ยนหรือล้างตัวกรอง' : 'กด "สร้างใบสั่งซื้อ" หรือ "รวมคำขอซื้อ" เพื่อเริ่มต้น'}
+                    />
                   </td>
                 </tr>
               ) : (
@@ -375,7 +375,7 @@ export default function PurchaseOrdersPageClient({
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{o.companies?.name || '-'}</td>
                       <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">
                         {materialLabel}
-                        {materialExtra > 0 && <span className="ml-1 text-xs text-slate-400">+{materialExtra}</span>}
+                        {materialExtra > 0 && <span className="ml-1 text-xs text-slate-500">+{materialExtra}</span>}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{o.projects?.name || '-'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH') : '-'}</td>
@@ -386,10 +386,9 @@ export default function PurchaseOrdersPageClient({
               )}
             </tbody>
           </table>
-        </div>
 
         <Pagination currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} />
-      </Card>
+      </TableFrame>
 
       <PurchaseOrderModal
         orderId={viewOrderId}
@@ -410,6 +409,6 @@ export default function PurchaseOrdersPageClient({
         onCancel={() => setIsDeleteConfirmOpen(false)}
         onConfirm={handleConfirmDeleteSelected}
       />
-    </div>
+    </PageContainer>
   )
 }

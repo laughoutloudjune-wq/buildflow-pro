@@ -8,6 +8,8 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Breadcrumb } from '@/components/ui/Breadcrumb'
+import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import ReasonDialog from '@/components/ui/ReasonDialog'
@@ -201,7 +203,7 @@ export default function PurchaseOrderDetailPageClient({
   }
 
   if (!order) {
-    return <div className="py-16 text-center text-slate-400">ไม่พบใบสั่งซื้อนี้</div>
+    return <div className="py-16 text-center text-slate-500">ไม่พบใบสั่งซื้อนี้</div>
   }
 
   // Lines that answer purchase request lines, with their per-request / per-plot
@@ -226,7 +228,7 @@ export default function PurchaseOrderDetailPageClient({
   ].filter((m) => m.value)
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 pb-10">
+    <PageContainer width="standard">
       <div>
         {onClose ? (
           <button
@@ -237,12 +239,7 @@ export default function PurchaseOrderDetailPageClient({
             <ArrowLeft className="h-4 w-4" /> ปิด
           </button>
         ) : (
-          <Link
-            href="/dashboard/procurement/orders"
-            className="mb-2 flex w-fit items-center gap-1 text-sm text-slate-500 transition hover:text-indigo-600"
-          >
-            <ArrowLeft className="h-4 w-4" /> กลับไปใบสั่งซื้อ
-          </Link>
+          <Breadcrumb items={[{ label: 'ใบสั่งซื้อ (PO)', href: '/dashboard/procurement/orders' }, { label: `PO ${order.po_no}` }]} />
         )}
         <PageHeader
           title={`ใบสั่งซื้อ ${order.po_no}`}
@@ -377,8 +374,8 @@ export default function PurchaseOrderDetailPageClient({
           <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
             <Link2 className="h-4 w-4 text-slate-500" />
             <div>
-              <h3 className="text-sm font-semibold text-slate-800">ที่มาของรายการสั่งซื้อ (ใบขอซื้อ / แปลง)</h3>
-              <p className="text-xs text-slate-400">ข้อมูลภายใน - ผู้จำหน่ายเห็นเฉพาะยอดรวมต่อวัสดุ</p>
+              <h3 className="text-sm font-semibold text-slate-800">ที่มาของรายการสั่งซื้อ (คำขอซื้อ / แปลง)</h3>
+              <p className="text-xs text-slate-500">ข้อมูลภายใน - ผู้จำหน่ายเห็นเฉพาะยอดรวมต่อวัสดุ</p>
             </div>
           </div>
           <div className="divide-y divide-slate-100">
@@ -470,6 +467,6 @@ export default function PurchaseOrderDetailPageClient({
         onCancel={() => setIsUnmarkReceivedConfirmOpen(false)}
         onConfirm={handleConfirmUnmarkReceived}
       />
-    </div>
+    </PageContainer>
   )
 }

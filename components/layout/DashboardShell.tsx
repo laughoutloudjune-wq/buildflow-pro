@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
+import { DepartmentProvider } from '@/components/layout/DepartmentContext'
 import type { PermissionModule } from '@/lib/permissions'
 
 /** A cookie, not localStorage, so the server can read the preference while
@@ -38,18 +39,20 @@ export default function DashboardShell({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f5f5f7]">
+    <DepartmentProvider permissions={permissions}>
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar permissions={permissions} collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
       <div
-        className={`relative flex flex-1 flex-col overflow-y-auto overflow-x-hidden transition-[margin-left] duration-200 ${
-          collapsed ? 'ml-20' : 'ml-64'
+        className={`relative flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden transition-[margin-left] duration-200 ${
+          collapsed ? 'ml-20' : 'ml-64 max-lg:ml-20'
         }`}
       >
-        <Header userEmail={userEmail} role={role} canViewProjects={permissions.projects} />
-        <main className="w-full grow p-6">
+        <Header userEmail={userEmail} role={role} canViewProjects={permissions.projects} permissions={permissions} />
+        <main className="w-full min-w-0 grow p-4 sm:p-5 lg:p-6">
           {children}
         </main>
       </div>
     </div>
+    </DepartmentProvider>
   )
 }

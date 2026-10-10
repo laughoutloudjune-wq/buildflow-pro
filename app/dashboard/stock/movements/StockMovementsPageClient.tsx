@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
 import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import type { StockMovement } from '@/lib/types/stock'
+import { TableFrame } from '@/components/ui/TableFrame'
+import { PageToolbar } from '@/components/ui/PageToolbar'
 
 const PAGE_SIZE = 50
 
@@ -31,6 +33,14 @@ const SOURCE_LABEL: Record<StockMovement['source_type'], string> = {
 function collapseDirectToSite(movements: StockMovement[]): StockMovement[] {
   const directSiteSourceIds = new Set(movements.filter((m) => m.source_type === 'direct_to_site').map((m) => m.source_id))
   return movements.filter((m) => !(m.source_type === 'goods_receipt' && directSiteSourceIds.has(m.source_id)))
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  goods_receipt: 'รับสินค้าตาม PO',
+  manual_request: 'เบิกให้ผู้รับเหมา',
+  opening_balance: 'ยอดยกมา (ย้ายระบบ)',
+  count_adjustment: 'ปรับยอดจากนับสต็อก',
+  direct_to_site: 'ส่งตรงหน้างาน',
 }
 
 const ALL = 'ทั้งหมด'
@@ -84,60 +94,63 @@ export default function StockMovementsPageClient({
   const { pageCount, currentPage, pagedRows } = usePagedRows(filtered, page, PAGE_SIZE)
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <PageContainer width="standard">
       <Link href="/dashboard/stock" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800">
         <ArrowLeft className="h-4 w-4" /> กลับไปหน้าสต็อกวัสดุ
       </Link>
 
       <PageHeader title="ประวัติการเคลื่อนไหวสต็อก" subtitle="ทุกรายการรับเข้า-เบิกออก ของทุกวัสดุ" />
 
-      <Card className="overflow-hidden">
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาชื่อวัสดุ..."
-            className="min-w-[200px] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
-          />
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none">
-            <option value={ALL}>ประเภททั้งหมด</option>
-            <option value="in">รับเข้า</option>
-            <option value="out">เบิกออก</option>
-          </select>
-          <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none">
-            <option value={ALL}>ที่มาทั้งหมด</option>
-            <option value="goods_receipt">รับสินค้าตาม PO</option>
-            <option value="manual_request">เบิกให้ผู้รับเหมา</option>
-            <option value="opening_balance">ยอดยกมา (ย้ายระบบ)</option>
-            <option value="count_adjustment">ปรับยอดจากนับสต็อก</option>
-            <option value="direct_to_site">ส่งตรงหน้างาน</option>
-          </select>
-          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none">
-            {projectOptions.map((p) => (
-              <option key={p} value={p}>
-                {p === ALL ? 'โครงการทั้งหมด' : p}
-              </option>
-            ))}
-          </select>
-          <select value={contractorFilter} onChange={(e) => setContractorFilter(e.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none">
-            {contractorOptions.map((c) => (
-              <option key={c} value={c}>
-                {c === ALL ? 'ผู้รับเหมาทั้งหมด' : c}
-              </option>
-            ))}
-          </select>
-        </div>
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาชื่อวัสดุ...' }}
+        resultCount={filtered.length}
+        activeFilters={[
+          ...(search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []),
+          ...(typeFilter !== ALL ? [{ label: typeFilter === 'in' ? 'รับเข้า' : 'เบิกออก', onRemove: () => setTypeFilter(ALL) }] : []),
+          ...(sourceFilter !== ALL ? [{ label: SOURCE_LABELS[sourceFilter] ?? sourceFilter, onRemove: () => setSourceFilter(ALL) }] : []),
+          ...(projectFilter !== ALL ? [{ label: projectFilter, onRemove: () => setProjectFilter(ALL) }] : []),
+          ...(contractorFilter !== ALL ? [{ label: contractorFilter, onRemove: () => setContractorFilter(ALL) }] : []),
+        ]}
+        onReset={() => {
+          setSearch('')
+          setTypeFilter(ALL)
+          setSourceFilter(ALL)
+          setProjectFilter(ALL)
+          setContractorFilter(ALL)
+        }}
+      >
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="ประเภท" className="min-w-[9rem]">
+          <option value={ALL}>ประเภททั้งหมด</option>
+          <option value="in">รับเข้า</option>
+          <option value="out">เบิกออก</option>
+        </select>
+        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} aria-label="ที่มา" className="min-w-[9rem]">
+          <option value={ALL}>ที่มาทั้งหมด</option>
+          {Object.entries(SOURCE_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} aria-label="โครงการ" className="min-w-[9rem]">
+          {projectOptions.map((p) => (
+            <option key={p} value={p}>
+              {p === ALL ? 'โครงการทั้งหมด' : p}
+            </option>
+          ))}
+        </select>
+        <select value={contractorFilter} onChange={(e) => setContractorFilter(e.target.value)} aria-label="ผู้รับเหมา" className="min-w-[9rem]">
+          {contractorOptions.map((c) => (
+            <option key={c} value={c}>
+              {c === ALL ? 'ผู้รับเหมาทั้งหมด' : c}
+            </option>
+          ))}
+        </select>
+      </PageToolbar>
 
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5 text-sm text-slate-500">
-          <span>
-            ผลลัพธ์ <span className="font-semibold text-slate-700">{filtered.length}</span> รายการ
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+      <TableFrame>
+          <table>
+            <thead>
               <tr>
                 <th className="px-4 py-3">วันที่</th>
                 <th className="px-4 py-3">วัสดุ</th>
@@ -150,7 +163,7 @@ export default function StockMovementsPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {pagedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center italic text-slate-400">
+                  <td colSpan={6} className="px-4 py-8 text-center italic text-slate-500">
                     ไม่พบรายการที่ตรงกับเงื่อนไข
                   </td>
                 </tr>
@@ -185,9 +198,9 @@ export default function StockMovementsPageClient({
               )}
             </tbody>
           </table>
-        </div>
+        
         <Pagination currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} />
-      </Card>
-    </div>
+      </TableFrame>
+    </PageContainer>
   )
 }

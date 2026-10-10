@@ -261,7 +261,7 @@ export default function SalesBoardPageClient({
               </Link>
             ))}
             {overduePayments.length > 8 && (
-              <p className="px-2 text-xs text-slate-400">และอีก {overduePayments.length - 8} รายการ</p>
+              <p className="px-2 text-xs text-slate-500">และอีก {overduePayments.length - 8} รายการ</p>
             )}
           </div>
         </Card>
@@ -272,11 +272,11 @@ export default function SalesBoardPageClient({
       </Card>
 
       {isPending ? (
-        <div className="flex items-center gap-2 text-sm text-slate-400">
+        <div className="flex items-center gap-2 text-sm text-slate-500">
           <Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลด...
         </div>
       ) : !scope.projectId ? (
-        <div className="py-12 text-center text-slate-400">เลือกโครงการเพื่อดูผังการขาย</div>
+        <div className="py-12 text-center text-slate-500">เลือกโครงการเพื่อดูผังการขาย</div>
       ) : (
         <>
           <Card className="flex flex-wrap items-center gap-2 p-4">
@@ -356,7 +356,7 @@ export default function SalesBoardPageClient({
                 ล้างตัวกรอง
               </Button>
             )}
-            <span className="ml-auto pb-2 text-xs text-slate-400">{filteredBoard.length} / {board.length} แปลง</span>
+            <span className="ml-auto pb-2 text-xs text-slate-500">{filteredBoard.length} / {board.length} แปลง</span>
           </Card>
 
           {view === 'cards' ? (
@@ -378,12 +378,12 @@ export default function SalesBoardPageClient({
                               >
                                 {row.plot_name}
                               </Link>
-                              <div className="text-xs text-slate-400">{row.house_model_name || 'ไม่ระบุแบบ'}</div>
+                              <div className="text-xs text-slate-500">{row.house_model_name || 'ไม่ระบุแบบ'}</div>
                             </div>
                             <button
                               type="button"
                               onClick={() => setEditTarget({ plotId: row.plot_id, plotName: row.plot_name })}
-                              className="rounded p-1 text-slate-300 hover:bg-indigo-50 hover:text-indigo-600"
+                              className="rounded-lg p-1 text-slate-300 hover:bg-indigo-50 hover:text-indigo-600"
                               title="เปลี่ยนสถานะ"
                             >
                               <Pencil className="h-4 w-4" />
@@ -403,18 +403,18 @@ export default function SalesBoardPageClient({
                               {row.sale_price != null ? `฿${formatCurrency(row.sale_price)}` : row.list_price != null ? `ราคาตั้ง ฿${formatCurrency(row.list_price)}` : '—'}
                             </div>
                             {milestone && (
-                              <div className="text-xs text-slate-400">{milestone.label}: {formatDate(milestone.date)}</div>
+                              <div className="text-xs text-slate-500">{milestone.label}: {formatDate(milestone.date)}</div>
                             )}
                           </div>
 
                           <div className="mt-3">
-                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                            <div className="mb-1 flex justify-between text-[11px] text-slate-500">
                               <span>ก่อสร้าง</span>
                               <span>{row.jobs_done}/{row.jobs_total} งาน · {Math.round(row.progress_percent)}%</span>
                             </div>
                             <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                               <div
-                                className="h-full rounded-full bg-indigo-500"
+                                className="h-full rounded-full bg-indigo-500 transition-[width] duration-[220ms] ease-out"
                                 style={{ width: `${Math.max(0, Math.min(100, row.progress_percent))}%` }}
                               />
                             </div>
@@ -426,7 +426,7 @@ export default function SalesBoardPageClient({
                 </div>
               ))}
               {filteredBoard.length === 0 && (
-                <div className="py-12 text-center text-slate-400">ไม่พบแปลงตามตัวกรองนี้</div>
+                <div className="py-12 text-center text-slate-500">ไม่พบแปลงตามตัวกรองนี้</div>
               )}
             </div>
           ) : view === 'table' ? (
@@ -479,7 +479,7 @@ export default function SalesBoardPageClient({
                             <button
                               type="button"
                               onClick={() => setEditTarget({ plotId: row.plot_id, plotName: row.plot_name })}
-                              className="rounded p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
                               title="เปลี่ยนสถานะ"
                             >
                               <Pencil className="h-4 w-4" />
@@ -491,7 +491,7 @@ export default function SalesBoardPageClient({
                   </tbody>
                 </table>
                 {filteredBoard.length === 0 && (
-                  <div className="py-12 text-center text-slate-400">ไม่พบแปลงตามตัวกรองนี้</div>
+                  <div className="py-12 text-center text-slate-500">ไม่พบแปลงตามตัวกรองนี้</div>
                 )}
               </div>
             </Card>

@@ -33,12 +33,12 @@ export default function PurchaseRequestDocActions({ requestId, prNo }: { request
         </Button>
       </a>
 
-      <Modal isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} title={`ใบขอซื้อ ${docLabel}`} panelClassName="max-w-3xl">
+      <Modal isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} title={`คำขอซื้อ ${docLabel}`} panelClassName="max-w-3xl">
         <div className="space-y-4">
           <p className="text-xs text-slate-500">คลิกขวาที่รูปแล้วเลือก &ldquo;Copy image&rdquo; เพื่อคัดลอกไปวางในแชท</p>
           <div className="max-h-[65vh] overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={pngUrl} alt={`ใบขอซื้อ ${docLabel}`} className="mx-auto w-full rounded-lg bg-white shadow-sm" />
+            <img src={pngUrl} alt={`คำขอซื้อ ${docLabel}`} className="mx-auto w-full rounded-lg bg-white shadow-sm" />
           </div>
           <div className="flex justify-end gap-3 border-t pt-4">
             <Button type="button" onClick={() => setIsPreviewOpen(false)}>

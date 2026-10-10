@@ -97,7 +97,7 @@ export default function BoqMaterialImportModal({
             <span className="font-medium text-slate-700">quantity / จำนวน</span> และ{' '}
             <span className="font-medium text-slate-700">waste % / เผื่อ</span> (ไม่บังคับ)
           </p>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-500">
             ชื่อแบบบ้าน รายการงาน และวัสดุ ต้องตรงกับที่มีอยู่ในระบบ (จับคู่แบบเป๊ะก่อน แล้วจึงลองแบบไม่สนตัวพิมพ์เล็ก-ใหญ่/เว้นวรรค) - ถ้าไม่พบจะข้ามแถวนั้นและบอกเหตุผลในหน้าพรีวิว
           </p>
           <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40">

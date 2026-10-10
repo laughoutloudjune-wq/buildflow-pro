@@ -121,7 +121,7 @@ export default function BoqCheckPanel({ lines, scopeLabel, onAcknowledge, onReas
                               <p className="rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
                                 <span className="font-medium text-slate-700">อนุมัติแล้ว:</span> {override.reason}
                                 <br />
-                                <span className="text-slate-400">
+                                <span className="text-slate-500">
                                   โดย {override.approvedBy} · {new Date(override.approvedAt).toLocaleDateString('th-TH')}
                                 </span>
                               </p>
@@ -135,7 +135,7 @@ export default function BoqCheckPanel({ lines, scopeLabel, onAcknowledge, onReas
                                 }}
                                 placeholder="เหตุผลที่ซื้อเกิน BOQ (จำเป็นต้องระบุ)"
                                 rows={2}
-                                className="w-full rounded border border-red-200 px-2 py-1 text-xs"
+                                className="w-full rounded-lg border border-red-200 px-2 py-1 text-xs"
                               />
                             ) : (
                               <p className="text-xs text-red-500">ยังไม่มีการอนุมัติเกิน BOQ</p>
@@ -167,7 +167,7 @@ export default function BoqCheckPanel({ lines, scopeLabel, onAcknowledge, onReas
                             {Math.abs(diff).toLocaleString('th-TH')} {line.unit}
                           </>
                         ) : (
-                          <span className="text-slate-400">ไม่มีใน BOQ</span>
+                          <span className="text-slate-500">ไม่มีใน BOQ</span>
                         )}
                       </td>
                     </tr>

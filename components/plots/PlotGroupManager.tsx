@@ -122,7 +122,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="จัดกลุ่มแปลง (สำหรับบันทึกวัสดุแบบรวมกลุ่ม)" panelClassName="max-w-2xl">
       {isLoading ? (
-        <div className="flex items-center justify-center py-10 text-slate-400">
+        <div className="flex items-center justify-center py-10 text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : (
@@ -137,7 +137,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
               </p>
 
               {groups.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-8 text-center text-sm text-slate-400">
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-8 text-center text-sm text-slate-500">
                   ยังไม่มีกลุ่มแปลงในโครงการนี้
                 </div>
               ) : (
@@ -161,7 +161,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                       <div className="flex shrink-0 items-center gap-1">
                         <Link
                           href={`/dashboard/cost-control?project=${projectId}&group=${group.id}`}
-                          className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
                           title="คุม BOQ & ต้นทุน"
                         >
                           <GaugeCircle className="h-4 w-4" />
@@ -170,7 +170,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                           type="button"
                           onClick={() => startEdit(group)}
                           disabled={isSaving}
-                          className="rounded p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
                           title="แก้ไข"
                         >
                           <Pencil className="h-4 w-4" />
@@ -179,7 +179,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                           type="button"
                           onClick={() => setDeleteTarget(group)}
                           disabled={isSaving}
-                          className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                           title="ลบ"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -216,7 +216,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                   เลือกแปลงในกลุ่ม ({selectedPlotIds.size} แปลง - จะเพิ่มทีหลังก็ได้)
                 </label>
                 {eligiblePlots.length === 0 ? (
-                  <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-400">
+                  <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">
                     ยังไม่มีแปลงว่างให้เลือก - บันทึกชื่อกลุ่มไว้ก่อนได้ แล้วกลับมาเพิ่มแปลงทีหลัง
                   </p>
                 ) : (
@@ -241,7 +241,7 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                     ))}
                   </div>
                 )}
-                <p className="mt-1 text-[11px] text-slate-400">
+                <p className="mt-1 text-[11px] text-slate-500">
                   แปลงที่อยู่ในกลุ่มอื่นแล้วจะไม่แสดงที่นี่
                 </p>
               </div>

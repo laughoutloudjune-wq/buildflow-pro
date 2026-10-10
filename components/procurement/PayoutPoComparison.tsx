@@ -41,7 +41,7 @@ export default function PayoutPoComparison({ receiptIds }: { receiptIds: string[
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 py-2 text-sm text-slate-400">
+      <div className="flex items-center gap-2 py-2 text-sm text-slate-500">
         <Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลดรายการเทียบใบสั่งซื้อ...
       </div>
     )
@@ -75,12 +75,12 @@ export default function PayoutPoComparison({ receiptIds }: { receiptIds: string[
                     {l.poNo}
                   </Link>
                   <div className="text-slate-500">{l.supplierName || '-'}</div>
-                  <div className="font-mono text-slate-400">{l.riNo}</div>
+                  <div className="font-mono text-slate-500">{l.riNo}</div>
                 </td>
                 <td className="px-3 py-1.5">
                   <div className="font-medium text-slate-800">{l.materialName}</div>
                   {l.allocations.map((a, i) => (
-                    <div key={i} className="text-slate-400">
+                    <div key={i} className="text-slate-500">
                       PR-{a.prNo ?? '?'}
                       {a.scopeLabel ? ` · ${a.scopeLabel}` : ''}: {fmt(a.quantity)} {l.unit}
                       {a.isSubstitute && a.requestedMaterialName ? ` (ขอไว้: ${a.requestedMaterialName})` : ''}

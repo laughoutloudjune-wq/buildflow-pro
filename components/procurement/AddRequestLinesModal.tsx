@@ -50,7 +50,7 @@ export default function AddRequestLinesModal({
       .then((rows) => {
         if (!cancelled) setLines(rows)
       })
-      .catch((error) => toast.error(error instanceof Error ? error.message : 'โหลดรายการใบขอซื้อไม่สำเร็จ'))
+      .catch((error) => toast.error(error instanceof Error ? error.message : 'โหลดรายการคำขอซื้อไม่สำเร็จ'))
       .finally(() => {
         if (!cancelled) setIsLoading(false)
       })
@@ -110,7 +110,7 @@ export default function AddRequestLinesModal({
   const pickedCount = Object.keys(selected).length
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="เพิ่มรายการจากใบขอซื้อที่อนุมัติแล้ว" panelClassName="max-w-3xl">
+    <Modal isOpen={isOpen} onClose={onClose} title="เพิ่มรายการจากคำขอซื้อที่อนุมัติแล้ว" panelClassName="max-w-3xl">
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="text-sm">
@@ -125,12 +125,12 @@ export default function AddRequestLinesModal({
         </div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
+          <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลด...
           </div>
         ) : visible.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">
-            ไม่มีรายการที่ยังสั่งซื้อได้ (ใบขอซื้อต้องอนุมัติแล้ว มียอดคงเหลือ และใช้หน่วยเดียวกับวัสดุ)
+          <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-500">
+            ไม่มีรายการที่ยังสั่งซื้อได้ (คำขอซื้อต้องอนุมัติแล้ว มียอดคงเหลือ และใช้หน่วยเดียวกับวัสดุ)
           </p>
         ) : (
           <div className="max-h-[50vh] overflow-auto rounded-lg border border-slate-200">
@@ -138,7 +138,7 @@ export default function AddRequestLinesModal({
               <thead className="sticky top-0 bg-slate-50 text-xs text-slate-500">
                 <tr>
                   <th className="w-10 px-3 py-2" />
-                  <th className="px-3 py-2">ใบขอซื้อ</th>
+                  <th className="px-3 py-2">คำขอซื้อ</th>
                   <th className="px-3 py-2">โครงการ</th>
                   <th className="px-3 py-2">วัสดุ</th>
                   <th className="px-3 py-2">แปลง</th>
@@ -178,7 +178,7 @@ export default function AddRequestLinesModal({
                               onChange={(e) => setSelected((prev) => ({ ...prev, [line.purchase_request_item_id]: e.target.value }))}
                               className="w-24 text-right"
                             />
-                            <span className="text-xs text-slate-400">{line.unit}</span>
+                            <span className="text-xs text-slate-500">{line.unit}</span>
                           </div>
                         )}
                       </td>

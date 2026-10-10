@@ -8,7 +8,6 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useToast } from '@/components/ui/Toast'
-import { appleCard, appleCardLabel, appleFieldLabel } from '@/components/procurement/appleTheme'
 import { getEligibleRequestLinesForOrder } from '@/actions/procurement-actions'
 import type { EligibleRequestLine } from '@/actions/procurement/requests'
 import { saveCombineDraft, type CombineDraftLine } from '@/lib/procurement/combineDraft'
@@ -54,7 +53,7 @@ export default function CombineRequestsForm({
     try {
       setLines(await getEligibleRequestLinesForOrder(id === ALL_PROJECTS ? null : id))
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'โหลดรายการใบขอซื้อไม่สำเร็จ')
+      toast.error(error instanceof Error ? error.message : 'โหลดรายการคำขอซื้อไม่สำเร็จ')
     } finally {
       setIsLoading(false)
     }
@@ -114,7 +113,7 @@ export default function CombineRequestsForm({
   function handleContinue() {
     if (!projectId) return toast.error(sourceFilter === ALL_PROJECTS ? 'กรุณาเลือกโครงการของใบสั่งซื้อ' : 'กรุณาเลือกโครงการ')
     if (!supplierId) return toast.error('กรุณาเลือกผู้จำหน่าย')
-    if (groups.length === 0) return toast.error('กรุณาเลือกรายการจากใบขอซื้ออย่างน้อย 1 รายการ')
+    if (groups.length === 0) return toast.error('กรุณาเลือกรายการจากคำขอซื้ออย่างน้อย 1 รายการ')
     for (const g of groups) {
       for (const r of g.rows) {
         if (!(r.qty > 0)) return toast.error(`กรุณาระบุจำนวนที่สั่งของ ${g.materialName} (PR-${r.line.pr_no}) ให้มากกว่า 0`)
@@ -158,19 +157,19 @@ export default function CombineRequestsForm({
         </Link>
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
-            <Layers className="h-5 w-5 text-indigo-600" /> รวมใบขอซื้อเป็นใบสั่งซื้อเดียว
+            <Layers className="h-5 w-5 text-indigo-600" /> รวมคำขอซื้อเป็นใบสั่งซื้อเดียว
           </h1>
           <p className="text-sm text-slate-500">
-            เลือกรายการจากใบขอซื้อที่อนุมัติแล้วหลายใบ (ข้ามโครงการได้) วัสดุเดียวกันจะถูกรวมเป็นบรรทัดเดียวในใบสั่งซื้อ โดยเก็บที่มาของแต่ละแปลงไว้
+            เลือกรายการจากคำขอซื้อที่อนุมัติแล้วหลายใบ (ข้ามโครงการได้) วัสดุเดียวกันจะถูกรวมเป็นบรรทัดเดียวในใบสั่งซื้อ โดยเก็บที่มาของแต่ละแปลงไว้
           </p>
         </div>
       </div>
 
-      <Card className={`p-5 ${appleCard}`}>
-        <div className={appleCardLabel}>1. โครงการและผู้จำหน่าย</div>
+      <Card className="p-5">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-indigo-700">1. โครงการและผู้จำหน่าย</div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className={appleFieldLabel}>ใบขอซื้อจากโครงการ</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">คำขอซื้อจากโครงการ</label>
             <SearchableSelect
               options={[{ value: ALL_PROJECTS, label: 'ทุกโครงการ (รวมข้ามโครงการ)' }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
               value={sourceFilter}
@@ -180,7 +179,7 @@ export default function CombineRequestsForm({
           </div>
           {sourceFilter === ALL_PROJECTS && (
             <div>
-              <label className={appleFieldLabel}>ออกใบสั่งซื้อภายใต้โครงการ</label>
+              <label className="mb-1 block text-xs font-medium text-slate-500">ออกใบสั่งซื้อภายใต้โครงการ</label>
               <SearchableSelect
                 options={projects.map((p) => ({ value: p.id, label: p.name }))}
                 value={projectId}
@@ -190,7 +189,7 @@ export default function CombineRequestsForm({
             </div>
           )}
           <div>
-            <label className={appleFieldLabel}>ผู้จำหน่าย</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">ผู้จำหน่าย</label>
             <SearchableSelect
               options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
               value={supplierId}
@@ -201,9 +200,9 @@ export default function CombineRequestsForm({
         </div>
       </Card>
 
-      <Card className={`p-5 ${appleCard}`}>
+      <Card className="p-5">
         <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-          <div className={`${appleCardLabel} mb-0`}>2. เลือกรายการจากใบขอซื้อ</div>
+          <div className={`mb-0 text-xs font-semibold uppercase tracking-wide text-indigo-700`}>2. เลือกรายการจากคำขอซื้อ</div>
           {lines.length > 0 && (
             <input
               value={search}
@@ -215,22 +214,22 @@ export default function CombineRequestsForm({
         </div>
 
         {!sourceFilter ? (
-          <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">เลือกโครงการเพื่อดูรายการที่ยังสั่งซื้อได้</p>
+          <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-500">เลือกโครงการเพื่อดูรายการที่ยังสั่งซื้อได้</p>
         ) : isLoading ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
+          <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลด...
           </div>
         ) : lines.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">
-            ไม่มีรายการที่ยังสั่งซื้อได้ในโครงการนี้ (ใบขอซื้อต้องอนุมัติแล้วและมียอดคงเหลือ)
+          <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-500">
+            ไม่มีรายการที่ยังสั่งซื้อได้ในโครงการนี้ (คำขอซื้อต้องอนุมัติแล้วและมียอดคงเหลือ)
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-[14px] border border-[#f0f0f2]">
+          <div className="overflow-x-auto rounded-xl border border-slate-100">
             <table className="w-full text-left text-sm">
-              <thead style={{ backgroundColor: '#f5f5f7' }}>
-                <tr className="text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">
+              <thead className="bg-slate-50">
+                <tr className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <th className="w-10 px-3 py-2.5" />
-                  <th className="px-3 py-2.5">ใบขอซื้อ</th>
+                  <th className="px-3 py-2.5">คำขอซื้อ</th>
                   {sourceFilter === ALL_PROJECTS && <th className="px-3 py-2.5">โครงการ</th>}
                   <th className="px-3 py-2.5">วัสดุ</th>
                   <th className="px-3 py-2.5">แปลง / กลุ่มแปลง</th>
@@ -238,7 +237,7 @@ export default function CombineRequestsForm({
                   <th className="w-40 px-3 py-2.5 text-right">จำนวนที่สั่ง</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#f0f0f2] bg-white">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {visible.map((line) => {
                   const checked = selected[line.purchase_request_item_id] !== undefined
                   const over = checked && Number(selected[line.purchase_request_item_id]) > line.remaining + 1e-9
@@ -271,7 +270,7 @@ export default function CombineRequestsForm({
                               onChange={(e) => setQuantity(line.purchase_request_item_id, e.target.value)}
                               className={`w-24 text-right ${over ? 'border-rose-400' : ''}`}
                             />
-                            <span className="text-xs text-[#86868b]">{line.unit}</span>
+                            <span className="text-xs text-slate-500">{line.unit}</span>
                           </div>
                         )}
                       </td>
@@ -284,14 +283,14 @@ export default function CombineRequestsForm({
         )}
       </Card>
 
-      <Card className={`p-5 ${appleCard}`}>
-        <div className={appleCardLabel}>3. ตรวจสอบรายการที่จะรวมในใบสั่งซื้อ</div>
+      <Card className="p-5">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-indigo-700">3. ตรวจสอบรายการที่จะรวมในใบสั่งซื้อ</div>
         {groups.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">ยังไม่ได้เลือกรายการ</p>
+          <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-500">ยังไม่ได้เลือกรายการ</p>
         ) : (
           <div className="space-y-3">
             {groups.map((g) => (
-              <div key={g.materialId} className="rounded-[14px] border border-[#f0f0f2] p-3">
+              <div key={g.materialId} className="rounded-xl border border-slate-100 p-3">
                 <div className="flex items-baseline justify-between gap-3">
                   <div className="font-medium text-slate-800">{g.materialName}</div>
                   <div className="whitespace-nowrap font-semibold text-slate-900">
@@ -314,8 +313,8 @@ export default function CombineRequestsForm({
                 </ul>
               </div>
             ))}
-            <p className="text-xs text-slate-400">
-              {groups.length} รายการสั่งซื้อ จาก {requestCount} ใบขอซื้อ - ใบสั่งซื้อที่ส่งให้ผู้จำหน่ายจะแสดงเฉพาะยอดรวมต่อวัสดุ ส่วนที่มาของแต่ละแปลงเก็บไว้ภายใน
+            <p className="text-xs text-slate-500">
+              {groups.length} รายการสั่งซื้อ จาก {requestCount} คำขอซื้อ - ใบสั่งซื้อที่ส่งให้ผู้จำหน่ายจะแสดงเฉพาะยอดรวมต่อวัสดุ ส่วนที่มาของแต่ละแปลงเก็บไว้ภายใน
             </p>
           </div>
         )}
@@ -324,7 +323,7 @@ export default function CombineRequestsForm({
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <span className="text-sm text-slate-500">
-            {groups.length > 0 ? `เลือกแล้ว ${groups.length} วัสดุ จาก ${requestCount} ใบขอซื้อ` : 'ยังไม่ได้เลือกรายการ'}
+            {groups.length > 0 ? `เลือกแล้ว ${groups.length} วัสดุ จาก ${requestCount} คำขอซื้อ` : 'ยังไม่ได้เลือกรายการ'}
           </span>
           <Button type="button" onClick={handleContinue} disabled={groups.length === 0 || !supplierId}>
             ถัดไป: กรอกราคาและรายละเอียด <ArrowRight className="h-4 w-4" />

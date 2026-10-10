@@ -144,7 +144,7 @@ export default function PlotPromotionItemsSection({
       )}
 
       {items.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-400">ยังไม่มีรายการของแถม/ส่วนลด</p>
+        <p className="mt-3 text-sm text-slate-500">ยังไม่มีรายการของแถม/ส่วนลด</p>
       ) : (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm">

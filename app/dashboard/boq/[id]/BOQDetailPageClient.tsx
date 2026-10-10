@@ -2,10 +2,12 @@
 
 import { Fragment, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes, Upload, PackageSearch, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes, Upload, PackageSearch, Search, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Breadcrumb } from '@/components/ui/Breadcrumb'
+import { PageContainer } from '@/components/ui/PageContainer'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import SearchableSelect from '@/components/ui/SearchableSelect'
@@ -18,6 +20,7 @@ import { getHouseModelById, getBOQItems, createBOQItem, deleteBOQItem, updateBOQ
 import { getContractorTypes } from '@/actions/contractor-type-actions'
 import type { HouseModelPhaseTemplateRow } from '@/actions/house-model-phase-template'
 import { formatCurrency } from '@/lib/currency'
+import { TableFrame } from '@/components/ui/TableFrame'
 
 type HouseModel = Awaited<ReturnType<typeof getHouseModelById>>
 type BOQItem = Awaited<ReturnType<typeof getBOQItems>>[number]
@@ -251,15 +254,10 @@ export default function BOQDetailPageClient({
   }
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="wide">
       {/* Header */}
       <div>
-        <button
-          onClick={() => router.push('/dashboard/boq')}
-          className="mb-2 flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition"
-        >
-          <ArrowLeft className="h-4 w-4" /> ย้อนกลับ
-        </button>
+        <Breadcrumb items={[{ label: 'แบบบ้าน & BOQ', href: '/dashboard/boq' }, { label: model.name }]} />
         <PageHeader
           title={
             <span className="flex items-center gap-2">
@@ -318,10 +316,10 @@ export default function BOQDetailPageClient({
       </Card>
 
       {/* ตาราง BOQ - จัดกลุ่มตามประเภทช่าง */}
-      <Card className="overflow-hidden border-0 shadow-md">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-700">
+      <TableFrame>
+        
+          <table>
+            <thead>
               <tr>
                 <th className="px-4 py-3 font-semibold">รายการงาน</th>
                 <th className="px-4 py-3 font-semibold text-right">จำนวน</th>
@@ -334,13 +332,13 @@ export default function BOQDetailPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400 italic">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500 italic">
                     ยังไม่มีรายการ BOQ กดปุ่ม &quot;เพิ่มรายการ&quot; เพื่อเริ่มต้น
                   </td>
                 </tr>
               ) : groupedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400 italic">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500 italic">
                     ไม่พบรายการที่ตรงกับคำค้นหา &quot;{search}&quot;
                   </td>
                 </tr>
@@ -358,7 +356,7 @@ export default function BOQDetailPageClient({
                           <span className="flex items-center gap-1.5">
                             {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                             {group.typeName}
-                            <span className="font-normal text-slate-400">({group.items.length} รายการ)</span>
+                            <span className="font-normal text-slate-500">({group.items.length} รายการ)</span>
                           </span>
                         </td>
                         <td className="px-4 py-2 text-right font-semibold text-slate-600">฿{formatCurrency(groupTotal)}</td>
@@ -380,7 +378,7 @@ export default function BOQDetailPageClient({
                               <button
                                 onClick={() => setMaterialsBoqItem({ id: item.id, item_name: item.item_name })}
                                 disabled={isPending}
-                                className="rounded p-1 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition"
+                                className="rounded-lg p-1 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition"
                                 title="วัสดุที่ใช้ในงานนี้"
                               >
                                 <Boxes className="h-4 w-4" />
@@ -388,7 +386,7 @@ export default function BOQDetailPageClient({
                               <button
                                 onClick={() => openEditModal(item)}
                                 disabled={isPending}
-                                className="rounded p-1 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition"
+                                className="rounded-lg p-1 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition"
                                 title="แก้ไข"
                               >
                                 <Pencil className="h-4 w-4" />
@@ -396,7 +394,7 @@ export default function BOQDetailPageClient({
                               <button
                                 onClick={() => setDeleteTarget(item)}
                                 disabled={isPending}
-                                className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 transition"
+                                className="rounded-lg p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 transition"
                                 title="ลบ"
                               >
                                 {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
@@ -420,8 +418,8 @@ export default function BOQDetailPageClient({
                 </tfoot>
             )}
           </table>
-        </div>
-      </Card>
+        
+      </TableFrame>
 
       {/* Modal เพิ่มรายการ */}
       <Modal
@@ -531,7 +529,7 @@ export default function BOQDetailPageClient({
                       </td>
                       <td className="p-2">
                         <div className="font-medium text-slate-700">{row.item_name}</div>
-                        <div className="text-xs text-slate-400">{row.unit || '-'}</div>
+                        <div className="text-xs text-slate-500">{row.unit || '-'}</div>
                       </td>
                       <td className="p-2 text-right">{row.quantity}</td>
                       <td className="p-2 text-right">{formatCurrency(row.price_per_unit)}</td>
@@ -602,6 +600,6 @@ export default function BOQDetailPageClient({
         onCancel={() => setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
       />
-    </div>
+    </PageContainer>
   )
 }

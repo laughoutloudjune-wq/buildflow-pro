@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { ArrowLeft, Ban, CheckCircle2, Users } from 'lucide-react'
+import { ArrowLeft, Ban, CheckCircle2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
@@ -11,6 +11,8 @@ import { updateUserRole, updateUserFullName, setUserDisabled } from '@/actions/s
 import type { getUsers } from '@/actions/settings-actions'
 import { generateInviteLink } from '@/actions/invite-actions'
 import type { UserRole } from '@/lib/types/billing'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 
 type User = Awaited<ReturnType<typeof getUsers>>[0]
 
@@ -157,23 +159,19 @@ export default function UsersPageClient({
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-medium text-indigo-600">
-            <Users className="h-4 w-4" aria-hidden />
-            ผู้ใช้และบทบาท
-          </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">ผู้ใช้งานระบบ</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            บทบาทหลัก (Admin / PM / Foreman) ใช้ร่วมกับเมทริกซ์สิทธิ์ในเมนู &quot;สิทธิ์ตามบทบาท&quot;
-          </p>
-        </div>
+    <PageContainer width="standard">
+      <PageHeader
+        title="ผู้ใช้งานระบบ"
+        subtitle="บทบาทหลัก (Admin / PM / Foreman) ใช้ร่วมกับเมทริกซ์สิทธิ์ในเมนู &quot;สิทธิ์ตามบทบาท&quot;"
+        actions={
+          <>
         <ButtonLink href="/dashboard/settings" variant="secondary">
           <ArrowLeft className="h-4 w-4" aria-hidden />
           กลับไปตั้งค่า
         </ButtonLink>
-      </div>
+          </>
+        }
+      />
 
       <Card className="border-slate-200 p-6 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">เชิญผู้ใช้ใหม่</h2>
@@ -317,6 +315,6 @@ export default function UsersPageClient({
         onCancel={() => setDisableTarget(null)}
         onConfirm={handleConfirmDisable}
       />
-    </div>
+    </PageContainer>
   )
 }

@@ -144,7 +144,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-10 text-slate-400">
+      <div className="flex items-center justify-center py-10 text-slate-500">
         <Loader2 className="h-6 w-6 animate-spin" />
       </div>
     )
@@ -152,7 +152,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
 
   if (jobs.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-400">
+      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-500">
         แบบบ้านนี้ยังไม่มีรายการงาน BOQ - เพิ่มรายการงานก่อนจึงจะกำหนดวัสดุได้
       </div>
     )
@@ -176,7 +176,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
               <span className="flex items-center gap-1.5 font-medium text-slate-800">
                 {isCollapsed ? <ChevronRight className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
                 {job.boqItemName}
-                <span className="ml-1 text-xs font-normal text-slate-400">({job.items.length} วัสดุ)</span>
+                <span className="ml-1 text-xs font-normal text-slate-500">({job.items.length} วัสดุ)</span>
               </span>
               {jobTotal > 0 && <span className="text-xs text-slate-500">฿{jobTotal.toLocaleString('th-TH')}</span>}
             </button>
@@ -197,7 +197,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                     <tbody className="divide-y divide-slate-100">
                       {job.items.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-3 py-4 text-center text-slate-400">
+                          <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
                             ยังไม่มีวัสดุในงานนี้
                           </td>
                         </tr>
@@ -214,7 +214,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                                 onChange={(e) => setQuantityDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
                                 onBlur={() => handleSaveExisting(job.boqId, item.id)}
                                 disabled={savingKey === item.id}
-                                className="w-24 rounded border border-slate-300 px-2 py-1 text-right text-sm"
+                                className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm"
                               />
                             </td>
                             <td className="px-3 py-1.5 text-slate-500">{item.material_types?.unit || '-'}</td>
@@ -227,7 +227,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                                 onChange={(e) => setWasteDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
                                 onBlur={() => handleSaveExisting(job.boqId, item.id)}
                                 disabled={savingKey === item.id}
-                                className="w-16 rounded border border-slate-300 px-2 py-1 text-right text-sm"
+                                className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm"
                                 title="ถ้าเว้นว่าง/เป็น 0 จะใช้ค่าเผื่อเริ่มต้นขององค์กรแทน"
                               />
                             </td>
@@ -236,7 +236,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                                 type="button"
                                 onClick={() => setDeleteTarget({ boqId: job.boqId, item })}
                                 disabled={savingKey === item.id}
-                                className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
+                                className="rounded-lg p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
                               >
                                 {savingKey === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                               </button>
@@ -264,7 +264,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                     value={draft.quantity}
                     onChange={(e) => setNewRowDrafts((prev) => ({ ...prev, [job.boqId]: { ...draft, quantity: e.target.value } }))}
                     placeholder="ปริมาณ"
-                    className="w-24 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                   />
                   <input
                     type="number"
@@ -273,7 +273,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                     value={draft.wastePercent}
                     onChange={(e) => setNewRowDrafts((prev) => ({ ...prev, [job.boqId]: { ...draft, wastePercent: e.target.value } }))}
                     placeholder="เผื่อ %"
-                    className="w-20 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                   />
                   <button
                     type="button"

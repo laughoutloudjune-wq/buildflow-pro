@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useTransition } from 'react'
-import { ArrowLeft, Banknote, Save } from 'lucide-react'
+import { ArrowLeft, Save } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { getOrganizationSettings, updateFinancialDefaults } from '@/actions/settings-actions'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
 
 type Settings = Awaited<ReturnType<typeof getOrganizationSettings>>
 
@@ -41,21 +43,19 @@ export default function FinancialDefaultsPageClient({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-medium text-indigo-600">
-            <Banknote className="h-4 w-4" aria-hidden />
-            ค่าเริ่มต้นทางการเงิน
-          </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">ค่าเริ่มต้นเมื่อสร้างใบเบิก</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">ใช้เป็นค่าเริ่มต้นเมื่อสร้างหรือตรวจใบเบิก ปรับแก้รายใบได้ภายหลัง</p>
-        </div>
+    <PageContainer width="narrow">
+      <PageHeader
+        title="ค่าเริ่มต้นเมื่อสร้างใบเบิก"
+        subtitle="ใช้เป็นค่าเริ่มต้นเมื่อสร้างหรือตรวจใบเบิก ปรับแก้รายใบได้ภายหลัง"
+        actions={
+          <>
         <ButtonLink href="/dashboard/settings" variant="secondary">
           <ArrowLeft className="h-4 w-4" aria-hidden />
           กลับไปตั้งค่า
         </ButtonLink>
-      </div>
+          </>
+        }
+      />
 
       <form onSubmit={handleSubmit}>
         <Card className="border-slate-200 p-6 shadow-sm">
@@ -111,6 +111,6 @@ export default function FinancialDefaultsPageClient({
           </div>
         </Card>
       </form>
-    </div>
+    </PageContainer>
   )
 }
