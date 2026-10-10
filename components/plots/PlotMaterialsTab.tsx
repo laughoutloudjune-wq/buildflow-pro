@@ -6,6 +6,8 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { formatCurrency } from '@/lib/currency'
 import type { PlotMaterialRowView } from '@/lib/types/plotDetail'
+import { TableFrame } from '@/components/ui/TableFrame'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 const fmt = (n: number) => n.toLocaleString('th-TH')
 
@@ -14,8 +16,8 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
 
   if (materials.length === 0) {
     return (
-      <Card className="p-8 text-center text-slate-400">
-        ยังไม่มีวัสดุที่สั่งซื้อสำหรับแปลงนี้
+      <Card>
+        <EmptyState title="ยังไม่มีวัสดุที่สั่งซื้อสำหรับแปลงนี้" description="วัสดุจะแสดงที่นี่เมื่อมีใบสั่งซื้อ (PO) ที่ผูกกับแปลงนี้" />
       </Card>
     )
   }
@@ -30,10 +32,9 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
   }
 
   return (
-    <Card className="overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-700 border-b">
+    <TableFrame>
+        <table>
+          <thead>
             <tr>
               <th className="px-4 py-3 font-semibold">วัสดุ</th>
               <th className="px-4 py-3 font-semibold text-right">สั่งซื้อ</th>
@@ -41,7 +42,7 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
               {canSeeCost && <th className="px-4 py-3 font-semibold text-right">มูลค่าสั่งซื้อ</th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
+          <tbody>
             {materials.map((m) => {
               const isOpen = open.has(m.materialTypeId)
               return (
@@ -121,7 +122,6 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
             })}
           </tbody>
         </table>
-      </div>
-    </Card>
+    </TableFrame>
   )
 }

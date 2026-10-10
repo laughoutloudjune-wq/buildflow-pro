@@ -6,6 +6,8 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
+import { EmptyState } from '@/components/ui/EmptyState'
 import Modal from '@/components/ui/Modal'
 import { getPlotHistoryReport } from '@/actions/billing-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
@@ -230,34 +232,35 @@ export default function HouseHistoryReportPageClient({
         subtitle="ใช้การ์ดบ้านเหมือนหน้าแปลงที่ดิน แล้วกดเพื่อดูประวัติงานครบทั้งหมด"
       />
 
-      <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">โครงการ</label>
-            <select className="mt-1 w-full" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">ทุกโครงการ</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">ตั้งแต่</label>
-            <input type="date" className="mt-1 w-full" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">ถึง</label>
-            <input type="date" className="mt-1 w-full" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </div>
-          <div className="md:col-span-2 flex items-end">
-            <Button onClick={runReport} className="w-full">ค้นหา</Button>
-          </div>
+      <PageToolbar
+        actions={<Button onClick={runReport}>ค้นหา</Button>}
+        resultCount={cards.length}
+        activeFilters={[
+          ...(projectId ? [{ label: projects.find((p) => p.id === projectId)?.name ?? 'โครงการ', onRemove: () => setProjectId('') }] : []),
+          ...(dateFrom || dateTo ? [{ label: `${dateFrom || '…'} – ${dateTo || '…'}`, onRemove: () => { setDateFrom(''); setDateTo('') } }] : []),
+        ]}
+        onReset={() => {
+          setProjectId('')
+          setDateFrom('')
+          setDateTo('')
+        }}
+      >
+        <select aria-label="โครงการ" className="min-w-[10rem]" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <option value="">ทุกโครงการ</option>
+          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <div className="flex items-center gap-1.5">
+          <input type="date" aria-label="ตั้งแต่" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <span className="text-slate-400" aria-hidden>–</span>
+          <input type="date" aria-label="ถึง" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         </div>
-      </Card>
+      </PageToolbar>
 
       <Card className="p-4 bg-slate-50/70 border-slate-200">
         {loading ? (
           <div className="py-12 text-center text-slate-500"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>
         ) : cards.length === 0 ? (
-          <div className="py-12 text-center text-slate-500">ไม่พบประวัติงาน</div>
+          <EmptyState variant="no-results" title="ไม่พบประวัติงาน" description="ลองเปลี่ยนโครงการหรือช่วงวันที่ แล้วกดค้นหา" />
         ) : (
           <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
             {cards.map((card) => (

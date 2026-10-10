@@ -6,6 +6,9 @@ import { getBillableJobs, createBillingRequest, getBillingById, updateBillingReq
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { TableFrame } from '@/components/ui/TableFrame'
+import NoticeBanner from '@/components/ui/NoticeBanner'
 import Modal from '@/components/ui/Modal'
 import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
 import { CheckCircle } from 'lucide-react'
@@ -285,7 +288,7 @@ export default function CreateBillingRequestPageClient({
   }
 
   return (
-    <div className="container mx-auto p-4">
+    <PageContainer width="standard">
       {showSuccessModal && submittedData && (
         <Modal isOpen={showSuccessModal} onClose={handleModalClose}>
           <div className="p-4 text-center">
@@ -295,26 +298,26 @@ export default function CreateBillingRequestPageClient({
             <div className="bg-gray-50 p-4 rounded-lg text-left mb-6">
               <p><strong>โครงการ:</strong> {projects.find((project: ProjectOption) => project.id === submittedData.project_id)?.name}</p>
               <p><strong>ผู้รับเหมา:</strong> {contractors.find((contractor: ContractorOption) => contractor.id === submittedData.contractor_id)?.name}</p>
-              <p className="mt-2 text-lg font-bold">ยอดขอเบิกรวม: <span className="text-blue-600">{formatCurrency(submittedData.net_amount)} บาท</span></p>
+              <p className="mt-2 text-lg font-bold">ยอดขอเบิกรวม: <span className="text-slate-900">{formatCurrency(submittedData.net_amount)} บาท</span></p>
             </div>
             <Button onClick={handleModalClose} className="w-full">กลับไปที่หน้ารายการ</Button>
           </div>
         </Modal>
       )}
 
-      <PageHeader title="สร้างใบขอเบิก (สำหรับ Foreman)" className="mb-4" />
+      <PageHeader title="เบิกงวดงานหลัก" subtitle="เลือกโครงการและผู้รับเหมา เลือกงานที่เบิก แล้วส่งให้ PM ตรวจสอบ" />
       <Card className="p-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">โครงการ</label>
-            <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+            <label className="block text-sm font-medium text-gray-700">1. โครงการ</label>
+            <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} className="mt-1 block w-full">
               <option value="">เลือกโครงการ</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">ผู้รับเหมา</label>
-            <select value={selectedContractor} onChange={(e) => setSelectedContractor(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+            <select value={selectedContractor} onChange={(e) => setSelectedContractor(e.target.value)} className="mt-1 block w-full">
               <option value="">เลือกผู้รับเหมา</option>
               {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -323,19 +326,19 @@ export default function CreateBillingRequestPageClient({
 
         {billableJobs.length > 0 && (
           <div className="mt-6">
-            <h2 className="text-xl font-semibold mb-2">งานที่สามารถเบิกได้</h2>
+            <h2 className="mb-2 text-lg font-semibold text-slate-900">2. เลือกงานที่เบิก</h2>
             <div className="mb-3 grid grid-cols-1 md:grid-cols-3 gap-2">
-              <input type="text" value={jobSearch} onChange={(e) => setJobSearch(e.target.value)} placeholder="ค้นหาชื่องานหรือแปลง..." className="w-full p-2 border border-gray-300 rounded-md" />
-              <select value={jobPlotFilter} onChange={(e) => setJobPlotFilter(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md">
+              <input type="text" value={jobSearch} onChange={(e) => setJobSearch(e.target.value)} placeholder="ค้นหาชื่องานหรือแปลง..." className="w-full" />
+              <select value={jobPlotFilter} onChange={(e) => setJobPlotFilter(e.target.value)} className="w-full">
                 <option value="">ทุกแปลง</option>
                 {adjustmentPlotOptions.map((plot) => <option key={plot} value={plot}>{plot}</option>)}
               </select>
               <Button type="button" variant="secondary" onClick={() => { setJobSearch(''); setJobPlotFilter('') }}>ล้างตัวกรอง</Button>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-[14px]">
-                <thead className="bg-gray-50">
+            <TableFrame>
+              <table className="min-w-[56rem]">
+                <thead>
                   <tr>
                     <th className="px-4 py-3 text-left">เลือก</th>
                     <th className="px-4 py-3 text-left">ชื่องาน</th>
@@ -348,7 +351,7 @@ export default function CreateBillingRequestPageClient({
                     <th className="px-4 py-3 text-right">คงเหลือหลังเบิก</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody>
                   {filteredBillableJobs.map((job) => {
                     const selected = selectedJobs.get(job.id)
                     const requested = Number(selected?.request_amount || 0)
@@ -369,7 +372,7 @@ export default function CreateBillingRequestPageClient({
                             {selectedJobs.has(job.id) && (
                               <input
                                 type="number"
-                                className="w-24 p-1 border border-gray-300 rounded-md text-right"
+                                className="w-24 text-right"
                                 value={selected?.progress || ''}
                                 onChange={(e) => handleProgressChange(job.id, job, e.target.value)}
                                 min={(job.previous_progress ?? 0).toFixed(2)}
@@ -383,7 +386,7 @@ export default function CreateBillingRequestPageClient({
                             {selectedJobs.has(job.id) && (
                               <input
                                 type="number"
-                                className="w-28 p-1 border border-gray-300 rounded-md text-right"
+                                className="w-28 text-right"
                                 value={selected?.request_amount || ''}
                                 onChange={(e) => handleAmountChange(job.id, job, e.target.value)}
                                 min={0}
@@ -467,12 +470,12 @@ export default function CreateBillingRequestPageClient({
                   )}
                 </tbody>
               </table>
-            </div>
+            </TableFrame>
           </div>
         )}
 
         <div className="mt-6">
-          <h2 className="text-xl font-semibold mb-2">รายการเพิ่มเติม (งานเพิ่ม/งานหัก)</h2>
+          <h2 className="mb-2 text-lg font-semibold text-slate-900">3. รายการเพิ่มเติม (งานเพิ่ม/งานหัก)</h2>
           <AdjustmentLineItems
             adjustments={adjustments}
             plotOptions={adjustmentPlotOptions}
@@ -488,11 +491,11 @@ export default function CreateBillingRequestPageClient({
         </div>
 
         <div className="mt-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
-          <h2 className="text-xl font-semibold mb-4">สรุปยอด</h2>
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">4. สรุปยอดและหมายเหตุ</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700">หมายเหตุ (ถึง PM)</label>
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="ใส่ข้อความเพิ่มเติมถึงผู้ตรวจสอบ..." />
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="mt-1 block w-full" placeholder="ใส่ข้อความเพิ่มเติมถึงผู้ตรวจสอบ..." />
             </div>
             <div className="space-y-1">
               {/* Summary breakdown table */}
@@ -511,9 +514,9 @@ export default function CreateBillingRequestPageClient({
                       <td className="px-4 py-2 text-slate-600">− งานหัก ({adjustments.filter(a => a.type === 'deduction').length} รายการ)</td>
                       <td className="px-4 py-2 text-right font-semibold text-red-600">-{formatCurrency(totalDeductAmount)}</td>
                     </tr>
-                    <tr className="bg-blue-50">
+                    <tr className="bg-slate-50">
                       <td className="px-4 py-3 text-base font-bold text-slate-800">ยอดรวมขอเบิก</td>
-                      <td className="px-4 py-3 text-right text-2xl font-bold text-blue-700">{formatCurrency(netAmount)}</td>
+                      <td className="px-4 py-3 text-right text-2xl font-bold tabular-nums text-slate-900">{formatCurrency(netAmount)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -522,14 +525,31 @@ export default function CreateBillingRequestPageClient({
           </div>
         </div>
 
-        {error && <p className="mt-4 text-red-500">{error}</p>}
+        {error && (
+          <div className="mt-4">
+            <NoticeBanner tone="error" message={error} />
+          </div>
+        )}
+      </Card>
 
-        <div className="mt-6 flex justify-end">
+      {/* Submit bar: the amount being requested stays next to the button. */}
+      <div className="sticky bottom-4 z-20">
+        <Card className="elev-floating flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+          <div className="text-sm">
+            <p className="text-slate-500">
+              ยอดรวมขอเบิก <span className="text-xl font-bold tabular-nums text-slate-900">฿{formatCurrency(netAmount)}</span>
+            </p>
+            <p className="text-xs text-slate-500">
+              {selectedJobs.size} งานหลักที่เลือก
+              {adjustments.length > 0 ? ` · ปรับปรุง ${adjustments.length} รายการ` : ''}
+              {!selectedProject || !selectedContractor ? ' · เลือกโครงการและผู้รับเหมาก่อนส่ง' : ''}
+            </p>
+          </div>
           <Button onClick={handleSubmit} disabled={isLoading || !selectedProject || !selectedContractor}>
             {isLoading ? 'กำลังส่ง...' : 'ส่งใบขอเบิกเพื่อตรวจสอบ'}
           </Button>
-        </div>
-      </Card>
-    </div>
+        </Card>
+      </div>
+    </PageContainer>
   )
 }

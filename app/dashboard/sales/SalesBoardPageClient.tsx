@@ -7,6 +7,10 @@ import { AlertTriangle, LayoutGrid, List, Loader2, Map as MapIcon, Pencil, Tag, 
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { EmptyState } from '@/components/ui/EmptyState'
+import NoticeBanner from '@/components/ui/NoticeBanner'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 import { useToast } from '@/components/ui/Toast'
 import Modal from '@/components/ui/Modal'
 import ScopePicker, { type CostControlOptions } from '@/components/cost-control/ScopePicker'
@@ -101,6 +105,7 @@ export default function SalesBoardPageClient({
 }: Props) {
   const router = useRouter()
   const toast = useToast()
+  const { theme } = useDepartment()
   const [isPending, startTransition] = useTransition()
 
   const [statusFilter, setStatusFilter] = useState('')
@@ -190,10 +195,8 @@ export default function SalesBoardPageClient({
   }
 
   return (
-    <div className="space-y-6">
-      {initialError ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{initialError}</div>
-      ) : null}
+    <PageContainer width="wide">
+      {initialError ? <NoticeBanner tone="error" message={initialError} /> : null}
 
       <PageHeader
         title="ผังการขาย"
@@ -209,8 +212,9 @@ export default function SalesBoardPageClient({
               <button
                 type="button"
                 onClick={() => navigate(scope, 'cards')}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                  view === 'cards' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                aria-pressed={view === 'cards'}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  view === 'cards' ? theme.pill : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <LayoutGrid className="h-4 w-4" /> การ์ด
@@ -218,8 +222,9 @@ export default function SalesBoardPageClient({
               <button
                 type="button"
                 onClick={() => navigate(scope, 'table')}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                  view === 'table' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                aria-pressed={view === 'table'}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  view === 'table' ? theme.pill : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <List className="h-4 w-4" /> ตาราง
@@ -227,8 +232,9 @@ export default function SalesBoardPageClient({
               <button
                 type="button"
                 onClick={() => navigate(scope, 'map')}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                  view === 'map' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                aria-pressed={view === 'map'}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  view === 'map' ? theme.pill : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <MapIcon className="h-4 w-4" /> ผังโครงการ
@@ -276,7 +282,9 @@ export default function SalesBoardPageClient({
           <Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลด...
         </div>
       ) : !scope.projectId ? (
-        <div className="py-12 text-center text-slate-500">เลือกโครงการเพื่อดูผังการขาย</div>
+        <Card>
+          <EmptyState title="เลือกโครงการเพื่อดูผังการขาย" description="เลือกโครงการด้านบน แล้วสลับดูเป็นการ์ด ตาราง หรือผังโครงการ" />
+        </Card>
       ) : (
         <>
           <Card className="flex flex-wrap items-center gap-2 p-4">
@@ -574,6 +582,6 @@ export default function SalesBoardPageClient({
           onImported={() => router.refresh()}
         />
       )}
-    </div>
+    </PageContainer>
   )
 }

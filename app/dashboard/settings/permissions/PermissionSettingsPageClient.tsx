@@ -10,6 +10,7 @@ import { type PermissionModule, type RolePermissions } from '@/lib/permissions'
 import type { UserRole } from '@/lib/types/billing'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { TableFrame } from '@/components/ui/TableFrame'
 
 const roleLabels: Record<UserRole, string> = {
   admin: 'Admin',
@@ -119,7 +120,7 @@ export default function PermissionSettingsPageClient({
       <div className="grid gap-3 sm:grid-cols-3">
         {summary.map((item) => (
           <Card key={item.role} className="border-slate-200 p-4 shadow-sm">
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            <div className="text-xs font-medium text-slate-500">
               {roleLabels[item.role]}
             </div>
             <div className="mt-2 flex items-baseline gap-1">
@@ -131,25 +132,25 @@ export default function PermissionSettingsPageClient({
         ))}
       </div>
 
-      <Card className="overflow-hidden border-slate-200 shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50">
+      {/* Header row and the module column stay in view while scrolling the matrix. */}
+      <TableFrame stickyHeader maxHeight="70vh">
+          <table className="min-w-full">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                <th className="left-0 z-[2] bg-slate-50 px-4 py-3 text-left text-xs font-semibold text-slate-600">
                   โมดูล
                 </th>
                 {roles.map((role) => (
-                  <th key={role} className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  <th key={role} className="px-4 py-3 text-center text-xs font-semibold text-slate-600">
                     {roleLabels[role]}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
+            <tbody>
               {permissionModules.map((moduleKey) => (
                 <tr key={moduleKey} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-4">
+                  <td className="sticky left-0 z-[1] bg-white px-4 py-4">
                     <div className="font-medium text-slate-900">{moduleLabels[moduleKey].title}</div>
                     <div className="mt-0.5 text-xs text-slate-500">{moduleLabels[moduleKey].description}</div>
                   </td>
@@ -170,8 +171,7 @@ export default function PermissionSettingsPageClient({
               ))}
             </tbody>
           </table>
-        </div>
-      </Card>
+      </TableFrame>
     </PageContainer>
   )
 }

@@ -2,11 +2,15 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Loader2, MapPin, AlertCircle, Pencil, Users, GaugeCircle, LayoutList, Map as MapIcon, Search } from 'lucide-react'
+import { Plus, Trash2, Loader2, MapPin, AlertCircle, Pencil, Users, GaugeCircle, LayoutList, Map as MapIcon } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
+import NoticeBanner from '@/components/ui/NoticeBanner'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -79,6 +83,7 @@ export default function ProjectDetailPageClient({
   initialPlotGroups: PlotGroup[]
 }) {
   const router = useRouter()
+  const { theme } = useDepartment()
   const [plots, setPlots] = useState<Plot[]>(initialPlots)
   const [plotGroups, setPlotGroups] = useState<PlotGroup[]>(initialPlotGroups)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -231,12 +236,8 @@ export default function ProjectDetailPageClient({
   }
 
   return (
-    <div className="space-y-6">
-      {actionError ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {actionError}
-        </div>
-      ) : null}
+    <PageContainer width="wide">
+      {actionError ? <NoticeBanner tone="error" message={actionError} /> : null}
 
       <div>
         <Breadcrumb items={[{ label: 'โครงการ', href: '/dashboard/projects' }, { label: project.name }]} />
@@ -244,7 +245,7 @@ export default function ProjectDetailPageClient({
           title={
             <span className="flex items-center gap-3">
               {project.name}
-              <button onClick={() => setIsEditModalOpen(true)} className="text-slate-400 hover:text-indigo-600">
+              <button onClick={() => setIsEditModalOpen(true)} aria-label="แก้ไขข้อมูลโครงการ" title="แก้ไขข้อมูลโครงการ" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                 <Pencil className="h-4 w-4" />
               </button>
             </span>
@@ -279,86 +280,88 @@ export default function ProjectDetailPageClient({
         />
       </div>
 
-      <Card className="flex flex-wrap items-end gap-3 p-4">
-        <div className="min-w-[200px] flex-1">
-          <label className="mb-1 block text-xs font-medium text-slate-500">ค้นหาแปลง</label>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="ชื่อแปลง..."
-              className="w-full pl-8"
-            />
+      {/* Project summary: what this project contains, before the plots. */}
+      <Card className="p-5">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          <div>
+            <dt className="text-xs text-slate-500">แปลงทั้งหมด</dt>
+            <dd className="text-xl font-bold tabular-nums text-slate-900">{plots.length.toLocaleString('th-TH')}</dd>
           </div>
-        </div>
-        <div className="min-w-[180px]">
-          <label className="mb-1 block text-xs font-medium text-slate-500">แบบบ้าน</label>
-          <select value={houseModelFilter} onChange={(e) => setHouseModelFilter(e.target.value)} className="w-full">
-            <option value="">ทั้งหมด</option>
-            {houseModels.map((m) => (
-              <option key={m.id} value={m.id}>{m.name}{m.code ? ` (${m.code})` : ''}</option>
+          <div>
+            <dt className="text-xs text-slate-500">เปิดขาย</dt>
+            <dd className="text-xl font-bold tabular-nums text-slate-900">{plots.filter((p) => p.is_sellable !== false).length.toLocaleString('th-TH')}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">ไม่ขาย</dt>
+            <dd className="text-xl font-bold tabular-nums text-slate-900">{plots.filter((p) => p.is_sellable === false).length.toLocaleString('th-TH')}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">กลุ่มแปลง</dt>
+            <dd className="text-xl font-bold tabular-nums text-slate-900">{plotGroups.length.toLocaleString('th-TH')}</dd>
+          </div>
+        </dl>
+      </Card>
+
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาชื่อแปลง...' }}
+        resultCount={viewMode === 'list' ? filteredPlots.length : undefined}
+        activeFilters={[
+          ...(search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []),
+          ...(houseModelFilter ? [{ label: houseModels.find((m) => String(m.id) === String(houseModelFilter))?.name ?? 'แบบบ้าน', onRemove: () => setHouseModelFilter('') }] : []),
+          ...(sellableFilter !== 'all' ? [{ label: sellableFilter === 'sellable' ? 'เปิดขาย' : 'ไม่ขาย', onRemove: () => setSellableFilter('all') }] : []),
+          ...(groupFilter ? [{ label: plotGroups.find((g) => g.id === groupFilter)?.name ?? 'กลุ่มแปลง', onRemove: () => setGroupFilter('') }] : []),
+        ]}
+        onReset={() => {
+          setSearch('')
+          setHouseModelFilter('')
+          setSellableFilter('all')
+          setGroupFilter('')
+        }}
+        actions={
+          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1" role="group" aria-label="มุมมอง">
+            <button
+              type="button"
+              onClick={() => setViewMode('map')}
+              aria-pressed={viewMode === 'map'}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                viewMode === 'map' ? theme.pill : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <MapIcon className="h-4 w-4" /> ผังโครงการ
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              aria-pressed={viewMode === 'list'}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                viewMode === 'list' ? theme.pill : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <LayoutList className="h-4 w-4" /> รายการ
+            </button>
+          </div>
+        }
+      >
+        <select aria-label="แบบบ้าน" value={houseModelFilter} onChange={(e) => setHouseModelFilter(e.target.value)} className="min-w-[10rem]">
+          <option value="">ทุกแบบบ้าน</option>
+          {houseModels.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}{m.code ? ` (${m.code})` : ''}</option>
+          ))}
+        </select>
+        <select aria-label="สถานะขาย" value={sellableFilter} onChange={(e) => setSellableFilter(e.target.value as SellableFilter)} className="min-w-[8rem]">
+          <option value="all">ทุกสถานะขาย</option>
+          <option value="sellable">เปิดขาย</option>
+          <option value="not_sellable">ไม่ขาย</option>
+        </select>
+        {plotGroups.length > 0 && (
+          <select aria-label="กลุ่มแปลง" value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="min-w-[8rem]">
+            <option value="">ทุกกลุ่มแปลง</option>
+            {plotGroups.map((g) => (
+              <option key={g.id} value={g.id}>{g.name}</option>
             ))}
           </select>
-        </div>
-        <div className="min-w-[150px]">
-          <label className="mb-1 block text-xs font-medium text-slate-500">สถานะขาย</label>
-          <select value={sellableFilter} onChange={(e) => setSellableFilter(e.target.value as SellableFilter)} className="w-full">
-            <option value="all">ทั้งหมด</option>
-            <option value="sellable">เปิดขาย</option>
-            <option value="not_sellable">ไม่ขาย</option>
-          </select>
-        </div>
-        {plotGroups.length > 0 && (
-          <div className="min-w-[160px]">
-            <label className="mb-1 block text-xs font-medium text-slate-500">กลุ่มแปลง</label>
-            <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="w-full">
-              <option value="">ทั้งหมด</option>
-              {plotGroups.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-          </div>
         )}
-        {hasActiveFilters && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              setSearch('')
-              setHouseModelFilter('')
-              setSellableFilter('all')
-              setGroupFilter('')
-            }}
-          >
-            ล้างตัวกรอง
-          </Button>
-        )}
-        <div className="ml-auto flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
-          <button
-            type="button"
-            onClick={() => setViewMode('map')}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
-              viewMode === 'map' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <MapIcon className="h-4 w-4" /> ผังโครงการ
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('list')}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
-              viewMode === 'list' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <LayoutList className="h-4 w-4" /> รายการ
-          </button>
-        </div>
-        {viewMode === 'list' && (
-          <span className="w-full text-right text-xs text-slate-500">{filteredPlots.length} / {plots.length} แปลง</span>
-        )}
-      </Card>
+      </PageToolbar>
 
       {viewMode === 'map' ? (
         <SitePlanMap
@@ -536,6 +539,6 @@ export default function ProjectDetailPageClient({
         onCancel={() => setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
       />
-    </div>
+    </PageContainer>
   )
 }

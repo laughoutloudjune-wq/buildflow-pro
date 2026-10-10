@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import WorkRequestFormModal from '@/components/sales/WorkRequestFormModal'
 import { WORK_REQUEST_CATEGORY_LABEL as CATEGORY_LABEL } from '@/lib/sales/workRequestCategories'
 import type { WorkRequestRow } from '@/actions/sales-work-requests'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 const STATUS_LABEL: Record<string, string> = {
   pending_approval: 'รออนุมัติ (ฝ่ายขาย)',
@@ -89,7 +90,7 @@ export default function PlotWorkRequestsTab({
       )}
 
       {localRequests.length === 0 ? (
-        <Card className="p-8 text-center text-slate-400">ยังไม่มีคำขอจากฝ่ายขายสำหรับแปลงนี้</Card>
+        <Card><EmptyState title="ยังไม่มีคำขอจากฝ่ายขายสำหรับแปลงนี้" /></Card>
       ) : (
         <div className="space-y-3">
           {localRequests.map((r) => (

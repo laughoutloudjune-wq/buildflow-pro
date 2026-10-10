@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageContainer } from '@/components/ui/PageContainer'
+import NoticeBanner from '@/components/ui/NoticeBanner'
 import { createClient } from '@/lib/supabase/client'
 import { createBillingRequest, updateBillingRequest } from '@/actions/billing-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
@@ -206,7 +208,7 @@ export default function CreateExtraWorkPageClient({
   }
 
   return (
-    <div className="container mx-auto p-4">
+    <PageContainer width="standard">
       {showSuccessModal && (
         <Modal
           isOpen={showSuccessModal}
@@ -230,26 +232,26 @@ export default function CreateExtraWorkPageClient({
         </Modal>
       )}
 
-      <PageHeader title="สร้างงานเพิ่ม (DC)" className="mb-4" />
+      <PageHeader title="สร้างงานเพิ่ม (DC)" subtitle="ระบุโครงการ แปลง และเหตุผล แนบรูปถ่าย แล้วส่งให้ PM พิจารณา" />
       <Card className="p-5 border-amber-200 bg-amber-50/40">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">โครงการ</label>
-            <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+            <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} className="mt-1 block w-full">
               <option value="">เลือกโครงการ</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">ผู้รับเหมา</label>
-            <select value={selectedContractor} onChange={(e) => setSelectedContractor(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+            <select value={selectedContractor} onChange={(e) => setSelectedContractor(e.target.value)} className="mt-1 block w-full">
               <option value="">เลือกผู้รับเหมา</option>
               {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">แปลงหลัก (ถ้ามี)</label>
-            <select value={selectedPlot} onChange={(e) => setSelectedPlot(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+            <select value={selectedPlot} onChange={(e) => setSelectedPlot(e.target.value)} className="mt-1 block w-full">
               <option value="">เลือกแปลง</option>
               {plots.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
@@ -259,7 +261,7 @@ export default function CreateExtraWorkPageClient({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">เหตุผล</label>
-            <select value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+            <select value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 block w-full">
               {DC_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
@@ -275,7 +277,7 @@ export default function CreateExtraWorkPageClient({
         </div>
 
         <div className="mt-6">
-          <h2 className="text-xl font-semibold mb-2">รายการเพิ่มเติม (งานเพิ่ม/งานหัก)</h2>
+          <h2 className="mb-2 text-lg font-semibold text-slate-900">รายการงานเพิ่ม / งานหัก</h2>
           <AdjustmentLineItems
             adjustments={adjustments}
             plotOptions={adjustmentPlotOptions}
@@ -285,13 +287,13 @@ export default function CreateExtraWorkPageClient({
             totalAddAmount={totalAddAmount}
             totalDeductAmount={totalDeductAmount}
             netValue={netAmount}
-            theme="amber"
+            theme="slate"
             requirePlot
           />
         </div>
 
-        <div className="mt-6 bg-white p-4 rounded-lg border border-amber-200">
-          <h2 className="text-xl font-semibold mb-4">สรุปยอด</h2>
+        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">สรุปยอดและหมายเหตุ</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700">หมายเหตุ (ถึง PM)</label>
@@ -299,40 +301,52 @@ export default function CreateExtraWorkPageClient({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={3}
-                className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
+                className="mt-1 block w-full"
                 placeholder="ใส่ข้อความเพิ่มเติมถึงผู้ตรวจสอบ..."
               />
             </div>
             <div className="space-y-1">
               {/* Summary breakdown table */}
-              <div className="rounded-lg border border-amber-200 bg-amber-50/40 overflow-hidden">
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
                 <table className="w-full text-sm">
                   <tbody>
-                    <tr className="border-b border-amber-100 bg-green-50/50">
+                    <tr className="border-b border-slate-100">
                       <td className="px-4 py-2 text-slate-600">+ งานเพิ่ม ({adjustments.filter(a => a.type === 'addition').length} รายการ)</td>
                       <td className="px-4 py-2 text-right font-semibold text-green-700">+{formatCurrency(totalAddAmount)}</td>
                     </tr>
-                    <tr className="border-b border-amber-100 bg-red-50/50">
+                    <tr className="border-b border-slate-100">
                       <td className="px-4 py-2 text-slate-600">− งานหัก ({adjustments.filter(a => a.type === 'deduction').length} รายการ)</td>
                       <td className="px-4 py-2 text-right font-semibold text-red-600">-{formatCurrency(totalDeductAmount)}</td>
                     </tr>
-                    <tr className="bg-amber-100">
-                      <td className="px-4 py-3 text-base font-bold text-amber-900">ยอดสุทธิ</td>
-                      <td className="px-4 py-3 text-right text-2xl font-bold text-amber-800">{formatCurrency(netAmount)} บาท</td>
+                    <tr className="bg-slate-50">
+                      <td className="px-4 py-3 text-base font-bold text-slate-900">ยอดสุทธิ</td>
+                      <td className="px-4 py-3 text-right text-2xl font-bold tabular-nums text-slate-900">{formatCurrency(netAmount)} บาท</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
-          <div className="mt-6 flex justify-end">
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? 'กำลังส่ง...' : 'ส่งคำขอเพื่อพิจารณา'}
-            </Button>
-          </div>
-          {error && <p className="mt-2 text-red-500">{error}</p>}
+          {error && (
+            <div className="mt-4">
+              <NoticeBanner tone="error" message={error} />
+            </div>
+          )}
         </div>
       </Card>
-    </div>
+
+      {/* Submit bar: the amount being requested stays next to the button. */}
+      <div className="sticky bottom-4 z-20">
+        <Card className="elev-floating flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+          <p className="text-sm text-slate-500">
+            ยอดสุทธิงานเพิ่ม <span className="text-xl font-bold tabular-nums text-slate-900">฿{formatCurrency(netAmount)}</span>
+            <span className="ml-2 text-xs">{adjustments.length} รายการ</span>
+          </p>
+          <Button onClick={handleSubmit} disabled={isSubmitting}>
+            {isSubmitting ? 'กำลังส่ง...' : 'ส่งคำขอเพื่อพิจารณา'}
+          </Button>
+        </Card>
+      </div>
+    </PageContainer>
   )
 }

@@ -3,10 +3,11 @@
 import { useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { AlertTriangle, Coins, Loader2, MapPinOff, PackageCheck, Wallet } from 'lucide-react'
+import { AlertTriangle, Coins, Info, Loader2, MapPinOff, PackageCheck, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import ScopePicker, { type CostControlOptions } from '@/components/cost-control/ScopePicker'
@@ -109,9 +110,9 @@ export default function CostControlPageClient({
       </Card>
 
       {!scope.projectId ? (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-12 text-center text-sm text-slate-500">
-          เลือกโครงการเพื่อดูข้อมูล
-        </div>
+        <Card>
+          <EmptyState title="เลือกโครงการเพื่อดูข้อมูล" description="เลือกโครงการ (และกลุ่มแปลงหรือแปลง) ด้านบน แล้วระบบจะเทียบ BOQ กับของที่ซื้อจริง" />
+        </Card>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -125,15 +126,18 @@ export default function CostControlPageClient({
               </Card>
             ))}
           </div>
-          <p className="text-[11px] text-slate-500">
-            ยังไม่รวมค่าใช้จ่ายอื่น (เช่น ค่าเช่ารถเครน ค่าขนส่ง) และค่าเครื่องจักร เนื่องจากระบบยังไม่มีการบันทึกส่วนนี้
+          <p className="flex items-start gap-1.5 text-xs text-slate-600">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
+            ยอดข้างต้นยังไม่รวมค่าใช้จ่ายอื่น (เช่น ค่าเช่ารถเครน ค่าขนส่ง) และค่าเครื่องจักร เนื่องจากระบบยังไม่มีการบันทึกส่วนนี้
           </p>
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200">
-            <div className="flex gap-2">
+            <div className="flex gap-2" role="tablist" aria-label="หมวดต้นทุน">
               {visibleTabs.map((t) => (
                 <button
                   key={t}
+                  role="tab"
+                  aria-selected={tab === t}
                   onClick={() => navigate(scope, t)}
                   className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition ${
                     tab === t ? theme.tab : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -143,7 +147,11 @@ export default function CostControlPageClient({
                 </button>
               ))}
             </div>
-            {isPending && <Loader2 className="mb-2 h-4 w-4 animate-spin text-slate-400" />}
+            {isPending && (
+              <span className="mb-2 flex items-center gap-1.5 text-xs text-slate-500" role="status">
+                <Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลด...
+              </span>
+            )}
           </div>
 
           {tab === 'qty' && <QtyControlTab scope={scope} rows={rows} unassigned={unassigned} outsideBoq={outsideBoq} />}
@@ -152,9 +160,9 @@ export default function CostControlPageClient({
             (canSeeLabor ? (
               <LaborCostTab entries={laborEntries} />
             ) : (
-              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-500">
-                ไม่มีสิทธิ์ดูต้นทุนค่าแรง
-              </div>
+              <Card>
+                <EmptyState title="ไม่มีสิทธิ์ดูต้นทุนค่าแรง" description="บทบาทของคุณไม่รวมข้อมูลค่าแรง หากต้องการดู ให้ติดต่อผู้ดูแลระบบ" />
+              </Card>
             ))}
 
           <p className="text-xs text-slate-500">

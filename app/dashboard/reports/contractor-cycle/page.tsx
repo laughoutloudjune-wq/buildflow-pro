@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { PageToolbar } from '@/components/ui/PageToolbar'
 import { Badge } from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -13,6 +14,7 @@ import { BadgeCheck, ChevronDown, ChevronRight, Loader2, Pencil, Printer, Undo2 
 import { formatCurrency } from '@/lib/currency'
 import { computeActualPayout } from '@/lib/billing'
 import { todayInBangkok } from '@/lib/utils'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 type Project = { id: string; name: string }
 type Contractor = { id: string; name: string }
@@ -887,49 +889,56 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         </button>
       </div>
 
-      <Card className="p-4 no-print">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">{activeTab === 'paid' ? 'เดือนที่จ่าย' : 'เดือนของบิล'}</label>
-            <input type="month" className="mt-1 w-full" value={filters.month || ''} onChange={(e) => setFilters((p) => ({ ...p, month: e.target.value || undefined }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">โครงการ</label>
-            <select className="mt-1 w-full" value={filters.projectId || ''} onChange={(e) => setFilters((p) => ({ ...p, projectId: e.target.value || undefined }))}>
-              <option value="">ทั้งหมด</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">ผู้รับเหมา</label>
-            <select className="mt-1 w-full" value={filters.contractorId || ''} onChange={(e) => setFilters((p) => ({ ...p, contractorId: e.target.value || undefined }))}>
-              <option value="">ทั้งหมด</option>
-              {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-        </div>
+      {/* no-print: this toolbar must never appear on the printed report. */}
+      <div className="no-print space-y-2">
+        <PageToolbar
+          actions={
+            <>
+              {(() => {
+                const selectedCount = selectedGrouped.reduce((s, g) => s + g.bills.length, 0)
+                return selectedCount < rows.length ? (
+                  <span className="text-xs text-slate-500">เลือกพิมพ์ {selectedCount}/{rows.length} ใบเบิก</span>
+                ) : null
+              })()}
+              <Button variant="secondary" onClick={runReport}>ค้นหา</Button>
+              <Button
+                onClick={() => setShowHtmlModalPreview(true)}
+                disabled={selectedGrouped.reduce((s, g) => s + g.bills.length, 0) === 0}
+              >
+                <Printer className="h-4 w-4" /> พิมพ์{(() => {
+                  const selectedCount = selectedGrouped.reduce((s, g) => s + g.bills.length, 0)
+                  return selectedCount > 0 && selectedCount < rows.length ? ` (${selectedCount})` : ''
+                })()}
+              </Button>
+            </>
+          }
+          resultCount={rows.length}
+          activeFilters={[
+            ...(filters.month ? [{ label: `${activeTab === 'paid' ? 'เดือนที่จ่าย' : 'เดือนของบิล'} ${filters.month}`, onRemove: () => setFilters((p) => ({ ...p, month: undefined })) }] : []),
+            ...(filters.projectId ? [{ label: projects.find((p) => p.id === filters.projectId)?.name ?? 'โครงการ', onRemove: () => setFilters((p) => ({ ...p, projectId: undefined })) }] : []),
+            ...(filters.contractorId ? [{ label: contractors.find((c) => c.id === filters.contractorId)?.name ?? 'ผู้รับเหมา', onRemove: () => setFilters((p) => ({ ...p, contractorId: undefined })) }] : []),
+          ]}
+          onReset={() => setFilters({})}
+        >
+          <input
+            type="month"
+            aria-label={activeTab === 'paid' ? 'เดือนที่จ่าย' : 'เดือนของบิล'}
+            value={filters.month || ''}
+            onChange={(e) => setFilters((p) => ({ ...p, month: e.target.value || undefined }))}
+          />
+          <select aria-label="โครงการ" className="min-w-[10rem]" value={filters.projectId || ''} onChange={(e) => setFilters((p) => ({ ...p, projectId: e.target.value || undefined }))}>
+            <option value="">ทุกโครงการ</option>
+            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <select aria-label="ผู้รับเหมา" className="min-w-[10rem]" value={filters.contractorId || ''} onChange={(e) => setFilters((p) => ({ ...p, contractorId: e.target.value || undefined }))}>
+            <option value="">ทุกผู้รับเหมา</option>
+            {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </PageToolbar>
         {activeTab === 'unpaid' && !filters.month && (
-          <p className="mt-2 text-xs text-slate-500">ไม่ได้เลือกเดือน — แสดงทุกใบเบิกที่รออนุมัติจ่าย</p>
+          <p className="text-xs text-slate-500">ไม่ได้เลือกเดือน — แสดงทุกใบเบิกที่รออนุมัติจ่าย</p>
         )}
-        <div className="mt-3 flex items-center justify-end gap-2">
-          {(() => {
-            const selectedCount = selectedGrouped.reduce((s, g) => s + g.bills.length, 0)
-            return selectedCount < rows.length ? (
-              <span className="text-xs text-slate-500">เลือกพิมพ์ {selectedCount}/{rows.length} ใบเบิก</span>
-            ) : null
-          })()}
-          <Button variant="secondary" onClick={runReport}>ค้นหา</Button>
-          <Button
-            onClick={() => setShowHtmlModalPreview(true)}
-            disabled={selectedGrouped.reduce((s, g) => s + g.bills.length, 0) === 0}
-          >
-            <Printer className="h-4 w-4" /> Print{(() => {
-              const selectedCount = selectedGrouped.reduce((s, g) => s + g.bills.length, 0)
-              return selectedCount > 0 && selectedCount < rows.length ? ` (${selectedCount})` : ''
-            })()}
-          </Button>
-        </div>
-      </Card>
+      </div>
       <Modal
         isOpen={showHtmlModalPreview}
         onClose={() => setShowHtmlModalPreview(false)}
@@ -1242,7 +1251,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
         <Card className="p-10 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></Card>
       ) : activeTab === 'paid' ? (
         paidByDate.length === 0 ? (
-          <Card className="p-8 text-center text-slate-400">ไม่พบใบเบิกที่จ่ายแล้วในช่วงวันที่เลือก</Card>
+          <Card><EmptyState title="ไม่พบใบเบิกที่จ่ายแล้วในช่วงวันที่เลือก" /></Card>
         ) : (
           paidByDate.map((dateGroup) => (
             <Card key={dateGroup.date} className="p-4 print-break-avoid">
@@ -1468,7 +1477,7 @@ ${invoiceTemplateHtml || '<div class="invoice-sheet">ไม่พบข้อม
           ))
         )
       ) : grouped.length === 0 ? (
-        <Card className="p-8 text-center text-slate-400">ไม่พบใบเบิกที่รอจ่าย</Card>
+        <Card><EmptyState title="ไม่พบใบเบิกที่รอจ่าย" /></Card>
       ) : (
         grouped.map((group) => {
           const billIds = group.bills.map((b: any) => b.id)

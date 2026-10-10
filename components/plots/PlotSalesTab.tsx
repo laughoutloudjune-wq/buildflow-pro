@@ -18,6 +18,7 @@ import {
 import type { SalePaymentRow } from '@/actions/sale-payments-actions'
 import type { Promotion } from '@/actions/promotions-actions'
 import type { PlotSalePromotionItem } from '@/actions/plot-sale-promotion-items'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 // lead_source stays a free-text DB column (no schema change) - reused for
 // "ประเภทลูกค้า" (June, 2026-09-24) with a fixed 3-option picker going
@@ -166,7 +167,7 @@ export default function PlotSalesTab({
 
   if (!saleDetail.sale) {
     if (!canEdit) {
-      return <Card className="p-8 text-center text-slate-400">ยังไม่มีข้อมูลการขายสำหรับแปลงนี้</Card>
+      return <Card><EmptyState title="ยังไม่มีข้อมูลการขายสำหรับแปลงนี้" /></Card>
     }
     return (
       <Card className="p-5">

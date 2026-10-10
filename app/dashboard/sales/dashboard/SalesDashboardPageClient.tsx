@@ -3,7 +3,11 @@
 import { useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, Building2, CheckCircle2, Clock, Home, Wallet } from 'lucide-react'
+import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { PageSection } from '@/components/ui/PageSection'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
@@ -19,28 +23,24 @@ function StatTile({
   icon: Icon,
   label,
   value,
-  tone = 'slate',
+  emphasis,
 }: {
   icon: typeof Building2
   label: string
   value: string
   tone?: 'slate' | 'emerald' | 'amber' | 'indigo' | 'red'
+  /** The headline figure gets more weight than the counts. */
+  emphasis?: boolean
 }) {
-  const toneClasses: Record<string, string> = {
-    slate: 'bg-slate-50 text-slate-600',
-    emerald: 'bg-emerald-50 text-emerald-600',
-    amber: 'bg-amber-50 text-amber-600',
-    indigo: 'bg-indigo-50 text-indigo-600',
-    red: 'bg-red-50 text-red-600',
-  }
+  const { theme } = useDepartment()
   return (
-    <Card className="flex items-center gap-3 p-4">
-      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${toneClasses[tone]}`}>
+    <Card className={`flex items-center gap-3 p-4 ${emphasis ? 'col-span-2 lg:col-span-1' : ''}`}>
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${theme.soft}`}>
         <Icon className="h-5 w-5" />
       </div>
       <div className="min-w-0">
         <p className="truncate text-xs text-slate-500">{label}</p>
-        <p className="truncate text-lg font-semibold text-slate-800">{value}</p>
+        <p className={`truncate font-semibold tabular-nums text-slate-900 ${emphasis ? 'text-xl' : 'text-lg'}`}>{value}</p>
       </div>
     </Card>
   )
@@ -96,16 +96,36 @@ export default function SalesDashboardPageClient({
       />
 
       {!data ? (
-        <div className="py-12 text-center text-slate-500">โหลดข้อมูลไม่สำเร็จ</div>
+        <Card>
+          <EmptyState title="โหลดข้อมูลไม่สำเร็จ" description="ลองรีเฟรชหน้านี้ หรือเลือกโครงการอีกครั้ง" />
+        </Card>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-            <StatTile icon={Home} label="แปลงทั้งหมด" value={(t?.total_plots ?? 0).toLocaleString('th-TH')} />
-            <StatTile icon={Building2} label="ว่าง" value={(t?.available_count ?? 0).toLocaleString('th-TH')} tone="slate" />
-            <StatTile icon={Clock} label="กำลังดำเนินการ" value={(t?.in_progress_count ?? 0).toLocaleString('th-TH')} tone="amber" />
-            <StatTile icon={CheckCircle2} label="ขายแล้ว" value={(t?.sold_count ?? 0).toLocaleString('th-TH')} tone="emerald" />
-            <StatTile icon={Wallet} label="มูลค่าดีลรวม" value={`฿${formatCurrency(t?.total_deal_value ?? 0)}`} tone="indigo" />
-          </div>
+          {/* Attention first: money that is past due. */}
+          {(p?.overdue_count ?? 0) > 0 && (
+            <Link href="/dashboard/sales" className="group block">
+              <Card interactive className="flex flex-wrap items-center gap-3 border-amber-300 bg-amber-50/50 px-5 py-4">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-amber-700" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-amber-900">
+                    มี {(p?.overdue_count ?? 0).toLocaleString('th-TH')} รายการเกินกำหนดชำระ รวม ฿{formatCurrency(p?.overdue_amount ?? 0)}
+                  </p>
+                  <p className="text-xs text-amber-800">เปิดผังการขายเพื่อดูแปลงและติดตามลูกค้า</p>
+                </div>
+              </Card>
+            </Link>
+          )}
+
+          {/* Where things stand right now (counts), with the money headline. */}
+          <PageSection title="สถานะแปลงตอนนี้" description="จำนวนแปลงตามสถานะปัจจุบัน และมูลค่าดีลรวม">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+              <StatTile icon={Home} label="แปลงทั้งหมด" value={(t?.total_plots ?? 0).toLocaleString('th-TH')} />
+              <StatTile icon={Building2} label="ว่าง" value={(t?.available_count ?? 0).toLocaleString('th-TH')} />
+              <StatTile icon={Clock} label="กำลังดำเนินการ" value={(t?.in_progress_count ?? 0).toLocaleString('th-TH')} />
+              <StatTile icon={CheckCircle2} label="ขายแล้ว" value={(t?.sold_count ?? 0).toLocaleString('th-TH')} />
+              <StatTile icon={Wallet} label="มูลค่าดีลรวม" value={`฿${formatCurrency(t?.total_deal_value ?? 0)}`} emphasis />
+            </div>
+          </PageSection>
 
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="p-5">

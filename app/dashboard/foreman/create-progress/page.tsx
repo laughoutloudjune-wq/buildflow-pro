@@ -1,7 +1,24 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { ChevronRight, ClipboardCheck, ClipboardPlus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { getThemeByDepartmentId } from '@/lib/navigation'
+
+const CHOICES = [
+  {
+    href: '/dashboard/foreman/request',
+    title: 'เบิกงวดงานหลัก',
+    description: 'ส่งความคืบหน้างานหลักตาม BOQ และรายการงานที่มอบหมาย',
+    icon: ClipboardCheck,
+  },
+  {
+    href: '/dashboard/foreman/create-dc',
+    title: 'งานเพิ่ม (DC)',
+    description: 'ส่งคำขอ DC อย่างเดียวได้ แม้ไม่มีงานหลักในรอบนั้น',
+    icon: ClipboardPlus,
+  },
+]
 
 export default async function CreateProgressPage({
   searchParams,
@@ -15,30 +32,28 @@ export default async function CreateProgressPage({
     redirect(`/dashboard/foreman/request?editId=${editId}`)
   }
 
+  const theme = getThemeByDepartmentId('construction')
+
   return (
-    <Card className="p-5">
-      <PageHeader
-        title="สร้างคำขอเบิก"
-        subtitle="เลือกประเภทคำขอที่ต้องการสร้างได้เหมือนเดิม ระหว่างงวดงานหลักและงานเพิ่ม (DC)"
-      />
+    <div className="space-y-5">
+      <PageHeader title="สร้างคำขอเบิก" subtitle="เลือกประเภทคำขอที่ต้องการสร้าง" />
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <Link
-          href="/dashboard/foreman/request"
-          className="rounded-xl border border-blue-200 bg-blue-50 p-5 transition hover:border-blue-300 hover:bg-blue-100/70"
-        >
-          <div className="text-lg font-bold text-blue-900">เบิกงวดงานหลัก</div>
-          <p className="mt-2 text-sm text-blue-800">ใช้สำหรับส่งคำขอความคืบหน้างานหลักตาม BOQ และรายการงานที่มอบหมาย</p>
-        </Link>
-
-        <Link
-          href="/dashboard/foreman/create-dc"
-          className="rounded-xl border border-amber-200 bg-amber-50 p-5 transition hover:border-amber-300 hover:bg-amber-100/70"
-        >
-          <div className="text-lg font-bold text-amber-900">งานเพิ่ม (DC)</div>
-          <p className="mt-2 text-sm text-amber-800">ใช้สำหรับส่งคำขอ DC อย่างเดียวได้ แม้ไม่มีคำของานหลักในรอบนั้น</p>
-        </Link>
+      <div className="grid gap-4 md:grid-cols-2">
+        {CHOICES.map((c) => (
+          <Link key={c.href} href={c.href} className="group block">
+            <Card interactive className="flex min-h-[7rem] items-center gap-4 p-5">
+              <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${theme.soft}`}>
+                <c.icon className="h-6 w-6" aria-hidden />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-lg font-semibold text-slate-900">{c.title}</div>
+                <p className="mt-1 text-sm text-slate-500">{c.description}</p>
+              </div>
+              <ChevronRight className="h-5 w-5 shrink-0 text-slate-400 transition-colors group-hover:text-slate-600" aria-hidden />
+            </Card>
+          </Link>
+        ))}
       </div>
-    </Card>
+    </div>
   )
 }

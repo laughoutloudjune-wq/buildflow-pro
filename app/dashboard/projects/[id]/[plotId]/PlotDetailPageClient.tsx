@@ -268,17 +268,17 @@ export default function PlotDetailPageClient({
           title={
             <span className="flex items-center gap-3">
               <span className="flex items-center gap-2">
-                <Hammer className="text-indigo-600" /> แปลง {plot.name}
+                <Hammer className="text-slate-500" aria-hidden /> แปลง {plot.name}
               </span>
               {canEditConstruction && (
-                <button onClick={() => setIsEditModalOpen(true)} className="text-slate-400 hover:text-indigo-600">
+                <button onClick={() => setIsEditModalOpen(true)} aria-label="แก้ไขข้อมูลแปลง" title="แก้ไขข้อมูลแปลง" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                   <Pencil className="h-4 w-4" />
                 </button>
               )}
               {plot.is_sellable === false && <Badge tone="neutral">ไม่ขาย</Badge>}
             </span>
           }
-          subtitle={`แบบบ้าน: ${plot.house_models?.name || ''}`}
+          subtitle={`แบบบ้าน: ${plot.house_models?.name || '-'}${jobs.length > 0 ? ` · งานก่อสร้างเสร็จ ${jobsDone}/${jobs.length} รายการ` : ''}`}
           actions={
             canEditConstruction && showConstructionTab ? (
               <>
@@ -294,11 +294,13 @@ export default function PlotDetailPageClient({
         />
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
+      <div className="flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="หมวดข้อมูลแปลง">
         {TABS.map((t) => (
           <button
             key={t.key}
             type="button"
+            role="tab"
+            aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
             className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition ${
               tab === t.key ? theme.tab : 'border-transparent text-slate-500 hover:text-slate-800'

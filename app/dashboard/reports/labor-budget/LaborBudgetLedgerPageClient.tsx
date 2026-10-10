@@ -6,9 +6,11 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
 import { getLaborLedger } from '@/actions/labor-budget-actions'
 import { formatCurrency } from '@/lib/currency'
 import { UNGROUPED_BATCH_ID, type LaborLedgerEntry } from '@/lib/labor-budget'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 type Option = { id: string; name: string }
 type PlotGroupOption = Option & { project_id: string }
@@ -207,90 +209,64 @@ export default function LaborBudgetLedgerPageClient({
         subtitle="ยอดค่าแรงตาม BOQ เทียบกับใบเบิกที่ PM อนุมัติแล้ว แยกตามผู้รับเหมาและกลุ่มแปลง (ไม่รวมงานเพิ่ม/DC — ดูที่รายงาน DC)"
       />
 
-      <Card className="p-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">โครงการ</label>
-            <select
-              className="mt-1 w-full"
-              value={filters.projectId || ''}
-              onChange={(e) =>
-                setFilters((p) => ({ ...p, projectId: e.target.value || undefined, plotGroupId: undefined }))
-              }
-            >
-              <option value="">ทั้งหมด</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">ผู้รับเหมา</label>
-            <select
-              className="mt-1 w-full"
-              value={filters.contractorId || ''}
-              onChange={(e) => setFilters((p) => ({ ...p, contractorId: e.target.value || undefined }))}
-            >
-              <option value="">ทั้งหมด</option>
-              {contractors.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">กลุ่มแปลง (batch)</label>
-            <select
-              className="mt-1 w-full"
-              value={filters.plotGroupId || ''}
-              onChange={(e) => setFilters((p) => ({ ...p, plotGroupId: e.target.value || undefined }))}
-            >
-              <option value="">ทั้งหมด</option>
-              {availablePlotGroups.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600">ค้นหา (แปลง / งาน / ผู้รับเหมา)</label>
-            <input
-              className="mt-1 w-full"
-              value={search}
-              placeholder="เช่น 98 หรือ งานฐานราก"
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex gap-1 rounded-lg border bg-slate-100 p-1 w-fit">
-              <button
-                onClick={() => setGroupBy('contractor')}
-                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${
-                  groupBy === 'contractor' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                แยกตามผู้รับเหมา
-              </button>
-              <button
-                onClick={() => setGroupBy('batch')}
-                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${
-                  groupBy === 'batch' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                แยกตามกลุ่มแปลง
-              </button>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input type="checkbox" checked={hideSettled} onChange={(e) => setHideSettled(e.target.checked)} />
-              ซ่อนงานที่เบิกครบแล้ว
-            </label>
-          </div>
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหา แปลง / งาน / ผู้รับเหมา (เช่น 98 หรือ งานฐานราก)' }}
+        actions={
           <Button onClick={runReport} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />} ค้นหา
           </Button>
+        }
+        activeFilters={[
+          ...(filters.projectId ? [{ label: projects.find((p) => p.id === filters.projectId)?.name ?? 'โครงการ', onRemove: () => setFilters((p) => ({ ...p, projectId: undefined, plotGroupId: undefined })) }] : []),
+          ...(filters.contractorId ? [{ label: contractors.find((c) => c.id === filters.contractorId)?.name ?? 'ผู้รับเหมา', onRemove: () => setFilters((p) => ({ ...p, contractorId: undefined })) }] : []),
+          ...(filters.plotGroupId ? [{ label: availablePlotGroups.find((g) => g.id === filters.plotGroupId)?.name ?? 'กลุ่มแปลง', onRemove: () => setFilters((p) => ({ ...p, plotGroupId: undefined })) }] : []),
+          ...(search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []),
+          ...(hideSettled ? [{ label: 'ซ่อนงานที่เบิกครบแล้ว', onRemove: () => setHideSettled(false) }] : []),
+        ]}
+        onReset={() => {
+          setFilters({})
+          setSearch('')
+          setHideSettled(false)
+        }}
+      >
+        <select aria-label="โครงการ" className="min-w-[10rem]" value={filters.projectId || ''} onChange={(e) => setFilters((p) => ({ ...p, projectId: e.target.value || undefined, plotGroupId: undefined }))}>
+          <option value="">ทุกโครงการ</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <select aria-label="ผู้รับเหมา" className="min-w-[10rem]" value={filters.contractorId || ''} onChange={(e) => setFilters((p) => ({ ...p, contractorId: e.target.value || undefined }))}>
+          <option value="">ทุกผู้รับเหมา</option>
+          {contractors.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+        <select aria-label="กลุ่มแปลง (batch)" className="min-w-[10rem]" value={filters.plotGroupId || ''} onChange={(e) => setFilters((p) => ({ ...p, plotGroupId: e.target.value || undefined }))}>
+          <option value="">ทุกกลุ่มแปลง</option>
+          {availablePlotGroups.map((g) => (
+            <option key={g.id} value={g.id}>{g.name}</option>
+          ))}
+        </select>
+        <div className="flex w-fit gap-1 rounded-lg border bg-slate-100 p-1" role="group" aria-label="จัดกลุ่มตาม">
+          {([['contractor', 'แยกตามผู้รับเหมา'], ['batch', 'แยกตามกลุ่มแปลง']] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={groupBy === key}
+              onClick={() => setGroupBy(key)}
+              className={`rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
+                groupBy === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-      </Card>
+        <label className="mb-0 flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={hideSettled} onChange={(e) => setHideSettled(e.target.checked)} />
+          ซ่อนงานที่เบิกครบแล้ว
+        </label>
+      </PageToolbar>
 
       {error && (
         <Card className="border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</Card>
@@ -326,7 +302,7 @@ export default function LaborBudgetLedgerPageClient({
       )}
 
       {!loading && sections.length === 0 && (
-        <Card className="p-10 text-center text-slate-500">ไม่พบข้อมูลตามเงื่อนไขที่เลือก</Card>
+        <Card><EmptyState title="ไม่พบข้อมูลตามเงื่อนไขที่เลือก" /></Card>
       )}
 
       {!loading &&

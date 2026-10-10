@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { EmptyState } from '@/components/ui/EmptyState'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
@@ -67,7 +68,7 @@ export default function ForemanPurchaseRequestPageClient({
       <Card className="p-4 bg-slate-50/60 border-slate-200">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">คำขอของฉัน</h2>
         {initialRequests.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">ยังไม่มีคำขอซื้อวัสดุ</div>
+          <EmptyState title="ยังไม่มีคำขอซื้อวัสดุ" description={'กด "สร้างคำขอซื้อวัสดุ" เพื่อส่งคำขอให้ฝ่ายจัดซื้อ'} />
         ) : (
           <div className="space-y-3">
             {initialRequests.map((r) => (
@@ -75,11 +76,22 @@ export default function ForemanPurchaseRequestPageClient({
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md text-xs">
+                      <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-bold text-slate-700">
                         #{r.pr_no != null ? String(r.pr_no).padStart(4, '0') : '-'}
                       </span>
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_TONE[r.status] || 'bg-slate-100 text-slate-500'}`}>
                         {STATUS_LABEL[r.status] || r.status}
+                      </span>
+                      {/* What happens next, in words. */}
+                      <span className="text-xs text-slate-500">
+                        {({
+                          pending_review: 'รอฝ่ายจัดซื้อตรวจสอบ',
+                          approved: 'อนุมัติแล้ว รอสั่งซื้อ',
+                          ordered: 'สั่งซื้อแล้ว รอของส่ง',
+                          received: 'ได้รับของแล้ว',
+                          rejected: 'ไม่อนุมัติ — สร้างคำขอใหม่ได้',
+                          cancelled: 'ยกเลิกแล้ว',
+                        } as Record<string, string>)[r.status] || ''}
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-slate-600">{getScopeLabel(r)}</p>

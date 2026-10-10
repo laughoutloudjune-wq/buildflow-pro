@@ -2,12 +2,13 @@
 
 import { Fragment, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes, Upload, PackageSearch, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Loader2, Coins, Layers, AlertCircle, Pencil, CopyPlus, Boxes, Upload, PackageSearch, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { PageToolbar } from '@/components/ui/PageToolbar'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import SearchableSelect from '@/components/ui/SearchableSelect'
@@ -261,17 +262,13 @@ export default function BOQDetailPageClient({
         <PageHeader
           title={
             <span className="flex items-center gap-2">
-              <Layers className="text-indigo-600 h-6 w-6"/>
+              <Layers className="h-6 w-6 text-slate-500" aria-hidden />
               {model.name}
             </span>
           }
           subtitle={`รหัส: ${model.code || '-'} | พื้นที่: ${model.area || 0} ตร.ม.`}
           actions={
             <>
-              <div className="text-right hidden sm:block mr-2">
-                  <div className="text-sm text-slate-500">ราคากลางรวม (BOQ)</div>
-                  <div className="text-xl font-bold text-emerald-600">฿{formatCurrency(grandTotal)}</div>
-              </div>
               <Button variant="secondary" onClick={() => setIsHouseModelMaterialsOpen(true)}>
                 <PackageSearch className="h-4 w-4" />
                 วัสดุทั้งแบบบ้าน
@@ -280,13 +277,10 @@ export default function BOQDetailPageClient({
                 <Upload className="h-4 w-4" />
                 นำเข้าวัสดุ BOQ
               </Button>
-              <button
-              onClick={openImportModal}
-              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 shadow-sm transition"
-              >
-              <CopyPlus className="h-4 w-4" />
-              นำเข้า BOQ
-              </button>
+              <Button variant="secondary" onClick={openImportModal}>
+                <CopyPlus className="h-4 w-4" />
+                นำเข้า BOQ
+              </Button>
               <Button onClick={openCreateModal}>
                 <Plus className="h-4 w-4" />
                 เพิ่มรายการ
@@ -296,16 +290,34 @@ export default function BOQDetailPageClient({
         />
       </div>
 
-      {/* ค้นหา BOQ */}
-      <div className="relative max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="ค้นหารายการงาน..."
-          className="w-full pl-9"
-        />
-      </div>
+      {/* Summary first: the figures that describe this house model. */}
+      <Card className="p-5">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          <div>
+            <dt className="text-xs text-slate-500">ราคากลางรวม (BOQ)</dt>
+            <dd className="text-xl font-bold tabular-nums text-slate-900">฿{formatCurrency(grandTotal)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">รายการงาน</dt>
+            <dd className="text-xl font-bold tabular-nums text-slate-900">{items.length.toLocaleString('th-TH')}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">ประเภทช่าง</dt>
+            <dd className="text-xl font-bold tabular-nums text-slate-900">{usedTypes.length.toLocaleString('th-TH')}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">ต้นทุนต่อ ตร.ม.</dt>
+            <dd className="text-xl font-bold tabular-nums text-slate-900">{Number(model.area) > 0 ? `฿${formatCurrency(grandTotal / Number(model.area))}` : '-'}</dd>
+          </div>
+        </dl>
+      </Card>
+
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหารายการงาน...' }}
+        resultCount={filteredItems.length}
+        activeFilters={search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []}
+        onReset={() => setSearch('')}
+      />
 
       {/* เทมเพลตแผนงาน - ใช้สร้างกำหนดการให้ทุกแปลงของแบบบ้านนี้อัตโนมัติ */}
       <Card className="p-5">

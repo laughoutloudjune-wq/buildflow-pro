@@ -13,6 +13,8 @@ import { generateInviteLink } from '@/actions/invite-actions'
 import type { UserRole } from '@/lib/types/billing'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { TableFrame } from '@/components/ui/TableFrame'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 type User = Awaited<ReturnType<typeof getUsers>>[0]
 
@@ -219,24 +221,22 @@ export default function UsersPageClient({
         ) : null}
       </Card>
 
-      <Card className="border-slate-200 p-6 shadow-sm">
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
+      <TableFrame>
+            <table>
+              <thead>
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">ชื่อ</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">อีเมล</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">บทบาท</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">สถานะ</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">ชื่อ</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">อีเมล</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">บทบาท</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">สถานะ</th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody>
                 {users.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
-                      ยังไม่พบผู้ใช้ในระบบ
+                    <td colSpan={5} className="p-0">
+                      <EmptyState title="ยังไม่พบผู้ใช้ในระบบ" description="เชิญผู้ใช้ใหม่ได้จากส่วน “เชิญผู้ใช้ใหม่” ด้านบน" />
                     </td>
                   </tr>
                 ) : (
@@ -300,9 +300,7 @@ export default function UsersPageClient({
                 )}
               </tbody>
             </table>
-          </div>
-        </div>
-      </Card>
+      </TableFrame>
 
       <ConfirmDialog
         isOpen={disableTarget !== null}

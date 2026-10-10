@@ -2,6 +2,7 @@ import { FileText, Tag } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { formatCurrency } from '@/lib/currency'
 import type { PlotHistoryRowView } from '@/lib/types/plotDetail'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -9,7 +10,7 @@ function formatDateTime(iso: string): string {
 
 export default function PlotHistoryTab({ history }: { history: PlotHistoryRowView[] }) {
   if (history.length === 0) {
-    return <Card className="p-8 text-center text-slate-400">ยังไม่มีประวัติสำหรับแปลงนี้</Card>
+    return <Card><EmptyState title="ยังไม่มีประวัติสำหรับแปลงนี้" /></Card>
   }
 
   return (
