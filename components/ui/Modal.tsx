@@ -1,7 +1,7 @@
 'use client'
 
 import { X } from 'lucide-react'
-import { useEffect, useId, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 
 const subscribeNever = () => () => {}
@@ -27,9 +27,12 @@ interface ModalProps {
    * flow position is scrolled near, and fixed escapes the panel entirely to
    * the browser viewport. Plain flex layout has neither problem. */
   footer?: React.ReactNode
+  /** 'right' docks the panel to the right edge at full height (a side panel
+   * for editing one record while the page behind stays in context). */
+  placement?: 'center' | 'right'
 }
 
-export default function Modal({ isOpen, onClose, title, children, panelClassName, bodyClassName, footer }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, panelClassName, bodyClassName, footer, placement = 'center' }: ModalProps) {
   // Rendered through a portal straight to <body> - a modal nested inside
   // another component's tree (e.g. a plot's quick-view opened from inside
   // the site-plan preview modal) would otherwise inherit whatever stacking
@@ -60,6 +63,23 @@ export default function Modal({ isOpen, onClose, title, children, panelClassName
     onCloseRef.current = onClose
   })
   const active = isOpen && mounted
+
+  // Exit animation: keep the panel in the tree for a short moment after
+  // isOpen turns false so it can fade out. State is adjusted during render
+  // (the documented pattern for reacting to a prop change) and cleared by a
+  // timer, so there is no setState-in-effect.
+  const [present, setPresent] = useState(isOpen)
+  const [prevOpen, setPrevOpen] = useState(isOpen)
+  if (isOpen !== prevOpen) {
+    setPrevOpen(isOpen)
+    if (isOpen) setPresent(true)
+  }
+  const closing = present && !isOpen
+  useEffect(() => {
+    if (!closing) return
+    const t = setTimeout(() => setPresent(false), 160)
+    return () => clearTimeout(t)
+  }, [closing])
 
   // Escape (topmost modal only), Tab containment, focus in on open, focus
   // back to whatever opened the modal on close.
@@ -123,17 +143,27 @@ export default function Modal({ isOpen, onClose, title, children, panelClassName
     }
   }, [isOpen])
 
-  if (!isOpen || !mounted) return null
+  if (!(isOpen || present) || !mounted) return null
 
   const panelExtra = panelClassName || 'max-w-md'
   const hasExplicitHeight =
     /\bh-\[/.test(panelExtra) || /\bh-\d/.test(panelExtra) || panelExtra.includes('max-h-')
 
-  const panelClasses = [
-    'relative z-10 flex w-full flex-col overflow-hidden rounded-2xl bg-white elev-modal ring-1 ring-slate-900/5 anim-modal focus:outline-none',
-    panelExtra,
-    hasExplicitHeight ? '' : 'max-h-[min(90dvh,calc(100vh-2rem))]',
-  ]
+  const docked = placement === 'right'
+  const panelClasses = (
+    docked
+      ? [
+          'relative z-10 flex h-dvh w-full flex-col overflow-hidden rounded-l-2xl bg-white elev-modal ring-1 ring-slate-900/5 focus:outline-none',
+          closing ? 'anim-drawer-out' : 'anim-drawer',
+          panelExtra,
+        ]
+      : [
+          'relative z-10 flex w-full flex-col overflow-hidden rounded-2xl bg-white elev-modal ring-1 ring-slate-900/5 focus:outline-none',
+          closing ? 'anim-modal-out' : 'anim-modal',
+          panelExtra,
+          hasExplicitHeight ? '' : 'max-h-[min(90dvh,calc(100vh-2rem))]',
+        ]
+  )
     .filter(Boolean)
     .join(' ')
 
@@ -141,15 +171,15 @@ export default function Modal({ isOpen, onClose, title, children, panelClassName
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain"
+      className={`fixed inset-0 z-50 overflow-y-auto overscroll-contain ${closing ? 'pointer-events-none' : ''}`}
       aria-modal="true"
       role="dialog"
       aria-labelledby={title ? titleId : undefined}
     >
       {/* Backdrop (non-clickable — avoids losing form input; use X or Esc) */}
-      <div className="fixed inset-0 modal-backdrop anim-backdrop" aria-hidden />
+      <div className={`fixed inset-0 modal-backdrop ${closing ? 'anim-backdrop-out' : 'anim-backdrop'}`} aria-hidden />
 
-      <div className="relative flex min-h-full items-center justify-center p-4 sm:p-6">
+      <div className={docked ? 'relative flex min-h-full items-stretch justify-end' : 'relative flex min-h-full items-center justify-center p-4 sm:p-6'}>
         <div ref={panelRef} tabIndex={-1} className={panelClasses}>
           {title ? (
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 bg-gradient-to-b from-slate-50/80 to-white px-4 py-3 sm:px-4 sm:py-4">

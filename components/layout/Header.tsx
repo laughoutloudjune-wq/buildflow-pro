@@ -1,10 +1,10 @@
 'use client'
 
-import { User } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { getDashboardPageTitle } from '@/lib/dashboard-page-titles'
 import { DEFAULT_THEME, getDepartmentForViewer } from '@/lib/navigation'
 import type { PermissionModule } from '@/lib/permissions'
+import UserMenu from '@/components/layout/UserMenu'
 import NotificationBell from '@/components/layout/NotificationBell'
 import ProjectQuickSwitcher from '@/components/layout/ProjectQuickSwitcher'
 
@@ -44,16 +44,8 @@ export default function Header({
         {canViewProjects && <ProjectQuickSwitcher />}
         <NotificationBell role={role} />
 
-        <div className="flex items-center gap-2 border-l border-slate-200/70 pl-3 sm:gap-3 sm:pl-4">
-          <div className="text-right hidden min-w-0 sm:block">
-            <div className="text-sm font-medium text-slate-700">ผู้ใช้งาน</div>
-            <div className="truncate text-xs text-slate-500" title={userEmail || undefined}>
-              {userEmail || '…'}
-            </div>
-          </div>
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-100 sm:h-10 sm:w-10" aria-hidden>
-            <User className="h-5 w-5" />
-          </div>
+        <div className="border-l border-slate-200/70 pl-2 sm:pl-3">
+          <UserMenu userEmail={userEmail} role={role} />
         </div>
       </div>
     </header>

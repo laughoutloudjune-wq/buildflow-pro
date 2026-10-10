@@ -1,4 +1,7 @@
+'use client'
+
 import { Card } from '@/components/ui/Card'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 
 export type RankedBarItem = {
   key: string
@@ -20,13 +23,15 @@ export default function RankedBarList({
   title,
   items,
   emptyLabel = 'ยังไม่มีข้อมูล',
-  defaultColorClass = 'bg-indigo-500',
+  defaultColorClass,
 }: {
   title: string
   items: RankedBarItem[]
   emptyLabel?: string
   defaultColorClass?: string
 }) {
+  const { theme } = useDepartment()
+  const fill = defaultColorClass ?? theme.solid
   const max = Math.max(1, ...items.map((i) => i.metric))
 
   return (
@@ -44,7 +49,7 @@ export default function RankedBarList({
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                 <div
-                  className={`h-full rounded-full transition-[width] duration-[220ms] ease-out ${item.colorClass || defaultColorClass}`}
+                  className={`h-full rounded-full transition-[width] duration-[220ms] ease-out ${item.colorClass || fill}`}
                   style={{ width: `${Math.max(2, (item.metric / max) * 100)}%` }}
                 />
               </div>

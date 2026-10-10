@@ -102,6 +102,44 @@ body {
   }
 }
 
+@keyframes modal-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(32px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes drawer-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -137,6 +175,22 @@ body {
 
 .anim-modal {
   animation: modal-in var(--motion-overlay) var(--ease-enter) both;
+}
+
+.anim-drawer {
+  animation: drawer-in var(--motion-overlay) var(--ease-enter) both;
+}
+
+.anim-drawer-out {
+  animation: drawer-out 150ms ease-in both;
+}
+
+.anim-modal-out {
+  animation: modal-out 150ms ease-in both;
+}
+
+.anim-backdrop-out {
+  animation: fade-out 150ms ease-in both;
 }
 
 .anim-backdrop {
@@ -308,6 +362,14 @@ td.text-right, th.text-right {
 
   /* Slide/zoom entrances (modals, dropdowns) fall back to a plain fade. */
   .anim-modal, .anim-pop, .anim-page {
+    animation-name: fade-in;
+  }
+
+  .anim-modal-out, .anim-drawer-out {
+    animation-name: fade-out;
+  }
+
+  .anim-drawer {
     animation-name: fade-in;
   }
 
