@@ -3,12 +3,13 @@
 import { useEffect, useState, useTransition, type Ref } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, XCircle, PackageCheck, ChevronDown, Undo2, PackageX, Receipt, Link2 } from 'lucide-react'
+import { ArrowLeft, XCircle, PackageCheck, Undo2, PackageX, Receipt, Link2, Send } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -27,7 +28,7 @@ import {
   unmarkPurchaseOrderReceived,
 } from '@/actions/procurement-actions'
 import { getBoqCheckForPurchaseOrder, setPoBoqOverrides } from '@/actions/procurement/boq-control'
-import { PO_STATUS_LABEL as STATUS_LABEL, PO_STATUS_TONE as STATUS_TONE } from '@/lib/status-labels'
+import { PO_STATUS_LABEL as STATUS_LABEL } from '@/lib/status-labels'
 import type { GoodsReceipt, PurchaseOrder } from '@/lib/types/procurement'
 
 function formatDate(value: string | null) {
@@ -79,6 +80,7 @@ export default function PurchaseOrderDetailPageClient({
   const [isCloseShortDialogOpen, setIsCloseShortDialogOpen] = useState(false)
   const [isUnmarkReceivedConfirmOpen, setIsUnmarkReceivedConfirmOpen] = useState(false)
   const toast = useToast()
+  const { theme } = useDepartment()
 
   const [boqCheck, setBoqCheck] = useState<Awaited<ReturnType<typeof getBoqCheckForPurchaseOrder>> | null>(null)
   const [isBoqCheckSaving, setIsBoqCheckSaving] = useState(false)
@@ -220,12 +222,13 @@ export default function PurchaseOrderDetailPageClient({
   const canCloseShort = order.status === 'partially_received'
   const isFormReadOnly = order.status === 'paid' || order.status === 'cancelled'
 
-  const milestones = [
-    { label: 'สร้างเมื่อ', value: formatDate(order.created_at) },
-    { label: 'ยืนยันเมื่อ', value: formatDate(order.confirmed_at) },
-    { label: 'รับของเมื่อ', value: formatDate(order.received_at), by: order.receiver?.full_name },
-    { label: 'ชำระเมื่อ', value: formatDate(order.paid_at), by: order.payer?.full_name },
-  ].filter((m) => m.value)
+  const lifecycleIndex = ({ draft: 0, sent: 1, partially_received: 2, received: 2, paid: 3, cancelled: -1 } as Record<string, number>)[order.status] ?? 0
+  const lifecycle = [
+    { label: 'ร่าง', date: formatDate(order.created_at), by: undefined as string | undefined },
+    { label: 'ยืนยันสั่งซื้อ', date: formatDate(order.confirmed_at), by: undefined as string | undefined },
+    { label: order.status === 'partially_received' ? 'รับของบางส่วน' : 'รับของ', date: formatDate(order.received_at), by: order.receiver?.full_name },
+    { label: 'ชำระแล้ว', date: formatDate(order.paid_at), by: order.payer?.full_name },
+  ]
 
   return (
     <PageContainer width="standard">
@@ -246,38 +249,16 @@ export default function PurchaseOrderDetailPageClient({
           subtitle={order.projects?.name || '-'}
           actions={
             <div className="flex flex-wrap items-center gap-2">
-              {canEditStatus ? (
-                <div className={`relative inline-flex items-center rounded-full ${STATUS_TONE[order.status]}`}>
-                  <select
-                    value={order.status}
-                    onChange={(e) => handleStatusChange(e.target.value as 'draft' | 'sent')}
-                    disabled={isPending}
-                    className="appearance-none rounded-full bg-transparent px-3 py-1 pr-7 text-sm font-medium outline-none"
-                  >
-                    <option value="draft">{STATUS_LABEL.draft}</option>
-                    <option value="sent">{STATUS_LABEL.sent}</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5" />
-                </div>
-              ) : (
-                <span className={`rounded-full px-3 py-1 text-sm font-medium ${STATUS_TONE[order.status]}`}>{STATUS_LABEL[order.status]}</span>
-              )}
-
               <PurchaseOrderDocActions orderId={order.id} poNo={order.po_no} hasAllocations={allocationLines.length > 0} />
-
+              {/* The next valid step is the one prominent action. */}
+              {order.status === 'draft' && (
+                <Button type="button" size="sm" onClick={() => handleStatusChange('sent')} disabled={isPending}>
+                  <Send className="h-3.5 w-3.5" /> ยืนยันสั่งซื้อ
+                </Button>
+              )}
               {canReceive && (
                 <Button type="button" size="sm" onClick={() => setIsReceiveModalOpen(true)}>
                   <PackageCheck className="h-3.5 w-3.5" /> รับของ
-                </Button>
-              )}
-              {canUnmarkReceived && (
-                <Button type="button" variant="secondary" size="sm" onClick={() => setIsUnmarkReceivedConfirmOpen(true)} disabled={isPending}>
-                  <Undo2 className="h-3.5 w-3.5" /> ยกเลิกการรับของ
-                </Button>
-              )}
-              {canCloseShort && (
-                <Button type="button" variant="secondary" size="sm" onClick={() => setIsCloseShortDialogOpen(true)} disabled={isPending}>
-                  <PackageX className="h-3.5 w-3.5" /> ปิดใบสั่งซื้อ (ส่งไม่ครบ)
                 </Button>
               )}
               {order.status === 'paid' && (
@@ -288,26 +269,80 @@ export default function PurchaseOrderDetailPageClient({
                   ดูใบสำคัญจ่าย →
                 </Link>
               )}
-              {canCancel && (
-                <Button type="button" variant="danger" size="sm" onClick={() => setIsCancelDialogOpen(true)} disabled={isPending}>
-                  <XCircle className="h-3.5 w-3.5" /> ยกเลิก
-                </Button>
-              )}
             </div>
           }
         />
+      </div>
 
-        {milestones.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {milestones.map((m) => (
-              <span key={m.label} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600">
-                <span className="font-medium text-slate-500">{m.label}</span> {m.value}
-                {m.by ? ` โดย ${m.by}` : ''}
-              </span>
-            ))}
+      {/* Lifecycle: where this order is, when each step happened, and what can still be done. */}
+      <Card className="p-5">
+        {order.status === 'cancelled' ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Badge tone="danger">ยกเลิกแล้ว</Badge>
+            <span className="text-slate-500">ใบสั่งซื้อนี้ถูกยกเลิก ไม่สามารถดำเนินการต่อได้</span>
+          </div>
+        ) : (
+          <ol className="grid gap-3 sm:grid-cols-4" aria-label="ขั้นตอนของใบสั่งซื้อ">
+            {lifecycle.map((step, i) => {
+              const reached = i <= lifecycleIndex
+              const current = i === lifecycleIndex
+              return (
+                <li key={step.label} aria-current={current ? 'step' : undefined} className="flex items-start gap-3">
+                  <span
+                    className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                      reached ? theme.stepSolid : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {reached && !current ? '✓' : i + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <p className={`text-sm ${current ? 'font-semibold text-slate-900' : reached ? 'font-medium text-slate-700' : 'text-slate-500'}`}>{step.label}</p>
+                    <p className="text-xs text-slate-500">
+                      {step.date ? step.date : reached ? '' : 'ยังไม่ถึงขั้นนี้'}
+                      {step.by ? ` · ${step.by}` : ''}
+                    </p>
+                  </div>
+                </li>
+              )
+            })}
+          </ol>
+        )}
+
+        {(canEditStatus || canUnmarkReceived || canCloseShort || canCancel) && (
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-4">
+            {canEditStatus && (
+              <label className="mb-0 flex items-center gap-2 text-sm text-slate-600">
+                สถานะ
+                <select
+                  value={order.status}
+                  onChange={(e) => handleStatusChange(e.target.value as 'draft' | 'sent')}
+                  disabled={isPending}
+                  aria-label="เปลี่ยนสถานะใบสั่งซื้อ"
+                  className="py-1.5"
+                >
+                  <option value="draft">{STATUS_LABEL.draft}</option>
+                  <option value="sent">{STATUS_LABEL.sent}</option>
+                </select>
+              </label>
+            )}
+            {canUnmarkReceived && (
+              <Button type="button" variant="secondary" size="sm" onClick={() => setIsUnmarkReceivedConfirmOpen(true)} disabled={isPending}>
+                <Undo2 className="h-3.5 w-3.5" /> ยกเลิกการรับของ
+              </Button>
+            )}
+            {canCloseShort && (
+              <Button type="button" variant="secondary" size="sm" onClick={() => setIsCloseShortDialogOpen(true)} disabled={isPending}>
+                <PackageX className="h-3.5 w-3.5" /> ปิดใบสั่งซื้อ (ส่งไม่ครบ)
+              </Button>
+            )}
+            {canCancel && (
+              <Button type="button" variant="danger" size="sm" className="ml-auto" onClick={() => setIsCancelDialogOpen(true)} disabled={isPending}>
+                <XCircle className="h-3.5 w-3.5" /> ยกเลิกใบสั่งซื้อ
+              </Button>
+            )}
           </div>
         )}
-      </div>
+      </Card>
 
       {boqCheck && !boqCheck.isOutsideBoq && boqCheck.lines.length > 0 && (
         <BoqCheckPanel

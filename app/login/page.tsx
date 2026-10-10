@@ -1,5 +1,6 @@
 import { Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import NoticeBanner from '@/components/ui/NoticeBanner'
 import { login } from './actions'
 
 type LoginPageProps = {
@@ -22,8 +23,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <p className="mt-1 text-sm text-slate-500">เข้าสู่ระบบเพื่อใช้งาน</p>
         </div>
 
-        {error ? <div className="rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-        {success ? <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{success}</div> : null}
+        {error ? <NoticeBanner tone="error" message={error} /> : null}
+        {success ? <NoticeBanner tone="success" message={success} /> : null}
 
         <div className="space-y-1.5">
           <label htmlFor="email" className="text-sm font-medium text-slate-600">
@@ -34,6 +35,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             name="email"
             type="email"
             required
+            autoComplete="email"
+            aria-invalid={error ? true : undefined}
             placeholder="admin@example.com"
             className="w-full"
           />
@@ -48,7 +51,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             name="password"
             type="password"
             required
-            placeholder="อย่างน้อย 6 ตัวอักษร"
+            autoComplete="current-password"
+            aria-invalid={error ? true : undefined}
+            placeholder="รหัสผ่านของคุณ"
             className="w-full"
           />
         </div>

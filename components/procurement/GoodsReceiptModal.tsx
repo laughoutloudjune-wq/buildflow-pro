@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { Loader2 } from 'lucide-react'
+import { AlertTriangle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 import { todayInBangkok } from '@/lib/utils'
 import { createGoodsReceipt } from '@/actions/procurement-actions'
 import { getBoqCheckForGoodsReceiptDraft } from '@/actions/procurement/boq-control'
@@ -33,6 +34,7 @@ export default function GoodsReceiptModal({
   onSuccess: () => void
 }) {
   const toast = useToast()
+  const { theme } = useDepartment()
   const [isPending, startTransition] = useTransition()
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [quantities, setQuantities] = useState<Record<string, string>>({})
@@ -83,6 +85,12 @@ export default function GoodsReceiptModal({
   }, [isOpen, order.id])
 
   const selectedCount = Object.values(selected).filter(Boolean).length
+  // Value of what is being received now (order line price x quantity entered).
+  const receiptTotal = receivableItems.reduce(
+    (sum, { item }) => (selected[item.id] ? sum + (Number(quantities[item.id]) || 0) * Number(item.unit_price || 0) : sum),
+    0
+  )
+  const overCount = receivableItems.filter(({ item, remaining }) => selected[item.id] && (Number(quantities[item.id]) || 0) > remaining).length
 
   // Stable key so the check below only re-fires when a checked quantity
   // actually changes, not on every unrelated re-render.
@@ -156,7 +164,7 @@ export default function GoodsReceiptModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="สร้างใบรับสินค้า" panelClassName="max-w-2xl">
+    <Modal isOpen={isOpen} onClose={onClose} title="สร้างใบรับสินค้า" panelClassName="max-w-4xl">
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-slate-500">เลือกสินค้าที่ได้รับหรือต้องการระบุในใบรับสินค้า</p>
@@ -174,7 +182,7 @@ export default function GoodsReceiptModal({
                 type="button"
                 onClick={() => setDefaultDestination(d)}
                 className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                  defaultDestination === d ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+                  defaultDestination === d ? theme.pill : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
                 }`}
               >
                 {DESTINATION_LABEL[d]}
@@ -188,55 +196,65 @@ export default function GoodsReceiptModal({
             ไม่มีรายการที่รอรับของแล้ว
           </p>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-200">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-500">
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[44rem] text-left text-sm">
+              <thead className="bg-slate-50 text-slate-600">
                 <tr>
                   <th className="w-8 px-3 py-2" />
-                  <th className="w-8 px-1 py-2 text-xs font-medium">#</th>
-                  <th className="px-2 py-2 text-xs font-medium">รายการสินค้า</th>
-                  <th className="w-32 px-3 py-2 text-right text-xs font-medium">จำนวนสินค้า</th>
-                  <th className="w-32 px-3 py-2 text-xs font-medium">ปลายทาง</th>
+                  <th className="px-2 py-2 text-xs font-semibold">รายการสินค้า</th>
+                  <th className="w-20 px-2 py-2 text-right text-xs font-semibold">สั่ง</th>
+                  <th className="w-20 px-2 py-2 text-right text-xs font-semibold">รับแล้ว</th>
+                  <th className="w-32 px-2 py-2 text-right text-xs font-semibold">รับครั้งนี้</th>
+                  <th className="w-24 px-2 py-2 text-right text-xs font-semibold">คงเหลือหลังรับ</th>
+                  <th className="w-36 px-3 py-2 text-xs font-semibold">ปลายทาง</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {receivableItems.map(({ item, remaining }, i) => {
+                {receivableItems.map(({ item, remaining }) => {
                   const checked = !!selected[item.id]
                   const enteredQty = Number(quantities[item.id]) || 0
                   const overRemaining = checked && enteredQty > remaining
+                  const unit = item.unit || item.material_types?.unit || ''
+                  const afterReceipt = checked ? remaining - enteredQty : remaining
+                  const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 3 })
                   return (
-                    <tr key={item.id}>
+                    <tr key={item.id} className={overRemaining ? 'bg-amber-50/60' : checked ? '' : 'text-slate-500'}>
                       <td className="px-3 py-2">
                         <input
                           type="checkbox"
+                          aria-label={`รับ ${item.material_types?.name || 'สินค้า'}`}
                           checked={checked}
                           onChange={(e) => setSelected((prev) => ({ ...prev, [item.id]: e.target.checked }))}
                           className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
                       </td>
-                      <td className="px-1 py-2 text-slate-500">{i + 1}</td>
-                      <td className="px-2 py-2 text-slate-800">{item.material_types?.name || '-'}</td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-2 py-2 text-slate-800">
+                        {item.material_types?.name || '-'}
+                        <span className="ml-1 text-xs text-slate-500">{unit}</span>
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums">{fmt(item.quantity_ordered)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{fmt(item.quantity_received)}</td>
+                      <td className="px-2 py-2 text-right">
                         {checked ? (
-                          <>
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              value={quantities[item.id] ?? ''}
-                              onChange={(e) => setQuantities((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                              className={`w-24 text-right ${overRemaining ? 'border-amber-400 focus:border-amber-500' : ''}`}
-                            />
-                            {overRemaining && (
-                              <div className="mt-1 text-[11px] font-medium text-amber-600">
-                                มากกว่าจำนวนคงเหลือ {remaining.toLocaleString('th-TH')} {item.unit || item.material_types?.unit}
-                              </div>
-                            )}
-                          </>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            aria-label={`จำนวนที่รับครั้งนี้ ${item.material_types?.name || ''}`}
+                            aria-invalid={overRemaining || undefined}
+                            value={quantities[item.id] ?? ''}
+                            onChange={(e) => setQuantities((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                            className="w-24 text-right"
+                          />
                         ) : (
-                          <span className="text-slate-500">
-                            {remaining.toLocaleString('th-TH')} {item.unit || item.material_types?.unit}
-                          </span>
+                          <span className="text-slate-500">ไม่รับ</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums">
+                        {overRemaining ? (
+                          <span className="font-semibold text-amber-800">{fmt(afterReceipt)}</span>
+                        ) : (
+                          fmt(afterReceipt)
                         )}
                       </td>
                       <td className="px-3 py-2">
@@ -244,12 +262,18 @@ export default function GoodsReceiptModal({
                           value={destinations[item.id] || ''}
                           onChange={(e) => setDestinations((prev) => ({ ...prev, [item.id]: e.target.value as Destination | '' }))}
                           disabled={!checked}
+                          aria-label={`ปลายทาง ${item.material_types?.name || ''}`}
                           className="w-full text-xs"
                         >
                           <option value="">({DESTINATION_LABEL[defaultDestination]})</option>
                           <option value="store">{DESTINATION_LABEL.store}</option>
                           <option value="site">{DESTINATION_LABEL.site}</option>
                         </select>
+                        {overRemaining && (
+                          <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-800">
+                            <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden /> เกินจำนวนคงเหลือ {fmt(remaining)} {unit}
+                          </p>
+                        )}
                       </td>
                     </tr>
                   )
@@ -272,13 +296,25 @@ export default function GoodsReceiptModal({
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+          <div className="text-sm">
+            <p className="text-slate-500">
+              มูลค่าที่รับครั้งนี้ <span className="text-base font-semibold tabular-nums text-slate-900">฿{receiptTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </p>
+            {overCount > 0 && (
+              <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-amber-800">
+                <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> {overCount} รายการรับเกินจำนวนที่สั่งคงเหลือ
+              </p>
+            )}
+          </div>
+          <div className="flex gap-3">
           <Button type="button" variant="secondary" onClick={onClose}>
             ยกเลิก
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={isPending || receivableItems.length === 0}>
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'ตกลง'}
+            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'บันทึกใบรับสินค้า'}
           </Button>
+          </div>
         </div>
       </div>
     </Modal>

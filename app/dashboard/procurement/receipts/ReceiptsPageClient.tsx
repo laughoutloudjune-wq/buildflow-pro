@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Loader2, Wallet } from 'lucide-react'
+import { AlertTriangle, Loader2, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
+import { useDepartment } from '@/components/layout/DepartmentContext'
 import { PageToolbar } from '@/components/ui/PageToolbar'
 import { TableFrame } from '@/components/ui/TableFrame'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -52,6 +53,7 @@ export default function ReceiptsPageClient({
 }) {
   const router = useRouter()
   const toast = useToast()
+  const { theme } = useDepartment()
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -274,26 +276,37 @@ export default function ReceiptsPageClient({
           </table>
       </TableFrame>
 
-      <Modal isOpen={isPayModalOpen} onClose={() => setIsPayModalOpen(false)} title="สร้างใบสำคัญจ่าย" panelClassName="max-w-2xl">
-        <div className="space-y-4">
-          <div className="rounded-lg bg-slate-50 p-3 text-sm">
-            <p className="font-medium text-slate-700">{selectedReceipts[0]?.purchase_orders?.suppliers?.name}</p>
+      <Modal isOpen={isPayModalOpen} onClose={() => setIsPayModalOpen(false)} title="สร้างใบสำคัญจ่าย" panelClassName="max-w-3xl">
+        <div className="space-y-5">
+          <section className="space-y-2">
+          <h3 className="text-sm font-semibold text-slate-800">1. ใบรับสินค้าที่จะจ่าย</h3>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+            <p className="font-medium text-slate-800">{selectedReceipts[0]?.purchase_orders?.suppliers?.name}</p>
             <ul className="mt-1 space-y-0.5 text-slate-500">
               {selectedReceipts.map((r) => (
                 <li key={r.id} className="flex justify-between">
-                  <span>{r.ri_no}</span>
-                  <span>฿{formatCurrency(receiptAmount(r))}</span>
+                  <span>
+                    {r.ri_no}
+                    {r.purchase_orders?.po_no ? <span className="ml-2 text-xs">PO {r.purchase_orders.po_no}</span> : null}
+                  </span>
+                  <span className="tabular-nums">฿{formatCurrency(receiptAmount(r))}</span>
                 </li>
               ))}
             </ul>
             <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-semibold text-slate-800">
-              <span>ยอดรวม</span>
-              <span>฿{formatCurrency(selectedTotal)}</span>
+              <span>ยอดรวมใบรับสินค้า</span>
+              <span className="tabular-nums">฿{formatCurrency(selectedTotal)}</span>
             </div>
           </div>
+          </section>
 
-          {isPayModalOpen && <PayoutPoComparison receiptIds={Array.from(selected)} />}
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-800">2. เทียบกับใบสั่งซื้อ (PO)</h3>
+            {isPayModalOpen && <PayoutPoComparison receiptIds={Array.from(selected)} />}
+          </section>
 
+          <section className="space-y-2">
+          <h3 className="text-sm font-semibold text-slate-800">3. ตรวจสอบ BOQ</h3>
           {isBoqCheckLoading ? (
             <div className="flex items-center gap-2 py-2 text-sm text-slate-500">
               <Loader2 className="h-4 w-4 animate-spin" /> กำลังตรวจสอบ BOQ...
@@ -316,30 +329,50 @@ export default function ReceiptsPageClient({
               </div>
             )
           )}
+          </section>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">วันที่จ่าย</label>
-            <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full" />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">รูปแบบการชำระเงิน</label>
-            <div className="space-y-1.5">
-              {(Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[]).map((m) => (
-                <label key={m} className="flex items-center gap-2 text-sm text-slate-700">
-                  <input type="radio" name="payment_method" checked={paymentMethod === m} onChange={() => setPaymentMethod(m)} />
-                  {PAYMENT_METHOD_LABEL[m]}
-                </label>
-              ))}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-800">4. รายละเอียดการจ่าย</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">วันที่จ่าย</label>
+                <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full" />
+              </div>
+              <div>
+                <span className="mb-1 block text-sm font-medium text-slate-700">รูปแบบการชำระเงิน</span>
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="รูปแบบการชำระเงิน">
+                  {(Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[]).map((m) => (
+                    <label
+                      key={m}
+                      className={`mb-0 flex cursor-pointer items-center gap-2 rounded-full px-3 py-1.5 text-sm ${
+                        paymentMethod === m ? theme.pill : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input type="radio" name="payment_method" className="sr-only" checked={paymentMethod === m} onChange={() => setPaymentMethod(m)} />
+                      {PAYMENT_METHOD_LABEL[m]}
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">หมายเหตุ</label>
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="w-full" />
+            </div>
+          </section>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">หมายเหตุ</label>
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="w-full" />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+            <div className="text-sm">
+              <p className="text-slate-500">
+                ยอดที่จะจ่าย <span className="text-lg font-bold tabular-nums text-slate-900">฿{formatCurrency(selectedTotal)}</span>
+              </p>
+              {boqCheck.overCount > 0 && (
+                <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-amber-800">
+                  <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> เกิน BOQ {boqCheck.overCount} รายการ — ระบุเหตุผลในหัวข้อ 3 ก่อนบันทึก
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={() => setIsPayModalOpen(false)}>
               ยกเลิก
             </Button>
@@ -352,6 +385,7 @@ export default function ReceiptsPageClient({
                 'บันทึกการจ่ายเงิน'
               )}
             </Button>
+            </div>
           </div>
         </div>
       </Modal>

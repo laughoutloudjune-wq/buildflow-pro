@@ -57,6 +57,11 @@ export default function StockOverviewPageClient({
       .filter((r) => showAll || r.tracked)
       .filter((r) => category === 'ทั้งหมด' || r.category === category)
       .filter((r) => !q || r.name.toLowerCase().includes(q))
+      // Exceptions first: negative stock, then out of stock, then everything else in its usual order.
+      .sort((a, b) => {
+        const rank = (r: StockOverviewRow) => (r.tracked && r.quantity_on_hand < 0 ? 0 : r.tracked && r.quantity_on_hand === 0 ? 1 : 2)
+        return rank(a) - rank(b)
+      })
   }, [rows, search, category, showAll])
 
   const trackedCount = rows.filter((r) => r.tracked).length
@@ -87,20 +92,20 @@ export default function StockOverviewPageClient({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Card className="p-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">วัสดุที่มีการเคลื่อนไหว</div>
-          <div className="mt-1 text-2xl font-semibold text-slate-900">{trackedCount.toLocaleString('th-TH')}</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">สต็อกติดลบ</div>
+          <div className="text-xs font-medium text-slate-500">สต็อกติดลบ</div>
           <div className={`mt-1 text-2xl font-semibold ${negativeCount > 0 ? 'text-red-600' : 'text-slate-900'}`}>
             {negativeCount.toLocaleString('th-TH')}
           </div>
         </Card>
         <Card className="p-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">สต็อกหมด (0)</div>
+          <div className="text-xs font-medium text-slate-500">สต็อกหมด (0)</div>
           <div className={`mt-1 text-2xl font-semibold ${zeroCount > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
             {zeroCount.toLocaleString('th-TH')}
           </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs font-medium text-slate-500">วัสดุที่มีการเคลื่อนไหว</div>
+          <div className="mt-1 text-2xl font-semibold text-slate-900">{trackedCount.toLocaleString('th-TH')}</div>
         </Card>
       </div>
 

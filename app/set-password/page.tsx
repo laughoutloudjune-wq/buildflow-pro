@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import NoticeBanner from '@/components/ui/NoticeBanner'
 import { createClient } from '@/lib/supabase/client'
 import { updateUserFullName } from '@/actions/settings-actions'
 
@@ -84,12 +85,10 @@ export default function SetPasswordPage() {
         {checking ? (
           <p className="text-center text-sm text-slate-500">กำลังตรวจสอบลิงก์...</p>
         ) : !hasSession ? (
-          <div className="rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            ลิงก์นี้ไม่ถูกต้องหรือหมดอายุแล้ว กรุณาติดต่อผู้ดูแลระบบเพื่อขอลิงก์เชิญใหม่
-          </div>
+          <NoticeBanner tone="error" message="ลิงก์นี้ไม่ถูกต้องหรือหมดอายุแล้ว กรุณาติดต่อผู้ดูแลระบบเพื่อขอลิงก์เชิญใหม่" />
         ) : (
           <>
-            {error ? <div className="rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+            {error ? <NoticeBanner tone="error" message={error} /> : null}
 
             <div className="space-y-1.5">
               <label htmlFor="full_name" className="text-sm font-medium text-slate-600">
@@ -118,8 +117,13 @@ export default function SetPasswordPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="อย่างน้อย 6 ตัวอักษร"
+                autoComplete="new-password"
+                aria-describedby="password-hint"
                 className="w-full"
               />
+              <p id="password-hint" className={`text-xs ${password.length >= 6 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                {password.length >= 6 ? '✓ ' : ''}ต้องมีอย่างน้อย 6 ตัวอักษร ({password.length}/6)
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -134,8 +138,14 @@ export default function SetPasswordPage() {
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 placeholder="กรอกรหัสผ่านอีกครั้ง"
+                autoComplete="new-password"
+                aria-invalid={confirm.length > 0 && confirm !== password ? true : undefined}
+                aria-describedby="confirm-hint"
                 className="w-full"
               />
+              <p id="confirm-hint" role={confirm.length > 0 && confirm !== password ? 'alert' : undefined} className={`text-xs ${confirm.length > 0 && confirm !== password ? 'font-medium text-red-700' : 'text-slate-500'}`}>
+                {confirm.length > 0 && confirm !== password ? 'รหัสผ่านไม่ตรงกัน' : confirm.length > 0 ? '✓ ตรงกัน' : 'พิมพ์รหัสผ่านเดิมอีกครั้ง'}
+              </p>
             </div>
 
             <Button type="submit" disabled={submitting} className="w-full">
