@@ -3,7 +3,7 @@
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling, getJobProgressHistory } from '@/actions/billing-actions'
+import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling, getJobProgressHistory, getRecordedProgress } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -20,6 +20,10 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Modal from '@/components/ui/Modal'
 import NoticeBanner from '@/components/ui/NoticeBanner'
 import type { BillingAdjustmentForm, ProgressHistoryItem } from '@/lib/types/billing'
+import RecordedProgressCell from '@/components/billings/RecordedProgressCell'
+import ReasonDialog from '@/components/ui/ReasonDialog'
+import { checkClaimAgainstRecorded, type RecordedProgress } from '@/lib/billing'
+import { todayInBangkok } from '@/lib/utils'
 
 type BillingData = Awaited<ReturnType<typeof getBillingById>>
 type Job = NonNullable<NonNullable<BillingData>['billing_jobs']>[number]
@@ -56,12 +60,13 @@ export default function ReviewBillingPageClient({
   const [billingDate, setBillingDate] = useState(initialBillingDate)
   const [whtPercent] = useState(initialWhtPercent)
   const [retentionPercent] = useState(initialRetentionPercent)
+  const [recordedByJob, setRecordedByJob] = useState<Record<string, RecordedProgress>>({})
   const [progressHistoryByJob, setProgressHistoryByJob] = useState<Record<string, ProgressHistoryItem[]>>(initialProgressHistoryByJob)
   const [expandedHistoryRows, setExpandedHistoryRows] = useState<Set<string>>(new Set())
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(initialError)
-  const [confirmAction, setConfirmAction] = useState<'delete' | 'undoApprove' | 'approve' | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'delete' | 'undoApprove' | 'approve' | 'approveOver' | null>(null)
   const [rejectModalOpen, setRejectModalOpen] = useState(false)
   const [rejectNote, setRejectNote] = useState('')
 
@@ -187,6 +192,21 @@ export default function ReviewBillingPageClient({
     }
   }, [jobs])
 
+  const jobIdsKey = (jobs || [])
+    .map((job: Job) => job.job_assignments?.id)
+    .filter(Boolean)
+    .join(',')
+  useEffect(() => {
+    if (!jobIdsKey) return
+    let mounted = true
+    getRecordedProgress(jobIdsKey.split(','))
+      .then((res) => mounted && setRecordedByJob(res || {}))
+      .catch(() => mounted && setRecordedByJob({}))
+    return () => {
+      mounted = false
+    }
+  }, [jobIdsKey])
+
   const toggleHistory = (jobAssignmentId: string) => {
     setExpandedHistoryRows((prev) => {
       const next = new Set(prev)
@@ -196,7 +216,12 @@ export default function ReviewBillingPageClient({
     })
   }
 
-  const handleApprove = async () => {
+  // Jobs whose approved % is well above what the site record shows: approving needs a reason.
+  const overClaimCount = (jobs || []).filter(
+    (j: Job) => checkClaimAgainstRecorded(Number(j.progress_percent || 0), recordedByJob[j.job_assignments?.id], todayInBangkok()).over
+  ).length
+
+  const handleApprove = async (overclaimReason?: string) => {
     setError(null)
     setIsSubmitting(true)
     try {
@@ -218,6 +243,7 @@ export default function ReviewBillingPageClient({
         type: billing?.type,
         attachment_urls: billing?.attachment_urls,
         reason_for_dc: billing?.reason_for_dc,
+        overclaim_reason: overclaimReason ?? null,
       }
       const result = await approveBilling(id, approvalData)
       if ('error' in result) {
@@ -410,6 +436,12 @@ export default function ReviewBillingPageClient({
                 <p className="text-xs text-slate-500">
                   {changedJobs > 0 ? `ปรับ % แล้ว ${changedJobs} รายการ` : 'ยังไม่ได้ปรับ % จากที่ Foreman แจ้ง'} · แก้ช่อง “% อนุมัติ” เพื่อปรับยอด
                 </p>
+                {overClaimCount > 0 && isPending && (
+                  <p className="mt-1 text-xs font-medium text-red-700">⚠ {overClaimCount} งานอนุมัติ % สูงกว่าความคืบหน้าจริงหน้างาน — ต้องระบุเหตุผลตอนอนุมัติ</p>
+                )}
+                {billing.overclaim_reason && (
+                  <p className="mt-1 text-xs text-amber-800">อนุมัติเกินความคืบหน้าจริง เหตุผล: {billing.overclaim_reason}</p>
+                )}
               </div>
               <TableFrame>
                 <table>
@@ -421,6 +453,7 @@ export default function ReviewBillingPageClient({
                       <th className="px-6 py-3 text-right whitespace-nowrap">คงเหลือก่อนเบิก</th>
                       <th className="px-6 py-3 text-right whitespace-nowrap">% ที่แจ้ง</th>
                       <th className="px-6 py-3 text-right whitespace-nowrap">% อนุมัติ</th>
+                      <th className="px-6 py-3 text-right whitespace-nowrap">ความคืบหน้าจริงหน้างาน</th>
                       <th className="px-6 py-3 text-right whitespace-nowrap">ยอดเงิน</th>
                       <th className="px-6 py-3 text-right whitespace-nowrap">คงเหลือหลังเบิก</th>
                       <th className="px-6 py-3"></th>
@@ -480,6 +513,9 @@ export default function ReviewBillingPageClient({
                                 </p>
                               )}
                             </td>
+                            <td className="px-6 py-4">
+                              <RecordedProgressCell recorded={recordedByJob[jobAssignmentId]} claimed={Number(job.progress_percent || 0)} />
+                            </td>
                             <td className="px-6 py-4 text-right font-medium">{formatCurrency(job.amount || 0)}</td>
                             <td className="px-6 py-4 text-right font-semibold text-emerald-700">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(job.paid || 0) - Number(job.amount || 0)))}</td>
                             <td className="px-6 py-4 text-right">
@@ -496,7 +532,7 @@ export default function ReviewBillingPageClient({
                           </tr>
                           {isExpanded && (
                             <tr>
-                              <td colSpan={9} className="px-6 pb-4 pt-1">
+                              <td colSpan={10} className="px-6 pb-4 pt-1">
                                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                   <div className="text-xs font-semibold text-slate-700 mb-2">ประวัติความคืบหน้าเดิม</div>
                                   <div className="overflow-x-auto">
@@ -642,7 +678,7 @@ export default function ReviewBillingPageClient({
               <Button variant="danger" onClick={() => setRejectModalOpen(true)} disabled={isSubmitting}>
                 {isSubmitting ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}
               </Button>
-              <Button onClick={() => setConfirmAction('approve')} disabled={isSubmitting}>
+              <Button onClick={() => setConfirmAction(overClaimCount > 0 ? 'approveOver' : 'approve')} disabled={isSubmitting}>
                 {isSubmitting ? 'กำลังอนุมัติ...' : 'อนุมัติและจบงาน'}
               </Button>
             </div>
@@ -653,6 +689,20 @@ export default function ReviewBillingPageClient({
           )}
         </Card>
       </div>
+
+      <ReasonDialog
+        isOpen={confirmAction === 'approveOver'}
+        title="อนุมัติเกินความคืบหน้าจริง"
+        label={`มี ${overClaimCount} งานที่อนุมัติ % สูงกว่าความคืบหน้าจริงหน้างาน กรุณาระบุเหตุผล (เช่น จ่ายล่วงหน้าตามข้อตกลง)`}
+        required
+        confirmLabel={isSubmitting ? 'กำลังอนุมัติ...' : 'ยืนยันอนุมัติ'}
+        busy={isSubmitting}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={async (reason) => {
+          await handleApprove(reason)
+          setConfirmAction(null)
+        }}
+      />
 
       <ConfirmDialog
         isOpen={confirmAction === 'approve'}

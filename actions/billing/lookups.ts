@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import type { ProgressHistoryItem } from '@/lib/types/billing'
+import { latestRecordedByJob, type RecordedProgress } from '@/lib/billing'
 
 // Contractor rates, job payments and billing history are construction money
 // (M-03) - sales must never reach these, foreman/PM/admin/accountant may.
@@ -204,4 +205,26 @@ export async function getBillableJobs(projectId: string, contractorId: string, p
       }
     })
     .filter((job) => job.remaining > 0)
+}
+
+/**
+ * Real site progress per job, from the weekly plan's ACTUAL row: the latest
+ * day anyone filled in, across all weeks. Jobs never put on a plan are
+ * simply absent. Weekly-plan rows are readable by admin/pm/foreman only, so
+ * for any other billing role this comes back empty.
+ */
+export async function getRecordedProgress(jobAssignmentIds: string[]): Promise<Record<string, RecordedProgress>> {
+  await requireModuleAccess([...MONEY_MODULES])
+  const supabase = await createClient()
+  const ids = Array.from(new Set((jobAssignmentIds || []).filter(Boolean)))
+  if (ids.length === 0) return {}
+
+  const { data, error } = await supabase
+    .from('weekly_plan_items')
+    .select('job_assignment_id, week_start, actual_pct')
+    .in('job_assignment_id', ids)
+    .not('actual_pct', 'is', null)
+  if (error) throw new Error(error.message)
+
+  return latestRecordedByJob((data || []) as { job_assignment_id: string; week_start: string; actual_pct: (number | null)[] }[])
 }

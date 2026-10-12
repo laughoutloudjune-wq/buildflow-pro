@@ -26,6 +26,7 @@ import {
   formatWeekRange,
   groupPlanItems,
   isBehindPlan,
+  isMaterialAheadOfWork,
   latestPct,
   mondayOf,
   WEEKLY_PLAN_KINDS,
@@ -33,11 +34,81 @@ import {
 } from '@/lib/weekly-plan'
 import ActionMenu from '@/components/ui/ActionMenu'
 import WeeklyPlanItemModal from './WeeklyPlanItemModal'
+import JobMaterialDetailModal from './JobMaterialDetailModal'
+import RecordProgressModal from './RecordProgressModal'
 
 /** Latest filled-in value of a Mon..Sun % row. */
 function lastPct(values: (number | null)[]): number | null {
   for (let i = values.length - 1; i >= 0; i--) if (values[i] != null) return values[i]
   return null
+}
+
+/** Material and progress figures for one row or group: BOQ material, material really used, progress expected, progress actual. */
+function ProgressMetrics({
+  materialBoq,
+  materialUsed,
+  plan,
+  actual,
+  carry,
+  warn,
+  averaged,
+  overCount = 0,
+  onDetail,
+}: {
+  materialBoq: number | null
+  materialUsed: number | null
+  plan: number | null
+  actual: number | null
+  carry?: number | null
+  warn: boolean
+  averaged?: boolean
+  /** materials ordered or issued beyond the BOQ */
+  overCount?: number
+  /** opens the material breakdown; omitted for groups (open a plot's row instead) */
+  onDetail?: () => void
+}) {
+  const cells = [
+    { label: 'วัสดุตาม BOQ', hint: 'สัดส่วนวัสดุของงานนี้เทียบกับ BOQ ทั้งหลัง', value: materialBoq },
+    { label: 'วัสดุสั่งจริง', hint: 'วัสดุที่สั่งซื้อแล้ว (PO) เทียบกับ BOQ ของแบบบ้าน', value: materialUsed, warn: warn || overCount > 0, detail: true },
+    { label: 'งานตามแผน', hint: 'ความคืบหน้าที่วางแผนไว้ (PLAN)', value: plan },
+    { label: 'งานจริง', hint: 'ความคืบหน้าจริง (ACTUAL)', value: actual },
+  ]
+  return (
+    <div className="mt-1.5">
+      <dl className="grid max-w-md grid-cols-4 gap-2">
+        {cells.map((c) => {
+          const cls = `rounded-md px-2 py-1 text-left ${c.warn ? 'bg-red-50 ring-1 ring-inset ring-red-200' : 'bg-slate-50'}`
+          const inner = (
+            <>
+              <dt className="text-[10px] leading-tight text-slate-500">{c.label}</dt>
+              <dd className={`text-sm font-semibold tabular-nums ${c.warn ? 'text-red-700' : 'text-slate-800'}`}>{c.value == null ? '-' : `${c.value}%`}</dd>
+            </>
+          )
+          return c.detail && onDetail && c.value != null ? (
+            <button key={c.label} type="button" title="กดเพื่อดูรายละเอียดวัสดุ" onClick={onDetail} className={`${cls} hover:ring-2`}>
+              {inner}
+            </button>
+          ) : (
+            <div key={c.label} title={c.hint} className={cls}>
+              {inner}
+            </div>
+          )
+        })}
+      </dl>
+      {(carry != null || averaged || warn || overCount > 0) && (
+        <p className="mt-0.5 text-[11px] text-slate-500">
+          {carry != null && <>ยกมา {carry}% · </>}
+          {averaged && <>ค่าเฉลี่ยของกลุ่ม · </>}
+          {overCount > 0 && (
+            <span className="font-medium text-red-700">
+              วัสดุเกิน BOQ {overCount} รายการ{onDetail ? ' · กดที่ช่องวัสดุสั่งจริงเพื่อดูรายละเอียด' : ' · ดูรายแปลงเพื่อดูรายละเอียด'}
+            </span>
+          )}
+          {warn && overCount === 0 && <span className="font-medium text-amber-700">สั่งวัสดุเกินกว่างานที่เสร็จ</span>}
+        </p>
+      )}
+    </div>
+  )
 }
 
 /** Task groups shown per week before "view all". */
@@ -51,6 +122,8 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
   const [pending, startTransition] = useTransition()
   const [view, setView] = useState<'week' | 'month'>('week')
   const [modal, setModal] = useState<{ open: boolean; item: WeeklyPlanItem | null }>({ open: false, item: null })
+  const [recordItem, setRecordItem] = useState<WeeklyPlanItem | null>(null)
+  const [materialItem, setMaterialItem] = useState<WeeklyPlanItem | null>(null)
   const [deleting, setDeleting] = useState<WeeklyPlanItem[] | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [monthExpanded, setMonthExpanded] = useState<Set<string>>(new Set())
@@ -115,12 +188,21 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
           {item.contractorName ? `${item.contractorName} · ` : ''}
           {item.ownerName ? `ผู้รับผิดชอบ: ${item.ownerName}` : <span className="text-amber-600">ยังไม่มีผู้รับผิดชอบ</span>}
         </p>
-        {(item.carryPct != null || lastPct(item.planPct) != null || lastPct(item.actualPct) != null) && (
-          <p className="mt-0.5 text-xs text-slate-500">
-            {item.carryPct != null && <>ยกมา {item.carryPct}% · </>}
-            PLAN {lastPct(item.planPct) ?? '-'}% · ACTUAL {lastPct(item.actualPct) ?? '-'}%
-          </p>
+        {(item.carryPct != null || item.materialUsedPct != null || lastPct(item.planPct) != null || lastPct(item.actualPct) != null) && (
+          <ProgressMetrics
+            materialBoq={item.materialBoqPct}
+            materialUsed={item.materialUsedPct}
+            plan={lastPct(item.planPct)}
+            actual={lastPct(item.actualPct)}
+            carry={item.carryPct}
+            warn={isMaterialAheadOfWork(item)}
+            overCount={item.materialOverCount}
+            onDetail={item.jobBoqItemId && item.plotId ? () => setMaterialItem(item) : undefined}
+          />
         )}
+        <button type="button" onClick={() => setRecordItem(item)} className="mt-1 text-xs font-medium text-indigo-600 hover:underline">
+          บันทึกความคืบหน้าจริง
+        </button>
         {item.note && <p className="mt-0.5 text-xs text-slate-500">{item.note}</p>}
       </div>
       {canEdit(item) && (
@@ -152,6 +234,9 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
     const names = group.map((i) => i.plotName).filter((n): n is string => !!n)
     const plan = average(group.map((i) => latestPct(i.planPct)?.value ?? null))
     const actual = average(group.map((i) => latestPct(i.actualPct)?.value ?? null))
+    const matBoq = average(group.map((i) => i.materialBoqPct))
+    const matUsed = average(group.map((i) => i.materialUsedPct))
+    const matWarn = matUsed != null && actual != null && matUsed > actual + 15
     const canDeleteAll = group.every((i) => canEdit(i)) && !isAgreed(first.weekStart)
     const toggleAll = () =>
       run(async () => {
@@ -191,10 +276,8 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
               {first.contractorName ? `${first.contractorName} · ` : ''}
               {first.ownerName ? `ผู้รับผิดชอบ: ${first.ownerName}` : <span className="text-amber-700">ยังไม่มีผู้รับผิดชอบ</span>}
             </p>
-            {(plan != null || actual != null) && (
-              <p className="mt-0.5 text-xs text-slate-500">
-                เฉลี่ย PLAN {plan ?? '-'}% · ACTUAL {actual ?? '-'}%
-              </p>
+            {(plan != null || actual != null || matUsed != null) && (
+              <ProgressMetrics materialBoq={matBoq} materialUsed={matUsed} plan={plan} actual={actual} warn={matWarn} averaged overCount={group.reduce((n, i) => n + i.materialOverCount, 0)} />
             )}
             <button
               type="button"
@@ -605,6 +688,9 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
           }}
         />
       )}
+
+      {recordItem && <RecordProgressModal item={recordItem} onClose={() => setRecordItem(null)} />}
+      {materialItem && <JobMaterialDetailModal item={materialItem} onClose={() => setMaterialItem(null)} />}
 
       <ConfirmDialog
         isOpen={!!deleting}

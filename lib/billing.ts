@@ -1,3 +1,5 @@
+import { addDaysStr, latestPct } from '@/lib/weekly-plan'
+
 export type BillingRequestType = 'progress' | 'extra_work'
 export type BillingAdjustmentType = 'addition' | 'deduction'
 
@@ -188,4 +190,38 @@ export function validateBillingPayload(payload: BillingPayload): ValidatedBillin
       payload.retention_percent == null ? undefined : clampPercent(payload.retention_percent),
     ...totals,
   }
+}
+
+/** Site progress recorded on the weekly plan for one job: cumulative %, and the day it was recorded for. */
+export type RecordedProgress = { pct: number; asOf: string }
+
+/** A claim this many percentage points above the recorded progress gets a warning. */
+export const PROGRESS_CLAIM_TOLERANCE = 5
+/** A recorded figure older than this many days is flagged as stale. */
+export const PROGRESS_STALE_DAYS = 14
+
+export type ClaimCheck = { none: boolean; over: boolean; stale: boolean; gap: number; ageDays: number }
+
+/** Compares a claimed cumulative % with the recorded site progress. Warns only - never blocks a request. */
+export function checkClaimAgainstRecorded(claimed: number | null, recorded: RecordedProgress | undefined, today: string): ClaimCheck {
+  if (!recorded) return { none: true, over: false, stale: false, gap: 0, ageDays: 0 }
+  const gap = claimed == null ? 0 : claimed - recorded.pct
+  const ageDays = Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${recorded.asOf}T00:00:00Z`)) / 86400000)
+  return { none: false, over: claimed != null && gap > PROGRESS_CLAIM_TOLERANCE, stale: ageDays > PROGRESS_STALE_DAYS, gap, ageDays }
+}
+
+/** Latest recorded progress per job from weekly-plan rows (each with its ACTUAL Mon..Sun row). */
+export function latestRecordedByJob(
+  rows: { job_assignment_id: string | null; week_start: string; actual_pct: (number | null)[] | null }[]
+): Record<string, RecordedProgress> {
+  const out: Record<string, RecordedProgress> = {}
+  for (const row of rows) {
+    if (!row.job_assignment_id) continue
+    const latest = latestPct((row.actual_pct || []).map((v) => (v == null ? null : Number(v))))
+    if (!latest) continue
+    const asOf = addDaysStr(row.week_start, latest.day)
+    const cur = out[row.job_assignment_id]
+    if (!cur || asOf > cur.asOf) out[row.job_assignment_id] = { pct: latest.value, asOf }
+  }
+  return out
 }

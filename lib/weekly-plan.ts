@@ -135,6 +135,39 @@ export function isBehindPlan(item: DailyPct): boolean {
   return plan != null && actual.value + 0.5 < plan
 }
 
+/**
+ * Material picture of one BOQ job on one plot: the house type's BOQ against
+ * what has been ordered for the plot. Orders are per plot and material, not
+ * per job, so a material shared by several jobs shows the same used %.
+ * Both figures are averaged over the job's materials (units differ, so
+ * quantities can't be added). Materials the plot has no BOQ for are skipped.
+ *  - boqSharePct: how much of the house's BOQ material this job accounts for
+ *  - usedPct:     how much of that BOQ material has been ordered
+ */
+export function jobMaterialUsage(
+  jobMaterials: { materialTypeId: number; plannedQty: number }[],
+  plotPlanned: Map<number, number>,
+  plotOrdered: Map<number, number>
+): { boqSharePct: number; usedPct: number } | null {
+  let share = 0
+  let used = 0
+  let n = 0
+  for (const m of jobMaterials) {
+    const total = plotPlanned.get(m.materialTypeId) ?? 0
+    if (total <= 0 || m.plannedQty <= 0) continue
+    share += (m.plannedQty / total) * 100
+    used += ((plotOrdered.get(m.materialTypeId) ?? 0) / total) * 100
+    n++
+  }
+  return n === 0 ? null : { boqSharePct: round1(share / n), usedPct: round1(used / n) }
+}
+
+/** Used material is well ahead of finished work: more than 15 points above the latest ACTUAL %. */
+export function isMaterialAheadOfWork(item: { materialUsedPct: number | null; actualPct: (number | null)[] }): boolean {
+  const actual = latestPct(item.actualPct)
+  return item.materialUsedPct != null && actual != null && item.materialUsedPct > actual.value + 15
+}
+
 type Groupable = {
   kind: string
   title: string

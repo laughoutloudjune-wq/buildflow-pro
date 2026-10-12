@@ -127,6 +127,7 @@ export const DEPARTMENTS: Department[] = [
       { icon: CalendarDays, label: 'แผนงาน', href: '/dashboard/weekly-plan', permission: 'projects' },
       { icon: HardHat, label: 'ตรวจหน้างาน', href: '/dashboard/foreman/create-progress', permission: 'foreman' },
       { icon: FileText, label: 'รายการเบิกจ่าย', href: '/dashboard/billing', permission: 'billing' },
+      { icon: Wallet, label: 'ยอดคงเหลือผู้รับเหมา', href: '/dashboard/billing/balances', permission: 'billing' },
       { icon: Users, label: 'ผู้รับเหมา', href: '/dashboard/contractors', permission: 'contractors' },
       {
         icon: ClipboardCheck,

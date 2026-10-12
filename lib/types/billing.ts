@@ -104,6 +104,8 @@ export type BillingApprovalPayload = {
   type?: 'progress' | 'extra_work'
   attachment_urls?: string[] | null
   reason_for_dc?: string | null
+  /** Required when an approved % is well above the recorded site progress */
+  overclaim_reason?: string | null
 }
 
 export type BillingActionSignature = {

@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { getBillableJobs, createBillingRequest, getBillingById, updateBillingRequest, getJobProgressHistory } from '@/actions/billing-actions'
+import { getBillableJobs, createBillingRequest, getBillingById, updateBillingRequest, getJobProgressHistory, getRecordedProgress } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -13,6 +13,8 @@ import Modal from '@/components/ui/Modal'
 import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
 import { CheckCircle } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
+import RecordedProgressCell from '@/components/billings/RecordedProgressCell'
+import type { RecordedProgress } from '@/lib/billing'
 import type { BillingAdjustmentForm, BillableJob, ContractorOption, ProgressHistoryItem, ProjectOption, SelectedBillingJobState } from '@/lib/types/billing'
 
 type Adjustment = BillingAdjustmentForm
@@ -49,6 +51,7 @@ export default function CreateBillingRequestPageClient({
   const [jobSearch, setJobSearch] = useState('')
   const [jobPlotFilter, setJobPlotFilter] = useState('')
   const [selectedJobs, setSelectedJobs] = useState<Map<string, SelectedBillingJobState>>(new Map())
+  const [recordedByJob, setRecordedByJob] = useState<Record<string, RecordedProgress>>({})
   const [progressHistoryByJob, setProgressHistoryByJob] = useState<Record<string, ProgressHistoryItem[]>>({})
   const [adjustments, setAdjustments] = useState<Adjustment[]>(initialAdjustments)
   const [note, setNote] = useState(initialNote)
@@ -97,6 +100,21 @@ export default function CreateBillingRequestPageClient({
     setSelectedJobs(next)
     setDidPrefillJobs(true)
   }, [editId, editingBilling, didPrefillJobs, billableJobs])
+
+  const billableIdsKey = billableJobs.map((j) => j.id).join(',')
+  useEffect(() => {
+    if (!billableIdsKey) {
+      setRecordedByJob({})
+      return
+    }
+    let mounted = true
+    getRecordedProgress(billableIdsKey.split(','))
+      .then((res) => mounted && setRecordedByJob(res || {}))
+      .catch(() => mounted && setRecordedByJob({}))
+    return () => {
+      mounted = false
+    }
+  }, [billableIdsKey])
 
   useEffect(() => {
     const selectedIds = Array.from(selectedJobs.keys())
@@ -347,6 +365,7 @@ export default function CreateBillingRequestPageClient({
                     <th className="px-4 py-3 text-right">คงเหลือก่อนเบิก</th>
                     <th className="px-4 py-3 text-right">คืบหน้าเดิม %</th>
                     <th className="px-4 py-3 text-right">คืบหน้าปัจจุบัน %</th>
+                    <th className="px-4 py-3 text-right">ความคืบหน้าจริงหน้างาน</th>
                     <th className="px-4 py-3 text-right">ยอดขอเบิก (บาท)</th>
                     <th className="px-4 py-3 text-right">คงเหลือหลังเบิก</th>
                   </tr>
@@ -382,6 +401,12 @@ export default function CreateBillingRequestPageClient({
                               />
                             )}
                           </td>
+                          <td className="px-4 py-3">
+                            <RecordedProgressCell
+                              recorded={recordedByJob[job.id]}
+                              claimed={selectedJobs.has(job.id) && selected?.progress ? parseFloat(selected.progress) : null}
+                            />
+                          </td>
                           <td className="px-4 py-3 text-right">
                             {selectedJobs.has(job.id) && (
                               <input
@@ -401,7 +426,7 @@ export default function CreateBillingRequestPageClient({
 
                         {selectedJobs.has(job.id) && (
                           <tr>
-                            <td colSpan={10} className="px-4 pb-4 pt-1">
+                            <td colSpan={11} className="px-4 pb-4 pt-1">
                               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                 <div className="text-xs font-semibold text-slate-700 mb-2">ประวัติความคืบหน้า (แสดงเฉพาะงานที่เลือก)</div>
                                 <div className="overflow-x-auto">
@@ -465,7 +490,7 @@ export default function CreateBillingRequestPageClient({
 
                   {filteredBillableJobs.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-6 py-4 text-center text-slate-500">ไม่พบงานตามตัวกรอง</td>
+                      <td colSpan={11} className="px-6 py-4 text-center text-slate-500">ไม่พบงานตามตัวกรอง</td>
                     </tr>
                   )}
                 </tbody>

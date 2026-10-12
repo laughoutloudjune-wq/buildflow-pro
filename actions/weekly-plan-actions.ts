@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getDashboardSession } from '@/lib/auth/route-access'
-import { addDaysStr, isMonday, mondayOf, weeksOfMonth, type WeeklyPlanKind, type WeeklyPlanStatus } from '@/lib/weekly-plan'
+import { addDaysStr, isMonday, jobMaterialUsage, mondayOf, weeksOfMonth, type WeeklyPlanKind, type WeeklyPlanStatus } from '@/lib/weekly-plan'
 
 export type WeeklyPlanItem = {
   id: string
@@ -29,6 +29,13 @@ export type WeeklyPlanItem = {
   jobQuantity: number | null
   jobUnit: string | null
   jobTrade: string | null
+  jobBoqItemId: string | null
+  /** BOQ work only: how many of the job's materials are ordered or issued beyond the plot's BOQ (+ allowed waste) */
+  materialOverCount: number
+  /** BOQ work only (null otherwise or when the job has no BOQ materials): the job's share of the house's BOQ material, % */
+  materialBoqPct: number | null
+  /** BOQ work only: % of that BOQ material already ordered for the plot (POs) */
+  materialUsedPct: number | null
 }
 
 /** One BOQ job on a plot, offered in the plan editor. No prices are exposed. */
@@ -132,8 +139,88 @@ type RawItem = {
   owner: { full_name: string | null } | null
   contractor: { name: string } | null
   job_assignments: {
+    boq_item_id: string | null
     boq_master: { quantity: number | null; unit: string | null; contractor_types: { name: string } | null } | null
   } | null
+}
+
+type Supa = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * Fills materialBoqPct / materialUsedPct on the BOQ items: the job's BOQ
+ * materials (the house type's BOQ) against what has been ordered for the plot.
+ * Reuses boq_control_rollup so "ordered for this plot" is computed exactly as
+ * on the cost-control page (batch POs split across plots included). Best-effort -
+ * the plan page must still load if this fails, so errors leave the fields null.
+ * Only percentages leave here, never prices.
+ */
+async function attachMaterialUsage(supabase: Supa, items: WeeklyPlanItem[], boqItemIds: (string | null)[]) {
+  const targets = items.map((it, i) => ({ it, boqId: boqItemIds[i] })).filter((t) => t.it.jobAssignmentId && t.it.plotId && t.boqId)
+  if (targets.length === 0) return
+  try {
+    const boqIds = [...new Set(targets.map((t) => t.boqId as string))]
+    const plots = new Map<string, string>() // plotId -> projectId
+    for (const t of targets) plots.set(t.it.plotId as string, t.it.projectId)
+
+    const jobMats: { boq_id: string; material_type_id: number; planned_quantity: number | string }[] = []
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase
+        .from('boq_material_items')
+        .select('boq_id, material_type_id, planned_quantity')
+        .in('boq_id', boqIds)
+        .order('id')
+        .range(from, from + 999)
+      if (error) throw new Error(error.message)
+      jobMats.push(...(data || []))
+      if (!data || data.length < 1000) break
+    }
+    const matsOfJob = new Map<string, { materialTypeId: number; plannedQty: number }[]>()
+    for (const m of jobMats) {
+      const list = matsOfJob.get(m.boq_id) ?? []
+      list.push({ materialTypeId: m.material_type_id, plannedQty: Number(m.planned_quantity) })
+      matsOfJob.set(m.boq_id, list)
+    }
+
+    const planned = new Map<string, Map<number, number>>()
+    const ordered = new Map<string, Map<number, number>>()
+    const ceiling = new Map<string, Map<number, number>>()
+    const issued = new Map<string, Map<number, number>>()
+    await Promise.all(
+      [...plots].map(async ([plotId, projectId]) => {
+        const { data, error } = await supabase.rpc('boq_control_rollup', { p_project_id: projectId, p_scope: { plot_group_id: null, plot_ids: [plotId] } })
+        if (error) throw new Error(error.message)
+        const p = new Map<number, number>()
+        const o = new Map<number, number>()
+        const c = new Map<number, number>()
+        const i = new Map<number, number>()
+        for (const r of (data || []) as { material_type_id: number; planned_qty: number | string; allowance_qty: number | string; ordered_qty: number | string; issued_qty: number | string }[]) {
+          p.set(r.material_type_id, Number(r.planned_qty))
+          o.set(r.material_type_id, Number(r.ordered_qty))
+          c.set(r.material_type_id, Number(r.planned_qty) + Number(r.allowance_qty))
+          i.set(r.material_type_id, Number(r.issued_qty))
+        }
+        planned.set(plotId, p)
+        ordered.set(plotId, o)
+        ceiling.set(plotId, c)
+        issued.set(plotId, i)
+      })
+    )
+
+    for (const { it, boqId } of targets) {
+      const usage = jobMaterialUsage(matsOfJob.get(boqId as string) ?? [], planned.get(it.plotId as string) ?? new Map(), ordered.get(it.plotId as string) ?? new Map())
+      it.materialBoqPct = usage?.boqSharePct ?? null
+      it.materialUsedPct = usage?.usedPct ?? null
+      const cap = ceiling.get(it.plotId as string)
+      const ord = ordered.get(it.plotId as string)
+      const iss = issued.get(it.plotId as string)
+      it.materialOverCount = (matsOfJob.get(boqId as string) ?? []).filter((m) => {
+        const limit = cap?.get(m.materialTypeId) ?? 0
+        return limit > 0 && ((ord?.get(m.materialTypeId) ?? 0) > limit || (iss?.get(m.materialTypeId) ?? 0) > limit)
+      }).length
+    }
+  } catch {
+    // leave the material columns empty rather than break the plan page
+  }
 }
 
 /** Loads everything the page needs: the whole month containing `weekStart`
@@ -158,7 +245,7 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
       supabase
         .from('weekly_plan_items')
         .select(
-          'id, project_id, plot_id, week_start, kind, title, owner_id, contractor_id, carry_pct, plan_pct, actual_pct, note, status, created_by, job_assignment_id, plots(name), owner:profiles!weekly_plan_items_owner_id_fkey(full_name), contractor:contractors(name), job_assignments(boq_master(quantity, unit, contractor_types(name)))'
+          'id, project_id, plot_id, week_start, kind, title, owner_id, contractor_id, carry_pct, plan_pct, actual_pct, note, status, created_by, job_assignment_id, plots(name), owner:profiles!weekly_plan_items_owner_id_fkey(full_name), contractor:contractors(name), job_assignments(boq_item_id, boq_master(quantity, unit, contractor_types(name)))'
         )
         .gte('week_start', rangeStart)
         .lte('week_start', rangeEnd)
@@ -213,7 +300,17 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
     jobQuantity: r.job_assignments?.boq_master?.quantity == null ? null : Number(r.job_assignments.boq_master.quantity),
     jobUnit: r.job_assignments?.boq_master?.unit ?? null,
     jobTrade: r.job_assignments?.boq_master?.contractor_types?.name ?? null,
+    jobBoqItemId: r.job_assignments?.boq_item_id ?? null,
+    materialOverCount: 0,
+    materialBoqPct: null,
+    materialUsedPct: null,
   }))
+
+  await attachMaterialUsage(
+    supabase,
+    items,
+    ((itemsRes.data || []) as unknown as RawItem[]).map((r) => r.job_assignments?.boq_item_id ?? null)
+  )
 
   type RawMeeting = { project_id: string; week_start: string; agreed_at: string; agreer: { full_name: string | null } | null }
   const meetings: WeeklyPlanMeeting[] = ((meetingsRes.data || []) as unknown as RawMeeting[]).map((m) => ({
@@ -654,4 +751,93 @@ export async function getWeeklyPlanSummary(weekStart: string): Promise<WeeklyPla
     if (!row.owner_id) summary.unassigned += 1
   }
   return summary
+}
+
+export type JobMaterialDetailRow = {
+  materialTypeId: number
+  name: string
+  unit: string
+  /** this job's BOQ quantity of the material */
+  jobQty: number
+  /** whole-house BOQ, and the waste allowance on top of it */
+  boqQty: number
+  allowanceQty: number
+  orderedQty: number
+  issuedQty: number
+  overOrdered: boolean
+  overUsed: boolean
+  /** the POs / requests / withdrawals behind the plot's figure; only loaded for materials that are over */
+  docs: { kind: 'po' | 'pr' | 'stock_out'; docNo: string | null; docDate: string | null; supplier: string | null; plotLabel: string; quantity: number }[]
+}
+
+/** The material-by-material picture behind a BOQ task's ordered/used figures. Quantities only, no prices. */
+export async function getJobMaterialDetail(plotId: string, projectId: string, boqItemId: string): Promise<{ rows: JobMaterialDetailRow[] } | { error: string }> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  const supabase = await createClient()
+  const [matsRes, rollupRes] = await Promise.all([
+    supabase.from('boq_material_items').select('material_type_id, planned_quantity').eq('boq_id', boqItemId),
+    supabase.rpc('boq_control_rollup', { p_project_id: projectId, p_scope: { plot_group_id: null, plot_ids: [plotId] } }),
+  ])
+  if (matsRes.error) return { error: `โหลดวัสดุไม่สำเร็จ: ${matsRes.error.message}` }
+  if (rollupRes.error) return { error: `โหลดวัสดุไม่สำเร็จ: ${rollupRes.error.message}` }
+  type Roll = { material_type_id: number; material_name: string; unit: string; planned_qty: number | string; allowance_qty: number | string; ordered_qty: number | string; issued_qty: number | string }
+  const roll = new Map(((rollupRes.data || []) as Roll[]).map((r) => [r.material_type_id, r]))
+
+  const rows: JobMaterialDetailRow[] = []
+  for (const m of matsRes.data || []) {
+    const r = roll.get(m.material_type_id)
+    if (!r) continue
+    const boqQty = Number(r.planned_qty)
+    const cap = boqQty + Number(r.allowance_qty)
+    const orderedQty = Number(r.ordered_qty)
+    const issuedQty = Number(r.issued_qty)
+    rows.push({
+      materialTypeId: m.material_type_id,
+      name: r.material_name,
+      unit: r.unit,
+      jobQty: Number(m.planned_quantity),
+      boqQty,
+      allowanceQty: Number(r.allowance_qty),
+      orderedQty,
+      issuedQty,
+      overOrdered: cap > 0 && orderedQty > cap,
+      overUsed: cap > 0 && issuedQty > cap,
+      docs: [],
+    })
+  }
+  await Promise.all(
+    rows
+      .filter((r) => r.overOrdered || r.overUsed)
+      .map(async (r) => {
+        const { data } = await supabase.rpc('boq_control_material_detail', {
+          p_project_id: projectId,
+          p_material_type_id: r.materialTypeId,
+          p_scope: { plot_group_id: null, plot_ids: [plotId] },
+        })
+        r.docs = ((data || []) as { doc_kind: 'po' | 'pr' | 'stock_out'; doc_no: string | null; doc_date: string | null; supplier_name: string | null; plot_label: string; quantity: number | string }[])
+          .filter((d) => d.doc_kind !== 'pr')
+          .map((d) => ({ kind: d.doc_kind, docNo: d.doc_no, docDate: d.doc_date, supplier: d.supplier_name, plotLabel: d.plot_label, quantity: Number(d.quantity) }))
+      })
+  )
+  rows.sort((a, b) => Number(b.overOrdered || b.overUsed) - Number(a.overOrdered || a.overUsed) || a.name.localeCompare(b.name, 'th'))
+  return { rows }
+}
+
+/**
+ * Records one day of real progress (cumulative %, or null to clear) on a plan row.
+ * Open to admin/pm/foreman for ANY row - not just ones they created - through an RPC
+ * that touches nothing but actual_pct.
+ */
+export async function recordWeeklyPlanActual(id: string, day: number, value: number | null): Promise<WeeklyPlanResult> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  if (!Number.isInteger(day) || day < 0 || day > 6) return { error: 'วันไม่ถูกต้อง' }
+  if (value != null && (!Number.isFinite(value) || value < 0 || value > 100)) return { error: 'ความคืบหน้าต้องอยู่ระหว่าง 0-100%' }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('weekly_plan_record_actual', { p_id: id, p_day: day, p_value: value })
+  if (error) return { error: `บันทึกความคืบหน้าไม่สำเร็จ: ${error.message}` }
+  revalidatePath('/dashboard/weekly-plan')
+  revalidatePath('/dashboard/billing')
+  return { ok: true }
 }
