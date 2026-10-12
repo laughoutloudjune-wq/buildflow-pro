@@ -122,12 +122,13 @@ export default function ReviewBillingPageClient({
     const totalAddAmount = adjustments.filter((adj) => adj.type === 'addition').reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
     const totalDeductAmount = adjustments.filter((adj) => adj.type === 'deduction').reduce((sum, adj) => sum + adj.quantity * adj.unit_price, 0)
 
-    const retentionAmount = totalWorkAmount * (retentionPercent / 100)
+    // Amount before retention / WHT: those are applied by accounting at
+    // pay-out, and the server stores exactly this figure as the net amount.
     const grossAmount = totalWorkAmount + totalAddAmount - totalDeductAmount
-    const netAmount = grossAmount - retentionAmount
+    const netAmount = grossAmount
 
     return { totalWorkAmount, totalAddAmount, totalDeductAmount, grossAmount, netAmount }
-  }, [jobs, adjustments, retentionPercent])
+  }, [jobs, adjustments])
 
   // What is left of the main-work BOQ value after this approval, for the decision bar.
   const remainingAfter = useMemo(
