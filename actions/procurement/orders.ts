@@ -97,6 +97,7 @@ export async function getPurchaseOrders(filters: PurchaseOrderFilters = {}): Pro
   const supabase = await createClient()
 
   let query = supabase.from('purchase_orders').select(SELECT_WITH_RELATIONS).order('created_at', { ascending: false })
+    .order('line_no', { referencedTable: 'purchase_order_items', ascending: true })
   if (filters.projectId) query = query.eq('project_id', filters.projectId)
   if (filters.supplierId) query = query.eq('supplier_id', filters.supplierId)
   if (filters.status) query = query.eq('status', filters.status)
@@ -109,7 +110,10 @@ export async function getPurchaseOrders(filters: PurchaseOrderFilters = {}): Pro
 export async function getPurchaseOrderById(id: string): Promise<PurchaseOrder | null> {
   await requireModuleAccess('procurement')
   const supabase = await createClient()
-  const { data, error } = await supabase.from('purchase_orders').select(SELECT_WITH_RELATIONS).eq('id', id).maybeSingle()
+  const { data, error } = await supabase.from('purchase_orders').select(SELECT_WITH_RELATIONS)
+    .eq('id', id)
+    .order('line_no', { referencedTable: 'purchase_order_items', ascending: true })
+    .maybeSingle()
   if (error) throw new Error(error.message)
   return data as unknown as PurchaseOrder | null
 }
