@@ -11,6 +11,7 @@ import { getPlotSalePromotionItems } from '@/actions/plot-sale-promotion-items'
 import { getPlotProgressCurve, type PlotProgressCurve } from '@/actions/plot-progress-curve'
 import { getPlotPhaseSchedule, type PlotPhaseScheduleRow } from '@/actions/plot-phase-schedule'
 import { getPlotStockTrail, type PlotStockTrail } from '@/actions/plot-stock-trail-actions'
+import { createClient } from '@/lib/supabase/server'
 import { permissionsForRole, requireModuleAccess } from '@/lib/auth/route-access'
 import type { PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
 
@@ -158,6 +159,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
         plannedQty: null,
         allowanceQty: null,
         issuedQty: 0,
+        issuedValue: canSeeCost ? 0 : null,
         directQty: 0,
         stockEntries: [],
       }
@@ -182,6 +184,20 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     if (e.kind === 'issue') row.issuedQty += e.plotQty
     else row.directQty += e.plotQty
     row.stockEntries.push(e)
+  }
+  // Baht for store withdrawals, so a plot's materials cost includes what its
+  // contractors drew from store stock (the store PO itself carries no plot).
+  if (canSeeCost) {
+    try {
+      const supabase = await createClient()
+      const { data } = await supabase.rpc('boq_control_issued_value', { p_project_id: projectId, p_scope: { plot_ids: [plotId] } })
+      for (const v of (data as { material_type_id: number; issued_value: number | string }[] | null) || []) {
+        const row = materialRows.get(v.material_type_id)
+        if (row) row.issuedValue = Number(v.issued_value) || 0
+      }
+    } catch (error) {
+      console.error(error)
+    }
   }
   const materials = Array.from(materialRows.values()).sort((a, b) => a.name.localeCompare(b.name, 'th'))
 

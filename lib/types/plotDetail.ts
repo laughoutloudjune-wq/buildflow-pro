@@ -40,6 +40,8 @@ export type PlotMaterialRowView = {
   allowanceQty: number | null
   /** This plot's share of store withdrawals (เบิก) and straight-to-plot deliveries. */
   issuedQty: number
+  /** Baht value of issuedQty at the store's average buying price; null without cost access. */
+  issuedValue: number | null
   directQty: number
   /** The withdrawal slips / deliveries behind issuedQty and directQty. */
   stockEntries: PlotStockEntry[]
