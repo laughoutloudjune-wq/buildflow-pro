@@ -10,6 +10,7 @@ import { getPromotions } from '@/actions/promotions-actions'
 import { getPlotSalePromotionItems } from '@/actions/plot-sale-promotion-items'
 import { getPlotProgressCurve, type PlotProgressCurve } from '@/actions/plot-progress-curve'
 import { getPlotPhaseSchedule, type PlotPhaseScheduleRow } from '@/actions/plot-phase-schedule'
+import { getPlotStockTrail, type PlotStockTrail } from '@/actions/plot-stock-trail-actions'
 import { permissionsForRole, requireModuleAccess } from '@/lib/auth/route-access'
 import type { PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
 
@@ -38,6 +39,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
   let promotions: Awaited<ReturnType<typeof getPromotions>> = []
   let history: Awaited<ReturnType<typeof getPlotSaleHistory>> = []
   let rawMaterials: Awaited<ReturnType<typeof getPlotMaterialsSummary>> = []
+  let stockTrail: PlotStockTrail = { boq: [], entries: [] }
   let workRequests: Awaited<ReturnType<typeof getWorkRequestsForPlot>> = []
   let payments: Awaited<ReturnType<typeof getSalePaymentsForSale>> = []
   let promotionItems: Awaited<ReturnType<typeof getPlotSalePromotionItems>> = []
@@ -49,7 +51,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     // is a real cost column) - get_plot_jobs_public() is the SECURITY
     // DEFINER, price-free equivalent for that case, not just a stripped copy
     // of the same query.
-    const [pData, jData, cData, hmData, saleData, statusesData, promotionsData, historyData, materialsData, workRequestsData, progressCurveData, phaseScheduleData] = await Promise.all([
+    const [pData, jData, cData, hmData, saleData, statusesData, promotionsData, historyData, materialsData, workRequestsData, progressCurveData, phaseScheduleData, stockTrailData] = await Promise.all([
       getPlotById(plotId),
       canSeeCost ? getJobAssignments(plotId) : getPlotJobsPublic(plotId),
       getContractors(),
@@ -68,6 +70,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
       canSeeCost
         ? getPlotPhaseSchedule(plotId).catch(() => phaseSchedule)
         : Promise.resolve(phaseSchedule),
+      getPlotStockTrail(plotId, projectId).catch(() => stockTrail),
     ])
     plot = pData
     if (canSeeCost) {
@@ -87,6 +90,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     promotions = promotionsData
     history = historyData
     rawMaterials = materialsData
+    stockTrail = stockTrailData
     workRequests = workRequestsData
     progressCurve = progressCurveData
     phaseSchedule = phaseScheduleData
@@ -136,15 +140,50 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
       }))
   const jobsDone = jobs.filter((j) => j.status === 'completed').length
 
-  const materials: PlotMaterialRowView[] = rawMaterials.map((m) => ({
-    materialTypeId: m.materialTypeId,
-    name: m.name,
-    unit: m.unit,
-    orderedQty: m.orderedQty,
-    receivedQty: m.receivedQty,
-    orderedValue: canSeeCost ? m.orderedValue : null,
-    sources: m.sources,
-  }))
+  // One row per material that was bought for, handed out to, or planned
+  // for this plot - PO figures, store withdrawals / straight-to-plot
+  // deliveries, and BOQ side by side.
+  const materialRows = new Map<number, PlotMaterialRowView>()
+  const rowFor = (id: number, name: string, unit: string) => {
+    let row = materialRows.get(id)
+    if (!row) {
+      row = {
+        materialTypeId: id,
+        name,
+        unit,
+        orderedQty: 0,
+        receivedQty: 0,
+        orderedValue: canSeeCost ? 0 : null,
+        sources: [],
+        plannedQty: null,
+        allowanceQty: null,
+        issuedQty: 0,
+        directQty: 0,
+        stockEntries: [],
+      }
+      materialRows.set(id, row)
+    }
+    return row
+  }
+  for (const m of rawMaterials) {
+    const row = rowFor(m.materialTypeId, m.name, m.unit)
+    row.orderedQty = m.orderedQty
+    row.receivedQty = m.receivedQty
+    row.orderedValue = canSeeCost ? m.orderedValue : null
+    row.sources = m.sources
+  }
+  for (const b of stockTrail.boq) {
+    const row = rowFor(b.materialTypeId, b.name, b.unit)
+    row.plannedQty = b.plannedQty
+    row.allowanceQty = b.allowanceQty
+  }
+  for (const e of stockTrail.entries) {
+    const row = rowFor(e.materialTypeId, e.materialName, e.unit)
+    if (e.kind === 'issue') row.issuedQty += e.plotQty
+    else row.directQty += e.plotQty
+    row.stockEntries.push(e)
+  }
+  const materials = Array.from(materialRows.values()).sort((a, b) => a.name.localeCompare(b.name, 'th'))
 
   const historyView = history.map((h) => ({
     ...h,

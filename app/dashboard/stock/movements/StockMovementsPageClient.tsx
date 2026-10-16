@@ -84,7 +84,7 @@ export default function StockMovementsPageClient({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return movements
-      .filter((m) => !q || m.material_types?.name.toLowerCase().includes(q))
+      .filter((m) => !q || m.material_types?.name.toLowerCase().includes(q) || (m.issue_no || '').toLowerCase().includes(q))
       .filter((m) => typeFilter === ALL || m.type === typeFilter)
       .filter((m) => sourceFilter === ALL || m.source_type === sourceFilter)
       .filter((m) => projectFilter === ALL || m.projects?.name === projectFilter)
@@ -185,7 +185,10 @@ export default function StockMovementsPageClient({
                     <td className="px-4 py-3">
                       <Badge tone={m.type === 'in' ? 'success' : 'info'}>{TYPE_LABEL[m.type]}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{SOURCE_LABEL[m.source_type]}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {SOURCE_LABEL[m.source_type]}
+                      {m.issue_no && <span className="block font-mono text-xs text-slate-500">{m.issue_no}</span>}
+                    </td>
                     <td className="px-4 py-3 text-slate-500">
                       {[m.projects?.name, m.plots?.name, m.plot_groups?.name, m.contractors?.name, m.note].filter(Boolean).join(' · ') || '-'}
                     </td>

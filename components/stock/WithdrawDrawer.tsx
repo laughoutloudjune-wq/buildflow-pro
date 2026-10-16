@@ -52,10 +52,11 @@ export default function WithdrawDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
-  // A withdrawal can be for one plot, a whole batch of plots, or the project
-  // in general (site-wide supplies aren't house-specific) - the picker
-  // resets whenever the project changes since plots/groups belong to one
-  // project.
+  // A withdrawal is for one plot or a whole batch of plots, so it can be
+  // compared to that plot's BOQ - "whole project" is only offered for a
+  // project with no plots at all (the database enforces the same rule, see
+  // 202610160003_stock_issue_slips.sql). The picker resets whenever the
+  // project changes since plots/groups belong to one project.
   useEffect(() => {
     setPlotScope('none')
     setPlotId('')
@@ -70,6 +71,7 @@ export default function WithdrawDrawer({
       .then(([plotRows, groupRows]) => {
         setPlots((plotRows || []).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })))
         setPlotGroups(groupRows)
+        if ((plotRows || []).length > 0) setPlotScope('plot')
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : 'โหลดข้อมูลแปลงไม่สำเร็จ'))
       .finally(() => setIsPlotsLoading(false))
@@ -192,8 +194,9 @@ export default function WithdrawDrawer({
 
   const usedIds = new Set(lines.map((l) => l.material_type_id).filter((id): id is number => id !== null))
   const shortLines = lines.filter((l) => l.material_type_id !== null && Number(l.quantity) > onHandFor(l.material_type_id))
+  const needsPlot = plots.length > 0
   const plotSelectionValid =
-    plotScope === 'none' || (plotScope === 'plot' && Boolean(plotId)) || (plotScope === 'group' && Boolean(plotGroupId))
+    (plotScope === 'none' && !needsPlot) || (plotScope === 'plot' && Boolean(plotId)) || (plotScope === 'group' && Boolean(plotGroupId))
   const canSubmit =
     Boolean(projectId) &&
     Boolean(contractorId) &&
@@ -216,7 +219,7 @@ export default function WithdrawDrawer({
     if ('error' in result) {
       toast.error(result.error)
     } else {
-      toast.success('บันทึกการเบิกวัสดุแล้ว')
+      toast.success(result.issue_no ? `บันทึกการเบิกวัสดุแล้ว - ใบเบิก ${result.issue_no}` : 'บันทึกการเบิกวัสดุแล้ว')
       resetForm()
       onSuccess()
       onClose()
@@ -265,10 +268,12 @@ export default function WithdrawDrawer({
               ) : (
                 <>
                   <div className="flex flex-wrap gap-3">
-                    <label className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-700">
-                      <input type="radio" name="plot-scope" checked={plotScope === 'none'} onChange={() => setPlotScope('none')} />
-                      ทั้งโครงการ (ไม่ระบุแปลง)
-                    </label>
+                    {!needsPlot && (
+                      <label className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-700">
+                        <input type="radio" name="plot-scope" checked={plotScope === 'none'} onChange={() => setPlotScope('none')} />
+                        ทั้งโครงการ (ไม่ระบุแปลง)
+                      </label>
+                    )}
                     <label className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-700">
                       <input
                         type="radio"
@@ -312,8 +317,10 @@ export default function WithdrawDrawer({
                       placeholder="เลือกกลุ่มแปลง"
                     />
                   )}
-                  {plots.length === 0 && plotGroups.length === 0 && (
+                  {plots.length === 0 && plotGroups.length === 0 ? (
                     <p className="mt-1 text-xs text-slate-500">โครงการนี้ยังไม่มีแปลงหรือกลุ่มแปลงให้เลือก</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-slate-500">ต้องระบุแปลงหรือกลุ่มแปลง เพื่อเทียบการเบิกกับ BOQ ของแปลง</p>
                   )}
                 </>
               )}

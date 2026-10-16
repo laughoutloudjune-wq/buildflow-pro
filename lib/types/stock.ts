@@ -38,6 +38,9 @@ export type StockMovement = {
   approved_by: string | null
   note: string | null
   created_at: string
+  /** Withdrawal slip number (IS-YYYYMMDDNNN), shared by every line of one
+   * withdrawal - manual_request rows only. */
+  issue_no: string | null
   material_types?: { id: number; name: string; unit: string } | null
   projects?: { id: string; name: string } | null
   contractors?: { id: string; name: string } | null

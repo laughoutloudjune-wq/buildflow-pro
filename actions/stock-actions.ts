@@ -190,6 +190,7 @@ export async function getStockWithdrawPickerOptions(): Promise<{
 
 export type StockWithdrawResult = {
   batch_id: string
+  issue_no: string | null
   items: { material_type_id: number; quantity: number; new_qty: number }[]
 }
 
@@ -221,8 +222,15 @@ export async function createStockWithdrawal(input: {
     })
 
     if (error) throw new Error(error.message)
+    const result = data as Omit<StockWithdrawResult, 'issue_no'>
+    const { data: slip } = await supabase
+      .from('stock_movements')
+      .select('issue_no')
+      .eq('source_id', result.batch_id)
+      .limit(1)
+      .maybeSingle()
     revalidatePath('/dashboard/stock')
-    return data as StockWithdrawResult
+    return { ...result, issue_no: (slip as { issue_no: string | null } | null)?.issue_no ?? null }
   } catch (error) {
     return { error: translateError(error instanceof Error ? error.message : 'บันทึกการเบิกวัสดุไม่สำเร็จ') }
   }

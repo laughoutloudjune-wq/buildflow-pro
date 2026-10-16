@@ -44,6 +44,7 @@ const ERROR_TRANSLATIONS: [string, string][] = [
     'ยกเลิกการรับของไม่ได้ เนื่องจากวัสดุบางส่วนถูกเบิกใช้ไปแล้ว กรุณายกเลิกการเบิกนั้นก่อน',
   ],
   ['A reason is required', 'กรุณาระบุเหตุผล'],
+  ['Choose a plot or plot group for this withdrawal', 'กรุณาเลือกแปลงหรือกลุ่มแปลงที่เบิกไปใช้ เพื่อให้เทียบกับ BOQ ของแปลงได้'],
   ['Store-stock items must be received into the store', 'ของเติมสต็อกสโตร์ต้องรับเข้าสโตร์ ไม่สามารถส่งตรงหน้างานได้'],
   ['Only PM/Admin can close a purchase order', 'เฉพาะ PM/Admin เท่านั้นที่สามารถปิดใบสั่งซื้อได้'],
   ['A reason is required to close a purchase order short', 'กรุณาระบุเหตุผลที่ปิดใบสั่งซื้อ'],

@@ -84,6 +84,13 @@ Rule for the whole plan: **every quantity that moves is a numbered document line
 - Low-stock list gets a button: **"สร้างคำขอซื้อเติมสต็อก"**.
 - **Done when:** you can request 30 mirrors for the store without picking a project, plot or BOQ job.
 
+### Store withdrawals ↔ BOQ (June's 3 fixes, replaces Phase D and part of E) — BUILT 2026-10-16, committed locally, migration NOT applied, NOT pushed
+June's point: the store-stock flow (buy for store → store → withdraw for a plot → compare to BOQ) already exists. It just had gaps. Three fixes, no new steps for staff:
+1. **Plot or batch required on withdrawals** for any project that has plots. The withdrawal form no longer offers "ทั้งโครงการ" there, and the database refuses it too. Projects without plots are unaffected.
+2. **Slip numbers** `IS-YYYYMMDDNNN` are stamped automatically on every withdrawal line. The 1,313 old rows were back-numbered into 1,210 slips by their original date. The number shows in the stock history lists (searchable) and in the save message.
+3. **The plot page's วัสดุ tab** now shows BOQ (with waste allowance) │ ordered │ received │ withdrawn from store │ delivered straight to plot │ used │ % of BOQ. Expanding a row lists every PO and every withdrawal slip / delivery. Attribution is the same as the BOQ control page (checked: plot 122 matches exactly).
+Migration: `202610160003_stock_issue_slips.sql`. Apply after 0001 and 0002.
+
 ### Phase C — Make the links required or explained *(answers question 1)*
 - PO line without a PR line: allowed, but a reason is required ("ซื้อด่วน", "ซื้อหน้างาน", …), shown in history.
 - Type 1 PR lines: suggest the matching BOQ job automatically (same material + plot's house model), so the BOQ link fills itself instead of staying empty.

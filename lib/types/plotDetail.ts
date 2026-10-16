@@ -1,4 +1,5 @@
 import type { PlotMaterialSource } from '@/lib/procurement/allocationTrace'
+import type { PlotStockEntry } from '@/actions/plot-stock-trail-actions'
 import type { PlotSaleHistoryEntry } from '@/actions/sales-actions'
 
 /** Job row for the plot detail page's งานก่อสร้าง tab. `cost` is null
@@ -33,6 +34,15 @@ export type PlotMaterialRowView = {
   orderedValue: number | null
   /** Which PO line and request each part of the figure came from (no money). */
   sources: PlotMaterialSource[]
+  /** BOQ planned quantity and waste allowance for this plot's house model;
+   * null when the BOQ has no line for this material. */
+  plannedQty: number | null
+  allowanceQty: number | null
+  /** This plot's share of store withdrawals (เบิก) and straight-to-plot deliveries. */
+  issuedQty: number
+  directQty: number
+  /** The withdrawal slips / deliveries behind issuedQty and directQty. */
+  stockEntries: PlotStockEntry[]
 }
 
 export type PlotHistoryRowView = Omit<PlotSaleHistoryEntry, 'amount'> & { amount: number | null }

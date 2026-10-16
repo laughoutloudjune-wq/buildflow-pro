@@ -144,7 +144,10 @@ export default function MaterialStockDetailPageClient({
                     <td className="px-4 py-3">
                       <Badge tone={m.type === 'in' ? 'success' : 'info'}>{TYPE_LABEL[m.type]}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{SOURCE_LABEL[m.source_type]}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {SOURCE_LABEL[m.source_type]}
+                      {m.issue_no && <span className="block font-mono text-xs text-slate-500">{m.issue_no}</span>}
+                    </td>
                     <td className="px-4 py-3 text-slate-500">{describeSource(m)}</td>
                     <td className={`px-4 py-3 text-right font-mono font-medium ${m.type === 'in' ? 'text-emerald-600' : 'text-slate-700'}`}>
                       {m.type === 'in' ? '+' : '-'}
