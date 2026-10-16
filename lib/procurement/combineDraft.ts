@@ -23,6 +23,17 @@ export type CombineDraftLine = {
   material_unit: string
   unit_price: number
   allocations: LineAllocationDraft[]
+  /** Set instead of `allocations` (which is then empty) for a request line
+   * asked in a different unit than the material is sold in: it can't be
+   * allocated, so it becomes its own order line linked to the request line
+   * with "this order covers the request" ticked. `quantity` is in the
+   * material's unit. */
+  single?: {
+    purchase_request_item_id: string
+    quantity: string
+    request_unit: string
+    pr_no: number | null
+  } | null
 }
 
 export type CombineDraft = {

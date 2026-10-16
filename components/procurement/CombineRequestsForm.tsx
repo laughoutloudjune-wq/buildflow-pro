@@ -75,7 +75,9 @@ export default function CombineRequestsForm({
   function toggle(line: EligibleRequestLine, checked: boolean) {
     setSelected((prev) => {
       const next = { ...prev }
-      if (checked) next[line.purchase_request_item_id] = String(line.remaining)
+      // A different-unit line has no same-unit remainder to prefill: the
+      // quantity is typed in the material's unit.
+      if (checked) next[line.purchase_request_item_id] = line.unit_mismatch ? '' : String(line.remaining)
       else delete next[line.purchase_request_item_id]
       return next
     })
@@ -85,25 +87,32 @@ export default function CombineRequestsForm({
     setSelected((prev) => ({ ...prev, [id]: value }))
   }
 
-  /** Selected lines grouped by material (the unit is the material's own for
-   * every eligible line, so material alone is the grouping key). */
+  /** Selected lines grouped by material (an order line is always in the
+   * material's own unit, so material alone is the grouping key). A line asked
+   * in a different unit can't share an allocated line and stays on its own. */
   const groups = useMemo(() => {
-    const byMaterial = new Map<number, { materialName: string; unit: string; unitPrice: number; rows: { line: EligibleRequestLine; qty: number }[] }>()
+    const byKey = new Map<
+      string,
+      { materialId: number; materialName: string; unit: string; unitPrice: number; single: boolean; rows: { line: EligibleRequestLine; qty: number }[] }
+    >()
     for (const line of lines) {
       const raw = selected[line.purchase_request_item_id]
       if (raw === undefined) continue
       const qty = Number(raw) || 0
-      const group = byMaterial.get(line.material_type_id) || {
+      const key = line.unit_mismatch ? `line:${line.purchase_request_item_id}` : `material:${line.material_type_id}`
+      const group = byKey.get(key) || {
+        materialId: line.material_type_id,
         materialName: line.material_name,
         unit: line.unit,
         unitPrice: line.unit_price,
+        single: line.unit_mismatch,
         rows: [],
       }
       group.rows.push({ line, qty })
-      byMaterial.set(line.material_type_id, group)
+      byKey.set(key, group)
     }
-    return Array.from(byMaterial.entries()).map(([materialId, g]) => ({
-      materialId,
+    return Array.from(byKey.entries()).map(([key, g]) => ({
+      key,
       ...g,
       total: g.rows.reduce((sum, r) => sum + r.qty, 0),
     }))
@@ -118,7 +127,7 @@ export default function CombineRequestsForm({
     for (const g of groups) {
       for (const r of g.rows) {
         if (!(r.qty > 0)) return toast.error(`กรุณาระบุจำนวนที่สั่งของ ${g.materialName} (PR-${r.line.pr_no}) ให้มากกว่า 0`)
-        if (r.qty > r.line.remaining + 1e-9) {
+        if (!r.line.unit_mismatch && r.qty > r.line.remaining + 1e-9) {
           return toast.error(`${g.materialName} (PR-${r.line.pr_no}) สั่งได้ไม่เกินจำนวนคงเหลือ ${qtyFormat(r.line.remaining)} ${g.unit}`)
         }
       }
@@ -134,12 +143,22 @@ export default function CombineRequestsForm({
       material_name: g.materialName,
       material_unit: g.unit,
       unit_price: g.unitPrice,
-      allocations: g.rows.map((r) => ({
-        purchase_request_item_id: r.line.purchase_request_item_id,
-        quantity: String(r.qty),
-        pr_no: r.line.pr_no,
-        plot_label: r.line.plot_label,
-      })),
+      allocations: g.single
+        ? []
+        : g.rows.map((r) => ({
+            purchase_request_item_id: r.line.purchase_request_item_id,
+            quantity: String(r.qty),
+            pr_no: r.line.pr_no,
+            plot_label: r.line.plot_label,
+          })),
+      single: g.single
+        ? {
+            purchase_request_item_id: g.rows[0].line.purchase_request_item_id,
+            quantity: String(g.rows[0].qty),
+            request_unit: g.rows[0].line.request_unit,
+            pr_no: g.rows[0].line.pr_no,
+          }
+        : null,
     }))
 
     try {
@@ -241,7 +260,7 @@ export default function CombineRequestsForm({
               <tbody className="divide-y divide-slate-100 bg-white">
                 {visible.map((line) => {
                   const checked = selected[line.purchase_request_item_id] !== undefined
-                  const over = checked && Number(selected[line.purchase_request_item_id]) > line.remaining + 1e-9
+                  const over = checked && !line.unit_mismatch && Number(selected[line.purchase_request_item_id]) > line.remaining + 1e-9
                   return (
                     <tr key={line.purchase_request_item_id} className={checked ? 'bg-indigo-50/40' : undefined}>
                       <td className="px-3 py-2">
@@ -254,10 +273,17 @@ export default function CombineRequestsForm({
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-700">PR-{line.pr_no}</td>
                       {sourceFilter === ALL_PROJECTS && <td className="px-3 py-2 text-slate-500">{line.project_name}</td>}
-                      <td className="px-3 py-2">{line.material_name}</td>
+                      <td className="px-3 py-2">
+                        {line.material_name}
+                        {line.unit_mismatch && (
+                          <span className="mt-0.5 block text-[11px] text-amber-700">
+                            ขอเป็น {line.request_unit} แต่วัสดุสั่งเป็น {line.unit} - สั่งเป็นบรรทัดแยกและปิดรายการในคำขอ
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-slate-500">{line.plot_label || '-'}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-right text-slate-600">
-                        {qtyFormat(line.remaining)} {line.unit}
+                        {qtyFormat(line.remaining)} {line.request_unit}
                       </td>
                       <td className="px-3 py-2">
                         {checked && (
@@ -265,7 +291,7 @@ export default function CombineRequestsForm({
                             <input
                               type="number"
                               min="0"
-                              max={line.remaining}
+                              max={line.unit_mismatch ? undefined : line.remaining}
                               step="any"
                               value={selected[line.purchase_request_item_id]}
                               onChange={(e) => setQuantity(line.purchase_request_item_id, e.target.value)}
@@ -291,7 +317,7 @@ export default function CombineRequestsForm({
         ) : (
           <div className="space-y-3">
             {groups.map((g) => (
-              <div key={g.materialId} className="rounded-xl border border-slate-100 p-3">
+              <div key={g.key} className="rounded-xl border border-slate-100 p-3">
                 <div className="flex items-baseline justify-between gap-3">
                   <div className="font-medium text-slate-800">{g.materialName}</div>
                   <div className="whitespace-nowrap font-semibold text-slate-900">
@@ -305,6 +331,7 @@ export default function CombineRequestsForm({
                         PR-{r.line.pr_no}
                         {sourceFilter === ALL_PROJECTS ? ` · ${r.line.project_name}` : ''}
                         {r.line.plot_label ? ` · ${r.line.plot_label}` : ''}
+                        {r.line.unit_mismatch ? ` · ขอ ${qtyFormat(r.line.remaining)} ${r.line.request_unit}` : ''}
                       </span>
                       <span className="whitespace-nowrap">
                         {qtyFormat(r.qty)} {g.unit}

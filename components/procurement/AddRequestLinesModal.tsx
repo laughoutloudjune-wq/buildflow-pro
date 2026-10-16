@@ -84,7 +84,8 @@ export default function AddRequestLinesModal({
   function toggle(line: EligibleRequestLine, checked: boolean) {
     setSelected((prev) => {
       const next = { ...prev }
-      if (checked) next[line.purchase_request_item_id] = String(line.remaining)
+      // A different-unit line is ordered in the material's unit - nothing to prefill.
+      if (checked) next[line.purchase_request_item_id] = line.unit_mismatch ? '' : String(line.remaining)
       else delete next[line.purchase_request_item_id]
       return next
     })
@@ -97,7 +98,7 @@ export default function AddRequestLinesModal({
       if (raw === undefined) continue
       const qty = Number(raw) || 0
       if (!(qty > 0)) return toast.error(`กรุณาระบุจำนวนของ ${line.material_name} (PR-${line.pr_no}) ให้มากกว่า 0`)
-      if (qty > line.remaining + 1e-9) {
+      if (!line.unit_mismatch && qty > line.remaining + 1e-9) {
         return toast.error(`${line.material_name} (PR-${line.pr_no}) เพิ่มได้ไม่เกินจำนวนคงเหลือ ${qtyFormat(line.remaining)} ${line.unit}`)
       }
       picks.push({ line, qty })
@@ -130,7 +131,7 @@ export default function AddRequestLinesModal({
           </div>
         ) : visible.length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-500">
-            ไม่มีรายการที่ยังสั่งซื้อได้ (คำขอซื้อต้องอนุมัติแล้ว มียอดคงเหลือ และใช้หน่วยเดียวกับวัสดุ)
+            ไม่มีรายการที่ยังสั่งซื้อได้ (คำขอซื้อต้องอนุมัติแล้วและมียอดคงเหลือ)
           </p>
         ) : (
           <div className="max-h-[50vh] overflow-auto rounded-lg border border-slate-200">
@@ -161,10 +162,17 @@ export default function AddRequestLinesModal({
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-700">PR-{line.pr_no}</td>
                       <td className="px-3 py-2 text-slate-500">{line.project_name}</td>
-                      <td className="px-3 py-2">{line.material_name}</td>
+                      <td className="px-3 py-2">
+                        {line.material_name}
+                        {line.unit_mismatch && (
+                          <span className="mt-0.5 block text-[11px] text-amber-700">
+                            ขอเป็น {line.request_unit} แต่วัสดุสั่งเป็น {line.unit} - เพิ่มเป็นบรรทัดแยกและปิดรายการในคำขอ
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-slate-500">{line.plot_label || '-'}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-right text-slate-600">
-                        {qtyFormat(line.remaining)} {line.unit}
+                        {qtyFormat(line.remaining)} {line.request_unit}
                       </td>
                       <td className="px-3 py-2">
                         {checked && (
@@ -172,7 +180,7 @@ export default function AddRequestLinesModal({
                             <input
                               type="number"
                               min="0"
-                              max={line.remaining}
+                              max={line.unit_mismatch ? undefined : line.remaining}
                               step="any"
                               value={selected[line.purchase_request_item_id]}
                               onChange={(e) => setSelected((prev) => ({ ...prev, [line.purchase_request_item_id]: e.target.value }))}
