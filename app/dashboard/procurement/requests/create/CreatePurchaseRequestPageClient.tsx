@@ -7,20 +7,29 @@ import { PageContainer } from '@/components/ui/PageContainer'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { useToast } from '@/components/ui/Toast'
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
+import type { PurchasePurpose } from '@/components/procurement/PurchasePurposePicker'
 
 const LIST = '/dashboard/procurement/requests'
 
-export default function CreatePurchaseRequestPageClient() {
+export default function CreatePurchaseRequestPageClient({
+  initialPurpose,
+  initialLines,
+}: {
+  initialPurpose?: PurchasePurpose
+  initialLines?: { material_type_id: number; quantity: number }[]
+}) {
   const router = useRouter()
   const toast = useToast()
 
   return (
     <PageContainer width="form">
       <Breadcrumb items={[{ label: 'คำขอซื้อ (PR)', href: LIST }, { label: 'สร้างคำขอซื้อ' }]} />
-      <PageHeader title="สร้างคำขอซื้อ" subtitle="เลือกโครงการ ระบุแปลงที่ใช้ และรายการวัสดุที่ต้องการ" />
+      <PageHeader title="สร้างคำขอซื้อ" subtitle="เลือกว่าซื้อเพื่ออะไร ระบุโครงการ/แปลงถ้ามี และรายการวัสดุที่ต้องการ" />
       <Card className="p-5">
         <PurchaseRequestForm
           mode="create"
+          initialPurpose={initialPurpose}
+          initialLines={initialLines}
           onCancel={() => router.push(LIST)}
           onSaved={() => {
             toast.success('สร้างคำขอซื้อเรียบร้อยแล้ว')

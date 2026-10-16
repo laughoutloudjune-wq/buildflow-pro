@@ -51,6 +51,10 @@ export default function GoodsReceiptModal({
   // destination column itself.
   const [destinations, setDestinations] = useState<Record<string, Destination | ''>>({})
 
+  /** A line bought as store stock - its own project if it overrides the
+   * order's, else the order's (MATERIAL_TRAIL_PLAN.md Phase B). */
+  const isStoreStock = (item: NonNullable<PurchaseOrder['purchase_order_items']>[number]) =>
+    (item.project_id ? item.projects?.kind : order.projects?.kind) === 'store'
   const receivableItems = (order.purchase_order_items || [])
     .map((item) => ({ item, remaining: Math.max(0, item.quantity_ordered - item.quantity_received) }))
     .filter(({ remaining }) => remaining > 0)
@@ -78,7 +82,12 @@ export default function GoodsReceiptModal({
     // moves the common case with it.
     const initialDestinations: Record<string, Destination | ''> = {}
     for (const { item } of receivableItems) {
-      initialDestinations[item.id] = item.intended_destination && item.intended_destination !== headerDefault ? item.intended_destination : ''
+      // Store stock is pinned to the store, whatever the header says.
+      initialDestinations[item.id] = isStoreStock(item)
+        ? 'store'
+        : item.intended_destination && item.intended_destination !== headerDefault
+          ? item.intended_destination
+          : ''
     }
     setDestinations(initialDestinations)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -261,7 +270,8 @@ export default function GoodsReceiptModal({
                         <select
                           value={destinations[item.id] || ''}
                           onChange={(e) => setDestinations((prev) => ({ ...prev, [item.id]: e.target.value as Destination | '' }))}
-                          disabled={!checked}
+                          disabled={!checked || isStoreStock(item)}
+                          title={isStoreStock(item) ? 'ของเติมสต็อกสโตร์ต้องเข้าสโตร์เสมอ' : undefined}
                           aria-label={`ปลายทาง ${item.material_types?.name || ''}`}
                           className="w-full text-xs"
                         >

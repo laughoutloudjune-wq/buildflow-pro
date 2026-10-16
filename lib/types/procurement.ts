@@ -241,7 +241,7 @@ export type PurchaseOrderItem = {
    * receipt's own destination/default_destination. */
   intended_destination: 'store' | 'site' | null
   material_types?: MaterialType | null
-  projects?: { name: string } | null
+  projects?: { name: string; kind?: string | null } | null
   plots?: { name: string } | null
   plot_groups?: { name: string } | null
   /** Request lines this order line is allocated against. Empty for a
@@ -289,7 +289,7 @@ export type PurchaseOrder = {
   suppliers?: Supplier | null
   supplier_branches?: SupplierBranch | null
   companies?: Company | null
-  projects?: { name: string; location: string | null } | null
+  projects?: { name: string; location: string | null; kind?: string | null } | null
   plots?: { name: string } | null
   plot_groups?: { name: string } | null
   /** Ad-hoc multi-plot selection (ordered by nothing in particular - see

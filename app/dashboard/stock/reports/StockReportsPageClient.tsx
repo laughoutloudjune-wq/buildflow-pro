@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings } from 'lucide-react'
+import { ArrowLeft, Settings, ShoppingCart } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -43,12 +43,24 @@ export default function StockReportsPageClient({
             <h3 className="text-sm font-semibold text-slate-800">วัสดุใกล้หมด</h3>
             <p className="text-xs text-slate-500">คงเหลือถึงหรือต่ำกว่าจุดสั่งซื้อขั้นต่ำที่ตั้งไว้</p>
           </div>
-          <Link
-            href="/dashboard/settings/materials"
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline"
-          >
-            <Settings className="h-3.5 w-3.5" /> ตั้งค่าจุดสั่งซื้อ
-          </Link>
+          <div className="flex items-center gap-3">
+            {lowStock.length > 0 && (
+              <Link
+                // Quantities left blank on purpose: the reorder point says when
+                // to buy, not how much.
+                href={`/dashboard/procurement/requests/create?purpose=store&items=${lowStock.map((m) => `${m.material_type_id}:0`).join(',')}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+              >
+                <ShoppingCart className="h-3.5 w-3.5" /> สร้างคำขอซื้อเติมสต็อก
+              </Link>
+            )}
+            <Link
+              href="/dashboard/settings/materials"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline"
+            >
+              <Settings className="h-3.5 w-3.5" /> ตั้งค่าจุดสั่งซื้อ
+            </Link>
+          </div>
         </div>
         {lowStock.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-slate-500">

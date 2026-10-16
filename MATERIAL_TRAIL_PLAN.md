@@ -73,7 +73,10 @@ Rule for the whole plan: **every quantity that moves is a numbered document line
 - A **ประวัติ** panel on every PR, PO and receipt page.
 - **Done when:** undo a receipt and edit a PO, and both the original and the correction are still visible with who / when / why.
 
-### Phase B — Purchase type on PR and PO *(answers question 2)*
+### Phase B — Purchase type on PR and PO *(answers question 2)* — BUILT 2026-10-16, committed locally, migration NOT applied, NOT pushed
+> **As built:** no new column on PR/PO. The purpose is the kind of the project the document is saved against. Migration `202610160002_store_purchase_kind.sql` moves สโตร์กลาง to its own `projects.kind = 'store'` (only one allowed), and adds a guard so store-stock lines can never be received as "ส่งตรงหน้างาน". Both forms open with "ซื้อเพื่ออะไร". Store hides project/plot, overhead shows only overhead categories, and project works as before. PO line overrides still list every project. The low-stock report has a "สร้างคำขอซื้อเติมสต็อก" button that opens a store PR with those materials (quantities left blank). The optional "store item" catalog flag was not built.
+> **Safe to apply on its own:** old code keeps working against it. Apply after Phase A's migration (file order).
+
 - Add the "ซื้อเพื่ออะไร" question with the 4 types above. The form only shows the fields that type needs.
 - Store stock: no project/plot/BOQ fields. It's saved against the store bucket behind the scenes and delivery is locked to store.
 - The สโตร์กลาง fake project disappears from the project picker (it stays in the data so old POs still work).

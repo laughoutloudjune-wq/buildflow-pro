@@ -11,6 +11,7 @@ import { getMaterialPickerOptions, getPlotGroups } from '@/actions/material-acti
 import { createPurchaseRequest, updatePurchaseRequest, getBoqJobOptionsForPlots } from '@/actions/procurement-actions'
 import type { PurchaseRequest } from '@/lib/types/procurement'
 import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
+import PurchasePurposePicker, { usePurchasePurpose, type PurchasePurpose } from '@/components/procurement/PurchasePurposePicker'
 
 type PlotScope = 'none' | 'plot' | 'group' | 'multi'
 type Line = {
@@ -48,6 +49,8 @@ export default function PurchaseRequestForm({
   // permission check server-side.
   createAction = createPurchaseRequest,
   updateAction = updatePurchaseRequest,
+  initialPurpose,
+  initialLines,
 }: {
   mode: 'create' | 'edit'
   requestId?: string
@@ -56,16 +59,20 @@ export default function PurchaseRequestForm({
   onCancel: () => void
   createAction?: CreateFn
   updateAction?: UpdateFn
+  /** Create mode only: open on this purpose (e.g. the low-stock list's restock button). */
+  initialPurpose?: PurchasePurpose
+  /** Create mode only: prefilled lines (material + quantity). */
+  initialLines?: { material_type_id: number; quantity: number }[]
 }) {
   const toast = useToast()
   const [isPending, startTransition] = useTransition()
-  const [projects, setProjects] = useState<{ id: string; name: string; location: string | null }[]>([])
+  const [projects, setProjects] = useState<{ id: string; name: string; location: string | null; kind?: string | null }[]>([])
   const [plots, setPlots] = useState<{ id: string; name: string }[]>([])
   const [plotGroups, setPlotGroups] = useState<PlotGroup[]>([])
   const [isPlotsLoading, setIsPlotsLoading] = useState(false)
   const [materials, setMaterials] = useState<MaterialPickerOption[]>([])
   const [projectId, setProjectId] = useState('')
-  const [plotScope, setPlotScope] = useState<PlotScope>('none')
+  const [plotScopeChoice, setPlotScope] = useState<PlotScope>('none')
   const [plotId, setPlotId] = useState('')
   const [plotGroupId, setPlotGroupId] = useState('')
   const [plotIds, setPlotIds] = useState<string[]>([])
@@ -73,6 +80,18 @@ export default function PurchaseRequestForm({
   const [neededByDate, setNeededByDate] = useState('')
   const [lines, setLines] = useState<Line[]>([])
   const [boqJobOptions, setBoqJobOptions] = useState<{ id: string; item_name: string; label: string }[]>([])
+  const { purpose, setPurpose, projectsForPurpose } = usePurchasePurpose(
+    projects,
+    projectId,
+    (id) => {
+      setProjectId(id)
+      setPlotScope('none')
+    },
+    initialPurpose
+  )
+  // Plots only belong to a project purchase - a scope left over from before
+  // switching purpose is ignored, not saved.
+  const plotScope: PlotScope = purpose === 'project' ? plotScopeChoice : 'none'
 
   useEffect(() => {
     async function bootstrap() {
@@ -107,6 +126,24 @@ export default function PurchaseRequestForm({
             material_name: i.material_types?.name || null,
           }))
         )
+      } else if (mode === 'create' && initialLines && initialLines.length > 0) {
+        setLines(
+          initialLines.map((l) => {
+            const mat = m.find((mat) => mat.id === l.material_type_id)
+            return {
+              material_type_id: l.material_type_id,
+              quantity_requested: l.quantity > 0 ? String(l.quantity) : '',
+              unit: mat?.unit || '',
+              note: '',
+              boq_id: null,
+              material_name: mat?.name || null,
+            }
+          })
+        )
+      }
+      if (mode === 'create' && initialPurpose === 'store') {
+        const store = p.find((proj: { kind?: string | null }) => proj.kind === 'store')
+        if (store) setProjectId(store.id)
       }
     }
     void bootstrap()
@@ -168,7 +205,7 @@ export default function PurchaseRequestForm({
 
   function handleSubmit() {
     if (!projectId) {
-      toast.error('กรุณาเลือกโครงการ')
+      toast.error(purpose === 'store' ? 'ไม่พบโครงการสโตร์กลางในระบบ' : 'กรุณาเลือกโครงการ')
       return
     }
     if (plotScope === 'plot' && !plotId) {
@@ -222,7 +259,7 @@ export default function PurchaseRequestForm({
   }
 
   const materialOptions = materials.map((m) => ({ value: String(m.id), label: `${m.name} (${m.unit})` }))
-  const projectOptions = projects.map((p) => ({ value: p.id, label: p.name, sublabel: p.location || undefined }))
+  const projectOptions = projectsForPurpose.map((p) => ({ value: p.id, label: p.name, sublabel: p.location || undefined }))
   const plotOptions = plots.map((p) => ({ value: p.id, label: p.name }))
   const plotGroupOptions = plotGroups.map((g) => ({
     value: g.id,
@@ -232,23 +269,34 @@ export default function PurchaseRequestForm({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">โครงการ</label>
-          <SearchableSelect options={projectOptions} value={projectId} onChange={setProjectId} placeholder="เลือกโครงการ" />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">โครงการย่อย / แปลง</label>
-          <select value={plotScope} onChange={(e) => setPlotScope(e.target.value as PlotScope)} className="w-full" disabled={!projectId}>
-            <option value="none">ไม่ระบุ</option>
-            <option value="plot" disabled={plots.length === 0}>แปลงเดียว</option>
-            <option value="multi" disabled={plots.length === 0}>หลายแปลง (เลือกเอง)</option>
-            <option value="group" disabled={plotGroups.length === 0}>กลุ่มที่บันทึกไว้</option>
-          </select>
-        </div>
-      </div>
+      <PurchasePurposePicker value={purpose} onChange={setPurpose} />
 
-      {plotScope !== 'none' && (
+      {purpose !== 'store' && (
+        <div className="grid grid-cols-2 gap-4">
+          <div className={purpose === 'project' ? '' : 'col-span-2'}>
+            <label className="mb-1 block text-sm font-medium text-slate-700">{purpose === 'overhead' ? 'หมวดค่าใช้จ่าย' : 'โครงการ'}</label>
+            <SearchableSelect
+              options={projectOptions}
+              value={projectId}
+              onChange={setProjectId}
+              placeholder={purpose === 'overhead' ? 'เลือกหมวด' : 'เลือกโครงการ'}
+            />
+          </div>
+          {purpose === 'project' && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">โครงการย่อย / แปลง</label>
+              <select value={plotScope} onChange={(e) => setPlotScope(e.target.value as PlotScope)} className="w-full" disabled={!projectId}>
+                <option value="none">ไม่ระบุ</option>
+                <option value="plot" disabled={plots.length === 0}>แปลงเดียว</option>
+                <option value="multi" disabled={plots.length === 0}>หลายแปลง (เลือกเอง)</option>
+                <option value="group" disabled={plotGroups.length === 0}>กลุ่มที่บันทึกไว้</option>
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+
+      {purpose === 'project' && plotScope !== 'none' && (
         <div>
           {isPlotsLoading ? (
             <div className="flex items-center gap-2 text-xs text-slate-500">

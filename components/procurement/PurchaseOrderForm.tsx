@@ -28,6 +28,7 @@ import {
 } from '@/actions/procurement-actions'
 import { getBoqCheckForDraft } from '@/actions/procurement/boq-control'
 import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
+import PurchasePurposePicker, { usePurchasePurpose } from '@/components/procurement/PurchasePurposePicker'
 import type { ControlScope } from '@/lib/procurement/boqControl'
 import { requestScopeLabel } from '@/lib/procurement/allocations'
 import AddRequestLinesModal, { type RequestPick } from '@/components/procurement/AddRequestLinesModal'
@@ -203,7 +204,7 @@ function RequestLinkNote({
  * deliberately NOT part of this: it is ~1000 rows / ~200KB and isn't needed
  * until the user opens a line-item picker, so it stays a client fetch. */
 export type PurchaseOrderFormOptions = {
-  projects: { id: string; name: string; location: string | null; delivery_address: string | null }[]
+  projects: { id: string; name: string; location: string | null; delivery_address: string | null; kind?: string | null }[]
   suppliers: Supplier[]
   companies: Company[]
 }
@@ -258,7 +259,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   const toast = useToast()
 
   const [projects, setProjects] = useState<
-    { id: string; name: string; location: string | null; delivery_address: string | null }[]
+    { id: string; name: string; location: string | null; delivery_address: string | null; kind?: string | null }[]
   >(initialOptions?.projects ?? [])
   const [plots, setPlots] = useState<{ id: string; name: string }[]>([])
   const [plotGroups, setPlotGroups] = useState<PlotGroup[]>([])
@@ -297,7 +298,14 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   const [companies, setCompanies] = useState<Company[]>(initialOptions?.companies ?? [])
 
   const [projectId, setProjectId] = useState('')
-  const [plotScope, setPlotScope] = useState<PlotScope>('none')
+  const [plotScopeChoice, setPlotScope] = useState<PlotScope>('none')
+  const { purpose, setPurpose, projectsForPurpose } = usePurchasePurpose(projects, projectId, (id) => {
+    handleProjectChange(id)
+    setPlotScope('none')
+  })
+  // Plots only belong to a project purchase - a scope left over from before
+  // switching purpose is ignored, not saved.
+  const plotScope: PlotScope = purpose === 'project' ? plotScopeChoice : 'none'
   const [plotId, setPlotId] = useState('')
   const [plotGroupId, setPlotGroupId] = useState('')
   // Ad-hoc multi-plot selection ('multi' scope) - any combination of the
@@ -1154,7 +1162,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   }
 
   function handleSubmit() {
-    if (!projectId) return toast.error('กรุณาเลือกโครงการ')
+    if (!projectId) return toast.error(purpose === 'store' ? 'ไม่พบโครงการสโตร์กลางในระบบ' : 'กรุณาเลือกโครงการ')
     if (!supplierId) return toast.error('กรุณาเลือกผู้จำหน่าย')
     if (!companyId) return toast.error('กรุณาเลือกบริษัทผู้ซื้อ')
     if (plotScope === 'plot' && !plotId) return toast.error('กรุณาเลือกแปลง')
@@ -1260,6 +1268,9 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   }
 
   const materialOptions = materials.map((m) => ({ value: String(m.id), label: `${m.name} (${m.unit})` }))
+  // Header picker: only the projects of the chosen purpose. Line overrides
+  // keep every project, so one order can still carry a line for another job.
+  const headerProjectOptions = projectsForPurpose.map((p) => ({ value: p.id, label: p.name, sublabel: p.location || undefined }))
   const projectOptions = projects.map((p) => ({ value: p.id, label: p.name, sublabel: p.location || undefined }))
   const plotOptions = plots.map((p) => ({ value: p.id, label: p.name }))
   const plotGroupOptions = plotGroups.map((g) => ({
@@ -1504,30 +1515,43 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       <Card className="mt-5 p-5">
         <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-indigo-700">เงื่อนไขใบสั่งซื้อ</div>
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={fieldLabel}>โครงการ</label>
-            <SearchableSelect options={projectOptions} value={projectId} onChange={handleProjectChange} placeholder="เลือกโครงการ" disabled={readOnly} />
+          <div className="col-span-2">
+            <PurchasePurposePicker value={purpose} onChange={setPurpose} disabled={readOnly} />
           </div>
-          <div>
-            <label className={fieldLabel}>โครงการย่อย / แปลง</label>
-            <select
-              value={plotScope}
-              onChange={(e) => setPlotScope(e.target.value as PlotScope)}
-              className="w-full"
-              disabled={readOnly || !projectId}
-            >
-              <option value="none">ไม่ระบุ</option>
-              <option value="plot" disabled={plots.length === 0}>
-                แปลงเดียว
-              </option>
-              <option value="multi" disabled={plots.length === 0}>
-                หลายแปลง (เลือกเอง)
-              </option>
-              <option value="group" disabled={plotGroups.length === 0}>
-                กลุ่มที่บันทึกไว้
-              </option>
-            </select>
-          </div>
+          {purpose !== 'store' && (
+            <div className={purpose === 'project' ? '' : 'col-span-2'}>
+              <label className={fieldLabel}>{purpose === 'overhead' ? 'หมวดค่าใช้จ่าย' : 'โครงการ'}</label>
+              <SearchableSelect
+                options={headerProjectOptions}
+                value={projectId}
+                onChange={handleProjectChange}
+                placeholder={purpose === 'overhead' ? 'เลือกหมวด' : 'เลือกโครงการ'}
+                disabled={readOnly}
+              />
+            </div>
+          )}
+          {purpose === 'project' && (
+            <div>
+              <label className={fieldLabel}>โครงการย่อย / แปลง</label>
+              <select
+                value={plotScope}
+                onChange={(e) => setPlotScope(e.target.value as PlotScope)}
+                className="w-full"
+                disabled={readOnly || !projectId}
+              >
+                <option value="none">ไม่ระบุ</option>
+                <option value="plot" disabled={plots.length === 0}>
+                  แปลงเดียว
+                </option>
+                <option value="multi" disabled={plots.length === 0}>
+                  หลายแปลง (เลือกเอง)
+                </option>
+                <option value="group" disabled={plotGroups.length === 0}>
+                  กลุ่มที่บันทึกไว้
+                </option>
+              </select>
+            </div>
+          )}
 
           {plotScope !== 'none' && (
             <div className="col-span-2">
@@ -1944,7 +1968,9 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                           * later, never read at receiving time. Collapsed to
                           * nothing until picked, same as the scope override
                           * above. */}
-                        {!readOnly && (
+                        {/* Store stock always unloads at the store (enforced
+                          * at receiving too), so there is nothing to pick. */}
+                        {!readOnly && !(purpose === 'store' && line.project_id == null) && (
                           <div className="mt-1.5 flex items-center gap-1">
                             {(['store', 'site'] as const).map((d) => (
                               <button

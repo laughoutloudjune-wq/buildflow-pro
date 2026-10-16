@@ -12,7 +12,7 @@ const SELECT_WITH_RELATIONS = `
   suppliers (*),
   supplier_branches (*),
   companies (*),
-  projects (name, location),
+  projects (name, location, kind),
   plots!purchase_orders_plot_id_fkey (name),
   plot_groups (name),
   purchase_order_plots (plot_id, plots (name)),
@@ -21,7 +21,7 @@ const SELECT_WITH_RELATIONS = `
   receiver:profiles!purchase_orders_received_by_fkey (full_name),
   payer:profiles!purchase_orders_paid_by_fkey (full_name),
   purchase_order_items (
-    *, material_types (*), projects (name), plots (name), plot_groups (name),
+    *, material_types (*), projects (name, kind), plots (name), plot_groups (name),
     purchase_order_item_allocations (
       id, purchase_order_item_id, purchase_request_item_id, quantity_allocated,
       purchase_request_items (
