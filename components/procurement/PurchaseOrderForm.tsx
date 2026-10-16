@@ -524,6 +524,19 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
           } else {
             setIsOutsideBoq(true)
           }
+          // A request line asked in another unit comes as its own linked line,
+          // closed by its tick box - index it so the box and unit note show.
+          setRequestLines((prev) => ({
+            ...prev,
+            ...Object.fromEntries(
+              draft.lines
+                .filter((l) => l.single)
+                .map((l) => [
+                  l.single!.purchase_request_item_id,
+                  { name: l.material_name, materialTypeId: l.material_type_id, unit: l.single!.request_unit },
+                ])
+            ),
+          }))
           setLines(
             draft.lines.map((l) => ({
               id: null,
@@ -531,10 +544,10 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
               material_type_id: l.material_type_id,
               material_name: l.material_name,
               material_unit: l.material_unit,
-              purchase_request_item_id: null,
-              allocations: l.allocations,
-              quantity_ordered: String(allocationTotal(l.allocations)),
-              closes_request_line: false,
+              purchase_request_item_id: l.single?.purchase_request_item_id ?? null,
+              allocations: l.single ? null : l.allocations,
+              quantity_ordered: l.single ? l.single.quantity : String(allocationTotal(l.allocations)),
+              closes_request_line: Boolean(l.single),
               unit_price: String(l.unit_price || 0),
               description: '',
               discountValue: '',
@@ -971,7 +984,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       {
         purchase_request_item_id: line.purchase_request_item_id,
         quantity: line.quantity_ordered,
-        pr_no: pr?.pr_no ?? null,
+        // A new order's linked lines all come from the request it was raised from.
+        pr_no: pr?.pr_no ?? (initialOrder ? null : sourceRequestNo),
         plot_label: requestScopeLabel(pr),
       },
     ]
@@ -983,11 +997,46 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
    * re-validates every slice when the order is saved. */
   function addRequestPicks(picks: RequestPick[]) {
     const byMaterial = new Map<number, RequestPick[]>()
+    // Asked in another unit: can't be allocated, so each becomes its own
+    // linked line closed by its tick box (the single-request treatment).
+    const singles = picks.filter((p) => p.line.unit_mismatch)
     for (const pick of picks) {
+      if (pick.line.unit_mismatch) continue
       byMaterial.set(pick.line.material_type_id, [...(byMaterial.get(pick.line.material_type_id) || []), pick])
+    }
+    if (singles.length > 0) {
+      setRequestLines((prev) => ({
+        ...prev,
+        ...Object.fromEntries(
+          singles.map((p) => [
+            p.line.purchase_request_item_id,
+            { name: p.line.material_name, materialTypeId: p.line.material_type_id, unit: p.line.request_unit },
+          ])
+        ),
+      }))
     }
     setLines((prev) => {
       const next = [...prev]
+      for (const { line: pick, qty } of singles) {
+        next.push({
+          id: null,
+          quantity_received: 0,
+          material_type_id: pick.material_type_id,
+          material_name: pick.material_name,
+          material_unit: pick.unit,
+          purchase_request_item_id: pick.purchase_request_item_id,
+          allocations: null,
+          quantity_ordered: String(qty),
+          closes_request_line: true,
+          unit_price: pick.unit_price ? String(pick.unit_price) : '',
+          description: '',
+          discountValue: '',
+          project_id: null,
+          plot_id: null,
+          plot_group_id: null,
+          intended_destination: null,
+        })
+      }
       for (const [materialId, group] of byMaterial) {
         const slices: LineAllocationDraft[] = group.map((p) => ({
           purchase_request_item_id: p.line.purchase_request_item_id,
@@ -2062,18 +2111,16 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             <button type="button" onClick={addLine} className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800">
               <Plus className="h-4 w-4" /> เพิ่มรายการสินค้า
             </button>
-            {mode === 'edit' && (
-              <button
-                type="button"
-                onClick={() => setIsAddRequestsOpen(true)}
-                className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800"
-              >
-                <Link2 className="h-4 w-4" /> เพิ่มจากคำขอซื้อ
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setIsAddRequestsOpen(true)}
+              className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800"
+            >
+              <Link2 className="h-4 w-4" /> เพิ่มจากคำขอซื้อ
+            </button>
           </div>
         )}
-        {mode === 'edit' && (
+        {!readOnly && (
           <AddRequestLinesModal
             isOpen={isAddRequestsOpen}
             onClose={() => setIsAddRequestsOpen(false)}

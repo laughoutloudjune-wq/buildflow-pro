@@ -374,8 +374,19 @@ export type EligibleRequestLine = {
   plot_ids: string[]
   material_type_id: number
   material_name: string
+  /** The material's own unit - what an order line for it is placed in. */
   unit: string
-  /** What is still outstanding on the line (purchase_request_items.quantity_requested). */
+  /** The unit the request line was asked in (its own override, else the
+   * material's unit). Differs from `unit` when the requester asked in, say,
+   * boxes for a material sold by the piece. */
+  request_unit: string
+  /** True when request_unit differs from unit. Such a line can't be
+   * allocated (quantities are only ever summed in one unit), so it is
+   * ordered as its own PO line linked to the request line, with the "this
+   * order covers the request" box ticked to close it - the same treatment the
+   * single-request flow gives it. */
+  unit_mismatch: boolean
+  /** What is still outstanding on the line (purchase_request_items.quantity_requested), in request_unit. */
   remaining: number
   /** The material's current catalog price - the same default the single-request flow prefills. */
   unit_price: number
@@ -384,11 +395,12 @@ export type EligibleRequestLine = {
 
 /** Approved request lines with something left to order, for one project (or
  * every project when none is given).
- * Lines whose request unit differs from the material's own unit are left out:
- * a PO line transacts in the material's unit, and a consolidated line only
- * allocates same-unit quantities - those still go through the single-request
- * flow with its "covers the request" tick box. Lines already closed by an
- * order's tick box are left out too. */
+ * Lines whose request unit differs from the material's own unit are included
+ * but flagged `unit_mismatch`: a PO line transacts in the material's unit and
+ * a consolidated line only allocates same-unit quantities, so the caller
+ * orders them as a single linked line closed by its tick box instead of
+ * folding them into an allocation. Lines already closed by an order's tick
+ * box are left out. */
 export async function getEligibleRequestLinesForOrder(projectId?: string | null): Promise<EligibleRequestLine[]> {
   await requireModuleAccess('procurement')
   const supabase = await createClient()
@@ -433,7 +445,7 @@ export async function getEligibleRequestLinesForOrder(projectId?: string | null)
       if (!(remaining > 0)) continue
       if (isAnsweredByOrder(item)) continue
       const materialUnit = item.material_types?.unit || ''
-      if (requestLineUnit(item) !== materialUnit) continue
+      const requestUnit = requestLineUnit(item)
       rows.push({
         purchase_request_item_id: item.id,
         purchase_request_id: request.id,
@@ -445,6 +457,8 @@ export async function getEligibleRequestLinesForOrder(projectId?: string | null)
         material_type_id: item.material_type_id,
         material_name: item.material_types?.name || '-',
         unit: materialUnit,
+        request_unit: requestUnit,
+        unit_mismatch: requestUnit !== materialUnit,
         remaining,
         unit_price: Number(item.material_types?.current_price ?? 0),
         requested_at: request.created_at,
