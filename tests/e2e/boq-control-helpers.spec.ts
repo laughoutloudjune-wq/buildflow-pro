@@ -25,6 +25,7 @@ function row(overrides: Partial<BoqControlRow> = {}): BoqControlRow {
     orderedQty: 0,
     receivedQty: 0,
     issuedQty: 0,
+    issuedValue: 0,
     orderedValue: 0,
     receivedValue: 0,
     isEstimated: false,

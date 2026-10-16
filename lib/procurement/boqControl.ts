@@ -23,6 +23,10 @@ export type BoqControlRow = {
   orderedQty: number
   receivedQty: number
   issuedQty: number
+  /** Baht value of issuedQty's store withdrawals at the store's average buying
+   * price. Straight-to-plot deliveries are not in here: their PO already
+   * carries the plot, so orderedValue has them. */
+  issuedValue: number
   orderedValue: number
   receivedValue: number
   /** True when any contributing document only partially overlapped the

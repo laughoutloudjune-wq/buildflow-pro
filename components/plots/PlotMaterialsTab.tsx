@@ -50,7 +50,7 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
     })
   }
 
-  const colCount = canSeeCost ? 9 : 8
+  const colCount = canSeeCost ? 10 : 8
 
   return (
     <div className="space-y-2">
@@ -70,6 +70,7 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
               <th className="px-4 py-3 font-semibold text-right">ใช้แล้ว</th>
               <th className="px-4 py-3 font-semibold text-right">เทียบ BOQ</th>
               {canSeeCost && <th className="px-4 py-3 font-semibold text-right">มูลค่าสั่งซื้อ</th>}
+              {canSeeCost && <th className="px-4 py-3 font-semibold text-right" title="ของที่ผู้รับเหมาเบิกจากสโตร์ ตามราคาซื้อเฉลี่ยของสโตร์">มูลค่าเบิกสโตร์</th>}
             </tr>
           </thead>
           <tbody>
@@ -113,6 +114,11 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
                     {canSeeCost && (
                       <td className="px-4 py-3 text-right font-medium text-slate-700">
                         {m.orderedValue ? `฿${formatCurrency(m.orderedValue)}` : '—'}
+                      </td>
+                    )}
+                    {canSeeCost && (
+                      <td className="px-4 py-3 text-right font-medium text-slate-700">
+                        {m.issuedValue ? `฿${formatCurrency(m.issuedValue)}` : '—'}
                       </td>
                     )}
                   </tr>

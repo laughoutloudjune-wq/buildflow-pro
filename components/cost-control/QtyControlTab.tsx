@@ -208,6 +208,9 @@ export default function QtyControlTab({
                 <th className="px-3 py-2 text-right" title="วัสดุที่เบิกออกจากสต็อกจริงแล้ว รวมของที่ส่งตรงหน้างานโดยไม่เข้าสโตร์ - ตัวนี้คือตัวที่เทียบกับ BOQ">
                   ใช้จริง
                 </th>
+                <th className="px-3 py-2 text-right" title="มูลค่าของที่เบิกจากสโตร์ให้ผู้รับเหมา ตามราคาซื้อเฉลี่ยของสโตร์ - ต้นทุนเข้าแปลงตอนเบิก ไม่ใช่ตอนซื้อเข้าสโตร์ (ของที่ส่งตรงหน้างานนับในมูลค่าใบสั่งซื้อของแปลงอยู่แล้ว)">
+                  มูลค่าเบิกสโตร์
+                </th>
                 <th className="px-3 py-2 text-right">คงเหลือ</th>
                 <th className="px-3 py-2 text-right">%</th>
                 <th className="px-3 py-2">สถานะ</th>
@@ -243,6 +246,7 @@ export default function QtyControlTab({
                       <td className="px-3 py-2.5 text-right font-medium text-slate-700">{ceiling.toLocaleString('th-TH')}</td>
                       <td className="px-3 py-2.5 text-right text-slate-600">{row.orderedQty.toLocaleString('th-TH')}</td>
                       <td className="px-3 py-2.5 text-right font-medium text-slate-800">{used.toLocaleString('th-TH')}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-600">{row.issuedValue ? `฿${formatCurrency(row.issuedValue)}` : '-'}</td>
                       <td className={`px-3 py-2.5 text-right font-medium ${ceiling - used < 0 ? 'text-red-600' : 'text-slate-700'}`}>
                         {(ceiling - used).toLocaleString('th-TH')}
                       </td>
@@ -256,7 +260,7 @@ export default function QtyControlTab({
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={11} className="bg-slate-50/70 px-6 py-3">
+                        <td colSpan={12} className="bg-slate-50/70 px-6 py-3">
                           {isDetailLoading && !detailByMaterial[row.materialTypeId] ? (
                             <div className="flex items-center gap-2 py-2 text-sm text-slate-500">
                               <Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลด...

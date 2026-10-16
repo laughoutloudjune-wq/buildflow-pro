@@ -56,11 +56,17 @@ async function fetchRollupRows(
   supabase: Awaited<ReturnType<typeof createClient>>,
   scope: ControlScope
 ): Promise<BoqControlRow[]> {
-  const { data, error } = await supabase.rpc('boq_control_rollup', {
-    p_project_id: scope.projectId,
-    p_scope: scopeToJsonb(scope),
-  })
+  const [{ data, error }, valueRes] = await Promise.all([
+    supabase.rpc('boq_control_rollup', { p_project_id: scope.projectId, p_scope: scopeToJsonb(scope) }),
+    supabase.rpc('boq_control_issued_value', { p_project_id: scope.projectId, p_scope: scopeToJsonb(scope) }),
+  ])
   if (error) throw new Error(error.message)
+  // Baht for store withdrawals. Soft-fails to 0 so the page still loads
+  // before migration 202610160005 is applied.
+  const issuedValueByMaterial = new Map<number, number>()
+  for (const v of (valueRes.data as { material_type_id: number; issued_value: number | string }[] | null) || []) {
+    issuedValueByMaterial.set(v.material_type_id, toNumber(v.issued_value))
+  }
 
   return ((data as RollupRpcRow[]) || []).map((r) => ({
     materialTypeId: r.material_type_id,
@@ -71,6 +77,7 @@ async function fetchRollupRows(
     orderedQty: toNumber(r.ordered_qty),
     receivedQty: toNumber(r.received_qty),
     issuedQty: toNumber(r.issued_qty),
+    issuedValue: issuedValueByMaterial.get(r.material_type_id) ?? 0,
     orderedValue: toNumber(r.ordered_value),
     receivedValue: toNumber(r.received_value),
     isEstimated: Boolean(r.is_estimated),
