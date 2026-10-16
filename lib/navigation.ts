@@ -16,6 +16,7 @@ import {
   Tag,
   ClipboardCheck,
   CalendarDays,
+  History,
 } from 'lucide-react'
 import type { PermissionModule } from '@/lib/permissions'
 
@@ -158,6 +159,7 @@ export const DEPARTMENTS: Department[] = [
       { icon: Truck, label: 'ใบสั่งซื้อ (PO)', href: '/dashboard/procurement/orders', permission: 'procurement' },
       { icon: PackageCheck, label: 'ใบรับสินค้า', href: '/dashboard/procurement/receipts', permission: 'procurement' },
       { icon: Wallet, label: 'ใบสำคัญจ่าย', href: '/dashboard/procurement/payments', permission: 'procurement' },
+      { icon: History, label: 'ประวัติเอกสาร', href: '/dashboard/procurement/history', permission: 'procurement' },
     ],
   },
   {

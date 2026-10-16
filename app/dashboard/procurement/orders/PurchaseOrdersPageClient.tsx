@@ -12,7 +12,7 @@ import { PageContainer } from '@/components/ui/PageContainer'
 import { PageToolbar } from '@/components/ui/PageToolbar'
 import { TableFrame } from '@/components/ui/TableFrame'
 import { EmptyState } from '@/components/ui/EmptyState'
-import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import ReasonDialog from '@/components/ui/ReasonDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import PurchaseOrderModal from '@/components/procurement/PurchaseOrderModal'
@@ -219,10 +219,10 @@ export default function PurchaseOrdersPageClient({
     setIsDeleteConfirmOpen(true)
   }
 
-  function handleConfirmDeleteSelected() {
+  function handleConfirmDeleteSelected(reason: string) {
     const ids = Array.from(selected)
     setIsDeleting(true)
-    deletePurchaseOrders(ids)
+    deletePurchaseOrders(ids, reason)
       .then(({ deleted, failed, errors }) => {
         setSelected(new Set())
         setIsDeleteConfirmOpen(false)
@@ -398,13 +398,13 @@ export default function PurchaseOrdersPageClient({
         }}
       />
 
-      <ConfirmDialog
+      <ReasonDialog
         isOpen={isDeleteConfirmOpen}
         title="ลบใบสั่งซื้อ"
-        message={`ลบใบสั่งซื้อที่เลือก ${selected.size} รายการ? การลบไม่สามารถย้อนกลับได้`}
+        message={`ลบใบสั่งซื้อที่เลือก ${selected.size} รายการ? ใบสั่งซื้อจะหายจากรายการ แต่ระบบเก็บสำเนาไว้ในประวัติเอกสาร`}
+        label="เหตุผลที่ลบ"
+        required
         confirmLabel={isDeleting ? 'กำลังลบ...' : 'ลบ'}
-        cancelLabel="ยกเลิก"
-        tone="danger"
         busy={isDeleting}
         onCancel={() => setIsDeleteConfirmOpen(false)}
         onConfirm={handleConfirmDeleteSelected}

@@ -9,6 +9,7 @@ import { formatCurrency } from '@/lib/currency'
 import { getBoqCheckForReceipts } from '@/actions/procurement/boq-control'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
 import PayoutPoComparison from '@/components/procurement/PayoutPoComparison'
+import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
 import GoodsReceiptDocActions from '@/components/procurement/GoodsReceiptDocActions'
 import type { GoodsReceipt } from '@/lib/types/procurement'
 
@@ -118,6 +119,8 @@ export default function ReceiptDetailModal({ receipt, onClose }: { receipt: Good
         ) : (
           boqPanels.map((po) => <BoqCheckPanel key={po.poId} lines={po.lines} scopeLabel={po.scopeLabel} />)
         )}
+
+        <DocumentHistoryPanel target={{ kind: 'gr', id: receipt.id }} />
       </div>
     </Modal>
   )

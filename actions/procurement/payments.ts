@@ -63,11 +63,11 @@ export async function createPaymentVoucher(input: {
   }
 }
 
-export async function voidPaymentVoucher(id: string): Promise<{ ok: true } | { error: string }> {
+export async function voidPaymentVoucher(id: string, reason: string): Promise<{ ok: true } | { error: string }> {
   try {
     await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can void a payment voucher')
     const supabase = await createClient()
-    const { error } = await supabase.rpc('payment_voucher_void', { p_id: id })
+    const { error } = await supabase.rpc('payment_voucher_void', { p_id: id, p_reason: reason.trim() })
     if (error) return { error: translatePpError(error.message) }
     revalidatePath('/dashboard/procurement/receipts')
     revalidatePath('/dashboard/procurement/payments')

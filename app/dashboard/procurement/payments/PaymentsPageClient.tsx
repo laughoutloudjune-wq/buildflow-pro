@@ -9,7 +9,7 @@ import { PageContainer } from '@/components/ui/PageContainer'
 import { PageToolbar } from '@/components/ui/PageToolbar'
 import { TableFrame } from '@/components/ui/TableFrame'
 import { EmptyState } from '@/components/ui/EmptyState'
-import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import ReasonDialog from '@/components/ui/ReasonDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import { voidPaymentVoucher } from '@/actions/procurement-actions'
@@ -52,11 +52,11 @@ export default function PaymentsPageClient({
 
   const grandTotal = useMemo(() => rows.reduce((sum, v) => sum + v.total_amount, 0), [rows])
 
-  function handleConfirmVoid() {
+  function handleConfirmVoid(reason: string) {
     if (!voidTarget) return
     const v = voidTarget
     setVoidingId(v.id)
-    voidPaymentVoucher(v.id)
+    voidPaymentVoucher(v.id, reason)
       .then((result) => {
         if ('error' in result) {
           toast.error(result.error)
@@ -143,13 +143,14 @@ export default function PaymentsPageClient({
           </table>
       </TableFrame>
 
-      <ConfirmDialog
+      <ReasonDialog
         isOpen={voidTarget !== null}
         title="ยกเลิกใบสำคัญจ่าย"
-        message={voidTarget ? `ยกเลิกใบสำคัญจ่าย ${voidTarget.pp_no}? ใบรับสินค้าที่รวมอยู่จะกลับเป็นสถานะยังไม่จ่าย และ PO จะย้อนกลับเป็นรับของแล้ว` : ''}
+        message={voidTarget ? `ยกเลิกใบสำคัญจ่าย ${voidTarget.pp_no}? ใบรับสินค้าที่รวมอยู่จะกลับเป็นสถานะยังไม่จ่าย และ PO จะย้อนกลับเป็นรับของแล้ว ระบบเก็บสำเนาใบสำคัญจ่ายไว้ในประวัติเอกสาร` : ''}
+        label="เหตุผลที่ยกเลิก"
+        required
         confirmLabel={voidingId ? 'กำลังยกเลิก...' : 'ยกเลิกใบสำคัญจ่าย'}
         cancelLabel="ปิด"
-        tone="danger"
         busy={voidingId !== null}
         onCancel={() => setVoidTarget(null)}
         onConfirm={handleConfirmVoid}

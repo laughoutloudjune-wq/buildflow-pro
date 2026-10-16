@@ -9,6 +9,7 @@ import Modal from '@/components/ui/Modal'
 export default function ReasonDialog({
   isOpen,
   title,
+  message,
   label,
   placeholder,
   required = false,
@@ -20,6 +21,8 @@ export default function ReasonDialog({
 }: {
   isOpen: boolean
   title: string
+  /** Optional explanation shown above the reason field. */
+  message?: string
   label: string
   placeholder?: string
   /** When true, Confirm is disabled until the trimmed reason is non-empty. */
@@ -47,6 +50,7 @@ export default function ReasonDialog({
   return (
     <Modal isOpen={isOpen} onClose={onCancel} title={title}>
       <div className="space-y-4">
+        {message && <p className="text-sm text-slate-600">{message}</p>}
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
           <textarea

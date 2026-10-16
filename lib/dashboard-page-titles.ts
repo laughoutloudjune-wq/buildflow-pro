@@ -32,6 +32,7 @@ const PREFIX_TITLES: [string, string][] = [
   ['/dashboard/procurement/requests', 'คำขอซื้อ (PR)'],
   ['/dashboard/procurement/receipts', 'ใบรับสินค้า'],
   ['/dashboard/procurement/payments', 'ใบสำคัญจ่าย'],
+  ['/dashboard/procurement/history', 'ประวัติเอกสาร'],
   ['/dashboard/procurement', 'จัดซื้อ'],
   ['/dashboard/stock/movements', 'ประวัติการเคลื่อนไหวสต็อก'],
   ['/dashboard/stock/reports', 'รายงานสต็อก'],

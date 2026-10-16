@@ -274,11 +274,11 @@ export async function closePurchaseOrderShort(id: string, reason: string): Promi
  * site line, netted to zero) is reversed - not just the status label. See
  * 202609230003_po_unmark_received_full_undo.sql for why and what it
  * refuses (a receipt already paid, or material already withdrawn). */
-export async function unmarkPurchaseOrderReceived(id: string): Promise<{ ok: true } | { error: string }> {
+export async function unmarkPurchaseOrderReceived(id: string, reason: string): Promise<{ ok: true } | { error: string }> {
   try {
     await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can unmark a purchase order as received')
     const supabase = await createClient()
-    const { error } = await supabase.rpc('po_unmark_received', { p_id: id })
+    const { error } = await supabase.rpc('po_unmark_received', { p_id: id, p_reason: reason.trim() })
     if (error) return { error: translatePoError(error.message) }
     revalidatePath('/dashboard/procurement/orders')
     revalidatePath(`/dashboard/procurement/orders/${id}`)
@@ -292,12 +292,14 @@ export async function unmarkPurchaseOrderReceived(id: string): Promise<{ ok: tru
 }
 
 /** Only draft/sent/cancelled orders with no goods_receipts can be deleted -
- * po_delete enforces this server-side; this just surfaces its error. */
-export async function deletePurchaseOrder(id: string): Promise<{ ok: true } | { error: string }> {
+ * po_delete enforces this server-side; this just surfaces its error. The
+ * reason is required and kept in document_events with a full copy of the
+ * deleted order. */
+export async function deletePurchaseOrder(id: string, reason: string): Promise<{ ok: true } | { error: string }> {
   try {
     await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can delete a purchase order')
     const supabase = await createClient()
-    const { error } = await supabase.rpc('po_delete', { p_id: id })
+    const { error } = await supabase.rpc('po_delete', { p_id: id, p_reason: reason.trim() })
     if (error) return { error: translatePoError(error.message) }
     revalidatePath('/dashboard/procurement/orders')
     revalidatePath('/dashboard/procurement/requests')
@@ -309,8 +311,8 @@ export async function deletePurchaseOrder(id: string): Promise<{ ok: true } | { 
 
 /** Deletes each id independently (no partial-batch rollback) and reports how
  * many succeeded - the list page's bulk "delete selected" action. */
-export async function deletePurchaseOrders(ids: string[]) {
-  const results = await Promise.all(ids.map((id) => deletePurchaseOrder(id)))
+export async function deletePurchaseOrders(ids: string[], reason: string) {
+  const results = await Promise.all(ids.map((id) => deletePurchaseOrder(id, reason)))
   const errors = results.filter((r): r is { error: string } => 'error' in r).map((r) => r.error)
   return { deleted: ids.length - errors.length, failed: errors.length, errors }
 }

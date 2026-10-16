@@ -20,6 +20,7 @@ import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
 import { getBoqCheckForPurchaseRequest } from '@/actions/procurement/boq-control'
 import { PO_STATUS_LABEL, PO_STATUS_TONE, PR_STATUS_LABEL, PR_STATUS_TONE } from '@/lib/status-labels'
 import type { PurchaseRequest, PurchaseRequestItem } from '@/lib/types/procurement'
+import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
 import type { FulfillmentLink } from '@/lib/procurement/allocationTrace'
 import {
   isAnsweredByOrder,
@@ -558,6 +559,8 @@ export default function PurchaseRequestDetail({
           </Card>
         </div>
       )}
+
+      <DocumentHistoryPanel key={request.id} target={{ kind: 'pr', id: request.id }} />
 
       <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="แก้ไขคำขอซื้อ" panelClassName="max-w-2xl">
         <PurchaseRequestForm

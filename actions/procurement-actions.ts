@@ -208,16 +208,16 @@ export async function closePurchaseOrderShort(id: string, reason: string) {
   return closePurchaseOrderShortImpl(id, reason)
 }
 
-export async function unmarkPurchaseOrderReceived(id: string) {
-  return unmarkPurchaseOrderReceivedImpl(id)
+export async function unmarkPurchaseOrderReceived(id: string, reason: string) {
+  return unmarkPurchaseOrderReceivedImpl(id, reason)
 }
 
-export async function deletePurchaseOrder(id: string) {
-  return deletePurchaseOrderImpl(id)
+export async function deletePurchaseOrder(id: string, reason: string) {
+  return deletePurchaseOrderImpl(id, reason)
 }
 
-export async function deletePurchaseOrders(ids: string[]) {
-  return deletePurchaseOrdersImpl(ids)
+export async function deletePurchaseOrders(ids: string[], reason: string) {
+  return deletePurchaseOrdersImpl(ids, reason)
 }
 
 export async function duplicatePurchaseOrder(id: string) {
@@ -260,8 +260,8 @@ export async function createPaymentVoucher(input: Parameters<typeof createPaymen
   return createPaymentVoucherImpl(input)
 }
 
-export async function voidPaymentVoucher(id: string) {
-  return voidPaymentVoucherImpl(id)
+export async function voidPaymentVoucher(id: string, reason: string) {
+  return voidPaymentVoucherImpl(id, reason)
 }
 
 // ---------------------------------------------------------------------------

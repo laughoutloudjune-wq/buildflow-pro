@@ -12,7 +12,6 @@ import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { useDepartment } from '@/components/layout/DepartmentContext'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
-import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import ReasonDialog from '@/components/ui/ReasonDialog'
 import { formatCurrency } from '@/lib/currency'
 import { allocationRows } from '@/lib/procurement/allocations'
@@ -30,6 +29,7 @@ import {
 import { getBoqCheckForPurchaseOrder, setPoBoqOverrides } from '@/actions/procurement/boq-control'
 import { PO_STATUS_LABEL as STATUS_LABEL } from '@/lib/status-labels'
 import type { GoodsReceipt, PurchaseOrder } from '@/lib/types/procurement'
+import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
 
 function formatDate(value: string | null) {
   if (!value) return null
@@ -175,10 +175,10 @@ export default function PurchaseOrderDetailPageClient({
     })
   }
 
-  function handleConfirmUnmarkReceived() {
+  function handleConfirmUnmarkReceived(reason: string) {
     setIsUnmarkReceivedConfirmOpen(false)
     startTransition(async () => {
-      const result = await unmarkPurchaseOrderReceived(id)
+      const result = await unmarkPurchaseOrderReceived(id, reason)
       if ('error' in result) {
         toast.error(result.error)
         return
@@ -493,6 +493,8 @@ export default function PurchaseOrderDetailPageClient({
         onStateChange={onFormStateChange}
       />
 
+      <DocumentHistoryPanel key={`${id}-${fetchedAt}`} target={{ kind: 'po', id }} />
+
       <GoodsReceiptModal
         isOpen={isReceiveModalOpen}
         onClose={() => setIsReceiveModalOpen(false)}
@@ -524,13 +526,13 @@ export default function PurchaseOrderDetailPageClient({
         onConfirm={handleCloseShort}
       />
 
-      <ConfirmDialog
+      <ReasonDialog
         isOpen={isUnmarkReceivedConfirmOpen}
         title="ยกเลิกการรับของ"
-        message="ยกเลิกการรับของทั้งหมดของใบสั่งซื้อนี้? จำนวนที่รับจะกลับเป็น 0 ทุกรายการ ใบรับสินค้าที่บันทึกไว้จะถูกลบ และสต็อกที่เพิ่มไปจะถูกดึงกลับ - ใช้เมื่อบันทึกวันที่หรือจำนวนผิด แล้วต้องการรับของใหม่ให้ถูกต้อง"
+        message="ยกเลิกการรับของทั้งหมดของใบสั่งซื้อนี้? จำนวนที่รับจะกลับเป็น 0 ทุกรายการ ใบรับสินค้าจะถูกยกเลิก และสต็อกที่เพิ่มไปจะถูกดึงกลับ - ใช้เมื่อบันทึกวันที่หรือจำนวนผิด แล้วต้องการรับของใหม่ให้ถูกต้อง ระบบจะเก็บสำเนาใบรับสินค้าเดิมไว้ในประวัติ"
+        label="เหตุผลที่ยกเลิกการรับของ"
+        required
         confirmLabel={isPending ? 'กำลังยกเลิก...' : 'ยกเลิกการรับของ'}
-        cancelLabel="ยกเลิก"
-        tone="danger"
         busy={isPending}
         onCancel={() => setIsUnmarkReceivedConfirmOpen(false)}
         onConfirm={handleConfirmUnmarkReceived}
