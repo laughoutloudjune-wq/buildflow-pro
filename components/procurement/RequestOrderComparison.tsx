@@ -84,7 +84,7 @@ export default function RequestOrderComparison({
           <div className="text-sm font-semibold text-slate-800">เทียบคำขอซื้อกับใบสั่งซื้อ</div>
           <p className="mt-1 text-sm text-slate-600">{parts.join(' · ')}</p>
           <p className="mt-1 text-xs text-slate-500">
-            ข้อความเตือนเป็นข้อมูลให้ PM ตรวจเท่านั้น ไม่ได้ขัดขวางการสั่งซื้อ
+            ดูรายละเอียดแต่ละรายการในตารางด้านล่าง เมื่อ PM ดูความต่างแล้วกด &quot;ตรวจเทียบแล้ว&quot; (เป็นเครื่องหมายบันทึกเท่านั้น ไม่ใช่การอนุมัติ และไม่ขัดขวางการสั่งซื้อ)
           </p>
         </div>
         {request.pm_reviewed_at ? (

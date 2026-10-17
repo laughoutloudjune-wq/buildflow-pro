@@ -173,6 +173,36 @@ function statusCell(item: PurchaseRequestItem, closed: 'open' | 'ordered' | 'can
   return <span className="text-xs text-slate-500">รอสั่งซื้อ</span>
 }
 
+/** Small tags saying how what was bought compares with what was asked. They
+ * are information for the PM and purchasing; none of them blocks anything. */
+function lineTags(request: PurchaseRequest, item: PurchaseRequestItem): { label: string; tone: string }[] {
+  const tags: { label: string; tone: string }[] = []
+  const links = (item.fulfillment?.links || []).filter((l) => !l.cancelled)
+  const unit = requestLineUnit(item)
+  const asked = originalQuantityRequested(item)
+  const seen = new Set<string>()
+  for (const l of links) {
+    if (l.isSubstitute) {
+      const label = `ซื้อ ${l.actualMaterialName} แทน`
+      if (!seen.has(label)) {
+        seen.add(label)
+        tags.push({ label, tone: 'bg-indigo-50 text-indigo-700' })
+      }
+    }
+    if (l.unit !== unit || Math.abs(l.allocated - asked) > 1e-9) {
+      const label = `ซื้อ ${l.allocated.toLocaleString('th-TH')} ${l.unit} (ขอ ${asked.toLocaleString('th-TH')} ${unit})`
+      if (!seen.has(label)) {
+        seen.add(label)
+        tags.push({ label, tone: 'bg-amber-50 text-amber-700' })
+      }
+    }
+  }
+  if (item.line_status === 'open' && request.needed_by_date && new Date(request.needed_by_date).getTime() < Date.now()) {
+    tags.push({ label: 'เลยวันที่ต้องการ ยังไม่ได้สั่ง', tone: 'bg-rose-50 text-rose-700' })
+  }
+  return tags
+}
+
 /** Every PO fulfilling one request line: the supplier, what purchasing
  * actually ordered (with the original ask when it differs), and this line's
  * own allocated / received / outstanding quantity - never the whole PO
@@ -401,6 +431,10 @@ export default function PurchaseRequestDetail({
         </div>
       </Card>
 
+      {(request.status === 'approved' || request.status === 'ordered' || request.status === 'received') && (
+        <RequestOrderComparison request={request} canReview onChanged={onChanged} />
+      )}
+
       <Card className="overflow-hidden">
         <div className="border-b bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">รายการวัสดุ</div>
         <div className="overflow-x-auto">
@@ -477,7 +511,16 @@ export default function PurchaseRequestDetail({
                     >
                       {quantityDisplay(item, closed)}
                     </td>
-                    <td className="px-4 py-2.5 text-slate-500">{statusCell(item, closed)}</td>
+                    <td className="px-4 py-2.5 text-slate-500">
+                      {statusCell(item, closed)}
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {lineTags(request, item).map((t) => (
+                          <span key={t.label} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${t.tone}`}>
+                            {t.label}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="px-4 py-2.5 text-slate-500">
                       {item.material_types?.lead_time_days != null ? `${item.material_types.lead_time_days} วัน` : '-'}
                     </td>
@@ -556,10 +599,6 @@ export default function PurchaseRequestDetail({
             </div>
           </Card>
         </div>
-      )}
-
-      {(request.status === 'approved' || request.status === 'ordered' || request.status === 'received') && (
-        <RequestOrderComparison request={request} canReview onChanged={onChanged} />
       )}
 
       <DocumentHistoryPanel key={request.id} target={{ kind: 'pr', id: request.id }} />
