@@ -1836,8 +1836,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                 <tr>
                   <th className="w-10 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">#</th>
                   <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">สินค้า</th>
-                  <th className="w-36 px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">จำนวน</th>
-                  <th className="w-32 px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">ราคาต่อหน่วย</th>
+                  <th className="w-56 px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">จำนวน</th>
+                  <th className="w-36 px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">ราคาต่อหน่วย</th>
                   <th className="w-32 px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">ราคารวม</th>
                   {!readOnly && <th className="w-10 px-2 py-2.5" />}
                 </tr>
@@ -2091,7 +2091,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             placeholder={catalogUnit(line) || 'หน่วย'}
                             aria-label="หน่วยของผู้ขาย"
                             title="หน่วยที่ผู้ขายขาย (เว้นว่างถ้าเหมือนหน่วยของวัสดุ)"
-                            className="w-16 shrink-0 text-xs"
+                            className="w-24 shrink-0 text-sm"
                             disabled={readOnly}
                           />
                         </div>

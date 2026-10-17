@@ -241,7 +241,7 @@ export default function PurchaseRequestsPageClient({
         isOpen={selectedRequest != null}
         onClose={() => setSelectedRequestId(null)}
         title={selectedRequest ? `คำขอซื้อ #${String(selectedRequest.pr_no).padStart(4, '0')}` : undefined}
-        panelClassName="max-w-3xl"
+        panelClassName="max-w-6xl"
       >
         {selectedRequest && <PurchaseRequestDetail request={selectedRequest} onChanged={() => router.refresh()} />}
       </Modal>
