@@ -60,7 +60,7 @@ export default function PurchaseOrderModal({
       isOpen={Boolean(orderId)}
       onClose={onClose}
       title={order ? `ใบสั่งซื้อ ${order.po_no}` : 'ใบสั่งซื้อ'}
-      panelClassName="max-w-5xl h-[90dvh]"
+      panelClassName="max-w-7xl h-[90dvh]"
       bodyClassName="p-4 sm:p-6"
       footer={
         showFooter ? (
