@@ -6,8 +6,8 @@
 -- conversion, cost control on the new view) will build on. Design: the
 -- "Procurement Workflow Redesign" doc, approved by June 2026-10-17.
 --
--- NOT maintained yet: purchase_request_items.line_status is backfilled once
--- here and starts being kept in sync in step 3. Until then it is a snapshot.
+-- purchase_request_items.line_status starts as 'open' everywhere; the next
+-- migration (request lines by state) backfills and maintains it.
 
 -- ---------------------------------------------------------------------------
 -- 1. Request lines: keep what the foreman asked for, track coverage by state
@@ -21,62 +21,39 @@ alter table public.purchase_request_items
   add column if not exists closed_at timestamptz;
 
 -- Today po_create counts quantity_requested down by what was ordered, so many
--- lines read 0. Recover the original where it is certain: the line was
--- counted down in the same unit as the PO line(s) that took from it.
--- Lines whose PO lines use a different unit, or that have no allocation
--- records, stay NULL (unknown) rather than guessed.
+-- lines read 0. Recover the original where it is certain: outstanding now
+--   + what live (not cancelled) PO lines took from it in the same unit
+--   + what was settled by hand.
+-- A cancelled PO gave its quantity back when it was cancelled, so it must not
+-- be added again. Lines whose PO lines use a different unit never had their
+-- quantity reduced, so those links add nothing. Lines with no allocation or
+-- settlement records and a quantity of 0 stay NULL (unknown), never guessed.
 with taken as (
   select
-    a.purchase_request_item_id as pri_id,
-    sum(a.quantity_allocated) as taken_qty,
-    bool_and(
-      coalesce(nullif(poi.unit, ''), mt.unit) is not distinct from coalesce(nullif(pri.unit, ''), mt_r.unit)
-    ) as same_unit
-  from public.purchase_order_item_allocations a
-  join public.purchase_order_items poi on poi.id = a.purchase_order_item_id
-  join public.material_types mt on mt.id = poi.material_type_id
-  join public.purchase_request_items pri on pri.id = a.purchase_request_item_id
+    pri.id as pri_id,
+    coalesce((
+      select sum(a.quantity_allocated)
+      from public.purchase_order_item_allocations a
+      join public.purchase_order_items poi on poi.id = a.purchase_order_item_id
+      join public.purchase_orders po on po.id = poi.purchase_order_id
+      join public.material_types mt on mt.id = poi.material_type_id
+      where a.purchase_request_item_id = pri.id
+        and po.status <> 'cancelled'
+        and coalesce(nullif(poi.unit, ''), mt.unit) is not distinct from coalesce(nullif(pri.unit, ''), mt_r.unit)
+    ), 0) as taken_qty,
+    coalesce((
+      select sum(s.quantity) from public.purchase_request_item_settlements s
+      where s.purchase_request_item_id = pri.id
+    ), 0) as settled_qty
+  from public.purchase_request_items pri
   join public.material_types mt_r on mt_r.id = pri.material_type_id
-  group by a.purchase_request_item_id
 )
 update public.purchase_request_items pri
-set quantity_requested_original = pri.quantity_requested + taken.taken_qty
+set quantity_requested_original = pri.quantity_requested + taken.taken_qty + taken.settled_qty
 from taken
 where taken.pri_id = pri.id
-  and taken.same_unit
-  and pri.quantity_requested_original is null;
-
--- Lines that were never touched by a PO: the original is what they say now.
-update public.purchase_request_items pri
-set quantity_requested_original = pri.quantity_requested
-where pri.quantity_requested_original is null
-  and pri.quantity_requested > 0
-  and not exists (select 1 from public.purchase_order_item_allocations a where a.purchase_request_item_id = pri.id)
-  and not exists (select 1 from public.purchase_order_items poi where poi.purchase_request_item_id = pri.id);
-
--- One-time snapshot of the line state from existing PO links.
-with links as (
-  select a.purchase_request_item_id as pri_id, a.purchase_order_item_id as poi_id
-  from public.purchase_order_item_allocations a
-  union
-  select poi.purchase_request_item_id, poi.id
-  from public.purchase_order_items poi
-  where poi.purchase_request_item_id is not null
-),
-state as (
-  select
-    l.pri_id,
-    bool_or(po.status <> 'cancelled') as has_live_po,
-    bool_or(po.status <> 'cancelled' and poi.quantity_received > 0) as has_receipt
-  from links l
-  join public.purchase_order_items poi on poi.id = l.poi_id
-  join public.purchase_orders po on po.id = poi.purchase_order_id
-  group by l.pri_id
-)
-update public.purchase_request_items pri
-set line_status = case when s.has_receipt then 'arrived' when s.has_live_po then 'ordered' else 'open' end
-from state s
-where s.pri_id = pri.id;
+  and pri.quantity_requested_original is null
+  and (pri.quantity_requested > 0 or taken.taken_qty + taken.settled_qty > 0);
 
 -- ---------------------------------------------------------------------------
 -- 2. PM review mark on a request (non-blocking comparison of request vs order)

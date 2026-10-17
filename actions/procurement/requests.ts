@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole } from '@/actions/_shared/user-role'
 import { translateError as translatePrError } from '@/lib/errors'
-import { isAnsweredByOrder, requestLineUnit } from '@/lib/procurement/requestQuantities'
+import { isOpenLine, requestLineUnit } from '@/lib/procurement/requestQuantities'
 import { allocationsToOrderLines, buildFulfillmentLinks, type RawRequestAllocation } from '@/lib/procurement/allocationTrace'
 import type { PurchaseRequest, PurchaseRequestStatus, SettlementReason } from '@/lib/types/procurement'
 
@@ -276,6 +276,22 @@ export async function approvePurchaseRequest(id: string): Promise<{ ok: true } |
   }
 }
 
+/** PM/Admin marks that they compared this request with what was ordered.
+ * A record only: it never blocks a PO. */
+export async function pmReviewPurchaseRequest(id: string, comment?: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can review a purchase request against its orders')
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('pr_pm_review', { p_id: id, p_comment: comment?.trim() || null })
+    if (error) return { error: translatePrError(error.message) }
+    revalidatePath('/dashboard/procurement/requests')
+    revalidatePath(`/dashboard/procurement/requests/${id}`)
+    return { ok: true }
+  } catch (error) {
+    return { error: translatePrError(error instanceof Error ? error.message : 'บันทึกการตรวจเทียบไม่สำเร็จ') }
+  }
+}
+
 export async function rejectPurchaseRequest(id: string, note?: string): Promise<{ ok: true } | { error: string }> {
   try {
     await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can reject a purchase request')
@@ -386,7 +402,7 @@ export type EligibleRequestLine = {
    * order covers the request" box ticked to close it - the same treatment the
    * single-request flow gives it. */
   unit_mismatch: boolean
-  /** What is still outstanding on the line (purchase_request_items.quantity_requested), in request_unit. */
+  /** What the foreman asked for on the line (purchase_request_items.quantity_requested), in request_unit. */
   remaining: number
   /** The material's current catalog price - the same default the single-request flow prefills. */
   unit_price: number
@@ -442,8 +458,7 @@ export async function getEligibleRequestLinesForOrder(projectId?: string | null)
 
     for (const item of request.purchase_request_items || []) {
       const remaining = Number(item.quantity_requested)
-      if (!(remaining > 0)) continue
-      if (isAnsweredByOrder(item)) continue
+      if (!isOpenLine(item)) continue
       const materialUnit = item.material_types?.unit || ''
       const requestUnit = requestLineUnit(item)
       rows.push({

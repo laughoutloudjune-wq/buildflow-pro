@@ -16,6 +16,7 @@ import {
 import PurchaseRequestDocActions from '@/components/procurement/PurchaseRequestDocActions'
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import PurchaseRequestSettleModal from '@/components/procurement/PurchaseRequestSettleModal'
+import RequestOrderComparison from '@/components/procurement/RequestOrderComparison'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
 import { getBoqCheckForPurchaseRequest } from '@/actions/procurement/boq-control'
 import { PO_STATUS_LABEL, PO_STATUS_TONE, PR_STATUS_LABEL, PR_STATUS_TONE } from '@/lib/status-labels'
@@ -23,7 +24,6 @@ import type { PurchaseRequest, PurchaseRequestItem } from '@/lib/types/procureme
 import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
 import type { FulfillmentLink } from '@/lib/procurement/allocationTrace'
 import {
-  isAnsweredByOrder,
   orderLineUnit,
   orderedQuantity,
   originalQuantityRequested,
@@ -41,7 +41,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
  * nothing outstanding has a lead time set yet. */
 function maxLeadTimeDays(request: PurchaseRequest): number | null {
   const values = (request.purchase_request_items || [])
-    .filter((item) => item.quantity_requested > 0)
+    .filter((item) => item.line_status === 'open')
     .map((item) => item.material_types?.lead_time_days)
     .filter((v): v is number => v != null)
   return values.length > 0 ? Math.max(...values) : null
@@ -91,17 +91,15 @@ export function partiallyOrderedHint(request: PurchaseRequest): string {
  * 'cancelled' settlements was never bought - calling that สั่งซื้อครบแล้ว
  * would be a lie the PM can't correct. */
 function closedState(request: PurchaseRequest, item: PurchaseRequestItem): 'open' | 'ordered' | 'cancelled' {
-  // Purchasing ticking "this order covers it" answers the line outright -
-  // for a line bought in a different unit than it was asked in, it's the only
-  // thing that can, since nothing was subtracted. Mirrors
-  // _pr_recompute_status server-side; keep the two in step.
-  if (isAnsweredByOrder(item)) return 'ordered'
-  if (item.quantity_requested > 0) return 'open'
-  const settlements = item.purchase_request_item_settlements || []
-  const fromPo = (request.purchase_orders?.length ?? 0) > 0
-  if (settlements.length === 0) return fromPo ? 'ordered' : 'open'
-  const anyOrdered = fromPo || settlements.some((s) => s.reason === 'ordered')
-  return anyOrdered ? 'ordered' : 'cancelled'
+  // The database keeps the line state (open / ordered / arrived / closed);
+  // a hand-closed line reads as bought elsewhere or dropped by its reason.
+  if (item.line_status === 'ordered' || item.line_status === 'arrived') return 'ordered'
+  if (item.line_status === 'closed') {
+    const settlements = item.purchase_request_item_settlements || []
+    return settlements.some((s) => s.reason === 'ordered') ? 'ordered' : 'cancelled'
+  }
+  void request
+  return 'open'
 }
 
 /** What the quantity column shows: an answered line reports the purchase (in
@@ -167,7 +165,7 @@ function statusCell(item: PurchaseRequestItem, closed: 'open' | 'ordered' | 'can
   if (touched) {
     return (
       <span className="whitespace-nowrap text-xs font-medium text-amber-700">
-        ยังขาด {item.quantity_requested.toLocaleString('th-TH')} {requestLineUnit(item)}
+        สั่งบางส่วน · ขอ {item.quantity_requested.toLocaleString('th-TH')} {requestLineUnit(item)}
         {refSuffix}
       </span>
     )
@@ -558,6 +556,10 @@ export default function PurchaseRequestDetail({
             </div>
           </Card>
         </div>
+      )}
+
+      {(request.status === 'approved' || request.status === 'ordered' || request.status === 'received') && (
+        <RequestOrderComparison request={request} canReview onChanged={onChanged} />
       )}
 
       <DocumentHistoryPanel key={request.id} target={{ kind: 'pr', id: request.id }} />

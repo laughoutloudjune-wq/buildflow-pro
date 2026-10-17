@@ -583,11 +583,10 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
           }
           setNote(pr.note || '')
           setLines(
-            // quantity_requested tracks what's still outstanding, not the
-            // original ask - a line a prior PO already fully covered sits
-            // at 0 and has nothing left to prefill here.
+            // Only lines still waiting to be bought; a line another order
+            // already covers has nothing left to prefill here.
             (pr.purchase_request_items || [])
-              .filter((item) => item.quantity_requested > 0)
+              .filter((item) => item.line_status === 'open')
               .map((item) => ({
                 id: null,
                 quantity_received: 0,
@@ -601,9 +600,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                 // can't be placed in - the supplier sells by the material's
                 // own unit, so nothing can be subtracted and only this
                 // closes the line.
-                closes_request_line: Boolean(
-                  item.unit && item.material_types?.unit && item.unit !== item.material_types.unit
-                ),
+                closes_request_line: true,
                 unit_price: String(item.material_types?.current_price ?? 0),
                 description: '',
                 discountValue: '',

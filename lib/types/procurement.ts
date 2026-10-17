@@ -107,11 +107,13 @@ export type PurchaseRequestItem = {
    * material was replaced by a purchase. Null if it never changed. */
   original_material_type_id: number | null
   original_material?: { name: string } | null
-  /** What's still OUTSTANDING, not the original ask - both POs raised from the
-   * request and manual settlements subtract from it. Use
-   * `originalQuantityRequested` (lib/procurement/requestedQuantity) wherever
-   * the question is "what did they ask for". */
+  /** What the requester asked for, as they wrote it. A PO never changes it:
+   * whether the line is covered is `line_status`, not a subtraction. */
   quantity_requested: number
+  /** open -> ordered -> arrived, or closed by hand. Derived from the PO links
+   * and the "this order covers it" tick by the database. */
+  line_status: 'open' | 'ordered' | 'arrived' | 'closed'
+  close_reason?: string | null
   /** This line's own unit, when the requester means something other than the
    * material's catalog unit (e.g. counting pieces for a material catalogued
    * by the box). Null means "use material_types.unit" - true for the vast
@@ -163,6 +165,10 @@ export type PurchaseRequest = {
   requested_by: string
   reviewed_by: string | null
   reviewed_at: string | null
+  /** PM/Admin mark that the request was compared with its orders (never a gate). */
+  pm_reviewed_by?: string | null
+  pm_reviewed_at?: string | null
+  pm_review_comment?: string | null
   created_at: string
   projects?: { name: string } | null
   plots?: { name: string } | null

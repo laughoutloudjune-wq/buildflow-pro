@@ -127,9 +127,7 @@ export default function CombineRequestsForm({
     for (const g of groups) {
       for (const r of g.rows) {
         if (!(r.qty > 0)) return toast.error(`กรุณาระบุจำนวนที่สั่งของ ${g.materialName} (PR-${r.line.pr_no}) ให้มากกว่า 0`)
-        if (!r.line.unit_mismatch && r.qty > r.line.remaining + 1e-9) {
-          return toast.error(`${g.materialName} (PR-${r.line.pr_no}) สั่งได้ไม่เกินจำนวนคงเหลือ ${qtyFormat(r.line.remaining)} ${g.unit}`)
-        }
+        // Ordering more or less than was asked is information, not an error.
       }
     }
 
@@ -260,7 +258,7 @@ export default function CombineRequestsForm({
               <tbody className="divide-y divide-slate-100 bg-white">
                 {visible.map((line) => {
                   const checked = selected[line.purchase_request_item_id] !== undefined
-                  const over = checked && !line.unit_mismatch && Number(selected[line.purchase_request_item_id]) > line.remaining + 1e-9
+                  const over = false
                   return (
                     <tr key={line.purchase_request_item_id} className={checked ? 'bg-indigo-50/40' : undefined}>
                       <td className="px-3 py-2">
@@ -291,8 +289,7 @@ export default function CombineRequestsForm({
                             <input
                               type="number"
                               min="0"
-                              max={line.unit_mismatch ? undefined : line.remaining}
-                              step="any"
+                                                            step="any"
                               value={selected[line.purchase_request_item_id]}
                               onChange={(e) => setQuantity(line.purchase_request_item_id, e.target.value)}
                               className={`w-24 text-right ${over ? 'border-rose-400' : ''}`}

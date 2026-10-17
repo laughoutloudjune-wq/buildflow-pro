@@ -27,30 +27,17 @@ export function isSameUnit(item: PurchaseRequestItem, line: PoLine): boolean {
 }
 
 /**
- * What the requester originally asked for on a line.
- *
- * `purchase_request_items.quantity_requested` doesn't hold this: since the
- * partial-fulfilment migration it tracks what's still OUTSTANDING, so
- * po_create/po_update subtract whatever made it onto a PO in the same unit,
- * and a manual settlement subtracts the rest. A fully-ordered request
- * therefore stores 0 on every line, which is the right answer for "what's
- * left to buy" and the wrong one for a printed คำขอซื้อ, which is a record of
- * the ask.
- *
- * The original is reconstructed rather than stored, by adding back everything
- * that was taken off the line:
- *   outstanding + ordered in the same unit + manually settled
- *
- * Order lines bought in a *different* unit never decremented the line, so
- * they contribute nothing here either - otherwise the reconstruction would
- * inflate the ask by a number that was never subtracted from it.
+ * What the requester asked for on a line. Since the request-lines-by-state
+ * migration this is simply quantity_requested: a PO no longer counts it down.
  */
 export function originalQuantityRequested(item: PurchaseRequestItem): number {
-  const settled = (item.purchase_request_item_settlements || []).reduce(
-    (sum, settlement) => sum + Number(settlement.quantity || 0),
-    0
-  )
-  return Number(item.quantity_requested || 0) + orderedQuantity(item) + settled
+  return Number(item.quantity_requested || 0)
+}
+
+/** Still waiting to be bought: purchasing has neither linked a covering order
+ * nor closed it by hand. */
+export function isOpenLine(item: PurchaseRequestItem): boolean {
+  return item.line_status === 'open'
 }
 
 /**

@@ -26,6 +26,7 @@ import {
   rejectPurchaseRequest as rejectPurchaseRequestImpl,
   settlePurchaseRequestItems as settlePurchaseRequestItemsImpl,
   undoPurchaseRequestItemSettlement as undoPurchaseRequestItemSettlementImpl,
+  pmReviewPurchaseRequest as pmReviewPurchaseRequestImpl,
   getApprovedRequestsForOrder as getApprovedRequestsForOrderImpl,
   getEligibleRequestLinesForOrder as getEligibleRequestLinesForOrderImpl,
   getBoqJobOptionsForPlots as getBoqJobOptionsForPlotsImpl,
@@ -154,6 +155,10 @@ export async function rejectPurchaseRequest(id: string, note?: string) {
 
 export async function settlePurchaseRequestItems(input: Parameters<typeof settlePurchaseRequestItemsImpl>[0]) {
   return settlePurchaseRequestItemsImpl(input)
+}
+
+export async function pmReviewPurchaseRequest(id: string, comment?: string) {
+  return pmReviewPurchaseRequestImpl(id, comment)
 }
 
 export async function undoPurchaseRequestItemSettlement(settlementId: string, requestId: string) {

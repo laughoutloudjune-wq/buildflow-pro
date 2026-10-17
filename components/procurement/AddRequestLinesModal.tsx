@@ -98,9 +98,6 @@ export default function AddRequestLinesModal({
       if (raw === undefined) continue
       const qty = Number(raw) || 0
       if (!(qty > 0)) return toast.error(`กรุณาระบุจำนวนของ ${line.material_name} (PR-${line.pr_no}) ให้มากกว่า 0`)
-      if (!line.unit_mismatch && qty > line.remaining + 1e-9) {
-        return toast.error(`${line.material_name} (PR-${line.pr_no}) เพิ่มได้ไม่เกินจำนวนคงเหลือ ${qtyFormat(line.remaining)} ${line.unit}`)
-      }
       picks.push({ line, qty })
     }
     if (picks.length === 0) return toast.error('กรุณาเลือกรายการอย่างน้อย 1 รายการ')
@@ -180,8 +177,7 @@ export default function AddRequestLinesModal({
                             <input
                               type="number"
                               min="0"
-                              max={line.unit_mismatch ? undefined : line.remaining}
-                              step="any"
+                                                            step="any"
                               value={selected[line.purchase_request_item_id]}
                               onChange={(e) => setSelected((prev) => ({ ...prev, [line.purchase_request_item_id]: e.target.value }))}
                               className="w-24 text-right"
