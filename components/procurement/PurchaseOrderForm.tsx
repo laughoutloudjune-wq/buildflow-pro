@@ -102,6 +102,9 @@ type Line = {
    * (the picker itself only offers active ones). */
   material_name: string | null
   material_unit: string | null
+  /** The supplier's unit for this line, when it isn't the material's own
+   * (e.g. bought by the bundle, stocked by the metre). Blank = material unit. */
+  unit?: string
   purchase_request_item_id: string | null
   /** Breakdown of this line across purchase request lines, when it
    * consolidates several of them (or was built by the combine picker). The
@@ -167,7 +170,7 @@ function RequestLinkNote({
     return (
       <p className="mt-1.5 flex items-start gap-1 text-[11px] leading-tight text-amber-700">
         <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
-        <span>ไม่ได้ตัดยอดจากคำขอซื้อ - รายการนี้จะไม่ลดจำนวนคงเหลือในคำขอ</span>
+        <span>ไม่ได้เชื่อมกับคำขอซื้อ - รายการนี้จะไม่ปิดรายการในคำขอ</span>
       </p>
     )
   }
@@ -188,7 +191,7 @@ function RequestLinkNote({
         <Link2 className="mt-px h-3 w-3 shrink-0" />
       )}
       <span>
-        {substituted ? 'ตัดยอดแทน: ' : 'ตัดยอดจากคำขอ: '}
+        {substituted ? 'ซื้อแทนที่ขอไว้ (ยี่ห้อ/รุ่นอื่น): ' : 'ตามที่ขอ: '}
         {source.name}
       </span>
     </p>
@@ -459,6 +462,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             material_type_id: item.material_type_id,
             material_name: item.material_types?.name || null,
             material_unit: item.material_types?.unit || null,
+            unit: item.unit && item.unit !== item.material_types?.unit ? item.unit : undefined,
             purchase_request_item_id: item.purchase_request_item_id,
             // A line drawing on several request lines is edited through its
             // breakdown; a single-link line keeps the original behaviour.
@@ -1109,15 +1113,18 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     ])
   }
 
-  /** The unit this order line transacts in. Always the material's own unit -
-   * a PO goes to a supplier, who sells in exactly one unit, so there is
-   * nothing here for purchasing to choose. */
+  /** The unit this order line transacts in: the supplier's unit typed on the
+   * line, else the material's own unit. */
   // Falls back to the line's own embedded material_unit (from the order's
   // joined material_types row, unfiltered by is_active) when the material
   // isn't in the active-only picker list anymore - otherwise a deactivated
   // material's unit silently renders as "-" on an order that already used it.
-  function materialUnit(line: Line): string {
+  function catalogUnit(line: Line): string {
     return materials.find((m) => m.id === line.material_type_id)?.unit || line.material_unit || ''
+  }
+
+  function materialUnit(line: Line): string {
+    return line.unit?.trim() || catalogUnit(line)
   }
 
   /** True when the request asked in a different unit than this order can be
@@ -1250,6 +1257,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         // A consolidated line's total is the sum of its allocations.
         quantity_ordered: l.allocations ? allocationTotal(l.allocations) : Number(l.quantity_ordered),
         closes_request_line: !l.allocations && Boolean(l.purchase_request_item_id) && l.closes_request_line,
+        unit: l.unit?.trim() && l.unit.trim() !== catalogUnit(l) ? l.unit.trim() : null,
         unit_price: Number(l.unit_price) || 0,
         description: l.description,
         discount_type: (discountMode === 'individual' && Number(l.discountValue) > 0 ? 'amount' : 'none') as DiscountType,
@@ -1792,6 +1800,36 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             ยังไม่มีรายการ กดเพิ่มรายการสินค้าเพื่อเริ่มต้น
           </p>
         ) : (
+          <>
+          {(() => {
+            // Differences from what was asked: information for purchasing and
+            // the PM, never a reason to stop saving.
+            const notes: string[] = []
+            for (const l of lines) {
+              const src = l.purchase_request_item_id ? requestLines[l.purchase_request_item_id] : undefined
+              if (!src || l.allocations) continue
+              const name = l.material_name || materials.find((m) => m.id === l.material_type_id)?.name || ''
+              if (l.material_type_id > 0 && l.material_type_id !== src.materialTypeId) {
+                notes.push(`${name}: ซื้อแทน "${src.name}" ที่ขอไว้ (ยี่ห้อ/รุ่นอื่น)`)
+              }
+              if (src.unit && materialUnit(l) && src.unit !== materialUnit(l)) {
+                notes.push(`${name}: ขอเป็น ${src.unit} สั่งเป็น ${materialUnit(l)}`)
+              }
+            }
+            if (notes.length === 0) return null
+            return (
+              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                <div className="mb-1 flex items-center gap-1.5 font-semibold">
+                  <AlertTriangle className="h-3.5 w-3.5" /> ใบสั่งซื้อนี้ต่างจากคำขอซื้อ {notes.length} จุด (บันทึกได้ตามปกติ)
+                </div>
+                <ul className="list-disc space-y-0.5 pl-5">
+                  {notes.map((n, idx) => (
+                    <li key={idx}>{n}</li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })()}
           <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
             <table className="w-full table-fixed text-left text-sm">
               <thead className="bg-slate-50">
@@ -1916,12 +1954,11 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                               className="mt-px shrink-0"
                             />
                             <span>
-                              ใบสั่งซื้อนี้ครบตามรายการที่ขอแล้ว
+                              ใบสั่งซื้อนี้ครอบคลุมรายการที่ขอ (ปิดรายการในคำขอ)
                               {differsFromRequestUnit(line) && (
                                 <span className="mt-0.5 block text-[10px] text-amber-700">
-                                  ขอเป็น {requestLines[line.purchase_request_item_id].unit} แต่สั่งเป็น{' '}
-                                  {materialUnit(line)} - ระบบจะไม่หักจำนวนข้ามหน่วยให้
-                                  ติ๊กช่องนี้เพื่อปิดรายการในคำขอ
+                                  ขอเป็น {requestLines[line.purchase_request_item_id].unit} สั่งเป็น{' '}
+                                  {materialUnit(line)} - ต่างหน่วยกัน เป็นข้อมูลให้ PM ตรวจ ไม่ได้ขัดขวางการสั่งซื้อ
                                 </span>
                               )}
                             </span>
@@ -2048,7 +2085,15 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             readOnly={Boolean(line.allocations)}
                             title={line.allocations ? 'ผลรวมของจำนวนที่จัดสรรจากคำขอซื้อแต่ละใบ' : undefined}
                           />
-                          <span className="shrink-0 text-xs text-slate-500">{materialUnit(line) || '-'}</span>
+                          <input
+                            value={line.unit ?? ''}
+                            onChange={(e) => updateLine(i, { unit: e.target.value })}
+                            placeholder={catalogUnit(line) || 'หน่วย'}
+                            aria-label="หน่วยของผู้ขาย"
+                            title="หน่วยที่ผู้ขายขาย (เว้นว่างถ้าเหมือนหน่วยของวัสดุ)"
+                            className="w-16 shrink-0 text-xs"
+                            disabled={readOnly}
+                          />
                         </div>
                         {line.quantity_received > 0 && (
                           <div className="mt-1 text-right text-[10px] text-emerald-600">
@@ -2101,6 +2146,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {!readOnly && (

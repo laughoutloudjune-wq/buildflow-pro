@@ -7,7 +7,7 @@ import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { useDepartment } from '@/components/layout/DepartmentContext'
 import { todayInBangkok } from '@/lib/utils'
-import { createGoodsReceipt } from '@/actions/procurement-actions'
+import { createGoodsReceipt, getLastStockConversions } from '@/actions/procurement-actions'
 import { getBoqCheckForGoodsReceiptDraft } from '@/actions/procurement/boq-control'
 import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
 import type { PurchaseOrder } from '@/lib/types/procurement'
@@ -40,6 +40,10 @@ export default function GoodsReceiptModal({
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   // Quantity in the material's stock unit - only asked when the line was bought in another unit.
   const [stockQuantities, setStockQuantities] = useState<Record<string, string>>({})
+  // Conversion seen on this supplier's last delivery of each material (stock
+  // units per received unit). Pre-fills the stock quantity until it is typed.
+  const [lastRatios, setLastRatios] = useState<Record<number, number>>({})
+  const [stockTouched, setStockTouched] = useState<Record<string, boolean>>({})
   const [deliveryNoteNo, setDeliveryNoteNo] = useState('')
   const [receivedAt, setReceivedAt] = useState(() => todayInBangkok())
   const [boqLines, setBoqLines] = useState<BoqCheckLine[]>([])
@@ -77,6 +81,8 @@ export default function GoodsReceiptModal({
     setSelected(initialSelected)
     setQuantities(initialQty)
     setStockQuantities({})
+    setStockTouched({})
+    setLastRatios({})
     setDeliveryNoteNo('')
     setReceivedAt(todayInBangkok())
 
@@ -100,6 +106,37 @@ export default function GoodsReceiptModal({
     setDestinations(initialDestinations)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, order.id])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const ids = receivableItems.filter(({ item }) => needsConversion(item)).map(({ item }) => item.material_type_id)
+    if (ids.length === 0 || !order.supplier_id) return
+    let cancelled = false
+    getLastStockConversions(order.supplier_id, ids)
+      .then((found) => {
+        if (cancelled) return
+        const ratios: Record<number, number> = {}
+        for (const [id, v] of Object.entries(found)) ratios[Number(id)] = v.ratio
+        setLastRatios(ratios)
+      })
+      .catch(() => {
+        // Pre-fill is a convenience only.
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, order.id])
+
+  /** What the stock quantity box shows: what was typed, else the last
+   * delivery's conversion applied to the quantity received now. */
+  function stockQtyFor(item: NonNullable<PurchaseOrder['purchase_order_items']>[number]): string {
+    if (stockTouched[item.id]) return stockQuantities[item.id] ?? ''
+    const ratio = lastRatios[item.material_type_id]
+    const qty = Number(quantities[item.id]) || 0
+    if (!ratio || qty <= 0) return ''
+    return String(Math.round(qty * ratio * 10000) / 10000)
+  }
 
   const selectedCount = Object.values(selected).filter(Boolean).length
   // Value of what is being received now (order line price x quantity entered).
@@ -153,7 +190,7 @@ export default function GoodsReceiptModal({
       .map(({ item }) => ({
         purchase_order_item_id: item.id,
         quantity_received: Number(quantities[item.id]) || 0,
-        stock_quantity: needsConversion(item) ? Number(stockQuantities[item.id]) || null : null,
+        stock_quantity: needsConversion(item) ? Number(stockQtyFor(item)) || null : null,
         unit_price_at_receipt: item.unit_price,
         destination: destinations[item.id] || null,
       }))
@@ -165,7 +202,7 @@ export default function GoodsReceiptModal({
     }
 
     const missing = receivableItems.find(
-      ({ item }) => selected[item.id] && (Number(quantities[item.id]) || 0) > 0 && needsConversion(item) && !(Number(stockQuantities[item.id]) > 0)
+      ({ item }) => selected[item.id] && (Number(quantities[item.id]) || 0) > 0 && needsConversion(item) && !(Number(stockQtyFor(item)) > 0)
     )
     if (missing) {
       toast.error(`กรุณาระบุจำนวนเป็นหน่วยสต็อก (${missing.item.material_types?.unit}) ของ ${missing.item.material_types?.name || 'สินค้า'}`)
@@ -283,8 +320,11 @@ export default function GoodsReceiptModal({
                               min="0"
                               step="any"
                               aria-label={`จำนวนเป็นหน่วยสต็อก ${item.material_types?.name || ''}`}
-                              value={stockQuantities[item.id] ?? ''}
-                              onChange={(e) => setStockQuantities((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                              value={stockQtyFor(item)}
+                              onChange={(e) => {
+                                setStockTouched((prev) => ({ ...prev, [item.id]: true }))
+                                setStockQuantities((prev) => ({ ...prev, [item.id]: e.target.value }))
+                              }}
                               className="w-20 text-right"
                             />
                             <span>{item.material_types?.unit}</span>

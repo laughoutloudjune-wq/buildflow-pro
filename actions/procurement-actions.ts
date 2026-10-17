@@ -53,6 +53,7 @@ import {
   getGoodsReceiptsForOrder as getGoodsReceiptsForOrderImpl,
   getGoodsReceiptById as getGoodsReceiptByIdImpl,
   createGoodsReceipt as createGoodsReceiptImpl,
+  getLastStockConversions as getLastStockConversionsImpl,
 } from '@/actions/procurement/receipts'
 import {
   getPaymentVouchers as getPaymentVouchersImpl,
@@ -251,6 +252,10 @@ export async function getGoodsReceiptById(id: string) {
 
 export async function createGoodsReceipt(input: Parameters<typeof createGoodsReceiptImpl>[0]) {
   return createGoodsReceiptImpl(input)
+}
+
+export async function getLastStockConversions(supplierId: string, materialTypeIds: number[]) {
+  return getLastStockConversionsImpl(supplierId, materialTypeIds)
 }
 
 // ---------------------------------------------------------------------------
