@@ -38,6 +38,8 @@ export default function GoodsReceiptModal({
   const [isPending, startTransition] = useTransition()
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [quantities, setQuantities] = useState<Record<string, string>>({})
+  // Quantity in the material's stock unit - only asked when the line was bought in another unit.
+  const [stockQuantities, setStockQuantities] = useState<Record<string, string>>({})
   const [deliveryNoteNo, setDeliveryNoteNo] = useState('')
   const [receivedAt, setReceivedAt] = useState(() => todayInBangkok())
   const [boqLines, setBoqLines] = useState<BoqCheckLine[]>([])
@@ -55,6 +57,11 @@ export default function GoodsReceiptModal({
    * order's, else the order's (MATERIAL_TRAIL_PLAN.md Phase B). */
   const isStoreStock = (item: NonNullable<PurchaseOrder['purchase_order_items']>[number]) =>
     (item.project_id ? item.projects?.kind : order.projects?.kind) === 'store'
+  const needsConversion = (item: NonNullable<PurchaseOrder['purchase_order_items']>[number]) => {
+    const stockUnit = item.material_types?.unit || ''
+    const lineUnit = item.unit || stockUnit
+    return !!stockUnit && !!lineUnit && lineUnit !== stockUnit
+  }
   const receivableItems = (order.purchase_order_items || [])
     .map((item) => ({ item, remaining: Math.max(0, item.quantity_ordered - item.quantity_received) }))
     .filter(({ remaining }) => remaining > 0)
@@ -69,6 +76,7 @@ export default function GoodsReceiptModal({
     }
     setSelected(initialSelected)
     setQuantities(initialQty)
+    setStockQuantities({})
     setDeliveryNoteNo('')
     setReceivedAt(todayInBangkok())
 
@@ -145,6 +153,7 @@ export default function GoodsReceiptModal({
       .map(({ item }) => ({
         purchase_order_item_id: item.id,
         quantity_received: Number(quantities[item.id]) || 0,
+        stock_quantity: needsConversion(item) ? Number(stockQuantities[item.id]) || null : null,
         unit_price_at_receipt: item.unit_price,
         destination: destinations[item.id] || null,
       }))
@@ -152,6 +161,14 @@ export default function GoodsReceiptModal({
 
     if (items.length === 0) {
       toast.error('กรุณาเลือกอย่างน้อย 1 รายการ และระบุจำนวนที่รับ')
+      return
+    }
+
+    const missing = receivableItems.find(
+      ({ item }) => selected[item.id] && (Number(quantities[item.id]) || 0) > 0 && needsConversion(item) && !(Number(stockQuantities[item.id]) > 0)
+    )
+    if (missing) {
+      toast.error(`กรุณาระบุจำนวนเป็นหน่วยสต็อก (${missing.item.material_types?.unit}) ของ ${missing.item.material_types?.name || 'สินค้า'}`)
       return
     }
 
@@ -257,6 +274,21 @@ export default function GoodsReceiptModal({
                           />
                         ) : (
                           <span className="text-slate-500">ไม่รับ</span>
+                        )}
+                        {checked && needsConversion(item) && (
+                          <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-amber-800">
+                            <span>= </span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              aria-label={`จำนวนเป็นหน่วยสต็อก ${item.material_types?.name || ''}`}
+                              value={stockQuantities[item.id] ?? ''}
+                              onChange={(e) => setStockQuantities((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                              className="w-20 text-right"
+                            />
+                            <span>{item.material_types?.unit}</span>
+                          </div>
                         )}
                       </td>
                       <td className="px-2 py-2 text-right tabular-nums">
