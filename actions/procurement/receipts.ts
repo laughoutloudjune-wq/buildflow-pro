@@ -65,6 +65,8 @@ export async function createGoodsReceipt(input: {
   items: {
     purchase_order_item_id: string
     quantity_received: number
+    /** Quantity in the material's stock unit, when the line was bought in another unit. Omit when same. */
+    stock_quantity?: number | null
     unit_price_at_receipt?: number
     /** Overrides default_destination for this one line. Omit/null to inherit it. */
     destination?: 'store' | 'site' | null
@@ -88,6 +90,7 @@ export async function createGoodsReceipt(input: {
         items: items.map((i) => ({
           purchase_order_item_id: i.purchase_order_item_id,
           quantity_received: Number(i.quantity_received),
+          stock_quantity: Number(i.stock_quantity) > 0 ? Number(i.stock_quantity) : null,
           unit_price_at_receipt: Math.max(0, Number(i.unit_price_at_receipt) || 0),
           destination: i.destination || null,
         })),

@@ -541,7 +541,7 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
        plot_groups (name),
        purchase_request_plots (plot_id, plots (name)),
        purchase_request_items (
-         material_type_id, quantity_requested, unit, material_types!purchase_request_items_material_type_id_fkey (name, unit),
+         material_type_id, quantity_requested, line_status, unit, material_types!purchase_request_items_material_type_id_fkey (name, unit),
          purchase_request_item_settlements (quantity)
        )`
     )
@@ -570,10 +570,10 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
 
   const byMaterial = new Map<number, { qty: number; name: string; unit: string }>()
   for (const item of items) {
-    // Only what is still OUTSTANDING on the line. Whatever a PO has already
-    // taken off it is in the rollup already (as ordered), so adding the
-    // original ask on top would count the same material twice - once as the
-    // purchase and once as the request.
+    // Only lines still waiting to be bought. A line a PO already covers is in
+    // the rollup as ordered, so adding the ask on top would count the same
+    // material twice - once as the purchase and once as the request.
+    if (item.line_status !== 'open') continue
     const ask = Number(item.quantity_requested) || 0
     if (ask <= 0) continue
     const existing = byMaterial.get(item.material_type_id) || {

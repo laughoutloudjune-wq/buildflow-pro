@@ -41,7 +41,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
  * a lead time set yet. */
 function maxLeadTimeDays(request: PurchaseRequest): number | null {
   const values = (request.purchase_request_items || [])
-    .filter((item) => item.quantity_requested > 0)
+    .filter((item) => item.line_status === 'open')
     .map((item) => item.material_types?.lead_time_days)
     .filter((v): v is number => v != null)
   return values.length > 0 ? Math.max(...values) : null

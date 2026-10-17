@@ -47,7 +47,7 @@ export default function PurchaseRequestSettleModal({
   const [note, setNote] = useState('')
 
   const outstanding = useMemo(
-    () => (request.purchase_request_items || []).filter((item) => item.quantity_requested > 0),
+    () => (request.purchase_request_items || []).filter((item) => item.line_status === 'open'),
     [request.purchase_request_items]
   )
 
@@ -56,16 +56,16 @@ export default function PurchaseRequestSettleModal({
   const [picked, setPicked] = useState<Record<string, { checked: boolean; quantity: string }>>(() =>
     Object.fromEntries(
       (request.purchase_request_items || [])
-        .filter((item) => item.quantity_requested > 0)
+        .filter((item) => item.line_status === 'open')
         .map((item) => [item.id, { checked: false, quantity: String(item.quantity_requested) }])
     )
   )
 
   const selected = outstanding.filter((item) => picked[item.id]?.checked)
 
-  const overSettled = selected.filter(
-    (item) => Number(picked[item.id]?.quantity || 0) > item.quantity_requested
-  )
+  // Quantities are information now: closing a line is a decision, so there is
+  // no cap to stay under.
+  const overSettled: typeof selected = []
   const invalidQuantity = selected.filter((item) => !(Number(picked[item.id]?.quantity || 0) > 0))
   const canSubmit = selected.length > 0 && overSettled.length === 0 && invalidQuantity.length === 0
 
@@ -168,7 +168,7 @@ export default function PurchaseRequestSettleModal({
               <tbody className="divide-y divide-slate-100">
                 {outstanding.map((item) => {
                   const row = picked[item.id] || { checked: false, quantity: '' }
-                  const over = row.checked && Number(row.quantity || 0) > item.quantity_requested
+                  const over = false
                   return (
                     <tr key={item.id} className={row.checked ? 'bg-indigo-50/30' : undefined}>
                       <td className="px-3 py-2">
@@ -190,7 +190,6 @@ export default function PurchaseRequestSettleModal({
                         <input
                           type="number"
                           min="0"
-                          max={item.quantity_requested}
                           step="any"
                           value={row.quantity}
                           disabled={!row.checked}
