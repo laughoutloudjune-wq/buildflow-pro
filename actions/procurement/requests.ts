@@ -407,6 +407,8 @@ export type EligibleRequestLine = {
   /** The material's current catalog price - the same default the single-request flow prefills. */
   unit_price: number
   requested_at: string
+  /** When the site needs it, from the request header; null if none was given. */
+  needed_by_date: string | null
 }
 
 /** Approved request lines with something left to order, for one project (or
@@ -477,8 +479,16 @@ export async function getEligibleRequestLinesForOrder(projectId?: string | null)
         remaining,
         unit_price: Number(item.material_types?.current_price ?? 0),
         requested_at: request.created_at,
+        needed_by_date: request.needed_by_date || null,
       })
     }
   }
+  // Most urgent first: the earliest needed-by date, requests with no date last.
+  rows.sort((a, b) => {
+    if (a.needed_by_date && b.needed_by_date) return a.needed_by_date.localeCompare(b.needed_by_date) || a.pr_no - b.pr_no
+    if (a.needed_by_date) return -1
+    if (b.needed_by_date) return 1
+    return a.pr_no - b.pr_no
+  })
   return rows
 }

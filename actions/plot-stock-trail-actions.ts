@@ -21,6 +21,12 @@ export type PlotStockEntry = {
   totalQty: number
   /** This plot's share: totalQty for a plot-tagged row, an even split for a batch. */
   plotQty: number
+  /** Cost per unit frozen on the movement when it was issued; null if unknown. */
+  unitCost: number | null
+  /** True when the frozen cost was filled in afterwards from an average, not at issue time. */
+  costEstimated: boolean
+  /** plotQty x unitCost - what this entry costs the plot. */
+  plotValue: number
 }
 
 export type PlotBoqLine = {
@@ -46,6 +52,8 @@ type MovementRow = {
   plot_id: string | null
   plot_group_id: string | null
   issue_no: string | null
+  unit_cost: number | string | null
+  unit_cost_estimated: boolean | null
   material_types: { name: string; unit: string } | null
   contractors: { name: string } | null
   plot_groups: { name: string } | null
@@ -79,7 +87,7 @@ export async function getPlotStockTrail(plotId: string, projectId: string): Prom
   const [movementsRes, rollupRes] = await Promise.all([
     supabase
       .from('stock_movements')
-      .select('id, material_type_id, quantity, created_at, source_type, source_id, plot_id, plot_group_id, issue_no, material_types (name, unit), contractors (name), plot_groups (name)')
+      .select('id, material_type_id, quantity, created_at, source_type, source_id, plot_id, plot_group_id, issue_no, unit_cost, unit_cost_estimated, material_types (name, unit), contractors (name), plot_groups (name)')
       .eq('type', 'out')
       .in('source_type', ['manual_request', 'direct_to_site'])
       .or(scopeFilter)
@@ -128,6 +136,9 @@ export async function getPlotStockTrail(plotId: string, projectId: string): Prom
       groupName: m.plot_id ? null : m.plot_groups?.name ?? null,
       totalQty: total,
       plotQty: total * share,
+      unitCost: m.unit_cost == null ? null : Number(m.unit_cost),
+      costEstimated: Boolean(m.unit_cost_estimated),
+      plotValue: total * share * (m.unit_cost == null ? 0 : Number(m.unit_cost)),
     }
   })
 

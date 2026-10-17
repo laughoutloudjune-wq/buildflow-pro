@@ -107,3 +107,43 @@ export async function createGoodsReceipt(input: {
     return { error: translateReceiptError(error instanceof Error ? error.message : 'บันทึกการรับของไม่สำเร็จ') }
   }
 }
+
+/** How this supplier's last deliveries converted into stock units, per
+ * material: stock quantity per one unit received (e.g. 6 m per bundle). Used
+ * only to pre-fill the receiving screen; the person receiving still confirms
+ * the number. */
+export async function getLastStockConversions(
+  supplierId: string,
+  materialTypeIds: number[]
+): Promise<Record<number, { ratio: number; unit: string | null }>> {
+  await requireModuleAccess('procurement')
+  if (!supplierId || materialTypeIds.length === 0) return {}
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('goods_receipt_items')
+    .select(
+      'quantity_received, stock_quantity, created_at, purchase_order_items!inner(material_type_id, unit, purchase_orders!inner(supplier_id))'
+    )
+    .not('stock_quantity', 'is', null)
+    .eq('purchase_order_items.purchase_orders.supplier_id', supplierId)
+    .in('purchase_order_items.material_type_id', materialTypeIds)
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  if (error) return {}
+  const result: Record<number, { ratio: number; unit: string | null }> = {}
+  for (const row of (data || []) as unknown as {
+    quantity_received: number
+    stock_quantity: number
+    purchase_order_items: { material_type_id: number; unit: string | null }
+  }[]) {
+    const materialId = row.purchase_order_items?.material_type_id
+    if (!materialId || result[materialId]) continue
+    if (!(Number(row.quantity_received) > 0) || !(Number(row.stock_quantity) > 0)) continue
+    result[materialId] = {
+      ratio: Number(row.stock_quantity) / Number(row.quantity_received),
+      unit: row.purchase_order_items.unit,
+    }
+  }
+  return result
+}

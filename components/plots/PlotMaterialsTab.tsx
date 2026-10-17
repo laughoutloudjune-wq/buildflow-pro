@@ -178,7 +178,8 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
                                 <th className="py-1 pr-3 text-left font-medium">เอกสาร</th>
                                 <th className="py-1 pr-3 text-left font-medium">ประเภท</th>
                                 <th className="py-1 pr-3 text-left font-medium">ผู้รับเหมา</th>
-                                <th className="py-1 text-right font-medium">ของแปลงนี้</th>
+                                <th className="py-1 pr-3 text-right font-medium">ของแปลงนี้</th>
+                                <th className="py-1 text-right font-medium">มูลค่า</th>
                               </tr>
                             </thead>
                             <tbody className="text-slate-600">
@@ -198,7 +199,7 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
                                   </td>
                                   <td className="py-1 pr-3">{e.kind === 'issue' ? 'เบิกจากสโตร์' : 'ส่งตรงแปลง'}</td>
                                   <td className="py-1 pr-3">{e.contractorName || '—'}</td>
-                                  <td className="py-1 text-right font-medium">
+                                  <td className="py-1 pr-3 text-right font-medium">
                                     {fmt(e.plotQty)} {m.unit}
                                     {e.groupName && (
                                       <span className="font-normal text-slate-500" title="เบิกให้ทั้งกลุ่มแปลง ระบบแบ่งเท่ากันทุกแปลงในกลุ่ม">
@@ -206,6 +207,16 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
                                         (จาก {fmt(e.totalQty)} ให้ {e.groupName})
                                       </span>
                                     )}
+                                  </td>
+                                  <td
+                                    className="whitespace-nowrap py-1 text-right"
+                                    title={
+                                      e.costEstimated
+                                        ? 'ต้นทุนประมาณจากราคาเฉลี่ยตอนปรับระบบ - รายการใหม่จะบันทึกต้นทุนจริงตอนเบิก'
+                                        : 'ต้นทุนต่อหน่วย ณ วันที่เบิก ไม่เปลี่ยนตามราคาที่มาทีหลัง'
+                                    }
+                                  >
+                                    {e.unitCost == null ? '—' : `${e.costEstimated ? '≈ ' : ''}฿${e.plotValue.toLocaleString('th-TH', { maximumFractionDigits: 0 })}`}
                                   </td>
                                 </tr>
                               ))}

@@ -251,7 +251,8 @@ export default function CombineRequestsForm({
                   {sourceFilter === ALL_PROJECTS && <th className="px-3 py-2.5">โครงการ</th>}
                   <th className="px-3 py-2.5">วัสดุ</th>
                   <th className="px-3 py-2.5">แปลง / กลุ่มแปลง</th>
-                  <th className="px-3 py-2.5 text-right">คงเหลือ</th>
+                  <th className="px-3 py-2.5">ต้องการภายใน</th>
+                  <th className="px-3 py-2.5 text-right">ขอ</th>
                   <th className="w-40 px-3 py-2.5 text-right">จำนวนที่สั่ง</th>
                 </tr>
               </thead>
@@ -280,6 +281,12 @@ export default function CombineRequestsForm({
                         )}
                       </td>
                       <td className="px-3 py-2 text-slate-500">{line.plot_label || '-'}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-600">
+                        {line.needed_by_date ? new Date(line.needed_by_date).toLocaleDateString('th-TH') : '-'}
+                        {line.needed_by_date && new Date(line.needed_by_date).getTime() < Date.now() && (
+                          <span className="ml-1.5 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">เลยกำหนด</span>
+                        )}
+                      </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right text-slate-600">
                         {qtyFormat(line.remaining)} {line.request_unit}
                       </td>
