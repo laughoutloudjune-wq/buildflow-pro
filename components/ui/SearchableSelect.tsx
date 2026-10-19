@@ -39,7 +39,7 @@ type Props = {
 export default function SearchableSelect({ options, value, onChange, placeholder, disabled, className, renderCreate }: Props) {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [coords, setCoords] = useState<{ top?: number; bottom?: number; left: number; width: number; listMaxHeight: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -48,7 +48,23 @@ export default function SearchableSelect({ options, value, onChange, placeholder
 
   function updateCoords() {
     const rect = buttonRef.current?.getBoundingClientRect()
-    if (rect) setCoords({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+    if (!rect) return
+    // Open upward when there isn't room below (e.g. a field near the bottom
+    // of a modal), and cap the list to the room available so every option
+    // can be scrolled to instead of running off-screen.
+    const margin = 12
+    const chrome = renderCreate ? 100 : 52 // search input (+ create slot)
+    const spaceBelow = window.innerHeight - rect.bottom - margin
+    const spaceAbove = rect.top - margin
+    const openUp = spaceBelow < 260 && spaceAbove > spaceBelow
+    const avail = (openUp ? spaceAbove : spaceBelow) - chrome
+    const listMaxHeight = Math.max(96, Math.min(224, avail))
+    setCoords({
+      ...(openUp ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+      left: rect.left,
+      width: rect.width,
+      listMaxHeight,
+    })
   }
 
   function openDropdown() {
@@ -111,7 +127,7 @@ export default function SearchableSelect({ options, value, onChange, placeholder
         createPortal(
           <div
             ref={panelRef}
-            style={{ position: 'fixed', top: coords.top, left: coords.left, width: coords.width }}
+            style={{ position: 'fixed', top: coords.top, bottom: coords.bottom, left: coords.left, width: coords.width }}
             className="anim-pop glass-popover elev-floating z-50 rounded-[10px] border border-slate-200"
           >
             <input
@@ -137,7 +153,7 @@ export default function SearchableSelect({ options, value, onChange, placeholder
               placeholder="พิมพ์เพื่อค้นหา..."
               className="w-full !rounded-b-none !rounded-t-[10px] !border-0 !border-b !border-slate-200 !px-3 !py-2 text-sm !ring-0"
             />
-            <div className="max-h-56 overflow-y-auto">
+            <div className="overflow-y-auto" style={{ maxHeight: coords.listMaxHeight }}>
               {filtered.length === 0 ? (
                 renderCreate ? null : (
                   <div className="px-2 py-2 text-sm text-slate-500">ไม่พบรายการ</div>
