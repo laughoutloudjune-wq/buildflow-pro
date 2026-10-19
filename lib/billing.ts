@@ -59,6 +59,16 @@ function clampPercent(value: unknown) {
   return n
 }
 
+/** A job's cumulative progress is a percentage of its BOQ line: it can never be above 100 or below 0. */
+export function assertProgressWithinRange(jobs: Array<{ progress_percent?: number | null }>) {
+  for (const job of jobs) {
+    const pct = job.progress_percent
+    if (pct != null && (pct < 0 || pct > 100)) {
+      throw new Error(`ความคืบหน้า ${pct}% ไม่ถูกต้อง ต้องอยู่ระหว่าง 0-100%`)
+    }
+  }
+}
+
 /**
  * Compute canonical billing totals from the line items. Monetary totals are
  * ALWAYS derived server-side — any totals sent by the client are ignored.
@@ -165,6 +175,8 @@ export function validateBillingPayload(payload: BillingPayload): ValidatedBillin
         unit_price: Math.max(0, toNumber(adj.unit_price)),
       }))
     : []
+
+  assertProgressWithinRange(selected_jobs)
 
   if (type === 'progress' && selected_jobs.length === 0 && adjustments.length === 0) {
     throw new Error('At least one job or adjustment is required')
