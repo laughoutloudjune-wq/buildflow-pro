@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -30,6 +30,8 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
+  const quantityInputRef = useRef<HTMLInputElement>(null)
+  const [justAddedId, setJustAddedId] = useState<string | null>(null)
   const [selectedMaterialId, setSelectedMaterialId] = useState('')
   const [plannedQuantity, setPlannedQuantity] = useState('1')
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
@@ -46,8 +48,10 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, boqId])
 
-  async function loadData() {
-    setIsLoading(true)
+  // Only the first load shows the full-modal spinner. Reloads after an
+  // add/save/delete refresh the rows in place, so the modal doesn't blank out.
+  async function loadData(showSpinner = true) {
+    if (showSpinner) setIsLoading(true)
     setError(null)
     try {
       const [boqItems, types] = await Promise.all([getBoqMaterialItems(boqId), getMaterialTypes()])
@@ -84,9 +88,11 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
     setError(null)
     try {
       await addBoqMaterialItem(boqId, Number(selectedMaterialId), qty)
+      const addedId = selectedMaterialId
       setSelectedMaterialId('')
       setPlannedQuantity('1')
-      await loadData()
+      await loadData(false)
+      setJustAddedId(addedId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'เพิ่มรายการวัสดุไม่สำเร็จ')
     } finally {
@@ -95,6 +101,8 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
   }
 
   async function handleSaveQuantity(itemId: string) {
+    const current = items.find((item) => item.id === itemId)
+    if (current && parseFloat(quantityDrafts[itemId] ?? '') === Number(current.planned_quantity)) return
     const qty = parseFloat(quantityDrafts[itemId] ?? '')
     if (!Number.isFinite(qty) || qty <= 0) {
       setError('กรุณาใส่ปริมาณที่ถูกต้อง')
@@ -104,7 +112,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
     setError(null)
     try {
       await updateBoqMaterialItem(itemId, boqId, qty)
-      await loadData()
+      await loadData(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'บันทึกปริมาณไม่สำเร็จ')
     } finally {
@@ -120,7 +128,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
     try {
       await deleteBoqMaterialItem(itemId, boqId)
       setDeleteTarget(null)
-      await loadData()
+      await loadData(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ลบรายการไม่สำเร็จ')
     } finally {
@@ -136,13 +144,17 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
     setIsSaving(true)
     setError(null)
     try {
-      await createMaterialType(newMaterialName, newMaterialUnit || 'unit', parseFloat(newMaterialPrice) || 0)
+      const created = await createMaterialType(newMaterialName, newMaterialUnit || 'unit', parseFloat(newMaterialPrice) || 0)
       setNewMaterialName('')
       setNewMaterialUnit('')
       setNewMaterialPrice('0')
       setShowNewMaterial(false)
       const types = await getMaterialTypes()
       setMaterialTypes(types)
+      if (created?.id != null) {
+        setSelectedMaterialId(String(created.id))
+        quantityInputRef.current?.focus()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'เพิ่มวัสดุใหม่ไม่สำเร็จ')
     } finally {
@@ -184,7 +196,7 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
                     const price = item.material_types?.current_price || 0
                     const budget = (parseFloat(quantityDrafts[item.id] ?? '0') || 0) * price
                     return (
-                      <tr key={item.id}>
+                      <tr key={item.id} className={item.material_type_id === Number(justAddedId) ? 'bg-emerald-50' : undefined}>
                         <td className="px-3 py-2 font-medium text-slate-800">{item.material_types?.name || '-'}</td>
                         <td className="px-3 py-2 text-right">
                           <input
@@ -225,7 +237,11 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
                 <label className="mb-1 block text-xs font-medium text-slate-600">วัสดุ</label>
                 <SearchableSelect
                   value={selectedMaterialId}
-                  onChange={setSelectedMaterialId}
+                  onChange={(v) => {
+                    setSelectedMaterialId(v)
+                    setJustAddedId(null)
+                    if (v) setTimeout(() => quantityInputRef.current?.focus(), 0)
+                  }}
                   placeholder="-- เลือกวัสดุ --"
                   options={availableMaterialTypes.map((mt) => ({
                     value: String(mt.id),
@@ -239,8 +255,16 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
                   type="number"
                   step="0.01"
                   min="0"
+                  ref={quantityInputRef}
                   value={plannedQuantity}
                   onChange={(e) => setPlannedQuantity(e.target.value)}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void handleAddItem()
+                    }
+                  }}
                   className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                 />
               </div>

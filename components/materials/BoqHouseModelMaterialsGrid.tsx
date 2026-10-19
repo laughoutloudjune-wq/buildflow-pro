@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, Loader2, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
@@ -29,10 +29,13 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
   const [materialTypes, setMaterialTypes] = useState<MaterialType[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [savingKey, setSavingKey] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  // Cards start collapsed; this holds the ones the user has opened.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
   const [wasteDrafts, setWasteDrafts] = useState<Record<string, string>>({})
   const [newRowDrafts, setNewRowDrafts] = useState<Record<string, NewRowDraft>>({})
+  const [search, setSearch] = useState('')
+  const [onlyEmpty, setOnlyEmpty] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ boqId: string; item: BoqMaterialItem } | null>(null)
 
   useEffect(() => {
@@ -40,8 +43,10 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [houseModelId])
 
-  async function loadData() {
-    setIsLoading(true)
+  // Only the first load shows the full-grid spinner; reloads after adding a
+  // row update in place so scroll position and open/closed sections survive.
+  async function loadData(showSpinner = true) {
+    if (showSpinner) setIsLoading(true)
     try {
       const [jobRows, types] = await Promise.all([getBoqMaterialsForHouseModel(houseModelId), getMaterialTypes()])
       setJobs(jobRows)
@@ -64,7 +69,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
   }
 
   function toggleCollapsed(boqId: string) {
-    setCollapsed((prev) => ({ ...prev, [boqId]: !prev[boqId] }))
+    setExpanded((prev) => ({ ...prev, [boqId]: !prev[boqId] }))
   }
 
   async function handleSaveExisting(boqId: string, itemId: string) {
@@ -134,7 +139,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
     try {
       await bulkUpsertBoqMaterialItems([{ boqId, materialTypeId, plannedQuantity: quantity, wastePercent: Math.max(0, waste || 0) }])
       setNewRowDrafts((prev) => ({ ...prev, [boqId]: emptyDraft }))
-      await loadData()
+      await loadData(false)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'เพิ่มรายการไม่สำเร็จ')
     } finally {
@@ -158,10 +163,48 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
     )
   }
 
+  // Search matches the job name or any material name in it. While searching,
+  // a job matched only through a material shows just the matching materials.
+  const q = search.trim().toLowerCase()
+  const visibleJobs = jobs.filter((job) => {
+    if (onlyEmpty && job.items.length > 0) return false
+    if (!q) return true
+    return (
+      job.boqItemName.toLowerCase().includes(q) ||
+      job.items.some((i) => (i.material_types?.name || '').toLowerCase().includes(q))
+    )
+  })
+  const emptyJobCount = jobs.filter((j) => j.items.length === 0).length
+
   return (
     <div className="space-y-3">
-      {jobs.map((job) => {
-        const isCollapsed = collapsed[job.boqId]
+      <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 shadow-md backdrop-blur-md supports-[backdrop-filter]:bg-white/70">
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ค้นหางานหรือวัสดุ..."
+            className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm"
+          />
+        </div>
+        <label className="flex items-center gap-1.5 text-sm text-slate-600">
+          <input type="checkbox" checked={onlyEmpty} onChange={(e) => setOnlyEmpty(e.target.checked)} />
+          เฉพาะงานที่ยังไม่มีวัสดุ ({emptyJobCount})
+        </label>
+        <span className="text-xs text-slate-500">
+          {visibleJobs.length}/{jobs.length} งาน
+        </span>
+      </div>
+      {visibleJobs.length === 0 && (
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-8 text-center text-sm text-slate-500">
+          ไม่พบงานที่ตรงกับเงื่อนไข
+        </div>
+      )}
+      {visibleJobs.map((job) => {
+        // Searching or filtering to empty jobs opens the cards so matches are visible.
+        const isCollapsed = !expanded[job.boqId] && !q && !onlyEmpty
         const availableMaterials = materialTypes.filter((mt) => !job.items.some((i) => i.material_type_id === mt.id))
         const draft = newRowDrafts[job.boqId] || emptyDraft
         const jobTotal = job.items.reduce((sum, i) => sum + (i.material_types?.current_price || 0) * i.planned_quantity, 0)
@@ -202,7 +245,9 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                           </td>
                         </tr>
                       ) : (
-                        job.items.map((item) => (
+                        job.items
+                          .filter((item) => !q || job.boqItemName.toLowerCase().includes(q) || (item.material_types?.name || '').toLowerCase().includes(q))
+                          .map((item) => (
                           <tr key={item.id}>
                             <td className="px-3 py-1.5 font-medium text-slate-800">{item.material_types?.name || '-'}</td>
                             <td className="px-3 py-1.5 text-right">
@@ -252,7 +297,10 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                   <div className="min-w-[160px] flex-1">
                     <SearchableSelect
                       value={draft.materialTypeId}
-                      onChange={(v) => setNewRowDrafts((prev) => ({ ...prev, [job.boqId]: { ...draft, materialTypeId: v } }))}
+                      onChange={(v) => {
+                        setNewRowDrafts((prev) => ({ ...prev, [job.boqId]: { ...draft, materialTypeId: v } }))
+                        if (v) setTimeout(() => document.getElementById(`new-qty-${job.boqId}`)?.focus(), 0)
+                      }}
                       placeholder="-- เพิ่มวัสดุ --"
                       options={availableMaterials.map((mt) => ({ value: String(mt.id), label: `${mt.name} (${mt.unit})` }))}
                     />
@@ -261,7 +309,15 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                     type="number"
                     step="0.01"
                     min="0"
+                    id={`new-qty-${job.boqId}`}
                     value={draft.quantity}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void handleAddRow(job.boqId)
+                      }
+                    }}
                     onChange={(e) => setNewRowDrafts((prev) => ({ ...prev, [job.boqId]: { ...draft, quantity: e.target.value } }))}
                     placeholder="ปริมาณ"
                     className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
@@ -271,6 +327,12 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                     step="0.1"
                     min="0"
                     value={draft.wastePercent}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void handleAddRow(job.boqId)
+                      }
+                    }}
                     onChange={(e) => setNewRowDrafts((prev) => ({ ...prev, [job.boqId]: { ...draft, wastePercent: e.target.value } }))}
                     placeholder="เผื่อ %"
                     className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
