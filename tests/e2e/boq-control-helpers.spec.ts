@@ -58,8 +58,11 @@ test.describe('boqControl helpers', () => {
   // itself compares against the ceiling (MATERIAL_FLOW_PLAN.md Phase 4) -
   // see percentUsed/rowStatus/excessValue below, all of which read
   // consumedQty, not totalUsedQty.
-  test('totalUsedQty is ordered + issued, never received', () => {
-    expect(totalUsedQty(row({ orderedQty: 100, issuedQty: 20, receivedQty: 999 }))).toBe(120)
+  test('totalUsedQty is the larger of ordered and issued, never their sum or received', () => {
+    expect(totalUsedQty(row({ orderedQty: 100, issuedQty: 20, receivedQty: 999 }))).toBe(100)
+    // Straight-to-plot delivery: the same 1,890 is both ordered and issued.
+    expect(totalUsedQty(row({ orderedQty: 1890, issuedQty: 1890 }))).toBe(1890)
+    expect(totalUsedQty(row({ orderedQty: 100, issuedQty: 150 }))).toBe(150)
   })
 
   test('consumedQty is issuedQty alone, never ordered or received', () => {

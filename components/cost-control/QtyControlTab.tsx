@@ -203,7 +203,7 @@ export default function QtyControlTab({
                 <th className="px-3 py-2 text-right" title="BOQ ตามแบบ + เผื่อเสีย - งบปริมาณที่ใช้เทียบ">
                   งบ (BOQ+เผื่อ)
                 </th>
-                <th className="px-3 py-2 text-right" title="ยอดสั่ง: สั่งซื้อแล้ว ไม่ว่าจะรับของหรือยัง - ข้อมูลอ้างอิง ไม่นับรวมในเปอร์เซ็นต์/สถานะ (หน้าใบสั่งซื้อ/คำขอซื้อตรวจเทียบ BOQ ด้วย ยอดสั่ง + เบิกสโตร์)">
+                <th className="px-3 py-2 text-right" title="ยอดสั่ง: สั่งซื้อแล้ว ไม่ว่าจะรับของหรือยัง - ข้อมูลอ้างอิง ไม่นับรวมในเปอร์เซ็นต์/สถานะ (หน้าใบสั่งซื้อ/คำขอซื้อตรวจเทียบ BOQ ด้วยค่าที่มากกว่าระหว่างยอดสั่งกับยอดเบิก ไม่บวกกัน)">
                   ยอดสั่ง
                 </th>
                 <th className="px-3 py-2 text-right" title="วัสดุที่เบิกออกจากสต็อกจริงแล้ว รวมของที่ส่งตรงหน้างานโดยไม่เข้าสโตร์ - ตัวนี้คือตัวที่เทียบกับ BOQ">
@@ -271,6 +271,10 @@ export default function QtyControlTab({
                           ) : (detailByMaterial[row.materialTypeId] || []).length === 0 ? (
                             <p className="py-2 text-sm text-slate-500">ไม่มีเอกสารที่เกี่ยวข้องในขอบเขตนี้</p>
                           ) : (
+                            <>
+                            <p className="mb-1.5 text-xs text-slate-500">
+                              เอกสารที่เกี่ยวข้อง ไม่ได้บวกกัน: ยอดสั่งนับจากใบสั่งซื้อ · คำขอซื้อแสดงเพื่ออ้างอิง · เบิกสต็อก (รวมของส่งตรงแปลง) คือของชุดเดียวกับที่สั่ง ไม่ใช่ของเพิ่ม
+                            </p>
                             <table className="w-full text-left text-xs">
                               <thead className="text-slate-500">
                                 <tr>
@@ -312,6 +316,7 @@ export default function QtyControlTab({
                                 })}
                               </tbody>
                             </table>
+                            </>
                           )}
                         </td>
                       </tr>
