@@ -178,7 +178,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
 
   return (
     <div className="space-y-3">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 bg-white pb-2">
+      <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 shadow-md backdrop-blur-md supports-[backdrop-filter]:bg-white/70">
         <div className="relative min-w-[200px] flex-1">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input
