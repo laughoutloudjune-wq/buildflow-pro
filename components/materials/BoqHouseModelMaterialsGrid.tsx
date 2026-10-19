@@ -40,8 +40,10 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [houseModelId])
 
-  async function loadData() {
-    setIsLoading(true)
+  // Only the first load shows the full-grid spinner; reloads after adding a
+  // row update in place so scroll position and open/closed sections survive.
+  async function loadData(showSpinner = true) {
+    if (showSpinner) setIsLoading(true)
     try {
       const [jobRows, types] = await Promise.all([getBoqMaterialsForHouseModel(houseModelId), getMaterialTypes()])
       setJobs(jobRows)
@@ -134,7 +136,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
     try {
       await bulkUpsertBoqMaterialItems([{ boqId, materialTypeId, plannedQuantity: quantity, wastePercent: Math.max(0, waste || 0) }])
       setNewRowDrafts((prev) => ({ ...prev, [boqId]: emptyDraft }))
-      await loadData()
+      await loadData(false)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'เพิ่มรายการไม่สำเร็จ')
     } finally {
@@ -252,7 +254,10 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                   <div className="min-w-[160px] flex-1">
                     <SearchableSelect
                       value={draft.materialTypeId}
-                      onChange={(v) => setNewRowDrafts((prev) => ({ ...prev, [job.boqId]: { ...draft, materialTypeId: v } }))}
+                      onChange={(v) => {
+                        setNewRowDrafts((prev) => ({ ...prev, [job.boqId]: { ...draft, materialTypeId: v } }))
+                        if (v) setTimeout(() => document.getElementById(`new-qty-${job.boqId}`)?.focus(), 0)
+                      }}
                       placeholder="-- เพิ่มวัสดุ --"
                       options={availableMaterials.map((mt) => ({ value: String(mt.id), label: `${mt.name} (${mt.unit})` }))}
                     />
@@ -261,7 +266,15 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                     type="number"
                     step="0.01"
                     min="0"
+                    id={`new-qty-${job.boqId}`}
                     value={draft.quantity}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void handleAddRow(job.boqId)
+                      }
+                    }}
                     onChange={(e) => setNewRowDrafts((prev) => ({ ...prev, [job.boqId]: { ...draft, quantity: e.target.value } }))}
                     placeholder="ปริมาณ"
                     className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
@@ -271,6 +284,12 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
                     step="0.1"
                     min="0"
                     value={draft.wastePercent}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void handleAddRow(job.boqId)
+                      }
+                    }}
                     onChange={(e) => setNewRowDrafts((prev) => ({ ...prev, [job.boqId]: { ...draft, wastePercent: e.target.value } }))}
                     placeholder="เผื่อ %"
                     className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
