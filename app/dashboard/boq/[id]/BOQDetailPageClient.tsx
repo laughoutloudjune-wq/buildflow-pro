@@ -81,8 +81,16 @@ export default function BOQDetailPageClient({
     if (i) setItems(i)
   }
 
+  // "Save and add next": keeps the modal open and carries the trade type and
+  // unit over to the next line (a BOQ is entered trade by trade), clearing the
+  // rest. formNonce remounts the uncontrolled form so the defaults apply.
+  const [carryOver, setCarryOver] = useState<{ contractorTypeId: string; unit: string } | null>(null)
+  const [formNonce, setFormNonce] = useState(0)
+
   const handleSubmit = async (formData: FormData) => {
-    setIsModalOpen(false)
+    const addAnother = !editingItem && formData.get('intent') === 'again'
+    formData.delete('intent')
+    if (!addAnother) setIsModalOpen(false)
     startTransition(async () => {
       try {
         formData.append('house_model_id', id)
@@ -91,7 +99,16 @@ export default function BOQDetailPageClient({
         } else {
           await createBOQItem(formData)
         }
-        setEditingItem(null)
+        if (addAnother) {
+          setCarryOver({
+            contractorTypeId: String(formData.get('contractor_type_id') || ''),
+            unit: String(formData.get('unit') || ''),
+          })
+          setFormNonce((n) => n + 1)
+          toast.success(`เพิ่ม "${formData.get('item_name')}" แล้ว`)
+        } else {
+          setEditingItem(null)
+        }
         await refreshItems()
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to save BOQ item'
@@ -102,6 +119,8 @@ export default function BOQDetailPageClient({
 
   const openCreateModal = () => {
     setEditingItem(null)
+    setCarryOver(null)
+    setFormNonce((n) => n + 1)
     setIsModalOpen(true)
   }
 
@@ -428,16 +447,16 @@ export default function BOQDetailPageClient({
         }}
         title={editingItem ? 'แก้ไขรายการ BOQ' : 'เพิ่มรายการ BOQ'}
       >
-        <form key={editingItem?.id || 'new'} action={handleSubmit} className="space-y-4">
+        <form key={`${editingItem?.id || 'new'}-${formNonce}`} action={handleSubmit} className="space-y-4">
           <input type="hidden" name="project_id" value={model?.project_id || ''} />
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">ชื่อรายการงาน</label>
-            <input name="item_name" required className="w-full" placeholder="เช่น เทคอนกรีตฐานราก" defaultValue={editingItem?.item_name} />
+            <input name="item_name" required autoFocus className="w-full" placeholder="เช่น เทคอนกรีตฐานราก" defaultValue={editingItem?.item_name} />
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">ประเภทช่าง</label>
-            <select name="contractor_type_id" required className="w-full" defaultValue={editingItem?.contractor_type_id || ''}>
+            <select name="contractor_type_id" required className="w-full" defaultValue={editingItem?.contractor_type_id || carryOver?.contractorTypeId || ''}>
               <option value="">-- เลือกประเภทช่าง --</option>
               {types.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
@@ -452,7 +471,7 @@ export default function BOQDetailPageClient({
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">หน่วย</label>
-              <input name="unit" required className="w-full" placeholder="ตร.ม. / เหมา" defaultValue={editingItem?.unit} />
+              <input name="unit" required className="w-full" placeholder="ตร.ม. / เหมา" defaultValue={editingItem?.unit ?? carryOver?.unit} />
             </div>
           </div>
 
@@ -475,6 +494,11 @@ export default function BOQDetailPageClient({
             >
               ยกเลิก
             </Button>
+            {!editingItem && (
+              <Button type="submit" name="intent" value="again" variant="secondary">
+                บันทึกและเพิ่มต่อ
+              </Button>
+            )}
             <Button type="submit">
               {editingItem ? 'บันทึกการแก้ไข' : 'บันทึกรายการ'}
             </Button>
