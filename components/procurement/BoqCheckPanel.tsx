@@ -90,7 +90,9 @@ export default function BoqCheckPanel({ lines, scopeLabel, onAcknowledge, onReas
                 <tr>
                   <th className="px-3 py-2">วัสดุ</th>
                   <th className="px-3 py-2 text-right">BOQ ตามแบบ</th>
-                  <th className="px-3 py-2 text-right">ซื้อไปแล้ว</th>
+                  <th className="px-3 py-2 text-right" title="ยอดสั่งก่อนหน้านี้ + เบิกจากสโตร์ในขอบเขตเดียวกัน (ตรวจตอนสั่ง จึงนับของที่สั่งแล้วแม้ยังไม่ได้ใช้)">
+                    ยอดสั่งก่อนหน้า
+                  </th>
                   <th className="px-3 py-2 text-right">ใบนี้</th>
                   {hasValues && <th className="px-3 py-2 text-right">มูลค่าใบนี้</th>}
                   <th className="px-3 py-2 text-right">รวมทั้งหมด</th>

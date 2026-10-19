@@ -18,6 +18,7 @@ import PurchaseRequestDetail, {
   partiallyOrderedHint,
 } from '@/components/procurement/PurchaseRequestDetail'
 import type { PurchaseRequest, PurchaseRequestStatus } from '@/lib/types/procurement'
+import { requestNeedsAttention } from '@/lib/procurement/requestFlags'
 import { PR_STATUS_LABEL as STATUS_LABEL, PR_STATUS_TONE as STATUS_TONE } from '@/lib/status-labels'
 
 /** First material line plus a count of how many more, for a quick "what's
@@ -50,6 +51,8 @@ export default function PurchaseRequestsPageClient({
   const { theme } = useDepartment()
   const [filter, setFilter] = useState<PurchaseRequestStatus | 'all'>('all')
   const [search, setSearch] = useState('')
+  const [attentionOnly, setAttentionOnly] = useState(false)
+  const [now] = useState(() => Date.now())
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   // Looked up from `requests` (not the status-filtered `filtered` list) so
   // an approve/reject inside the modal that moves the request out of the
@@ -67,7 +70,8 @@ export default function PurchaseRequestsPageClient({
   }, [initialError])
 
   const filtered = useMemo(() => {
-    const byStatus = filter === 'all' ? requests : requests.filter((r) => r.status === filter)
+    const byStatusOnly = filter === 'all' ? requests : requests.filter((r) => r.status === filter)
+    const byStatus = attentionOnly ? byStatusOnly.filter((r) => requestNeedsAttention(r, now)) : byStatusOnly
     const q = search.trim().toLowerCase()
     if (!q) return byStatus
     return byStatus.filter((r) => {
@@ -75,7 +79,9 @@ export default function PurchaseRequestsPageClient({
       const haystack = `${r.pr_no} ${r.projects?.name || ''} ${r.plots?.name || ''} ${r.plot_groups?.name || ''} ${materials}`.toLowerCase()
       return haystack.includes(q)
     })
-  }, [requests, filter, search])
+  }, [requests, filter, search, attentionOnly, now])
+
+  const attentionCount = useMemo(() => requests.filter((r) => requestNeedsAttention(r, now)).length, [requests, now])
 
   const allChecked = filtered.length > 0 && filtered.every((r) => checked.has(r.id))
 
@@ -111,11 +117,13 @@ export default function PurchaseRequestsPageClient({
         resultCount={filtered.length}
         activeFilters={[
           ...(filter !== 'all' ? [{ label: FILTERS.find((f) => f.key === filter)?.label ?? filter, onRemove: () => setFilter('all') }] : []),
+          ...(attentionOnly ? [{ label: 'ต้องตรวจเทียบ', onRemove: () => setAttentionOnly(false) }] : []),
           ...(search.trim() ? [{ label: `ค้นหา "${search.trim()}"`, onRemove: () => setSearch('') }] : []),
         ]}
         onReset={() => {
           setFilter('all')
           setSearch('')
+          setAttentionOnly(false)
         }}
       >
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="สถานะ">
@@ -132,6 +140,17 @@ export default function PurchaseRequestsPageClient({
               {f.label}
             </button>
           ))}
+          <button
+            type="button"
+            aria-pressed={attentionOnly}
+            onClick={() => setAttentionOnly((v) => !v)}
+            title="คำขอซื้อที่สั่งแล้วแต่ยังไม่ได้ตรวจเทียบ และมีรายการที่ต่างจากที่ขอหรือเลยกำหนด"
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              attentionOnly ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+            }`}
+          >
+            ต้องตรวจเทียบ{attentionCount > 0 ? ` (${attentionCount})` : ''}
+          </button>
         </div>
       </PageToolbar>
 

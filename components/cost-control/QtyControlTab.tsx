@@ -21,6 +21,7 @@ import {
   type ControlScope,
 } from '@/lib/procurement/boqControl'
 import { formatCurrency } from '@/lib/currency'
+import UsageBar from '@/components/cost-control/UsageBar'
 
 const STATUS_DOT: Record<BoqControlStatus, string> = {
   ok: 'bg-emerald-500',
@@ -199,20 +200,19 @@ export default function QtyControlTab({
                 <th className="w-6 px-2 py-2" />
                 <th className="px-3 py-2">วัสดุ</th>
                 <th className="px-3 py-2">หน่วย</th>
-                <th className="px-3 py-2 text-right">BOQ</th>
-                <th className="px-3 py-2 text-right">เผื่อ</th>
-                <th className="px-3 py-2 text-right">รวมงบ</th>
-                <th className="px-3 py-2 text-right" title="สั่งซื้อแล้ว ไม่ว่าจะรับของหรือยัง - ข้อมูลอ้างอิง ไม่นับรวมในเปอร์เซ็นต์/สถานะ">
-                  สั่งซื้อ
+                <th className="px-3 py-2 text-right" title="BOQ ตามแบบ + เผื่อเสีย - งบปริมาณที่ใช้เทียบ">
+                  งบ (BOQ+เผื่อ)
+                </th>
+                <th className="px-3 py-2 text-right" title="ยอดสั่ง: สั่งซื้อแล้ว ไม่ว่าจะรับของหรือยัง - ข้อมูลอ้างอิง ไม่นับรวมในเปอร์เซ็นต์/สถานะ (หน้าใบสั่งซื้อ/คำขอซื้อตรวจเทียบ BOQ ด้วย ยอดสั่ง + เบิกสโตร์)">
+                  ยอดสั่ง
                 </th>
                 <th className="px-3 py-2 text-right" title="วัสดุที่เบิกออกจากสต็อกจริงแล้ว รวมของที่ส่งตรงหน้างานโดยไม่เข้าสโตร์ - ตัวนี้คือตัวที่เทียบกับ BOQ">
                   ใช้จริง
                 </th>
-                <th className="px-3 py-2 text-right" title="มูลค่าของที่เบิกจากสโตร์ให้ผู้รับเหมา ตามราคาซื้อเฉลี่ยของสโตร์ - ต้นทุนเข้าแปลงตอนเบิก ไม่ใช่ตอนซื้อเข้าสโตร์ (ของที่ส่งตรงหน้างานนับในมูลค่าใบสั่งซื้อของแปลงอยู่แล้ว)">
-                  มูลค่าเบิกสโตร์
-                </th>
                 <th className="px-3 py-2 text-right">คงเหลือ</th>
-                <th className="px-3 py-2 text-right">%</th>
+                <th className="px-3 py-2" title="แถบทึบ = ใช้จริง · แถบเทา = ยอดสั่งที่ยังไม่ได้ใช้ · เต็มแถบ = งบ">
+                  ใช้ไปแล้ว
+                </th>
                 <th className="px-3 py-2">สถานะ</th>
               </tr>
             </thead>
@@ -221,7 +221,6 @@ export default function QtyControlTab({
                 const status = rowStatus(row)
                 const ceiling = ceilingQty(row)
                 const used = consumedQty(row)
-                const percent = percentUsed(row)
                 const isExpanded = expandedId === row.materialTypeId
                 return (
                   <Fragment key={row.materialTypeId}>
@@ -235,22 +234,21 @@ export default function QtyControlTab({
                       <td className="px-3 py-2.5 font-medium text-slate-800">
                         {row.materialName}
                         {row.isEstimated && (
-                          <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500" title="ตัวเลขนี้เป็นค่าเฉลี่ยจากการซื้อของทั้งกลุ่มแปลง">
-                            เฉลี่ยจากกลุ่ม
+                          <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500" title="ตัวเลขนี้เป็นค่าประมาณ: การซื้อที่ครอบคลุมหลายแปลงถูกแบ่งเท่ากันทุกแปลงในกลุ่ม">
+                            ประมาณ (แบ่งเท่ากันในกลุ่ม)
                           </span>
                         )}
                       </td>
                       <td className="px-3 py-2.5 text-slate-500">{row.unit}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-600">{row.plannedQty.toLocaleString('th-TH')}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-500">{row.allowanceQty.toLocaleString('th-TH')}</td>
                       <td className="px-3 py-2.5 text-right font-medium text-slate-700">{ceiling.toLocaleString('th-TH')}</td>
                       <td className="px-3 py-2.5 text-right text-slate-600">{row.orderedQty.toLocaleString('th-TH')}</td>
                       <td className="px-3 py-2.5 text-right font-medium text-slate-800">{used.toLocaleString('th-TH')}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-600">{row.issuedValue ? `฿${formatCurrency(row.issuedValue)}` : '-'}</td>
                       <td className={`px-3 py-2.5 text-right font-medium ${ceiling - used < 0 ? 'text-red-600' : 'text-slate-700'}`}>
                         {(ceiling - used).toLocaleString('th-TH')}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-slate-600">{percent == null ? '-' : `${Math.round(percent)}%`}</td>
+                      <td className="px-3 py-2.5">
+                        <UsageBar used={used} ordered={row.orderedQty} ceiling={ceiling} over={status === 'over'} watch={status === 'watch'} />
+                      </td>
                       <td className="px-3 py-2.5">
                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600">
                           <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status]}`} />
@@ -260,7 +258,12 @@ export default function QtyControlTab({
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={12} className="bg-slate-50/70 px-6 py-3">
+                        <td colSpan={9} className="bg-slate-50/70 px-6 py-3">
+                          <p className="mb-2 text-xs text-slate-600">
+                            BOQ {row.plannedQty.toLocaleString('th-TH')} + เผื่อ {row.allowanceQty.toLocaleString('th-TH')} {row.unit}
+                            {row.issuedValue ? ` · มูลค่าเบิกสโตร์ ฿${formatCurrency(row.issuedValue)}` : ''}
+                            {row.receivedQty ? ` · รับแล้ว ${row.receivedQty.toLocaleString('th-TH')} ${row.unit}` : ''}
+                          </p>
                           {isDetailLoading && !detailByMaterial[row.materialTypeId] ? (
                             <div className="flex items-center gap-2 py-2 text-sm text-slate-500">
                               <Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลด...
@@ -302,7 +305,7 @@ export default function QtyControlTab({
                                       <td className="px-2 py-1.5 text-slate-500">{d.plotLabel}</td>
                                       <td className="px-2 py-1.5 text-right text-slate-700">{d.quantity.toLocaleString('th-TH')}</td>
                                       <td className="px-2 py-1.5 text-right text-slate-500">
-                                        {d.weight < 1 ? `≈${Math.round(d.weight * 100)}% (แบ่งเท่ากัน)` : '100%'}
+                                        {d.weight < 1 ? `ประมาณ ≈${Math.round(d.weight * 100)}% (แบ่งเท่ากัน)` : '100%'}
                                       </td>
                                     </tr>
                                   )

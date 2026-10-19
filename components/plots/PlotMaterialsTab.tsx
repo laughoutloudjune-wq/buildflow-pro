@@ -8,6 +8,7 @@ import { formatCurrency } from '@/lib/currency'
 import type { PlotMaterialRowView } from '@/lib/types/plotDetail'
 import { TableFrame } from '@/components/ui/TableFrame'
 import { EmptyState } from '@/components/ui/EmptyState'
+import UsageBar from '@/components/cost-control/UsageBar'
 
 const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 })
 
@@ -22,9 +23,13 @@ function BoqUsage({ m }: { m: PlotMaterialRowView }) {
     return <span className="text-xs text-slate-400">ไม่มีใน BOQ</span>
   }
   const ceiling = m.plannedQty + (m.allowanceQty || 0)
-  const pct = ceiling > 0 ? Math.round((used / ceiling) * 100) : 0
-  const tone = used > ceiling ? 'text-rose-700 bg-rose-50' : used > m.plannedQty ? 'text-amber-800 bg-amber-50' : 'text-emerald-700 bg-emerald-50'
-  return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${tone}`}>{pct}%</span>
+  return <UsageBar used={used} ordered={m.orderedQty} ceiling={ceiling} over={used > ceiling} watch={used > m.plannedQty} />
+}
+
+/** True when any of this row's figures is a share of a batch, not an exact
+ * count for this plot alone. */
+function isEstimatedRow(m: PlotMaterialRowView): boolean {
+  return m.sources.some((s) => s.weight < 1 || s.receivedIsEstimate) || m.stockEntries.some((e) => !!e.groupName)
 }
 
 export default function PlotMaterialsTab({ materials, canSeeCost }: { materials: PlotMaterialRowView[]; canSeeCost: boolean }) {
@@ -55,7 +60,7 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
   return (
     <div className="space-y-2">
       <p className="text-xs text-slate-500">
-        ใช้แล้ว = เบิกจากสโตร์ + ส่งตรงแปลง เทียบกับ BOQ รวมเผื่อเสีย · การเบิกที่ระบุเป็นกลุ่มแปลงจะแบ่งเท่ากันทุกแปลงในกลุ่ม · การเบิกเก่าที่ไม่ได้ระบุแปลงจะไม่แสดงที่นี่
+        ใช้จริง = เบิกจากสโตร์ + ส่งตรงแปลง เทียบกับ BOQ รวมเผื่อเสีย · การเบิกที่ระบุเป็นกลุ่มแปลงจะแบ่งเท่ากันทุกแปลงในกลุ่ม · การเบิกเก่าที่ไม่ได้ระบุแปลงจะไม่แสดงที่นี่
       </p>
       <TableFrame>
         <table>
@@ -63,12 +68,12 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
             <tr>
               <th className="px-4 py-3 font-semibold">วัสดุ</th>
               <th className="px-4 py-3 font-semibold text-right">BOQ</th>
-              <th className="px-4 py-3 font-semibold text-right">สั่งซื้อ</th>
+              <th className="px-4 py-3 font-semibold text-right">ยอดสั่ง</th>
               <th className="px-4 py-3 font-semibold text-right">รับแล้ว</th>
               <th className="px-4 py-3 font-semibold text-right">เบิกจากสโตร์</th>
               <th className="px-4 py-3 font-semibold text-right">ส่งตรงแปลง</th>
-              <th className="px-4 py-3 font-semibold text-right">ใช้แล้ว</th>
-              <th className="px-4 py-3 font-semibold text-right">เทียบ BOQ</th>
+              <th className="px-4 py-3 font-semibold text-right">ใช้จริง</th>
+              <th className="px-4 py-3 font-semibold" title="แถบทึบ = ใช้จริง · แถบเทา = ยอดสั่งที่ยังไม่ได้ใช้ · เต็มแถบ = งบ (BOQ+เผื่อ)">ใช้ไปแล้ว</th>
               {canSeeCost && <th className="px-4 py-3 font-semibold text-right">มูลค่าสั่งซื้อ</th>}
               {canSeeCost && <th className="px-4 py-3 font-semibold text-right" title="ของที่ผู้รับเหมาเบิกจากสโตร์ ตามราคาซื้อเฉลี่ยของสโตร์">มูลค่าเบิกสโตร์</th>}
             </tr>
@@ -96,6 +101,14 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
                       ) : (
                         <span className="pl-5">{m.name}</span>
                       )}
+                      {isEstimatedRow(m) && (
+                        <span
+                          className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500"
+                          title="บางตัวเลขเป็นค่าประมาณ: การซื้อหรือเบิกที่ครอบคลุมหลายแปลงถูกแบ่งเท่ากันทุกแปลงในกลุ่ม"
+                        >
+                          ประมาณ
+                        </span>
+                      )}
                     </td>
                     <td
                       className="px-4 py-3 text-right text-slate-600"
@@ -108,7 +121,7 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
                     <td className="px-4 py-3 text-right text-slate-600">{m.issuedQty ? `${fmt(m.issuedQty)} ${m.unit}` : '—'}</td>
                     <td className="px-4 py-3 text-right text-slate-600">{m.directQty ? `${fmt(m.directQty)} ${m.unit}` : '—'}</td>
                     <td className="px-4 py-3 text-right font-medium text-slate-800">{used ? `${fmt(used)} ${m.unit}` : '—'}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3">
                       <BoqUsage m={m} />
                     </td>
                     {canSeeCost && (

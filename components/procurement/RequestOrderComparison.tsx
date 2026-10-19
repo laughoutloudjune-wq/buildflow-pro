@@ -6,29 +6,8 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { pmReviewPurchaseRequest } from '@/actions/procurement-actions'
-import { requestLineUnit } from '@/lib/procurement/requestQuantities'
-import type { PurchaseRequest, PurchaseRequestItem } from '@/lib/types/procurement'
-
-type LineFlags = {
-  item: PurchaseRequestItem
-  substituted: boolean
-  different: boolean
-  late: boolean
-  open: boolean
-}
-
-/** How one request line compares with what was ordered against it. Flags are
- * information for the PM: none of them blocks anything. */
-function compareLine(request: PurchaseRequest, item: PurchaseRequestItem, now: number): LineFlags {
-  const links = (item.fulfillment?.links || []).filter((l) => !l.cancelled)
-  const unit = requestLineUnit(item)
-  const asked = Number(item.quantity_requested) || 0
-  const substituted = links.some((l) => l.isSubstitute)
-  const different = links.some((l) => l.unit !== unit || (l.unit === unit && Math.abs(l.allocated - asked) > 1e-9))
-  const open = item.line_status === 'open'
-  const late = open && !!request.needed_by_date && new Date(request.needed_by_date).getTime() < now
-  return { item, substituted, different: links.length > 0 && different, late, open }
-}
+import { compareRequestLine, type RequestLineFlag } from '@/lib/procurement/requestFlags'
+import type { PurchaseRequest } from '@/lib/types/procurement'
 
 /** One-glance comparison of a request against its orders, with the PM's
  * "reviewed" mark. Shown once the request is approved. */
@@ -36,10 +15,15 @@ export default function RequestOrderComparison({
   request,
   canReview,
   onChanged,
+  activeFlag,
+  onFlagChange,
 }: {
   request: PurchaseRequest
   canReview: boolean
   onChanged: () => void
+  /** The flag the line table below is currently filtered to, if any. */
+  activeFlag: RequestLineFlag | null
+  onFlagChange: (flag: RequestLineFlag | null) => void
 }) {
   const toast = useToast()
   const [isPending, startTransition] = useTransition()
@@ -47,23 +31,23 @@ export default function RequestOrderComparison({
   const [now] = useState(() => Date.now())
 
   const items = request.purchase_request_items || []
-  const rows = items.map((item) => compareLine(request, item, now))
+  const rows = items.map((item) => compareRequestLine(request, item, now))
   const asRequested = rows.filter((r) => !r.open && !r.substituted && !r.different && r.item.line_status !== 'closed').length
   const substituted = rows.filter((r) => r.substituted).length
-  const different = rows.filter((r) => r.different && !r.substituted).length
+  const different = rows.filter((r) => r.different).length
   const open = rows.filter((r) => r.open).length
   const late = rows.filter((r) => r.late).length
   const closed = rows.filter((r) => r.item.line_status === 'closed').length
 
-  const parts = [
-    `${items.length} รายการ`,
-    `${asRequested} ตามที่ขอ`,
-    substituted > 0 ? `${substituted} เปลี่ยนยี่ห้อ/รุ่น` : null,
-    different > 0 ? `${different} จำนวนหรือหน่วยต่างจากที่ขอ` : null,
-    closed > 0 ? `${closed} ปิดรายการเอง` : null,
-    open > 0 ? `${open} ยังไม่ได้สั่ง` : null,
-    late > 0 ? `${late} เลยวันที่ต้องการ` : null,
-  ].filter(Boolean)
+  const parts: { key: RequestLineFlag | null; label: string; tone: string }[] = [
+    { key: null, label: `${items.length} รายการ`, tone: '' },
+    { key: null, label: `${asRequested} ตามที่ขอ`, tone: '' },
+    ...(substituted > 0 ? [{ key: 'substituted' as const, label: `${substituted} เปลี่ยนยี่ห้อ/รุ่น`, tone: 'bg-indigo-50 text-indigo-700' }] : []),
+    ...(different > 0 ? [{ key: 'different' as const, label: `${different} จำนวนหรือหน่วยต่างจากที่ขอ`, tone: 'bg-amber-50 text-amber-700' }] : []),
+    ...(closed > 0 ? [{ key: 'closed' as const, label: `${closed} ปิดรายการเอง`, tone: 'bg-slate-100 text-slate-700' }] : []),
+    ...(open > 0 ? [{ key: 'open' as const, label: `${open} ยังไม่ได้สั่ง`, tone: 'bg-slate-100 text-slate-700' }] : []),
+    ...(late > 0 ? [{ key: 'late' as const, label: `${late} เลยวันที่ต้องการ`, tone: 'bg-rose-50 text-rose-700' }] : []),
+  ]
 
   function handleReview() {
     startTransition(async () => {
@@ -82,9 +66,32 @@ export default function RequestOrderComparison({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-slate-800">เทียบคำขอซื้อกับใบสั่งซื้อ</div>
-          <p className="mt-1 text-sm text-slate-600">{parts.join(' · ')}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm text-slate-600">
+            {parts.map((p) =>
+              p.key ? (
+                <button
+                  key={p.key}
+                  type="button"
+                  aria-pressed={activeFlag === p.key}
+                  onClick={() => onFlagChange(activeFlag === p.key ? null : p.key)}
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${p.tone} ${
+                    activeFlag === p.key ? 'ring-slate-500' : 'ring-transparent hover:ring-slate-300'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ) : (
+                <span key={p.label}>{p.label}</span>
+              )
+            )}
+            {activeFlag && (
+              <button type="button" onClick={() => onFlagChange(null)} className="text-xs text-indigo-600 hover:underline">
+                แสดงทุกรายการ
+              </button>
+            )}
+          </div>
           <p className="mt-1 text-xs text-slate-500">
-            ดูรายละเอียดแต่ละรายการในตารางด้านล่าง เมื่อ PM ดูความต่างแล้วกด &quot;ตรวจเทียบแล้ว&quot; (เป็นเครื่องหมายบันทึกเท่านั้น ไม่ใช่การอนุมัติ และไม่ขัดขวางการสั่งซื้อ)
+            กดที่ป้ายเพื่อกรองเฉพาะรายการนั้นในตารางด้านล่าง เมื่อ PM ดูความต่างแล้วกด &quot;ตรวจเทียบแล้ว&quot; (เป็นเครื่องหมายบันทึกเท่านั้น ไม่ใช่การอนุมัติ และไม่ขัดขวางการสั่งซื้อ)
           </p>
         </div>
         {request.pm_reviewed_at ? (
