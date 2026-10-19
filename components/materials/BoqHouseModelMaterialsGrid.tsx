@@ -29,7 +29,8 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
   const [materialTypes, setMaterialTypes] = useState<MaterialType[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [savingKey, setSavingKey] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  // Cards start collapsed; this holds the ones the user has opened.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
   const [wasteDrafts, setWasteDrafts] = useState<Record<string, string>>({})
   const [newRowDrafts, setNewRowDrafts] = useState<Record<string, NewRowDraft>>({})
@@ -68,7 +69,7 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
   }
 
   function toggleCollapsed(boqId: string) {
-    setCollapsed((prev) => ({ ...prev, [boqId]: !prev[boqId] }))
+    setExpanded((prev) => ({ ...prev, [boqId]: !prev[boqId] }))
   }
 
   async function handleSaveExisting(boqId: string, itemId: string) {
@@ -202,7 +203,8 @@ export default function BoqHouseModelMaterialsGrid({ houseModelId }: { houseMode
         </div>
       )}
       {visibleJobs.map((job) => {
-        const isCollapsed = collapsed[job.boqId] && !q
+        // Searching or filtering to empty jobs opens the cards so matches are visible.
+        const isCollapsed = !expanded[job.boqId] && !q && !onlyEmpty
         const availableMaterials = materialTypes.filter((mt) => !job.items.some((i) => i.material_type_id === mt.id))
         const draft = newRowDrafts[job.boqId] || emptyDraft
         const jobTotal = job.items.reduce((sum, i) => sum + (i.material_types?.current_price || 0) * i.planned_quantity, 0)
