@@ -1,6 +1,6 @@
 import type { createClient } from '@/lib/supabase/server'
 import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
-import { addDaysStr, latestPct } from '@/lib/weekly-plan'
+import { latestRecordedByJob } from '@/lib/billing'
 import { pickLatestProgress } from '@/lib/cost-control/progress'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
@@ -108,15 +108,9 @@ export async function fetchLatestJobProgress(
             .range(from, to) as unknown as PromiseLike<{ data: WeeklyRow[] | null; error: { message: string } | null }>
       )
     }
-    for (const row of weeklyRows) {
-      if (!row.job_assignment_id) continue
-      const latest = latestPct((row.actual_pct || []).map((v) => (v == null ? null : Number(v))))
-      if (!latest) continue
-      const asOf = addDaysStr(row.week_start, latest.day)
-      const prev = weeklyByJob.get(row.job_assignment_id)
-      if (!prev || new Date(asOf).getTime() >= new Date(prev.asOf).getTime()) {
-        weeklyByJob.set(row.job_assignment_id, { percent: clampPercent(latest.value), asOf })
-      }
+    // Same reading billing uses to compare site progress with what is claimed.
+    for (const [jobId, rec] of Object.entries(latestRecordedByJob(weeklyRows))) {
+      weeklyByJob.set(jobId, { percent: clampPercent(rec.pct), asOf: rec.asOf })
     }
   } catch (error) {
     console.error('job progress: weekly actuals unavailable', error)
