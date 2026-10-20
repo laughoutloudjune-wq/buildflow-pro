@@ -37,6 +37,45 @@ import PlotBoard from './PlotBoard'
 const REQUEST_STATUS_LABEL: Record<string, string> = { new: 'ใหม่', accepted: 'รับเรื่องแล้ว', in_progress: 'กำลังทำ' }
 const WHY = ['ของไม่มา', 'คนไม่พอ', 'งานก่อนหน้าไม่เสร็จ', 'ฝนตก', 'แบบ/ข้อมูลไม่ชัด', 'อื่นๆ']
 const MISS_PCT = [0, 25, 50, 75]
+
+/** Type any 0-100 % and save it on Enter or when leaving the box. */
+function PctInput({ value, disabled, onCommit }: { value: number; disabled?: boolean; onCommit: (v: number) => void }) {
+  const [text, setText] = useState('')
+  const [editing, setEditing] = useState(false)
+  const commit = () => {
+    setEditing(false)
+    if (text.trim() === '') return
+    const n = Math.round(Number(text))
+    if (!Number.isFinite(n)) return
+    const v = Math.min(100, Math.max(0, n))
+    if (v !== value) onCommit(v)
+  }
+  return (
+    <label className="inline-flex items-center gap-1 text-slate-600">
+      พิมพ์เอง
+      <input
+        type="number"
+        min={0}
+        max={100}
+        inputMode="numeric"
+        disabled={disabled}
+        value={editing ? text : value}
+        onFocus={() => {
+          setText(String(value))
+          setEditing(true)
+        }}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+        }}
+        aria-label="ความคืบหน้า (%)"
+        className="w-16 rounded-lg border border-amber-300 bg-white px-2 py-0.5 text-xs tabular-nums"
+      />
+      %
+    </label>
+  )
+}
 const MISS = '✗'
 
 type Mark = '' | 'y' | 'n'
@@ -348,6 +387,7 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
                                       {v}%
                                     </button>
                                   ))}
+                                  <PctInput value={pct} disabled={pending} onCommit={(v) => setMissPct(item, v)} />
                                 </div>
                                 <div className="font-medium">เพราะ</div>
                                 <div className="flex flex-wrap gap-1.5">
@@ -367,6 +407,21 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
                               </div>
                             )
                           })}
+                          {group.some((i) => markOf(i) === 'y') && (
+                            <details className="text-xs text-slate-500">
+                              <summary className="cursor-pointer select-none">ใส่ % จริงของแปลงที่ ✓ ({group.filter((i) => markOf(i) === 'y').length})</summary>
+                              <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
+                                {group
+                                  .filter((i) => markOf(i) === 'y')
+                                  .map((item) => (
+                                    <span key={item.id} className="inline-flex items-center gap-1.5">
+                                      แปลง {item.plotName}
+                                      <PctInput value={Math.round(currentProgress(item))} disabled={pending} onCommit={(v) => setMissPct(item, v)} />
+                                    </span>
+                                  ))}
+                              </div>
+                            </details>
+                          )}
                           {group.some((i) => i.note && !i.note.startsWith(MISS)) && (
                             <p className="text-xs text-slate-500">{group.filter((i) => i.note && !i.note.startsWith(MISS)).map((i) => `แปลง ${i.plotName}: ${i.note}`).join(' · ')}</p>
                           )}

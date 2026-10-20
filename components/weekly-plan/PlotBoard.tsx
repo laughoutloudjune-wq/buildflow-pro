@@ -45,7 +45,7 @@ export default function PlotBoard({
   const [groupFilter, setGroupFilter] = useState<string | null>(null)
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [ticks, setTicks] = useState<Record<string, boolean>>({})
-  const [target, setTarget] = useState<100 | 50>(100)
+  const [target, setTarget] = useState<number>(100)
 
   useEffect(() => {
     let alive = true
@@ -301,6 +301,23 @@ export default function PlotBoard({
                   {t === 100 ? 'เสร็จ' : 'ถึง 50%'}
                 </button>
               ))}
+              <label className="flex items-center gap-1 text-xs text-slate-600">
+                หรือ
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  inputMode="numeric"
+                  value={target}
+                  onChange={(e) => {
+                    const n = Math.round(Number(e.target.value))
+                    if (Number.isFinite(n)) setTarget(Math.min(100, Math.max(1, n)))
+                  }}
+                  aria-label="เป้าสิ้นสัปดาห์ (%)"
+                  className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-xs tabular-nums"
+                />
+                %
+              </label>
             </span>
             <Button disabled={pending || agreed || chosen.length === 0} onClick={submit}>
               {pending ? 'กำลังเพิ่ม...' : 'ใส่แผนสัปดาห์นี้'}
