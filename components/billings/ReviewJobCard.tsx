@@ -200,9 +200,10 @@ export default function ReviewJobCard({
                   {insight.materials.map((m) => (
                     <tr key={m.name} className="border-t border-slate-200">
                       <td className="py-1 pr-2">{m.name}</td>
-                      <td className="py-1 pr-2 text-right tabular-nums">แผน {m.plan.toLocaleString('th-TH', { maximumFractionDigits: 1 })}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">แผน BOQ {m.plan.toLocaleString('th-TH', { maximumFractionDigits: 1 })}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">สั่งแล้ว {m.ordered.toLocaleString('th-TH', { maximumFractionDigits: 1 })}</td>
                       <td className="py-1 pr-2 text-right tabular-nums">
-                        ใช้ {m.used.toLocaleString('th-TH', { maximumFractionDigits: 1 })} {m.unit}
+                        เบิกแล้ว {m.used.toLocaleString('th-TH', { maximumFractionDigits: 1 })} {m.unit}
                       </td>
                       <td className="py-1">
                         {m.state === 'over' ? (
