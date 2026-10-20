@@ -8,7 +8,7 @@ import { requireModuleAccess } from '@/lib/auth/route-access'
  * deleting a BOQ line, or a whole house model, can silently wipe out jobs
  * that already have a contractor, an agreed price, or payments recorded
  * against them - across every plot using that model. Refuses instead of
- * cascading when any of that exists; there's no undo for a cascade delete. */
+ * cascading when any of that exists (a price of 0 counts as not set); there's no undo for a cascade delete. */
 async function guardBoqDeleteAffectsJobs(
   supabase: Awaited<ReturnType<typeof createClient>>,
   boqItemIds: string[]
@@ -21,7 +21,7 @@ async function guardBoqDeleteAffectsJobs(
   if (error) throw new Error(error.message)
 
   const affected = (jobs || []).filter(
-    (j) => j.contractor_id || j.agreed_price_per_unit != null || (j.payments && j.payments.length > 0)
+    (j) => j.contractor_id || Number(j.agreed_price_per_unit ?? 0) > 0 || (j.payments && j.payments.length > 0)
   )
   if (affected.length > 0) {
     throw new Error(
