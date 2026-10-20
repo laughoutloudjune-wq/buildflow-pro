@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getDashboardSession } from '@/lib/auth/route-access'
 import { houseTypeLabel } from '@/lib/house-type'
+import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
+import { fetchLatestJobProgress } from '@/actions/_shared/job-progress'
 import { addDaysStr, currentProgress, isMonday, jobMaterialUsage, mondayOf, rolloverPlan, weeksOfMonth, type WeeklyPlanKind, type WeeklyPlanStatus } from '@/lib/weekly-plan'
 
 export type WeeklyPlanItem = {
@@ -470,6 +472,178 @@ export async function getPlotsJobsForPlan(plotIds: string[]): Promise<{ jobs: We
   return { jobs }
 }
 
+/** One BOQ job on one plot, as the plot board needs it. No prices. */
+export type PlotBoardJob = {
+  id: string
+  plotId: string
+  title: string
+  /** contractor_types id as text, or 'none' */
+  tradeKey: string
+  contractorId: string | null
+  contractorName: string | null
+  /** job_assignments.status - context only */
+  status: string
+  /** 0-100: latest billing or weekly-plan reading; 100 when the job row is marked completed */
+  percent: number
+  /** Position of the BOQ line inside its trade (entry order) */
+  order: number
+  plannedThisWeek: boolean
+  /** Planned last week, not ticked done and still under 100% */
+  missedLastWeek: boolean
+}
+
+export type PlotBoardData = {
+  trades: { key: string; name: string }[]
+  plots: { id: string; name: string; houseType: string; groupName: string }[]
+  jobs: PlotBoardJob[]
+}
+
+/** Plots x trade stages for one project and week: the board the planner taps to put work into the week. */
+export async function getPlotBoard(projectId: string, weekStart: string): Promise<PlotBoardData | { error: string }> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  if (!projectId) return { error: 'กรุณาเลือกโครงการ' }
+  if (!isMonday(weekStart)) return { error: 'สัปดาห์ไม่ถูกต้อง' }
+
+  const supabase = await createClient()
+  const prevWeek = addDaysStr(weekStart, -7)
+  type RawJob = {
+    id: string
+    plot_id: string
+    status: string | null
+    contractor_id: string | null
+    contractors: { name: string } | { name: string }[] | null
+    boq_master: { item_name: string; contractor_type_id: number | null; created_at: string } | { item_name: string; contractor_type_id: number | null; created_at: string }[] | null
+  }
+  const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v)
+
+  let jobRows: RawJob[]
+  try {
+    jobRows = await fetchAllRows<RawJob>(
+      (from, to) =>
+        supabase
+          .from('job_assignments')
+          .select('id, plot_id, status, contractor_id, contractors(name), boq_master(item_name, contractor_type_id, created_at), plots!inner(project_id)')
+          .eq('plots.project_id', projectId)
+          .order('id')
+          .range(from, to) as unknown as PromiseLike<{ data: RawJob[] | null; error: { message: string } | null }>
+    )
+  } catch (e) {
+    return { error: `โหลดงานของแปลงไม่สำเร็จ: ${e instanceof Error ? e.message : ''}` }
+  }
+
+  const [plotsRes, groupsRes, typesRes, templateRes, planRes] = await Promise.all([
+    supabase.from('plots').select('id, name, house_models(name, code)').eq('project_id', projectId),
+    supabase.from('plot_groups').select('id, name, plot_group_members(plot_id)').eq('project_id', projectId).order('name'),
+    supabase.from('contractor_types').select('id, name').order('id'),
+    supabase.from('house_model_phase_template').select('contractor_type_id, sequence_order'),
+    supabase
+      .from('weekly_plan_items')
+      .select('job_assignment_id, week_start, status')
+      .eq('project_id', projectId)
+      .in('week_start', [weekStart, prevWeek])
+      .not('job_assignment_id', 'is', null),
+  ])
+  const failed = [plotsRes, groupsRes, typesRes, planRes].find((r) => r.error)?.error
+  if (failed) return { error: `โหลดบอร์ดไม่สำเร็จ: ${failed.message}` }
+
+  let progress = new Map<string, { percent: number }>()
+  try {
+    progress = await fetchLatestJobProgress(supabase, { projectId })
+  } catch {
+    // Progress is a nice-to-have on the board; without it every job reads 0.
+  }
+
+  const thisWeek = new Set<string>()
+  const missed = new Set<string>()
+  for (const r of (planRes.data || []) as { job_assignment_id: string; week_start: string; status: string }[]) {
+    if (r.week_start === weekStart) thisWeek.add(r.job_assignment_id)
+    else if (r.status !== 'done') missed.add(r.job_assignment_id)
+  }
+
+  // Trades in build order: the average sequence number from the house-model templates, else by id.
+  const seq = new Map<number, number[]>()
+  for (const t of (templateRes.data || []) as { contractor_type_id: number; sequence_order: number }[]) {
+    seq.set(t.contractor_type_id, [...(seq.get(t.contractor_type_id) || []), t.sequence_order])
+  }
+  // Without templates, a typical build order by trade name; unknown trades go last, by id.
+  const TYPICAL_ORDER = ['โครงสร้าง', 'ก่อฉาบ', 'เหล็ก', 'ประปา', 'ไฟฟ้า', 'ฝ้า', 'กระเบื้อง', 'อลูมิเนียม', 'ไม้', 'สี', 'สุขาภิบาล']
+  const seqOf = (id: number, name: string) => {
+    const list = seq.get(id)
+    if (list && list.length > 0) return list.reduce((a, b) => a + b, 0) / list.length
+    const idx = TYPICAL_ORDER.findIndex((k) => name.includes(k))
+    return idx >= 0 ? 1000 + idx : 2000 + id
+  }
+
+  const jobs: PlotBoardJob[] = []
+  const usedTrades = new Set<string>()
+  type BoqInfo = { item_name: string; contractor_type_id: number | null; created_at: string }
+  const sorted: { j: RawJob; boq: BoqInfo }[] = []
+  for (const j of jobRows) {
+    const boq = one(j.boq_master) as BoqInfo | null
+    if (boq) sorted.push({ j, boq })
+  }
+  sorted.sort((a, b) => a.boq.created_at.localeCompare(b.boq.created_at))
+  sorted.forEach(({ j, boq }, order) => {
+    const tradeKey = boq.contractor_type_id == null ? 'none' : String(boq.contractor_type_id)
+    usedTrades.add(tradeKey)
+    const percent = j.status === 'completed' ? 100 : Math.min(100, Math.round(progress.get(j.id)?.percent ?? 0))
+    jobs.push({
+      id: j.id,
+      plotId: j.plot_id,
+      title: boq.item_name,
+      tradeKey,
+      contractorId: j.contractor_id,
+      contractorName: one(j.contractors)?.name ?? null,
+      status: j.status || 'pending',
+      percent,
+      order,
+      plannedThisWeek: thisWeek.has(j.id),
+      missedLastWeek: missed.has(j.id) && percent < 100,
+    })
+  })
+
+  const trades = ((typesRes.data || []) as { id: number; name: string }[])
+    .filter((t) => usedTrades.has(String(t.id)))
+    .sort((a, b) => seqOf(a.id, a.name) - seqOf(b.id, b.name) || a.id - b.id)
+    .map((t) => ({ key: String(t.id), name: t.name }))
+  if (usedTrades.has('none')) trades.push({ key: 'none', name: 'อื่นๆ' })
+
+  const groupOf = new Map<string, string>()
+  for (const g of (groupsRes.data || []) as unknown as { name: string; plot_group_members: { plot_id: string }[] }[]) {
+    for (const m of g.plot_group_members) if (!groupOf.has(m.plot_id)) groupOf.set(m.plot_id, g.name)
+  }
+  const plots = ((plotsRes.data || []) as unknown as { id: string; name: string; house_models: { name: string | null; code: string | null } | { name: string | null; code: string | null }[] | null }[])
+    .map((p) => {
+      const hm = one(p.house_models)
+      return { id: p.id, name: p.name, houseType: houseTypeLabel(hm?.name, hm?.code), groupName: groupOf.get(p.id) || '' }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true }))
+
+  return { trades, plots, jobs }
+}
+
+/**
+ * Sets the note on a plan row (used for the "not done" reason). Any admin/pm/
+ * foreman may do this through weekly_plan_set_note when that function exists;
+ * until then it falls back to a plain update, which RLS limits to the row's
+ * creator and admin/pm.
+ */
+export async function setWeeklyPlanItemNote(id: string, note: string | null): Promise<WeeklyPlanResult> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  const supabase = await createClient()
+  const text = note?.trim() || null
+  const viaRpc = await supabase.rpc('weekly_plan_set_note', { p_id: id, p_note: text })
+  if (viaRpc.error) {
+    const { data, error } = await supabase.from('weekly_plan_items').update({ note: text }).eq('id', id).select('id')
+    if (error) return { error: `บันทึกหมายเหตุไม่สำเร็จ: ${error.message}` }
+    if (!data || data.length === 0) return { error: 'บันทึกเหตุผลได้เฉพาะผู้สร้างรายการหรือ PM' }
+  }
+  revalidatePath('/dashboard/weekly-plan')
+  return { ok: true }
+}
+
 export type WeeklyPlanItemInput = {
   projectId: string
   plotId: string | null
@@ -868,7 +1042,7 @@ export async function rollOverWeeklyPlan(projectId: string, weekStart: string): 
   const [prevRes, currentRes] = await Promise.all([
     supabase
       .from('weekly_plan_items')
-      .select('plot_id, title, job_assignment_id, owner_id, contractor_id, carry_pct, plan_pct, actual_pct, status')
+      .select('plot_id, title, job_assignment_id, owner_id, contractor_id, carry_pct, plan_pct, actual_pct, status, note')
       .eq('project_id', projectId)
       .eq('week_start', prevWeek)
       .not('job_assignment_id', 'is', null),
@@ -893,6 +1067,8 @@ export async function rollOverWeeklyPlan(projectId: string, weekStart: string): 
       contractor_id: prev.contractor_id,
       carry_pct: next.carry,
       plan_pct: next.plan,
+      // A missed promise keeps its reason ("✗ ของไม่มา") as context for the new week.
+      note: typeof prev.note === 'string' && prev.note.startsWith('✗') && prev.note.slice(1).trim() ? `ยกมา: ${prev.note.slice(1).trim()}` : null,
       created_by: caller.userId,
     }))
   if (rows.length === 0) return { error: 'ไม่มีงานค้างจากสัปดาห์ก่อนที่ต้องต่อ' }

@@ -86,6 +86,7 @@ export default function WeeklyPlanItemModal({
   projectId,
   weekStart,
   item,
+  freeOnly = false,
   onClose,
   onSaved,
 }: {
@@ -93,6 +94,8 @@ export default function WeeklyPlanItemModal({
   projectId: string
   weekStart: string
   item: WeeklyPlanItem | null
+  /** New work is only the non-BOQ kind (repair, DC, inspection); BOQ jobs are planned from the plot board. */
+  freeOnly?: boolean
   onClose: () => void
   onSaved: () => void
 }) {
@@ -104,7 +107,7 @@ export default function WeeklyPlanItemModal({
   // An agreed week's plan is locked: only progress (ACTUAL, carry, note) can change.
   const locked = !!item && agreedWeeks.has(item.weekStart)
 
-  const [mode, setMode] = useState<'boq' | 'manual'>(item ? (item.jobAssignmentId ? 'boq' : 'manual') : 'boq')
+  const [mode, setMode] = useState<'boq' | 'manual'>(item ? (item.jobAssignmentId ? 'boq' : 'manual') : freeOnly ? 'manual' : 'boq')
   const [kind, setKind] = useState<WeeklyPlanKind>(item?.kind ?? 'repair')
   const [title, setTitle] = useState(item?.title ?? '')
   const [plotIds, setPlotIds] = useState<string[]>(item?.plotId ? [item.plotId] : [])
@@ -581,6 +584,7 @@ export default function WeeklyPlanItemModal({
       <div className="space-y-6 text-sm">
         <p className="text-xs text-slate-500">{projectName}</p>
 
+        {!freeOnly && (
         <div className="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="ประเภทงาน">
           {(
             [
@@ -602,6 +606,7 @@ export default function WeeklyPlanItemModal({
             </button>
           ))}
         </div>
+        )}
 
         <section className="space-y-2">
           <div className="flex flex-wrap items-baseline gap-2">
