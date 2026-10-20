@@ -264,6 +264,7 @@ function BillBlock({ bill }: { bill: PrintBill }) {
             <tr className="bg-slate-100">
               <th className="w-12 border border-slate-300 px-2 py-0.5 text-left">ประเภท</th>
               <th className="border border-slate-300 px-2 py-0.5 text-left">รายการงานเพิ่ม/หัก</th>
+              <th className="w-24 border border-slate-300 px-2 py-0.5 text-left">แปลง</th>
               <th className="w-24 border border-slate-300 px-2 py-0.5 text-right">จำนวน</th>
               <th className="w-20 border border-slate-300 px-2 py-0.5 text-right">ราคา/หน่วย</th>
               <th className="w-24 border border-slate-300 px-2 py-0.5 text-right">จำนวนเงิน</th>
@@ -278,6 +279,7 @@ function BillBlock({ bill }: { bill: PrintBill }) {
                   </span>
                 </td>
                 <td className="border border-slate-300 px-2 py-0.5">{adj.description}</td>
+                <td className="border border-slate-300 px-2 py-0.5">{adj.plot_name || bill.plot_name || 'ส่วนกลาง'}</td>
                 <td className="border border-slate-300 px-2 py-0.5 text-right">
                   {adj.quantity} {adj.unit || ''}
                 </td>

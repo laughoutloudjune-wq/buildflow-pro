@@ -90,8 +90,8 @@ export default function ContractorCyclePrintPreviewPage() {
       lines.push({
         source: adj.type === 'deduction' ? 'dc-deduct' : 'dc-add',
         project: billProject,
-        houseNo: billPlot,
-        plotType: billPlotType,
+        houseNo: adj.plot_name || (billPlot !== '-' ? billPlot : 'ส่วนกลาง'),
+        plotType: adj.plot_name ? '-' : billPlotType,
         description: adj.description || '-',
         qty: Number(adj.quantity || 0),
         unit: adj.unit || '',

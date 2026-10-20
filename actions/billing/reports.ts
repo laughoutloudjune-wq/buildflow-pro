@@ -513,6 +513,7 @@ export async function getBillingsForPrint(
         id: a.id,
         type: a.type === 'deduction' ? ('deduction' as const) : ('addition' as const),
         description: a.description || '-',
+        plot_name: a.plot_name || null,
         unit: a.unit ?? null,
         quantity: Number(a.quantity || 0),
         unit_price: Number(a.unit_price || 0),
