@@ -190,35 +190,6 @@ export default function ReviewJobCard({
               </ul>
             )}
           </section>
-          <section>
-            <h4 className="mb-1 font-semibold">วัสดุของงานนี้ (แปลง {plotName || '-'})</h4>
-            {!insight || insight.materials.length === 0 ? (
-              <p className="text-slate-500">งานนี้ยังไม่ได้ผูกวัสดุใน BOQ</p>
-            ) : (
-              <table className="w-full text-xs">
-                <tbody>
-                  {insight.materials.map((m) => (
-                    <tr key={m.name} className="border-t border-slate-200">
-                      <td className="py-1 pr-2">{m.name}</td>
-                      <td className="py-1 pr-2 text-right tabular-nums">งานนี้ตาม BOQ {m.jobPlan.toLocaleString('th-TH', { maximumFractionDigits: 1 })}</td>
-                      <td className="py-1 pr-2 text-right tabular-nums text-slate-500">
-                        ทั้งแปลง: BOQ {m.plan.toLocaleString('th-TH', { maximumFractionDigits: 1 })} · สั่ง {m.ordered.toLocaleString('th-TH', { maximumFractionDigits: 1 })} · เบิก {m.used.toLocaleString('th-TH', { maximumFractionDigits: 1 })} {m.unit}
-                      </td>
-                      <td className="py-1">
-                        {m.state === 'over' ? (
-                          <span className="rounded-full bg-red-50 px-2 py-0.5 text-red-700">ใช้เกิน</span>
-                        ) : m.state === 'ordered_over' ? (
-                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800">สั่งเกิน</span>
-                        ) : (
-                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">ปกติ</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
         </div>
       )}
     </div>
