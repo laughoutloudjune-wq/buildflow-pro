@@ -81,6 +81,9 @@ export type WeeklyPlanSalesPlot = {
   statusLabel: string
 }
 
+/** A BOQ job left unfinished last week and not yet in this week's plan */
+export type WeeklyPlanCarryOver = { projectId: string; plotId: string | null; plotName: string | null; title: string }
+
 export type WeeklyPlanTargetHint = { plotId: string; plotName: string; projectId: string; text: string; date: string }
 
 export type WeeklyPlanData = {
@@ -100,6 +103,7 @@ export type WeeklyPlanData = {
   salesRequests: WeeklyPlanSalesRequest[]
   salesPlots: WeeklyPlanSalesPlot[]
   targetHints: WeeklyPlanTargetHint[]
+  carryOver: WeeklyPlanCarryOver[]
 }
 
 export type WeeklyPlanResult = { ok: true } | { error: string }
@@ -375,6 +379,33 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
   }
   targetHints.sort((a, b) => a.date.localeCompare(b.date))
 
+  // Last week's BOQ jobs that are not finished and not yet in this week (the "ยกมา" banner).
+  const prevWeek = addDaysStr(weekStart, -7)
+  const inThisWeek = new Set(items.filter((i) => i.weekStart === weekStart && i.jobAssignmentId).map((i) => `${i.projectId}|${i.jobAssignmentId}`))
+  const prevRes = await supabase
+    .from('weekly_plan_items')
+    .select('project_id, plot_id, title, job_assignment_id, carry_pct, actual_pct, status, plots(name)')
+    .eq('week_start', prevWeek)
+    .not('job_assignment_id', 'is', null)
+  type RawPrev = {
+    project_id: string
+    plot_id: string | null
+    title: string
+    job_assignment_id: string
+    carry_pct: number | null
+    actual_pct: (number | null)[] | null
+    status: WeeklyPlanStatus
+    plots: { name: string } | null
+  }
+  const carryOver: WeeklyPlanCarryOver[] = ((prevRes.data || []) as unknown as RawPrev[])
+    .filter(
+      (r) =>
+        r.status !== 'done' &&
+        !inThisWeek.has(`${r.project_id}|${r.job_assignment_id}`) &&
+        currentProgress({ carryPct: r.carry_pct == null ? null : Number(r.carry_pct), planPct: Array(7).fill(null), actualPct: padDays(r.actual_pct) }) < 100
+    )
+    .map((r) => ({ projectId: r.project_id, plotId: r.plot_id, plotName: r.plots?.name ?? null, title: r.title }))
+
   return {
     role: caller.role,
     userId: caller.userId,
@@ -399,6 +430,7 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
     salesRequests,
     salesPlots,
     targetHints,
+    carryOver,
   }
 }
 
