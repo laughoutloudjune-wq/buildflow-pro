@@ -264,13 +264,6 @@ export default function ReviewBillingPageClient({
         out.push({ tone: 'bad', text: `${label}: % อนุมัติต่ำกว่างวดก่อน (${Number(job.previous_progress).toFixed(2)}%) ระบบจะไม่ยอมให้อนุมัติ` })
       }
       const ins = insights?.jobs[jid]
-      const overMats = (ins?.materials || []).filter((m) => m.state !== 'ok')
-      if (overMats.length > 0) {
-        out.push({
-          tone: 'late',
-          text: `${label}: วัสดุเกิน BOQ ${overMats.map((m) => `${m.name} (${m.state === 'over' ? 'ใช้' : 'สั่ง'}เกิน ${(Math.max(m.used, m.ordered) - m.plan).toLocaleString('th-TH', { maximumFractionDigits: 1 })} ${m.unit})`).join(', ')} · ไม่ได้หักจากใบเบิกอัตโนมัติ`,
-        })
-      }
       if (ins && ins.otherPending.length > 0) {
         out.push({ tone: 'late', text: `${label}: ยังอยู่ในใบเบิก #${ins.otherPending.map((o) => o.docNo).join(', #')} ที่รออนุมัติด้วย อาจเบิกซ้ำ` })
       }
