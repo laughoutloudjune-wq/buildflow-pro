@@ -1,27 +1,28 @@
 'use client'
 
-import { Fragment, useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling, getJobProgressHistory, getRecordedProgress } from '@/actions/billing-actions'
+import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling, getJobProgressHistory, getRecordedProgress, getBillingReviewInsights } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Badge, statusTone } from '@/components/ui/Badge'
-import { TableFrame } from '@/components/ui/TableFrame'
 import { PageSection } from '@/components/ui/PageSection'
 import { BILLING_STATUS_LABEL } from '@/lib/status-labels'
 import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
-import { AlertTriangle, Edit, Trash2 } from 'lucide-react'
+import { Edit, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Modal from '@/components/ui/Modal'
 import NoticeBanner from '@/components/ui/NoticeBanner'
 import type { BillingAdjustmentForm, ProgressHistoryItem } from '@/lib/types/billing'
-import RecordedProgressCell from '@/components/billings/RecordedProgressCell'
-import ReasonDialog from '@/components/ui/ReasonDialog'
+import ReviewChecks, { type ReviewCheck } from '@/components/billings/ReviewChecks'
+import ReviewJobCard from '@/components/billings/ReviewJobCard'
+import ReviewDcLines, { dcLineKey } from '@/components/billings/ReviewDcLines'
+import type { BillingReviewInsights } from '@/actions/billing/review-insights'
 import { checkClaimAgainstRecorded, type RecordedProgress } from '@/lib/billing'
 import { todayInBangkok } from '@/lib/utils'
 
@@ -62,11 +63,15 @@ export default function ReviewBillingPageClient({
   const [retentionPercent] = useState(initialRetentionPercent)
   const [recordedByJob, setRecordedByJob] = useState<Record<string, RecordedProgress>>({})
   const [progressHistoryByJob, setProgressHistoryByJob] = useState<Record<string, ProgressHistoryItem[]>>(initialProgressHistoryByJob)
-  const [expandedHistoryRows, setExpandedHistoryRows] = useState<Set<string>>(new Set())
+  const [insights, setInsights] = useState<BillingReviewInsights | null>(null)
+  const [insightsDone, setInsightsDone] = useState(false)
+  // Extra-work lines taken out of this approval (restorable until it is approved).
+  const [removedLines, setRemovedLines] = useState<Adjustment[]>([])
+  const [overReason, setOverReason] = useState('')
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(initialError)
-  const [confirmAction, setConfirmAction] = useState<'delete' | 'undoApprove' | 'approve' | 'approveOver' | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'delete' | 'undoApprove' | 'approve' | null>(null)
   const [rejectModalOpen, setRejectModalOpen] = useState(false)
   const [rejectNote, setRejectNote] = useState('')
 
@@ -207,19 +212,155 @@ export default function ReviewBillingPageClient({
     }
   }, [jobIdsKey])
 
-  const toggleHistory = (jobAssignmentId: string) => {
-    setExpandedHistoryRows((prev) => {
-      const next = new Set(prev)
-      if (next.has(jobAssignmentId)) next.delete(jobAssignmentId)
-      else next.add(jobAssignmentId)
-      return next
-    })
-  }
+  useEffect(() => {
+    let mounted = true
+    getBillingReviewInsights(id)
+      .then((res) => {
+        if (mounted) setInsights(res)
+      })
+      .catch(() => {})
+      .finally(() => mounted && setInsightsDone(true))
+    return () => {
+      mounted = false
+    }
+  }, [id])
 
   // Jobs whose approved % is well above what the site record shows: approving needs a reason.
   const overClaimCount = (jobs || []).filter(
     (j: Job) => checkClaimAgainstRecorded(Number(j.progress_percent || 0), recordedByJob[j.job_assignments?.id], todayInBangkok()).over
   ).length
+
+  const baht = (n: number) => `฿${formatCurrency(n)}`
+  // What the foreman asked for, before the PM changed anything: the figure the decision bar compares against.
+  const claimedTotal = useMemo(() => {
+    if (!billing) return 0
+    if (isExtraWork) {
+      return initialAdjustments.reduce((sum, a) => sum + (a.type === 'deduction' ? -1 : 1) * a.quantity * a.unit_price, 0)
+    }
+    return (billing.billing_jobs || []).reduce((sum: number, bj: Job) => sum + Number(bj.amount || 0), 0)
+  }, [billing, isExtraWork, initialAdjustments])
+
+  const progressChecks = useMemo<ReviewCheck[]>(() => {
+    if (isExtraWork) return []
+    const out: ReviewCheck[] = []
+    const today = todayInBangkok()
+    const noRecord: string[] = []
+    for (const job of jobs) {
+      const jid = job.job_assignments?.id
+      const label = `${job.job_assignments?.boq_master?.item_name || ''} แปลง ${job.job_assignments?.plots?.name || '-'}`
+      const approved = Number(job.progress_percent || 0)
+      const recorded = recordedByJob[jid]
+      const check = checkClaimAgainstRecorded(approved, recorded, today)
+      if (check.none) noRecord.push(label)
+      else if (check.over) {
+        out.push({
+          tone: 'late',
+          text: `${label}: อนุมัติ ${Math.round(approved * 100) / 100}% แต่หน้างานทำได้ ${recorded!.pct}% ถ้าอนุมัติจะจ่ายเกินงาน ${baht((Number(job.totalBoq || 0) * (approved - recorded!.pct)) / 100)}`,
+        })
+      } else if (check.stale) {
+        out.push({ tone: 'info', text: `${label}: เช็คงานล่าสุดเมื่อ ${check.ageDays} วันก่อน อาจไม่ตรงหน้างานแล้ว` })
+      }
+      if (approved < Number(job.previous_progress || 0)) {
+        out.push({ tone: 'bad', text: `${label}: % อนุมัติต่ำกว่างวดก่อน (${Number(job.previous_progress).toFixed(2)}%) ระบบจะไม่ยอมให้อนุมัติ` })
+      }
+      const ins = insights?.jobs[jid]
+      const overMats = (ins?.materials || []).filter((m) => m.state !== 'ok')
+      if (overMats.length > 0) {
+        out.push({
+          tone: 'late',
+          text: `${label}: วัสดุเกิน BOQ ${overMats.map((m) => `${m.name} (${m.state === 'over' ? 'ใช้' : 'สั่ง'}เกิน ${(Math.max(m.used, m.ordered) - m.plan).toLocaleString('th-TH', { maximumFractionDigits: 1 })} ${m.unit})`).join(', ')} · ไม่ได้หักจากใบเบิกอัตโนมัติ`,
+        })
+      }
+      if (ins && ins.otherPending.length > 0) {
+        out.push({ tone: 'late', text: `${label}: ยังอยู่ในใบเบิก #${ins.otherPending.map((o) => o.docNo).join(', #')} ที่รออนุมัติด้วย อาจเบิกซ้ำ` })
+      }
+    }
+    if (noRecord.length > 0) {
+      out.push({ tone: 'info', text: `ยังไม่มีเช็คงานของ ${noRecord.length} งาน (${noRecord.slice(0, 3).join(', ')}${noRecord.length > 3 ? '...' : ''}) จึงเทียบกับหน้างานไม่ได้` })
+    }
+    if (insights && insights.contractorDcPending.length > 0) {
+      out.push({
+        tone: 'info',
+        text: `${billing?.contractors?.name || 'ช่างคนนี้'}มีใบงานเพิ่ม DC รออนุมัติ ${insights.contractorDcPending.map((d) => `#${d.docNo} ${baht(d.total)}`).join(', ')} (เป็นคนละใบ ไม่ได้รวมในยอดนี้)`,
+      })
+    }
+    if (!out.some((c) => c.tone === 'late' || c.tone === 'bad')) {
+      out.push({ tone: 'ok', text: 'ไม่พบใบเบิกซ้ำที่รออนุมัติ · % ไม่ต่ำกว่างวดก่อน · ไม่เกินความคืบหน้าหน้างาน · วัสดุไม่เกิน BOQ' })
+    }
+    return out
+  }, [jobs, recordedByJob, insights, isExtraWork, billing?.contractors?.name])
+
+  const dcChecks = useMemo<ReviewCheck[]>(() => {
+    if (!isExtraWork) return []
+    const out: ReviewCheck[] = []
+    const dc = insights?.dc
+    const reason = String(billing?.reason_for_dc || '')
+    if (/owner|ลูกค้า/i.test(reason)) {
+      if (dc && dc.linkedRequests.length > 0) {
+        out.push({ tone: 'ok', text: `เหตุผล "${reason}" ผูกกับคำขอจากฝ่ายขายแล้ว: ${dc.linkedRequests.map((r) => `${r.requestNo || ''} แปลง ${r.plotName} ${r.title}`).join(', ')}` })
+      } else if (dc) {
+        out.push({
+          tone: 'late',
+          text: `เหตุผลคือ "${reason}" แต่ไม่พบคำขอจากฝ่ายขายที่ผูกกับใบนี้${dc.openRequests.length > 0 ? ` (มีคำขอที่ยังเปิดอยู่ในแปลงเหล่านี้ ${dc.openRequests.length} รายการ: ${dc.openRequests.slice(0, 2).map((r) => `${r.requestNo || ''} แปลง ${r.plotName}`).join(', ')})` : ''} ถ้าลูกค้าขอ ควรผูกกับคำขอเพื่อเก็บเงินลูกค้า`,
+        })
+      }
+    }
+    if (!Array.isArray(billing?.attachment_urls) || billing.attachment_urls.length === 0) out.push({ tone: 'late', text: 'ไม่มีรูปแนบ' })
+
+    const groups = new Map<string, { name: string; unit: string; price: number; lines: Adjustment[] }>()
+    for (const l of adjustments.filter((a) => a.type === 'addition')) {
+      const k = dcLineKey(l)
+      const g = groups.get(k) || { name: l.description, unit: l.unit, price: l.unit_price, lines: [] }
+      g.lines.push(l)
+      groups.set(k, g)
+    }
+    for (const g of groups.values()) {
+      const ref = dc?.priceRefs[g.name.trim().replace(/\s+/g, ' ').toLowerCase()]
+      if (!ref) {
+        if (dc) out.push({ tone: 'info', text: `"${g.name}" ยังไม่เคยมีในใบงานเพิ่มที่อนุมัติ จึงเทียบราคาไม่ได้` })
+      } else if (g.price > ref.max) {
+        out.push({ tone: 'late', text: `"${g.name}" ${baht(g.price)}/${g.unit} สูงกว่าที่เคยอนุมัติ (${baht(ref.min)}${ref.max !== ref.min ? `–${baht(ref.max)}` : ''}, ${ref.count} ครั้ง, ล่าสุด ${baht(ref.lastPrice)}${ref.lastPlot ? ` แปลง ${ref.lastPlot}` : ''})` })
+      } else {
+        out.push({ tone: 'info', text: `"${g.name}" ${baht(g.price)}/${g.unit} ไม่เกินที่เคยอนุมัติ (${baht(ref.min)}${ref.max !== ref.min ? `–${baht(ref.max)}` : ''}, ${ref.count} ครั้ง)` })
+      }
+    }
+    for (const [key, docs] of Object.entries(dc?.duplicates || {})) {
+      const [desc, plot] = key.split('|')
+      if (adjustments.some((a) => a.plot_name === plot && a.description.trim().replace(/\s+/g, ' ').toLowerCase() === desc)) {
+        out.push({ tone: 'late', text: `"${desc}" แปลง ${plot} มีอยู่แล้วในใบงานเพิ่ม #${[...new Set(docs)].join(', #')} อาจเบิกซ้ำ` })
+      }
+    }
+    const thisPlot = new Map<string, number>()
+    for (const a of adjustments) {
+      const name = (a.plot_name || '').trim()
+      thisPlot.set(name, (thisPlot.get(name) || 0) + (a.type === 'deduction' ? -1 : 1) * a.quantity * a.unit_price)
+    }
+    for (const [name, amount] of thisPlot) {
+      if (!name || name.includes('ส่วนกลาง')) continue
+      const t = dc?.plotTotals[name]
+      if (!t) continue
+      const after = t.approved + amount
+      out.push({
+        tone: 'info',
+        text: `งานเพิ่มสะสมของแปลง ${name} หลังอนุมัติ ${baht(after)}${t.jobValue ? ` = ${((after / t.jobValue) * 100).toFixed(1)}% ของมูลค่างานทั้งแปลง (${baht(t.jobValue)})` : ''}`,
+      })
+    }
+    const common = adjustments.filter((a) => !(a.plot_name || '').trim() || (a.plot_name || '').includes('ส่วนกลาง'))
+    if (common.length > 0) {
+      out.push({ tone: 'info', text: `ส่วนกลาง/ไม่ระบุแปลง ${baht(common.reduce((s, a) => s + (a.type === 'deduction' ? -1 : 1) * a.quantity * a.unit_price, 0))} ไม่ได้ลงแปลงใด จะนับเป็นค่าใช้จ่ายโครงการ` })
+    }
+    if (!out.some((c) => c.tone === 'late')) out.unshift({ tone: 'ok', text: 'ไม่พบรายการซ้ำหรือราคาผิดปกติ' })
+    return out
+  }, [isExtraWork, insights, billing?.reason_for_dc, billing?.attachment_urls, adjustments])
+
+  const removeDcLine = (line: Adjustment) => {
+    setAdjustments((prev) => prev.filter((a) => a !== line))
+    setRemovedLines((prev) => [...prev, line])
+  }
+  const restoreDcLine = (line: Adjustment) => {
+    setRemovedLines((prev) => prev.filter((a) => a !== line))
+    setAdjustments((prev) => [...prev, line])
+  }
 
   const handleApprove = async (overclaimReason?: string) => {
     setError(null)
@@ -430,160 +571,72 @@ export default function ReviewBillingPageClient({
           )}
 
           {!isExtraWork && (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-end justify-between gap-2">
-                <h2 className="text-lg font-semibold text-slate-900">รายการงานที่เบิก</h2>
-                <p className="text-xs text-slate-500">
-                  {changedJobs > 0 ? `ปรับ % แล้ว ${changedJobs} รายการ` : 'ยังไม่ได้ปรับ % จากที่ Foreman แจ้ง'} · แก้ช่อง “% อนุมัติ” เพื่อปรับยอด
-                </p>
-                {overClaimCount > 0 && isPending && (
-                  <p className="mt-1 text-xs font-medium text-red-700">⚠ {overClaimCount} งานอนุมัติ % สูงกว่าความคืบหน้าจริงหน้างาน — ต้องระบุเหตุผลตอนอนุมัติ</p>
-                )}
-                {billing.overclaim_reason && (
-                  <p className="mt-1 text-xs text-amber-800">อนุมัติเกินความคืบหน้าจริง เหตุผล: {billing.overclaim_reason}</p>
-                )}
+            <>
+              <ReviewChecks checks={progressChecks} loading={!insightsDone} />
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <h2 className="text-lg font-semibold text-slate-900">รายการงานที่เบิก</h2>
+                  <p className="text-xs text-slate-500">
+                    {changedJobs > 0 ? `ปรับ % แล้ว ${changedJobs} รายการ` : 'ยังไม่ได้ปรับ % จากที่ Foreman แจ้ง'} · แถบ: เทา = จ่ายแล้ว · ม่วง = งวดนี้ · ขีดเขียว = หน้างานทำได้
+                  </p>
+                </div>
+                {billing.overclaim_reason && <p className="text-xs text-amber-800">อนุมัติเกินความคืบหน้าจริง เหตุผล: {billing.overclaim_reason}</p>}
+                <Card className="px-4">
+                  {jobs.map((job) => {
+                    const jobAssignmentId = job.job_assignments?.id
+                    const original = billing.billing_jobs.find((billingJob: Job) => billingJob.id === job.id)
+                    const historyRows = (progressHistoryByJob[jobAssignmentId] || []).filter(
+                      (history: ProgressHistoryItem) => String(history.status || '') !== 'pending_review' || String(history.doc_no || '') !== String(billing.doc_no || '')
+                    )
+                    return (
+                      <ReviewJobCard
+                        key={job.id}
+                        name={job.job_assignments.boq_master.item_name}
+                        plotName={job.job_assignments.plots?.name || ''}
+                        totalBoq={Number(job.totalBoq || 0)}
+                        paid={Number(job.paid || 0)}
+                        previousPercent={Number(job.previous_progress || 0)}
+                        requestedPercent={requestedPercentOf(job.id) == null ? null : Number(requestedPercentOf(job.id))}
+                        requestedAmount={original ? Number(original.amount || 0) : null}
+                        approvedPercent={Number(job.progress_percent || 0)}
+                        approvedAmount={Number(job.amount || 0)}
+                        recorded={recordedByJob[jobAssignmentId]}
+                        insight={insights?.jobs[jobAssignmentId]}
+                        history={historyRows}
+                        editable={isPending}
+                        onChange={(pct) => handleProgressChange(job.job_assignments.id, pct)}
+                        onRemove={() => removeJob(job.id)}
+                      />
+                    )
+                  })}
+                </Card>
               </div>
-              <TableFrame>
-                <table>
-                  <thead>
-                    <tr>
-                      <th className="px-6 py-3 text-left whitespace-nowrap">ชื่องาน</th>
-                      <th className="px-6 py-3 text-right whitespace-nowrap">มูลค่าทั้งหมด</th>
-                      <th className="px-6 py-3 text-right whitespace-nowrap">เบิกแล้ว</th>
-                      <th className="px-6 py-3 text-right whitespace-nowrap">คงเหลือก่อนเบิก</th>
-                      <th className="px-6 py-3 text-right whitespace-nowrap">% ที่แจ้ง</th>
-                      <th className="px-6 py-3 text-right whitespace-nowrap">% อนุมัติ</th>
-                      <th className="px-6 py-3 text-right whitespace-nowrap">ความคืบหน้าจริงหน้างาน</th>
-                      <th className="px-6 py-3 text-right whitespace-nowrap">ยอดเงิน</th>
-                      <th className="px-6 py-3 text-right whitespace-nowrap">คงเหลือหลังเบิก</th>
-                      <th className="px-6 py-3"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {jobs.map((job) => {
-                      const jobAssignmentId = job.job_assignments?.id
-                      const isExpanded = expandedHistoryRows.has(jobAssignmentId)
-                      const historyRows = (progressHistoryByJob[jobAssignmentId] || []).filter(
-                        (history: ProgressHistoryItem) =>
-                          String(history.status || '') !== 'pending_review' || String(history.doc_no || '') !== String(billing.doc_no || '')
-                      )
-                      const requestedPct = requestedPercentOf(job.id)
-                      const changed = requestedPct != null && Math.abs(Number(job.progress_percent || 0) - Number(requestedPct)) > 0.004
-                      const belowPrevious = Number(job.progress_percent || 0) < Number(job.previous_progress || 0)
-                      return (
-                        <Fragment key={job.id}>
-                          <tr className={changed ? 'bg-indigo-50/40' : undefined}>
-                            <td className="px-6 py-4">
-                              <div>{job.job_assignments.boq_master.item_name}</div>
-                              <div className="text-xs text-slate-500">แปลง {job.job_assignments.plots?.name || '-'}</div>
-                              <button
-                                type="button"
-                                onClick={() => toggleHistory(jobAssignmentId)}
-                                className="mt-1 text-xs text-indigo-600 hover:text-indigo-800"
-                              >
-                                {isExpanded ? 'ซ่อนประวัติความคืบหน้า' : 'ดูประวัติความคืบหน้า'}
-                              </button>
-                            </td>
-                            <td className="px-6 py-4 text-right">{formatCurrency(job.totalBoq)}</td>
-                            <td className="px-6 py-4 text-right">{formatCurrency(job.paid)}</td>
-                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(job.paid || 0)))}</td>
-                            <td className="px-6 py-4 text-right font-semibold text-blue-600">
-                              {billing.billing_jobs.find((billingJob: Job) => billingJob.id === job.id)?.progress_percent?.toFixed(2)}%
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <input
-                                type="number"
-                                className="w-24 text-right"
-                                aria-label={`% อนุมัติ ${job.job_assignments.boq_master.item_name}`}
-                                aria-invalid={belowPrevious || undefined}
-                                value={job.progress_percent || ''}
-                                onChange={(e) => handleProgressChange(job.job_assignments.id, parseFloat(e.target.value))}
-                                min={job.previous_progress.toFixed(2)}
-                                max="100"
-                                step="0.01"
-                              />
-                              {changed && (
-                                <p className="mt-1 text-[11px] font-medium text-indigo-700">
-                                  ปรับจาก {Number(requestedPct).toFixed(2)}%
-                                </p>
-                              )}
-                              {belowPrevious && (
-                                <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-red-700">
-                                  <AlertTriangle className="h-3 w-3" aria-hidden /> ต้องไม่ต่ำกว่า {Number(job.previous_progress).toFixed(2)}%
-                                </p>
-                              )}
-                            </td>
-                            <td className="px-6 py-4">
-                              <RecordedProgressCell recorded={recordedByJob[jobAssignmentId]} claimed={Number(job.progress_percent || 0)} />
-                            </td>
-                            <td className="px-6 py-4 text-right font-medium">{formatCurrency(job.amount || 0)}</td>
-                            <td className="px-6 py-4 text-right font-semibold text-emerald-700">{formatCurrency(Math.max(0, Number(job.totalBoq || 0) - Number(job.paid || 0) - Number(job.amount || 0)))}</td>
-                            <td className="px-6 py-4 text-right">
-                              <button
-                                type="button"
-                                onClick={() => removeJob(job.id)}
-                                title="ลบรายการนี้ออกจากใบเบิก (เช่น รายการซ้ำ)"
-                                aria-label="ลบรายการนี้ออกจากใบเบิก"
-                                className="rounded-lg p-2 text-red-500 hover:bg-red-50 hover:text-red-700"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </td>
-                          </tr>
-                          {isExpanded && (
-                            <tr>
-                              <td colSpan={10} className="px-6 pb-4 pt-1">
-                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                  <div className="text-xs font-semibold text-slate-700 mb-2">ประวัติความคืบหน้าเดิม</div>
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-sm border border-slate-200 bg-white">
-                                      <thead className="bg-slate-100">
-                                        <tr>
-                                          <th className="px-2 py-1 text-left">เลขที่ใบเบิก</th>
-                                          <th className="px-2 py-1 text-left">วันที่</th>
-                                          <th className="px-2 py-1 text-left">สถานะ</th>
-                                          <th className="px-2 py-1 text-right">%</th>
-                                          <th className="px-2 py-1 text-right">ยอดเบิก</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {historyRows.length === 0 ? (
-                                          <tr>
-                                            <td colSpan={5} className="px-2 py-2 text-center text-slate-500">ยังไม่มีประวัติก่อนหน้า</td>
-                                          </tr>
-                                        ) : historyRows.map((history: ProgressHistoryItem) => (
-                                          <tr key={history.id} className="border-t border-slate-100">
-                                            <td className="px-2 py-1">#{String(history.doc_no || '-').padStart(4, '0')}</td>
-                                            <td className="px-2 py-1">
-                                              {history.billing_date
-                                                ? new Date(history.billing_date).toLocaleDateString('th-TH')
-                                                : history.created_at
-                                                  ? new Date(history.created_at).toLocaleDateString('th-TH')
-                                                  : '-'}
-                                            </td>
-                                            <td className="px-2 py-1">{history.status || '-'}</td>
-                                            <td className="px-2 py-1 text-right">
-                                              {history.progress_percent == null ? '-' : `${Number(history.progress_percent).toFixed(2)}%`}
-                                            </td>
-                                            <td className="px-2 py-1 text-right">{formatCurrency(history.amount || 0)}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </TableFrame>
-            </div>
+            </>
           )}
 
+          {isExtraWork && (
+            <>
+              <ReviewChecks checks={dcChecks} loading={!insightsDone} />
+              <div className="space-y-2">
+                <h2 className="text-lg font-semibold text-slate-900">รายการ</h2>
+                <Card className="px-4">
+                  <ReviewDcLines
+                    active={adjustments.filter((a) => a.type === 'addition')}
+                    removed={removedLines.filter((a) => a.type === 'addition')}
+                    editable={isPending}
+                    duplicates={insights?.dc?.duplicates || {}}
+                    onRemove={removeDcLine}
+                    onRestore={restoreDcLine}
+                  />
+                </Card>
+              </div>
+            </>
+          )}
+
+          {isExtraWork ? (
+            <details className="rounded-xl border border-slate-200 bg-white p-4">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-800">แก้ไขรายการ (เพิ่ม ลบ หรือปรับราคา/จำนวน)</summary>
+              <div className="mt-3">
           <PageSection title="รายการปรับปรุง (งานเพิ่ม/งานหัก)" description="เพิ่มหรือหักรายการนอกเหนือจากงานที่เบิก">
           <Card className="p-4">
             <AdjustmentLineItems
@@ -598,6 +651,26 @@ export default function ReviewBillingPageClient({
             />
           </Card>
           </PageSection>
+
+              </div>
+            </details>
+          ) : (
+          <PageSection title="รายการปรับปรุง (งานเพิ่ม/งานหัก)" description="เพิ่มหรือหักรายการนอกเหนือจากงานที่เบิก">
+          <Card className="p-4">
+            <AdjustmentLineItems
+              adjustments={adjustments}
+              plotOptions={adjustmentPlotOptions}
+              onChange={handleAdjustmentChange}
+              onAdd={addAdjustment}
+              onRemove={removeAdjustment}
+              totalAddAmount={totalAddAmount}
+              totalDeductAmount={totalDeductAmount}
+              showSignature
+            />
+          </Card>
+          </PageSection>
+
+          )}
 
           <PageSection title="สรุปและคำนวณยอดสุดท้าย" description="ยอดที่จะอนุมัติ หลังปรับ % และรายการปรับปรุง">
           <Card className="p-4">
@@ -668,6 +741,12 @@ export default function ReviewBillingPageClient({
                 <dd className="text-sm font-semibold tabular-nums text-slate-900">฿{formatCurrency(remainingAfter)}</dd>
               </div>
             )}
+            {isPending && (
+              <div>
+                <dt className="text-xs text-slate-500">ช่างขอ</dt>
+                <dd className="text-sm font-semibold tabular-nums text-slate-900">฿{formatCurrency(claimedTotal)}</dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs text-slate-500">ยอดสุทธิอนุมัติ</dt>
               <dd className="text-xl font-bold tabular-nums text-emerald-700">฿{formatCurrency(netAmount)}</dd>
@@ -678,7 +757,7 @@ export default function ReviewBillingPageClient({
               <Button variant="danger" onClick={() => setRejectModalOpen(true)} disabled={isSubmitting}>
                 {isSubmitting ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}
               </Button>
-              <Button onClick={() => setConfirmAction(overClaimCount > 0 ? 'approveOver' : 'approve')} disabled={isSubmitting}>
+              <Button onClick={() => setConfirmAction('approve')} disabled={isSubmitting}>
                 {isSubmitting ? 'กำลังอนุมัติ...' : 'อนุมัติและจบงาน'}
               </Button>
             </div>
@@ -688,21 +767,23 @@ export default function ReviewBillingPageClient({
             </Badge>
           )}
         </Card>
+        {canApprove && isPending && !isExtraWork && overClaimCount > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-slate-800">
+            <span className="font-medium">{overClaimCount} งานอนุมัติสูงกว่าหน้างาน · เหตุผล</span>
+            {['จ่ายล่วงหน้าตามตกลง', 'เช็คงานยังไม่อัปเดต', 'ตรวจหน้างานเองแล้ว'].map((r) => (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={overReason === r}
+                onClick={() => setOverReason((cur) => (cur === r ? '' : r))}
+                className={`rounded-full border px-3 py-1 ${overReason === r ? 'border-amber-600 bg-white font-semibold text-amber-800' : 'border-amber-200 bg-white/60 text-slate-600'}`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-
-      <ReasonDialog
-        isOpen={confirmAction === 'approveOver'}
-        title="อนุมัติเกินความคืบหน้าจริง"
-        label={`มี ${overClaimCount} งานที่อนุมัติ % สูงกว่าความคืบหน้าจริงหน้างาน กรุณาระบุเหตุผล (เช่น จ่ายล่วงหน้าตามข้อตกลง)`}
-        required
-        confirmLabel={isSubmitting ? 'กำลังอนุมัติ...' : 'ยืนยันอนุมัติ'}
-        busy={isSubmitting}
-        onCancel={() => setConfirmAction(null)}
-        onConfirm={async (reason) => {
-          await handleApprove(reason)
-          setConfirmAction(null)
-        }}
-      />
 
       <ConfirmDialog
         isOpen={confirmAction === 'approve'}
@@ -714,7 +795,7 @@ export default function ReviewBillingPageClient({
         busy={isSubmitting}
         onCancel={() => setConfirmAction(null)}
         onConfirm={async () => {
-          await handleApprove()
+          await handleApprove(overReason || undefined)
           setConfirmAction(null)
         }}
       />
