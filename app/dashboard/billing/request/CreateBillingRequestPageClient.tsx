@@ -257,6 +257,11 @@ export default function CreateBillingRequestPageClient({
         return
       }
 
+      if (progress > 100) {
+        setError(`ความคืบหน้าของงาน "${jobName}" ต้องไม่เกิน 100%`)
+        return
+      }
+
       if (progress <= previousProgress) {
         setError(`ความคืบหน้าของงาน "${jobName}" ต้องมากกว่า ${previousProgress.toFixed(2)}%`)
         return
