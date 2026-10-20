@@ -1,7 +1,10 @@
-import { User } from 'lucide-react'
+'use client'
+
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { ChevronRight } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import type { PlotJobRow } from '@/lib/types/plotDetail'
-import { TableFrame } from '@/components/ui/TableFrame'
 import PlotProgressSummary from '@/components/plots/PlotProgressSummary'
 import { earnedForJob, paidAheadForJob, type ProgressState, type ProgressSummary } from '@/lib/cost-control/progress'
 import type { PlotExtraWorkRow } from '@/actions/_shared/plot-cost'
@@ -12,12 +15,21 @@ const STATUS_LABEL: Record<string, string> = {
   completed: 'เสร็จสิ้น',
 }
 const STATUS_CLASS: Record<string, string> = {
-  pending: 'bg-slate-100 text-slate-500',
+  pending: 'bg-slate-100 text-slate-600',
   in_progress: 'bg-blue-100 text-blue-700',
   completed: 'bg-emerald-100 text-emerald-700',
 }
 
 type Contractor = { id: string; name: string }
+type Filter = 'all' | 'ahead' | 'doing' | 'nocrew'
+
+function Bar({ value, done }: { value: number | null; done?: boolean }) {
+  return (
+    <span className="relative block h-2 min-w-[60px] flex-1 rounded-full bg-slate-100" aria-hidden>
+      {value != null && <span className={`absolute inset-y-0 left-0 rounded-full ${done ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min(100, value)}%` }} />}
+    </span>
+  )
+}
 
 export default function PlotConstructionTab({
   jobs,
@@ -51,212 +63,276 @@ export default function PlotConstructionTab({
   extraWork?: PlotExtraWorkRow[]
 }) {
   // Sales (canSeeCost=false, so every job.cost is null) sees job name and
-  // status only - no contractor column, no price/budget/paid columns at
-  // all, per SALES_MODULE_PLAN.md §8.3. Not blanked cells: the columns
-  // themselves don't exist in this table.
-  const showCostColumns = jobs.length === 0 || jobs.some((j) => j.cost)
+  // status only - no contractor, price, budget or paid figures at all, per
+  // SALES_MODULE_PLAN.md §8.3. Not blanked cells: those parts are never rendered.
+  const showCost = jobs.length === 0 || jobs.some((j) => j.cost)
+
+  const [filter, setFilter] = useState<Filter>('all')
+  const [openTrades, setOpenTrades] = useState<Set<string>>(new Set())
+  const [openJobs, setOpenJobs] = useState<Set<string>>(new Set())
+  const [dcOpen, setDcOpen] = useState(false)
+
+  const jobCost = (job: PlotJobRow) => (job.cost ? { value: job.cost.totalBoq, progressPercent: job.progressPercent, paid: job.cost.paid } : null)
+  const aheadOf = (job: PlotJobRow) => {
+    const c = jobCost(job)
+    return c ? paidAheadForJob(c) : 0
+  }
+
+  const counts = {
+    all: jobs.length,
+    ahead: jobs.filter((j) => aheadOf(j) > 0).length,
+    doing: jobs.filter((j) => j.status === 'in_progress').length,
+    nocrew: jobs.filter((j) => !j.contractorId).length,
+  }
+  const visible = jobs.filter((j) => filter === 'all' || (filter === 'ahead' && aheadOf(j) > 0) || (filter === 'doing' && j.status === 'in_progress') || (filter === 'nocrew' && !j.contractorId))
+
+  // Jobs by trade: the trades being worked first, finished ones next, untouched last.
+  const trades = useMemo(() => {
+    const by = new Map<string, PlotJobRow[]>()
+    for (const j of visible) by.set(j.tradeName || 'งานอื่นๆ', [...(by.get(j.tradeName || 'งานอื่นๆ') || []), j])
+    const rank = (list: PlotJobRow[]) => {
+      const done = list.every((j) => j.status === 'completed')
+      const started = list.some((j) => j.status !== 'pending')
+      return started && !done ? 0 : done ? 1 : 2
+    }
+    return [...by.entries()].sort((a, b) => rank(a[1]) - rank(b[1]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs, filter])
+
+  const toggle = (set: Set<string>, setter: (s: Set<string>) => void, key: string) => {
+    const next = new Set(set)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    setter(next)
+  }
 
   const approvedExtra = (extraWork || []).filter((e) => e.status === 'approved')
+  const pendingExtra = (extraWork || []).filter((e) => e.status !== 'approved')
   const approvedExtraTotal = approvedExtra.reduce((sum, e) => sum + e.value, 0)
+  const pendingExtraTotal = pendingExtra.reduce((sum, e) => sum + e.value, 0)
+
+  if (jobs.length === 0) return <div className="py-12 text-center text-slate-500">ยังไม่มีรายการงาน</div>
+
+  // ---- Sales view: names and status only ------------------------------------
+  if (!showCost) {
+    return (
+      <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
+        {jobs.map((job) => (
+          <div key={job.id} className="flex items-center justify-between gap-3 px-4 py-3">
+            <span>
+              <span className="font-medium text-slate-800">{job.itemName}</span>
+              <span className="ml-2 text-xs text-slate-500">
+                {job.quantity} {job.unit}
+              </span>
+            </span>
+            <span className={`rounded px-2 py-1 text-xs font-bold ${STATUS_CLASS[job.status] || STATUS_CLASS.pending}`}>{STATUS_LABEL[job.status] || job.status}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
-    <>
-    {showCostColumns && progressSummary && (
-      <PlotProgressSummary summary={progressSummary} expectedPercent={expectedPercent ?? null} health={progressHealth ?? 'unknown'} />
-    )}
-    <TableFrame>
-      
-        <table>
-          <thead>
-            <tr>
-              <th className="px-4 py-3 font-semibold">รายการงาน</th>
-              {showCostColumns && <th className="px-4 py-3 font-semibold w-[220px]">Variable Price / Unit</th>}
-              {showCostColumns && <th className="px-4 py-3 font-semibold text-right">งบประมาณ (BOQ)</th>}
-              {showCostColumns && (
-                <th className="px-4 py-3 font-semibold w-[150px]" title="ความคืบหน้าล่าสุดจากใบเบิกที่อนุมัติ หรือที่โฟร์แมนบันทึกในแผนประจำสัปดาห์ (แล้วแต่อันไหนใหม่กว่า)">
-                  ความคืบหน้า
-                </th>
-              )}
-              {showCostColumns && <th className="px-4 py-3 font-semibold text-right" title="ความคืบหน้า x มูลค่างาน">มูลค่างานที่ทำได้</th>}
-              {showCostColumns && <th className="px-4 py-3 font-semibold text-right">จ่ายแล้ว</th>}
-              <th className="px-4 py-3 font-semibold w-[200px]">ผู้รับเหมา</th>
-              <th className="px-4 py-3 font-semibold w-[120px]">สถานะ</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
-            {jobs.map((job) => {
-              const isOverBudget = job.cost ? job.cost.paid > job.cost.totalBoq : false
+    <div className="space-y-3">
+      {progressSummary && <PlotProgressSummary summary={progressSummary} expectedPercent={expectedPercent ?? null} health={progressHealth ?? 'unknown'} />}
 
-              return (
-                <tr key={job.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-slate-800">{job.itemName}</div>
-                    <div className="text-xs text-slate-500">
-                      {job.quantity} {job.unit}
-                      {job.cost && ` x ${formatCurrency(job.cost.boqPricePerUnit)}`}
-                    </div>
-                  </td>
-
-                  {showCostColumns && (
-                    <td className="px-4 py-3">
-                      {job.cost && canEdit ? (
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              placeholder={String(job.cost.boqPricePerUnit || 0)}
-                              value={priceDrafts[job.id] ?? ''}
-                              onChange={(e) => onPriceDraftChange(job.id, e.target.value)}
-                              className="w-28 rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => onSaveVariablePrice(job)}
-                              disabled={isPending}
-                              className="rounded-lg bg-indigo-600 px-2 py-1 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onResetVariablePrice(job)}
-                              disabled={isPending}
-                              className="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-60"
-                            >
-                              Reset
-                            </button>
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {job.cost.agreedPricePerUnit != null
-                              ? `ใช้ราคาตกลง: ฿${formatCurrency(job.cost.effectivePrice)}`
-                              : `ใช้ราคา BOQ: ฿${formatCurrency(job.cost.effectivePrice)}`}
-                          </div>
-                        </div>
-                      ) : job.cost ? (
-                        <div className="text-xs text-slate-500">฿{formatCurrency(job.cost.effectivePrice)} / หน่วย</div>
-                      ) : null}
-                    </td>
-                  )}
-
-                  {showCostColumns && (
-                    <td className="px-4 py-3 text-right text-slate-600 font-medium">
-                      {job.cost ? `฿${formatCurrency(job.cost.totalBoq)}` : '—'}
-                    </td>
-                  )}
-                  {showCostColumns && (
-                    <td className="px-4 py-3">
-                      {job.progressPercent == null ? (
-                        <span className="text-xs text-slate-400">ยังไม่มีข้อมูล</span>
-                      ) : (
-                        <div title={job.progressSource === 'weekly' ? 'จากแผนประจำสัปดาห์ (โฟร์แมนบันทึก)' : 'จากใบเบิกงวดล่าสุดที่อนุมัติ'}>
-                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                            <div className="h-full bg-blue-500" style={{ width: `${job.progressPercent}%` }} />
-                          </div>
-                          <div className="mt-0.5 text-xs text-slate-600">{Math.round(job.progressPercent)}%</div>
-                        </div>
-                      )}
-                    </td>
-                  )}
-                  {showCostColumns && (
-                    <td className="px-4 py-3 text-right text-slate-600">
-                      {job.cost ? `฿${formatCurrency(earnedForJob({ value: job.cost.totalBoq, progressPercent: job.progressPercent, paid: job.cost.paid }))}` : '—'}
-                    </td>
-                  )}
-                  {showCostColumns && (
-                    <td className={`px-4 py-3 text-right font-bold ${isOverBudget ? 'text-red-600' : 'text-emerald-600'}`}>
-                      {job.cost ? `฿${formatCurrency(job.cost.paid)}` : '—'}
-                      {job.cost && paidAheadForJob({ value: job.cost.totalBoq, progressPercent: job.progressPercent, paid: job.cost.paid }) > 0 && (
-                        <div className="text-[11px] font-medium text-red-600">
-                          จ่ายล่วงหน้า ฿{formatCurrency(paidAheadForJob({ value: job.cost.totalBoq, progressPercent: job.progressPercent, paid: job.cost.paid }))}
-                        </div>
-                      )}
-                    </td>
-                  )}
-
-                  <td className="px-4 py-3">
-                    {!job.cost ? (
-                      <span className="text-xs text-slate-500">—</span>
-                    ) : canEdit ? (
-                      <div className="relative">
-                        <User className="absolute left-2 top-2.5 h-3 w-3 text-slate-400" />
-                        <select
-                          value={job.contractorId || ''}
-                          onChange={(e) => onAssign(job.id, e.target.value)}
-                          className={`w-full pl-7 pr-2 py-1.5 rounded border text-xs cursor-pointer outline-none ${
-                            job.contractorId ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200'
-                          }`}
-                        >
-                          <option value="">-- ว่าง --</option>
-                          {contractors.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-slate-600">{job.cost.contractorName || '— ว่าง —'}</span>
-                    )}
-                  </td>
-
-                  <td className="px-4 py-3">
-                    {canEdit ? (
-                      <select
-                        value={job.status}
-                        onChange={(e) => onStatusChange(job.id, e.target.value)}
-                        disabled={!job.contractorId}
-                        className={`w-full px-2 py-1.5 rounded text-xs font-bold border-0 cursor-pointer ${STATUS_CLASS[job.status] || STATUS_CLASS.pending}`}
-                      >
-                        <option value="pending">รอเริ่ม</option>
-                        <option value="in_progress">กำลังทำ</option>
-                        <option value="completed">เสร็จสิ้น</option>
-                      </select>
-                    ) : (
-                      <span className={`inline-flex rounded px-2 py-1 text-xs font-bold ${STATUS_CLASS[job.status] || STATUS_CLASS.pending}`}>
-                        {STATUS_LABEL[job.status] || job.status}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-        {jobs.length === 0 && <div className="py-12 text-center text-slate-500">ยังไม่มีรายการงาน</div>}
-      
-    </TableFrame>
-    {showCostColumns && extraWork && extraWork.length > 0 && (
-      <div className="mt-4">
-        <div className="mb-1 flex items-baseline justify-between">
-          <h3 className="text-sm font-semibold text-slate-700">งานเพิ่ม (DC)</h3>
-          <span className="text-xs text-slate-500">อนุมัติแล้วรวม ฿{formatCurrency(approvedExtraTotal)}</span>
-        </div>
-        <TableFrame>
-          <table>
-            <thead>
-              <tr>
-                <th className="px-4 py-2 font-semibold">เลขที่</th>
-                <th className="px-4 py-2 font-semibold">เหตุผล</th>
-                <th className="px-4 py-2 font-semibold">ผู้รับเหมา</th>
-                <th className="px-4 py-2 font-semibold text-right">มูลค่า</th>
-                <th className="px-4 py-2 font-semibold">สถานะ</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {extraWork.map((e) => (
-                <tr key={e.id}>
-                  <td className="px-4 py-2 font-mono text-xs">{e.docNo || '—'}</td>
-                  <td className="px-4 py-2 text-slate-700">{e.reason || '—'}</td>
-                  <td className="px-4 py-2 text-slate-600">{e.contractorName || '—'}</td>
-                  <td className="px-4 py-2 text-right font-medium">฿{formatCurrency(e.value)}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{e.status === 'approved' ? 'อนุมัติแล้ว' : 'รออนุมัติ'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableFrame>
+      <div className="flex flex-wrap gap-1.5">
+        {(
+          [
+            ['all', `ทั้งหมด ${counts.all}`],
+            ['ahead', `จ่ายเกินงาน ${counts.ahead}`],
+            ['doing', `กำลังทำ ${counts.doing}`],
+            ['nocrew', `ยังไม่มีช่าง ${counts.nocrew}`],
+          ] as const
+        ).map(([f, label]) => (
+          <button
+            key={f}
+            type="button"
+            aria-pressed={filter === f}
+            onClick={() => setFilter(f)}
+            className={`rounded-full border px-3 py-1 text-xs ${filter === f ? 'border-indigo-300 bg-indigo-50 font-medium text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
-    )}
-    </>
+
+      <div className="rounded-lg border border-slate-200 bg-white">
+        {trades.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-500">ไม่มีงานในตัวกรองนี้</p>}
+        {trades.map(([trade, list]) => {
+          const value = list.reduce((s, j) => s + (j.cost?.totalBoq ?? 0), 0)
+          const earned = list.reduce((s, j) => s + (jobCost(j) ? earnedForJob(jobCost(j)!) : 0), 0)
+          const pct = value > 0 ? Math.round((earned / value) * 100) : 0
+          const allDone = list.every((j) => j.status === 'completed')
+          const started = list.some((j) => j.status !== 'pending')
+          const isOpen = filter !== 'all' || openTrades.has(trade)
+          return (
+            <div key={trade} className="border-b border-slate-100 last:border-0">
+              <button type="button" onClick={() => toggle(openTrades, setOpenTrades, trade)} aria-expanded={isOpen} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
+                <span>
+                  <b className="font-semibold text-slate-800">{trade}</b>
+                  <span className="ml-2 text-xs text-slate-500">
+                    {list.length} งาน · ฿{formatCurrency(value)}
+                  </span>
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${allDone ? 'bg-emerald-50 text-emerald-700' : started ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {allDone ? 'เสร็จ' : started ? 'กำลังทำ' : 'ยังไม่เริ่ม'}
+                  </span>
+                  <span className="w-10 text-right text-sm font-semibold tabular-nums">{pct}%</span>
+                  <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform duration-[150ms] ${isOpen ? 'rotate-90' : ''}`} aria-hidden />
+                </span>
+              </button>
+              {isOpen && (
+                <div className="pb-1">
+                  {list.map((job) => {
+                    const c = jobCost(job)
+                    const ahead = aheadOf(job)
+                    const open = openJobs.has(job.id)
+                    const pctJob = job.progressPercent == null ? null : Math.round(job.progressPercent)
+                    return (
+                      <div key={job.id} className="border-t border-slate-100">
+                        <button type="button" onClick={() => toggle(openJobs, setOpenJobs, job.id)} aria-expanded={open} className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2.5 pl-7 pr-4 text-left">
+                          <span className="min-w-0 text-sm text-slate-800">
+                            {job.itemName}
+                            <span className="ml-2 text-xs text-slate-500">{job.cost?.contractorName || <span className="text-amber-700">ยังไม่มีช่าง</span>}</span>
+                          </span>
+                          <span className="flex items-center gap-2 text-xs">
+                            {ahead > 0 && <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-700">จ่ายเกินงาน ฿{formatCurrency(ahead)}</span>}
+                            <span className="tabular-nums text-slate-500">฿{formatCurrency(job.cost?.totalBoq ?? 0)}</span>
+                          </span>
+                          <span className="col-span-2 flex items-center gap-3">
+                            <Bar value={pctJob} done={pctJob != null && pctJob >= 100} />
+                            <span className="w-12 text-right text-sm font-semibold tabular-nums text-slate-800">{pctJob == null ? '—' : `${pctJob}%`}</span>
+                          </span>
+                        </button>
+                        {open && job.cost && c && (
+                          <div className="mx-4 mb-3 ml-7 space-y-3 rounded-lg bg-slate-50 p-3 text-sm">
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="rounded-md bg-white px-3 py-2">
+                                <span className="block text-xs text-slate-500">มูลค่างาน</span>
+                                <strong className="tabular-nums">฿{formatCurrency(job.cost.totalBoq)}</strong>
+                              </div>
+                              <div className="rounded-md bg-white px-3 py-2">
+                                <span className="block text-xs text-slate-500">ทำได้ ({pctJob ?? 0}%)</span>
+                                <strong className="tabular-nums">฿{formatCurrency(earnedForJob(c))}</strong>
+                              </div>
+                              <div className="rounded-md bg-white px-3 py-2">
+                                <span className="block text-xs text-slate-500">จ่ายแล้ว</span>
+                                <strong className={`tabular-nums ${ahead > 0 ? 'text-red-600' : ''}`}>฿{formatCurrency(job.cost.paid)}</strong>
+                              </div>
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              {job.quantity} {job.unit} × ฿{formatCurrency(job.cost.effectivePrice)} ({job.cost.agreedPricePerUnit != null ? 'ราคาตกลง' : 'ราคา BOQ'})
+                            </p>
+                            {canEdit && (
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <label className="text-xs text-slate-600">
+                                    ราคาตกลง / หน่วย{' '}
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      placeholder={String(job.cost.boqPricePerUnit || 0)}
+                                      value={priceDrafts[job.id] ?? ''}
+                                      onChange={(e) => onPriceDraftChange(job.id, e.target.value)}
+                                      className="ml-1 w-28 rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                                    />
+                                  </label>
+                                  <button type="button" onClick={() => onSaveVariablePrice(job)} disabled={isPending} className="rounded-lg bg-indigo-600 px-2 py-1 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">
+                                    Save
+                                  </button>
+                                  <button type="button" onClick={() => onResetVariablePrice(job)} disabled={isPending} className="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-60">
+                                    Reset
+                                  </button>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <label className="text-xs text-slate-600">
+                                    ช่าง{' '}
+                                    <select
+                                      value={job.contractorId || ''}
+                                      onChange={(e) => onAssign(job.id, e.target.value)}
+                                      className={`ml-1 rounded border px-2 py-1 text-xs ${job.contractorId ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white'}`}
+                                    >
+                                      <option value="">-- ว่าง --</option>
+                                      {contractors.map((ct) => (
+                                        <option key={ct.id} value={ct.id}>
+                                          {ct.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="text-xs text-slate-600">
+                                    สถานะ{' '}
+                                    <select
+                                      value={job.status}
+                                      onChange={(e) => onStatusChange(job.id, e.target.value)}
+                                      disabled={!job.contractorId}
+                                      className={`ml-1 rounded border-0 px-2 py-1 text-xs font-bold ${STATUS_CLASS[job.status] || STATUS_CLASS.pending}`}
+                                    >
+                                      <option value="pending">รอเริ่ม</option>
+                                      <option value="in_progress">กำลังทำ</option>
+                                      <option value="completed">เสร็จสิ้น</option>
+                                    </select>
+                                  </label>
+                                </div>
+                              </div>
+                            )}
+                            {!canEdit && <p className="text-xs text-slate-600">สถานะ {STATUS_LABEL[job.status] || job.status}</p>}
+                            <p className="text-xs text-slate-500">
+                              {job.progressPercent == null
+                                ? 'ยังไม่มีความคืบหน้า'
+                                : `ความคืบหน้าล่าสุด ${pctJob}% ${job.progressSource === 'weekly' ? 'จากแผนงาน' : 'จากใบเบิกงวดล่าสุดที่อนุมัติ'}`}{' '}
+                              ·{' '}
+                              <Link href="/dashboard/weekly-plan" className="font-medium text-indigo-600 hover:underline">
+                                อัปเดตในแผนงาน ›
+                              </Link>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {extraWork && extraWork.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <button type="button" onClick={() => setDcOpen((v) => !v)} aria-expanded={dcOpen} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
+            <span>
+              <b className="font-semibold text-slate-800">งานเพิ่ม (DC)</b>
+              <span className="ml-2 text-xs text-slate-500">
+                {extraWork.length} ใบ · อนุมัติแล้ว ฿{formatCurrency(approvedExtraTotal)}
+                {pendingExtra.length > 0 && ` · รออนุมัติ ฿${formatCurrency(pendingExtraTotal)}`}
+              </span>
+            </span>
+            <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform duration-[150ms] ${dcOpen ? 'rotate-90' : ''}`} aria-hidden />
+          </button>
+          {dcOpen && (
+            <div className="divide-y divide-slate-100 border-t border-slate-100">
+              {extraWork.map((e) => (
+                <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                  <span>
+                    {e.reason || '—'}
+                    <span className="ml-2 text-xs text-slate-500">
+                      {e.docNo || ''} {e.contractorName ? `· ${e.contractorName}` : ''}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="tabular-nums">฿{formatCurrency(e.value)}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${e.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{e.status === 'approved' ? 'อนุมัติแล้ว' : 'รออนุมัติ'}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

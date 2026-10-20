@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getDashboardSession } from '@/lib/auth/route-access'
+import { houseTypeLabel } from '@/lib/house-type'
 import { addDaysStr, currentProgress, isMonday, jobMaterialUsage, mondayOf, rolloverPlan, weeksOfMonth, type WeeklyPlanKind, type WeeklyPlanStatus } from '@/lib/weekly-plan'
 
 export type WeeklyPlanItem = {
@@ -87,7 +88,7 @@ export type WeeklyPlanData = {
   weekStart: string
   weeks: string[]
   projects: { id: string; name: string }[]
-  plots: { id: string; name: string; projectId: string }[]
+  plots: { id: string; name: string; projectId: string; /** "Prime A · แฝด" */ houseType: string }[]
   /** The team's plot groups (batches built together), e.g. "แปลง 103-107", with their member plots */
   plotGroups: { id: string; name: string; projectId: string; plotIds: string[] }[]
   owners: { id: string; name: string }[]
@@ -239,7 +240,7 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
   const [projectsRes, plotsRes, ownersRes, contractorsRes, itemsRes, meetingsRes, requestsRes, salesPlotsRes, scheduleRes, targetRes, groupsRes] =
     await Promise.all([
       supabase.from('projects').select('id, name').order('name'),
-      supabase.from('plots').select('id, name, project_id').order('name'),
+      supabase.from('plots').select('id, name, project_id, house_models(name, code)').order('name'),
       supabase.from('profiles').select('id, full_name, role').in('role', ['admin', 'pm', 'foreman']),
       supabase.from('contractors').select('id, name').order('name'),
       supabase
@@ -379,11 +380,10 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
     weekStart,
     weeks,
     projects: (projectsRes.data || []) as { id: string; name: string }[],
-    plots: ((plotsRes.data || []) as { id: string; name: string; project_id: string }[]).map((p) => ({
-      id: p.id,
-      name: p.name,
-      projectId: p.project_id,
-    })),
+    plots: ((plotsRes.data || []) as unknown as { id: string; name: string; project_id: string; house_models: { name: string | null; code: string | null } | { name: string | null; code: string | null }[] | null }[]).map((p) => {
+      const hm = Array.isArray(p.house_models) ? p.house_models[0] : p.house_models
+      return { id: p.id, name: p.name, projectId: p.project_id, houseType: houseTypeLabel(hm?.name, hm?.code) }
+    }),
     plotGroups: ((groupsRes.data || []) as unknown as { id: string; name: string; project_id: string; plot_group_members: { plot_id: string }[] }[])
       .map((g) => ({ id: g.id, name: g.name, projectId: g.project_id, plotIds: g.plot_group_members.map((m) => m.plot_id) }))
       .filter((g) => g.plotIds.length > 0),
@@ -557,6 +557,10 @@ export type WeeklyPlanBatchInput = Omit<WeeklyPlanItemInput, 'plotId' | 'weekSta
   plotIds: string[]
   /** BOQ work: one item is created per job per week. Each job must belong to one of `plotIds`. */
   jobAssignmentIds?: string[]
+  /** BOQ work: starting % and daily PLAN per job (a job already part-done starts from where it is). Falls back to the shared carryPct / planPct. */
+  jobPlans?: Record<string, { carryPct: number | null; planPct: (number | null)[] }>
+  /** BOQ work: crew for jobs that have none yet, by job id. */
+  jobContractors?: Record<string, string>
   /** One item is created per week (Mondays). */
   weekStarts: string[]
 }
@@ -604,19 +608,23 @@ export async function createWeeklyPlanItems(input: WeeklyPlanBatchInput): Promis
     if ((existing || []).length > 0) return { error: DUPLICATE_MESSAGE }
 
     rows = weeks.flatMap((week) =>
-      verified.jobs.map((job) => ({
-        project_id: input.projectId,
-        plot_id: job.plotId,
-        week_start: week,
-        kind: 'main',
-        title: job.title,
-        job_assignment_id: job.id,
-        owner_id: input.ownerId || null,
-        ...detail,
-        // Contractor chosen in the plan wins; otherwise the job's own contractor, if any.
-        contractor_id: detail.contractor_id ?? job.contractorId,
-        created_by: caller.userId,
-      }))
+      verified.jobs.map((job) => {
+        const own = input.jobPlans?.[job.id]
+        const own_detail = own ? detailColumns({ ...input, carryPct: own.carryPct, planPct: own.planPct }) : detail
+        return {
+          project_id: input.projectId,
+          plot_id: job.plotId,
+          week_start: week,
+          kind: 'main',
+          title: job.title,
+          job_assignment_id: job.id,
+          owner_id: input.ownerId || null,
+          ...own_detail,
+          // Contractor chosen in the plan wins; otherwise the job's own contractor, if any.
+          contractor_id: input.jobContractors?.[job.id] || own_detail.contractor_id || job.contractorId,
+          created_by: caller.userId,
+        }
+      })
     )
   } else {
     if (!input.title.trim()) return { error: 'กรุณากรอกชื่องาน' }

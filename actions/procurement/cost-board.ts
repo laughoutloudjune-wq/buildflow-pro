@@ -12,12 +12,17 @@ import {
   type ProgressJob,
   type ProgressState,
 } from '@/lib/cost-control/progress'
+import { houseTypeLabel } from '@/lib/house-type'
 import type { ControlScope } from '@/lib/procurement/boqControl'
 
 export type CostBoardRow = {
   plotId: string
   plotName: string
   houseModel: string
+  /** The batch (plot group) this plot belongs to; '' when none. */
+  groupName: string
+  /** True when the weekly plan has jobs for this plot (so ควรเสร็จ comes from it). */
+  hasWeeklyPlan: boolean
   jobCount: number
   /** Labor figures are null when the viewer may not see labor cost. */
   contract: number | null
@@ -54,7 +59,7 @@ type PlotRow = {
   id: string
   name: string
   target_completion_date: string | null
-  house_models: { name: string | null } | { name: string | null }[] | null
+  house_models: { name: string | null; code: string | null } | { name: string | null; code: string | null }[] | null
 }
 
 type JobRow = {
@@ -93,7 +98,7 @@ export async function getCostBoard(
 
   const plotsRes = await supabase
     .from('plots')
-    .select('id, name, target_completion_date, house_models (name)')
+    .select('id, name, target_completion_date, house_models (name, code)')
     .eq('project_id', scope.projectId)
     .order('name')
   if (plotsRes.error) throw new Error(plotsRes.error.message)
@@ -101,11 +106,16 @@ export async function getCostBoard(
   const groupMembersRes = await supabase.from('plot_group_members').select('group_id, plot_id')
   if (groupMembersRes.error) throw new Error(groupMembersRes.error.message)
   const groupMembers = new Map<string, string[]>()
+  const groupOfPlot = new Map<string, string>()
   for (const m of groupMembersRes.data || []) {
     const list = groupMembers.get(m.group_id) || []
     list.push(m.plot_id)
     groupMembers.set(m.group_id, list)
+    if (!groupOfPlot.has(m.plot_id)) groupOfPlot.set(m.plot_id, m.group_id)
   }
+  const groupsRes = await supabase.from('plot_groups').select('id, name')
+  if (groupsRes.error) throw new Error(groupsRes.error.message)
+  const groupNames = new Map<string, string>((groupsRes.data || []).map((g) => [g.id as string, (g.name as string) || '']))
 
   // Which plots the picker's scope covers.
   let inScope: Set<string> | null = null
@@ -239,14 +249,17 @@ export async function getCostBoard(
       weight: totalValue > 0 ? (byType?.get(ph.contractor_type_id) || 0) / totalValue : 0,
     }))
     // The weekly plan wins when the plot has one; else phase schedule / target-date ramp.
+    const fromWeeklyPlan = canSeeLabor ? expectedFromJobPlans(planJobsByPlot.get(plot.id) || []) : null
     const expectedPercent = canSeeLabor
-      ? (expectedFromJobPlans(planJobsByPlot.get(plot.id) || []) ??
+      ? (fromWeeklyPlan ??
         expectedPercentAt({ today, startDate: startByPlot.get(plot.id) ?? null, targetDate: plot.target_completion_date, phases }))
       : null
     return {
       plotId: plot.id,
       plotName: plot.name,
-      houseModel: asSingle(plot.house_models)?.name || '',
+      houseModel: houseTypeLabel(asSingle(plot.house_models)?.name, asSingle(plot.house_models)?.code),
+      groupName: groupNames.get(groupOfPlot.get(plot.id) || '') || '',
+      hasWeeklyPlan: fromWeeklyPlan != null,
       jobCount: jobs.length,
       contract: canSeeLabor ? summary.contract : null,
       paid: canSeeLabor ? summary.paid : null,

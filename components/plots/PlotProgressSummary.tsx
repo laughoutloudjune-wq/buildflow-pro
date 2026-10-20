@@ -1,22 +1,26 @@
-import { AlertTriangle, CheckCircle2, HelpCircle } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import type { ProgressState, ProgressSummary } from '@/lib/cost-control/progress'
 
-const pct = (n: number | null) => (n == null ? '—' : `${Math.round(n)}%`)
+const pct = (n: number | null) => (n == null ? null : Math.round(n))
 
-const STATE_TEXT: Record<ProgressState, string> = {
-  ok: 'ความคืบหน้าเป็นไปตามแผน',
-  behind: 'งานช้ากว่าแผน',
-  paid_ahead: 'จ่ายเงินล่วงหน้าเกินงานที่ทำได้',
-  unknown: 'ยังไม่มีข้อมูลความคืบหน้า',
+function Row({ label, value, color, title }: { label: string; value: number | null; color: string; title: string }) {
+  return (
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)_3rem] items-center gap-3" title={title}>
+      <span className="text-sm text-slate-600">{label}</span>
+      <span className="relative h-2.5 rounded-full bg-slate-100" aria-hidden>
+        {value != null && <span className={`absolute inset-y-0 left-0 rounded-full ${color}`} style={{ width: `${Math.min(100, value)}%` }} />}
+      </span>
+      <span className="text-right text-sm font-semibold tabular-nums text-slate-800">{value == null ? '—' : `${value}%`}</span>
+    </div>
+  )
 }
 
 /**
- * Expected / Actual / Paid for one plot or batch, side by side. The three
- * answer different questions and are never blended: Expected = what the
- * schedule says should be done by today, Actual = work done (value-weighted),
- * Paid = money approved. Paid minus the value of work done is the "paid
- * ahead" warning - shown, never blocking.
+ * ควรเสร็จ / ทำได้จริง / จ่ายแล้ว for one plot, as three bars and one sentence.
+ * The three answer different questions and are never blended: ควรเสร็จ is
+ * where the weekly plan says the plot should be today, ทำได้จริง is work done
+ * (weighted by job value), จ่ายแล้ว is money approved. Paid more than the work
+ * done is a warning in the sentence, never a block.
  */
 export default function PlotProgressSummary({
   summary,
@@ -29,45 +33,26 @@ export default function PlotProgressSummary({
 }) {
   if (summary.contract <= 0) return null
 
-  const tone =
-    health === 'paid_ahead' ? 'border-red-200 bg-red-50' : health === 'behind' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'
-  const Icon = health === 'ok' ? CheckCircle2 : health === 'unknown' ? HelpCircle : AlertTriangle
+  const expected = pct(expectedPercent)
+  const actual = pct(summary.actualPercent)
+  const paid = pct(summary.paidPercent)
+
+  const parts: string[] = []
+  if (actual == null) parts.push('ยังไม่มีข้อมูลความคืบหน้า')
+  else {
+    if (expected != null && actual + 5 < expected) parts.push(`ช้ากว่าแผน ${expected - actual}%`)
+    if (summary.paidAhead > 0) parts.push(`จ่ายเกินงานที่ทำได้ ฿${formatCurrency(summary.paidAhead)} ใน ${summary.paidAheadJobs} งาน`)
+    if (parts.length === 0) parts.push(expected == null ? 'ยังไม่มีแผนสัปดาห์ จึงยังไม่มีค่า "ควรเสร็จ"' : 'เป็นไปตามแผน')
+  }
+  const tone = health === 'paid_ahead' ? 'bg-red-50 text-red-900' : health === 'behind' ? 'bg-amber-50 text-amber-900' : 'bg-slate-50 text-slate-700'
 
   return (
-    <div className={`mb-3 rounded-lg border p-3 ${tone}`}>
-      <div className="grid grid-cols-3 gap-3 text-center">
-        <div>
-          <div className="text-xs text-slate-500" title="ควรเสร็จกี่ % ณ วันนี้ ตามวันเริ่มงานถึงวันที่เป้าหมายเสร็จของแปลง">
-            แผน (ควรเสร็จ)
-          </div>
-          <div className="text-xl font-bold text-slate-700">{pct(expectedPercent)}</div>
-          {expectedPercent == null && <div className="text-[11px] text-slate-400">ยังไม่มีแผนงานรายสัปดาห์หรือวันที่เป้าหมายเสร็จ</div>}
-        </div>
-        <div>
-          <div className="text-xs text-slate-500" title="มูลค่างานที่ทำเสร็จจริง ถ่วงน้ำหนักตามมูลค่างานแต่ละรายการ">
-            ทำได้จริง
-          </div>
-          <div className="text-xl font-bold text-blue-700">{pct(summary.actualPercent)}</div>
-        </div>
-        <div>
-          <div className="text-xs text-slate-500" title="เงินที่อนุมัติจ่ายแล้ว เทียบกับมูลค่างานทั้งหมด">
-            จ่ายแล้ว
-          </div>
-          <div className="text-xl font-bold text-orange-600">{pct(summary.paidPercent)}</div>
-        </div>
-      </div>
-      <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-600">
-        <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span>
-          {STATE_TEXT[health]}
-          {summary.paidAhead > 0 && (
-            <>
-              {' '}
-              · จ่ายล่วงหน้ารวม ฿{formatCurrency(summary.paidAhead)} ({summary.paidAheadJobs} รายการ)
-            </>
-          )}
-        </span>
-      </p>
+    <div className="mb-3 space-y-2.5 rounded-lg border border-slate-200 bg-white p-4">
+      <Row label="ควรเสร็จ" value={expected} color="bg-slate-400" title="ควรเสร็จกี่ % ณ วันนี้ ตามเป้าหมายในแผนงานรายสัปดาห์ (หรือวันที่เป้าหมายเสร็จของแปลง ถ้าไม่มีแผน)" />
+      <Row label="ทำได้จริง" value={actual} color="bg-indigo-500" title="มูลค่างานที่ทำเสร็จจริง ถ่วงน้ำหนักตามมูลค่างานแต่ละรายการ" />
+      <Row label="จ่ายแล้ว" value={paid} color="bg-orange-500" title="เงินที่อนุมัติจ่ายแล้ว เทียบกับมูลค่างานทั้งหมด" />
+      <p className="text-xs text-slate-500">คิดตามมูลค่างาน: งานมูลค่าสูงนับมากกว่างานมูลค่าต่ำ · มูลค่างานทั้งแปลง ฿{formatCurrency(summary.contract)}</p>
+      <p className={`rounded-md px-3 py-2 text-sm ${tone}`}>{parts.join(' · ')}</p>
     </div>
   )
 }

@@ -153,6 +153,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
           unit: job.boq_master?.unit || '',
           quantity,
           contractorId: job.contractor_id,
+          tradeName: (Array.isArray(job.boq_master?.contractor_types) ? job.boq_master?.contractor_types[0]?.name : job.boq_master?.contractor_types?.name) || null,
           progressPercent: jobProgress.get(job.id as string)?.percent ?? null,
           progressSource: jobProgress.get(job.id as string)?.source ?? null,
           cost: {
@@ -172,11 +173,23 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
         unit: job.unit || '',
         quantity: job.quantity || 0,
         contractorId: job.contractor_id,
+        tradeName: null,
         progressPercent: null,
         progressSource: null,
         cost: null,
       }))
   const jobsDone = jobs.filter((j) => j.status === 'completed').length
+
+  // The batch this plot is built with ("กลุ่ม 120-124"), shown beside the house type.
+  let plotGroupName: string | null = null
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase.from('plot_group_members').select('plot_groups (name)').eq('plot_id', plotId).maybeSingle()
+    const g = (data as { plot_groups: { name: string | null } | { name: string | null }[] | null } | null)?.plot_groups
+    plotGroupName = (Array.isArray(g) ? g[0]?.name : g?.name) || null
+  } catch (error) {
+    console.error(error)
+  }
 
   // The weekly plan is the realistic schedule, so it wins when the plot has
   // one; otherwise fall back to the phase schedule / target-date ramp.
@@ -293,6 +306,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     phaseSchedule,
     extraWork,
     expectedPercent,
+    plotGroupName,
     canSeeCost,
     canEditConstruction,
     canEditSales,

@@ -37,6 +37,7 @@ import type { PlotProgressCurve } from '@/actions/plot-progress-curve'
 import type { PlotPhaseScheduleRow } from '@/actions/plot-phase-schedule'
 import type { WorkRequestRow } from '@/actions/sales-work-requests'
 import type { SalePaymentRow } from '@/actions/sale-payments-actions'
+import { houseTypeLabel } from '@/lib/house-type'
 import type { PlotHistoryRowView, PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
 import { useDepartment } from '@/components/layout/DepartmentContext'
 
@@ -59,6 +60,7 @@ export default function PlotDetailPageClient({
   projectId,
   plotId,
   plot,
+  plotGroupName,
   jobs: initialJobs,
   jobsDone,
   contractors,
@@ -90,6 +92,7 @@ export default function PlotDetailPageClient({
   projectId: string
   plotId: string
   plot: Plot
+  plotGroupName?: string | null
   jobs: PlotJobRow[]
   jobsDone: number
   contractors: Contractor[]
@@ -181,6 +184,7 @@ export default function PlotDetailPageClient({
         // Progress is not part of the raw job rows; keep what the bundle gave us.
         progressPercent: jobs.find((j) => j.id === job.id)?.progressPercent ?? null,
         progressSource: jobs.find((j) => j.id === job.id)?.progressSource ?? null,
+        tradeName: job.boq_master?.contractor_types?.name ?? jobs.find((j) => j.id === job.id)?.tradeName ?? null,
         cost: { contractorName: job.contractors?.name || null, agreedPricePerUnit: agreedPrice, boqPricePerUnit: boqPrice, effectivePrice, totalBoq, paid },
       }
     })
@@ -297,7 +301,7 @@ export default function PlotDetailPageClient({
               {plot.is_sellable === false && <Badge tone="neutral">ไม่ขาย</Badge>}
             </span>
           }
-          subtitle={`แบบบ้าน: ${plot.house_models?.name || '-'}${jobs.length > 0 ? ` · งานก่อสร้างเสร็จ ${jobsDone}/${jobs.length} รายการ` : ''}`}
+          subtitle={`แบบบ้าน: ${houseTypeLabel(plot.house_models?.name, plot.house_models?.code) || '-'}${plotGroupName ? ` · กลุ่ม ${plotGroupName}` : ''}${jobs.length > 0 ? ` · งานก่อสร้างเสร็จ ${jobsDone}/${jobs.length} รายการ` : ''}`}
           actions={
             canEditConstruction && showConstructionTab ? (
               <>

@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { AlertTriangle, CheckCircle2, Clock, HelpCircle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { TableFrame } from '@/components/ui/TableFrame'
 import { formatCurrency } from '@/lib/currency'
 import type { CostBoardRow, CostBoardTotals } from '@/actions/procurement/cost-board'
 import type { ProgressState } from '@/lib/cost-control/progress'
@@ -16,8 +15,6 @@ const HEALTH: Record<ProgressState, { label: string; tone: string; icon: typeof 
   ok: { label: 'ปกติ', tone: 'text-emerald-600', icon: CheckCircle2 },
   unknown: { label: 'ยังไม่มีข้อมูล', tone: 'text-slate-400', icon: HelpCircle },
 }
-
-const HEALTH_ORDER: Record<ProgressState, number> = { paid_ahead: 0, behind: 1, unknown: 2, ok: 3 }
 
 /**
  * Project cost board: one row per plot, three questions per row - how far
@@ -46,11 +43,32 @@ export default function CostBoardTab({
     )
   }
 
-  const sorted = [...rows].sort((a, b) => {
-    const diff = HEALTH_ORDER[a.health] - HEALTH_ORDER[b.health]
-    if (diff !== 0) return diff
-    return a.plotName.localeCompare(b.plotName, 'th', { numeric: true })
-  })
+  const byName = (a: CostBoardRow, b: CostBoardRow) => a.plotName.localeCompare(b.plotName, 'th', { numeric: true })
+
+  // "ต้องดู": one sentence per problem plot, worst first, then a single line
+  // for plots with no weekly plan so they do not drown the real problems.
+  const attention = canSeeLabor
+    ? rows
+        .flatMap((r) => {
+          const out: { key: string; plot: CostBoardRow; text: string; level: 0 | 1 }[] = []
+          if ((r.paidAhead || 0) > 0) out.push({ key: `${r.plotId}-paid`, plot: r, level: 0, text: `จ่ายเกินงานที่ทำได้ ${baht(r.paidAhead)} ใน ${r.paidAheadJobs} งาน` })
+          if (r.health === 'behind' && r.expectedPercent != null && r.actualPercent != null)
+            out.push({ key: `${r.plotId}-late`, plot: r, level: 1, text: `ช้ากว่าแผน ${Math.round(r.expectedPercent - r.actualPercent)}% (ทำได้ ${pct(r.actualPercent)} ควรได้ ${pct(r.expectedPercent)})` })
+          return out
+        })
+        .sort((a, b) => a.level - b.level || byName(a.plot, b.plot))
+    : []
+  const noPlan = canSeeLabor ? rows.filter((r) => r.jobCount > 0 && !r.hasWeeklyPlan).length : 0
+
+  // Plots grouped by batch; plots with no batch go last.
+  const groups = new Map<string, CostBoardRow[]>()
+  for (const r of rows) {
+    const key = r.groupName || ''
+    groups.set(key, [...(groups.get(key) || []), r])
+  }
+  const orderedGroups = [...groups.entries()]
+    .map(([name, list]) => [name, [...list].sort(byName)] as const)
+    .sort((a, b) => (a[0] === '' ? 1 : b[0] === '' ? -1 : a[1][0].plotName.localeCompare(b[1][0].plotName, 'th', { numeric: true })))
 
   const tiles = canSeeLabor
     ? [
@@ -75,69 +93,78 @@ export default function CostBoardTab({
         ))}
       </div>
 
-      <TableFrame stickyHeader maxHeight="60vh">
-        <table className="w-full text-left text-sm">
-          <thead className="sticky top-0 bg-slate-50 text-xs font-medium text-slate-500">
-            <tr>
-              <th className="px-3 py-2">แปลง</th>
-              {canSeeLabor && (
-                <th className="px-3 py-2" title="แผน = ควรเสร็จกี่ % ณ วันนี้ · จริง = งานที่ทำได้จริง · จ่าย = เงินที่จ่ายแล้วเทียบมูลค่างาน">
-                  ความคืบหน้า แผน / จริง / จ่าย
-                </th>
-              )}
-              {canSeeLabor && <th className="px-3 py-2 text-right">ค่าแรงจ่ายแล้ว / งานที่ทำได้</th>}
-              {canSeeLabor && <th className="px-3 py-2 text-right">งานเพิ่ม (DC)</th>}
-              <th className="px-3 py-2 text-right">ใช้วัสดุ</th>
-              {canSeeLabor && <th className="px-3 py-2">สถานะ</th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
-            {sorted.map((r) => {
+      {canSeeLabor && (
+        <Card className="p-4">
+          <h3 className="mb-2 text-sm font-semibold text-slate-800">ต้องดู {attention.length > 0 ? `(${attention.length})` : ''}</h3>
+          {attention.length === 0 ? (
+            <p className="text-sm text-emerald-700">ไม่มีแปลงที่จ่ายเกินงานหรือช้ากว่าแผน</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {attention.map((a) => (
+                <li key={a.key} className="flex gap-2 text-sm">
+                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${a.level === 0 ? 'bg-red-500' : 'bg-amber-500'}`} aria-hidden />
+                  <span>
+                    <Link href={`/dashboard/projects/${projectId}/${a.plot.plotId}`} className="font-medium text-indigo-600 hover:underline">
+                      {a.plot.plotName}
+                    </Link>{' '}
+                    <span className="text-slate-700">{a.text}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {noPlan > 0 && <p className="mt-2 text-xs text-slate-500">{noPlan} แปลงยังไม่มีแผนสัปดาห์ จึงเทียบกับแผนไม่ได้</p>}
+        </Card>
+      )}
+
+      {orderedGroups.map(([groupName, list]) => (
+        <Card key={groupName || '~none'} className="overflow-hidden p-0">
+          <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800">
+            {groupName || 'ไม่อยู่ในกลุ่ม'} <span className="font-normal text-slate-500">· {list.length} แปลง</span>
+          </div>
+          <ul className="divide-y divide-slate-100">
+            {list.map((r) => {
               const h = HEALTH[r.health]
+              const actual = r.actualPercent == null ? null : Math.min(100, r.actualPercent)
+              const expected = r.expectedPercent == null ? null : Math.min(100, r.expectedPercent)
               return (
-                <tr key={r.plotId} className="align-top hover:bg-slate-50">
-                  <td className="px-3 py-2.5">
+                <li key={r.plotId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 py-2.5 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_auto]">
+                  <div className="min-w-0">
                     <Link href={`/dashboard/projects/${projectId}/${r.plotId}`} className="font-medium text-indigo-600 hover:underline">
                       {r.plotName}
                     </Link>
-                    <div className="text-xs text-slate-500">
+                    <div className="truncate text-xs text-slate-500">
                       {r.houseModel || '—'} · {r.jobCount} งาน
                     </div>
-                  </td>
-                  {canSeeLabor && (
-                    <td className="px-3 py-2.5 text-slate-700">
-                      <span className="text-slate-500">{pct(r.expectedPercent)}</span> / <span className="font-medium text-blue-700">{pct(r.actualPercent)}</span> /{' '}
-                      <span className="font-medium text-orange-600">{pct(r.paidPercent)}</span>
-                    </td>
+                  </div>
+                  {canSeeLabor ? (
+                    <div className="order-3 col-span-2 sm:order-none sm:col-span-1">
+                      <div className="relative h-2.5 rounded-full bg-slate-100" aria-hidden>
+                        {actual != null && <span className="absolute inset-y-0 left-0 rounded-full bg-indigo-500" style={{ width: `${actual}%` }} />}
+                        {expected != null && <span className="absolute -inset-y-0.5 w-0.5 bg-slate-700" style={{ left: `${expected}%` }} />}
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        ทำได้ {pct(r.actualPercent)} · ควรเสร็จ {pct(r.expectedPercent)} · จ่ายแล้ว {pct(r.paidPercent)}
+                        {r.materialUsed ? ` · ใช้วัสดุ ${baht(r.materialUsed)}` : ''}
+                        {r.extraWorkApproved ? ` · งานเพิ่ม ${baht(r.extraWorkApproved)}` : ''}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-500">ใช้วัสดุ {r.materialUsed ? baht(r.materialUsed) : '—'}</div>
                   )}
                   {canSeeLabor && (
-                    <td className="px-3 py-2.5 text-right">
-                      {baht(r.paid)} / {baht(r.earned)}
-                      {(r.paidAhead || 0) > 0 && <div className="text-[11px] font-medium text-red-600">จ่ายล่วงหน้า {baht(r.paidAhead)}</div>}
-                    </td>
+                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${h.tone}`}>
+                      <h.icon className="h-3.5 w-3.5" aria-hidden /> {h.label}
+                    </span>
                   )}
-                  {canSeeLabor && (
-                    <td className="px-3 py-2.5 text-right">
-                      {r.extraWorkApproved ? baht(r.extraWorkApproved) : '—'}
-                      {r.extraWorkPending ? <div className="text-[11px] text-slate-500">รออนุมัติ {baht(r.extraWorkPending)}</div> : null}
-                    </td>
-                  )}
-                  <td className="px-3 py-2.5 text-right">{r.materialUsed ? baht(r.materialUsed) : '—'}</td>
-                  {canSeeLabor && (
-                    <td className={`px-3 py-2.5 ${h.tone}`}>
-                      <span className="inline-flex items-center gap-1 text-xs font-medium">
-                        <h.icon className="h-3.5 w-3.5" aria-hidden /> {h.label}
-                      </span>
-                    </td>
-                  )}
-                </tr>
+                </li>
               )
             })}
-          </tbody>
-        </table>
-      </TableFrame>
+          </ul>
+        </Card>
+      ))}
       <p className="text-xs text-slate-500">
-        แผนมาจากแผนงานรายสัปดาห์ (ถ้ามี) หรือวันที่เป้าหมายเสร็จของแปลง · ใช้วัสดุ = เบิกจากสโตร์ (การเบิกของกลุ่มแปลงแบ่งเท่ากันทุกแปลง) · จ่ายล่วงหน้าเป็นคำเตือน ไม่ได้ปิดกั้นการจ่ายเงิน
+        เส้นดำบนแถบ = ควรเสร็จ · แผนมาจากแผนงานรายสัปดาห์ (ถ้ามี) หรือวันที่เป้าหมายเสร็จของแปลง · ใช้วัสดุ = เบิกจากสโตร์ (การเบิกของกลุ่มแปลงแบ่งเท่ากันทุกแปลง) · จ่ายล่วงหน้าเป็นคำเตือน ไม่ได้ปิดกั้นการจ่ายเงิน
       </p>
     </div>
   )
