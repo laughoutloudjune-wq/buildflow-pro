@@ -15,6 +15,8 @@ import PlotOverviewTab from '@/components/plots/PlotOverviewTab'
 import PlotSalesTab from '@/components/plots/PlotSalesTab'
 import PlotConstructionTab from '@/components/plots/PlotConstructionTab'
 import PlotMaterialsTab from '@/components/plots/PlotMaterialsTab'
+import type { PlotExtraWorkRow } from '@/actions/_shared/plot-cost'
+import { progressState, summarizeProgress } from '@/lib/cost-control/progress'
 import PlotHistoryTab from '@/components/plots/PlotHistoryTab'
 import PlotWorkRequestsTab from '@/components/plots/PlotWorkRequestsTab'
 import {
@@ -35,6 +37,7 @@ import type { PlotProgressCurve } from '@/actions/plot-progress-curve'
 import type { PlotPhaseScheduleRow } from '@/actions/plot-phase-schedule'
 import type { WorkRequestRow } from '@/actions/sales-work-requests'
 import type { SalePaymentRow } from '@/actions/sale-payments-actions'
+import { houseTypeLabel } from '@/lib/house-type'
 import type { PlotHistoryRowView, PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
 import { useDepartment } from '@/components/layout/DepartmentContext'
 
@@ -57,6 +60,7 @@ export default function PlotDetailPageClient({
   projectId,
   plotId,
   plot,
+  plotGroupName,
   jobs: initialJobs,
   jobsDone,
   contractors,
@@ -71,6 +75,8 @@ export default function PlotDetailPageClient({
   payments,
   progressCurve,
   phaseSchedule,
+  extraWork,
+  expectedPercent,
   canSeeCost,
   canEditConstruction,
   canEditSales,
@@ -86,6 +92,7 @@ export default function PlotDetailPageClient({
   projectId: string
   plotId: string
   plot: Plot
+  plotGroupName?: string | null
   jobs: PlotJobRow[]
   jobsDone: number
   contractors: Contractor[]
@@ -100,6 +107,8 @@ export default function PlotDetailPageClient({
   payments: SalePaymentRow[]
   progressCurve: PlotProgressCurve
   phaseSchedule: PlotPhaseScheduleRow[]
+  extraWork: PlotExtraWorkRow[]
+  expectedPercent: number | null
   canSeeCost: boolean
   canEditConstruction: boolean
   canEditSales: boolean
@@ -129,6 +138,15 @@ export default function PlotDetailPageClient({
 
   const [jobs, setJobs] = useState<PlotJobRow[]>(initialJobs)
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>(() => buildPriceDrafts(initialJobs))
+
+  // Recomputed from the live job list so a price change (which moves the
+  // contract value) is reflected without a full reload.
+  const liveProgress = (() => {
+    const summary = summarizeProgress(
+      jobs.filter((j) => j.cost).map((j) => ({ value: j.cost!.totalBoq, progressPercent: j.progressPercent, paid: j.cost!.paid }))
+    )
+    return { summary, health: progressState(summary, expectedPercent) }
+  })()
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isSyncConfirmOpen, setIsSyncConfirmOpen] = useState(false)
@@ -163,6 +181,10 @@ export default function PlotDetailPageClient({
         unit: job.boq_master?.unit || '',
         quantity,
         contractorId: job.contractor_id,
+        // Progress is not part of the raw job rows; keep what the bundle gave us.
+        progressPercent: jobs.find((j) => j.id === job.id)?.progressPercent ?? null,
+        progressSource: jobs.find((j) => j.id === job.id)?.progressSource ?? null,
+        tradeName: job.boq_master?.contractor_types?.name ?? jobs.find((j) => j.id === job.id)?.tradeName ?? null,
         cost: { contractorName: job.contractors?.name || null, agreedPricePerUnit: agreedPrice, boqPricePerUnit: boqPrice, effectivePrice, totalBoq, paid },
       }
     })
@@ -177,7 +199,8 @@ export default function PlotDetailPageClient({
   }
 
   const handleAssign = (jobId: string, contractorId: string) => {
-    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, contractorId: contractorId || null } : j)))
+    // assignContractor also resets the job to รอเริ่ม, so the screen does the same.
+    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, contractorId: contractorId || null, status: 'pending' } : j)))
     startTransition(async () => {
       await assignContractor(jobId, contractorId, plotId, projectId)
     })
@@ -279,7 +302,7 @@ export default function PlotDetailPageClient({
               {plot.is_sellable === false && <Badge tone="neutral">ไม่ขาย</Badge>}
             </span>
           }
-          subtitle={`แบบบ้าน: ${plot.house_models?.name || '-'}${jobs.length > 0 ? ` · งานก่อสร้างเสร็จ ${jobsDone}/${jobs.length} รายการ` : ''}`}
+          subtitle={`แบบบ้าน: ${houseTypeLabel(plot.house_models?.name, plot.house_models?.code) || '-'}${plotGroupName ? ` · กลุ่ม ${plotGroupName}` : ''}${jobs.length > 0 ? ` · งานก่อสร้างเสร็จ ${jobsDone}/${jobs.length} รายการ` : ''}`}
           actions={
             canEditConstruction && showConstructionTab ? (
               <>
@@ -360,6 +383,10 @@ export default function PlotDetailPageClient({
           onResetVariablePrice={handleResetVariablePrice}
           onAssign={handleAssign}
           onStatusChange={handleStatusChange}
+          progressSummary={liveProgress.summary}
+          expectedPercent={expectedPercent}
+          progressHealth={liveProgress.health}
+          extraWork={extraWork}
         />
       )}
       {tab === 'materials' && <PlotMaterialsTab materials={materials} canSeeCost={canSeeCost} />}

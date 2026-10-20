@@ -8,6 +8,7 @@ import {
   getBillableJobs as getBillableJobsImpl,
   getRecordedProgress as getRecordedProgressImpl,
 } from '@/actions/billing/lookups'
+import { getBillingReviewInsights as getBillingReviewInsightsImpl } from '@/actions/billing/review-insights'
 import {
   createBillingRequest as createBillingRequestImpl,
   updateBillingRequest as updateBillingRequestImpl,
@@ -32,6 +33,10 @@ import {
 
 export async function getJobProgressHistory(jobAssignmentIds: string[]) {
   return getJobProgressHistoryImpl(jobAssignmentIds)
+}
+
+export async function getBillingReviewInsights(billingId: string) {
+  return getBillingReviewInsightsImpl(billingId)
 }
 
 export async function getRecordedProgress(jobAssignmentIds: string[]) {

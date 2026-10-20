@@ -29,7 +29,7 @@ export async function getJobAssignments(plotId: string) {
     .from('job_assignments')
     .select(`
       *,
-      boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, unit, quantity, price_per_unit),
+      boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, unit, quantity, price_per_unit, contractor_types (name)),
       contractors (id, name, phone),
       payments (id, amount, note, payment_date) 
     `) // เพิ่มบรรทัด payments (...) เข้าไป

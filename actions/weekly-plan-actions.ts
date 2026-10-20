@@ -3,7 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getDashboardSession } from '@/lib/auth/route-access'
-import { addDaysStr, isMonday, jobMaterialUsage, mondayOf, weeksOfMonth, type WeeklyPlanKind, type WeeklyPlanStatus } from '@/lib/weekly-plan'
+import { houseTypeLabel } from '@/lib/house-type'
+import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
+import { fetchLatestJobProgress } from '@/actions/_shared/job-progress'
+import { addDaysStr, currentProgress, isMonday, jobMaterialUsage, mondayOf, rolloverPlan, weeksOfMonth, type WeeklyPlanKind, type WeeklyPlanStatus } from '@/lib/weekly-plan'
 
 export type WeeklyPlanItem = {
   id: string
@@ -78,6 +81,9 @@ export type WeeklyPlanSalesPlot = {
   statusLabel: string
 }
 
+/** A BOQ job left unfinished last week and not yet in this week's plan */
+export type WeeklyPlanCarryOver = { projectId: string; plotId: string | null; plotName: string | null; title: string }
+
 export type WeeklyPlanTargetHint = { plotId: string; plotName: string; projectId: string; text: string; date: string }
 
 export type WeeklyPlanData = {
@@ -87,7 +93,7 @@ export type WeeklyPlanData = {
   weekStart: string
   weeks: string[]
   projects: { id: string; name: string }[]
-  plots: { id: string; name: string; projectId: string }[]
+  plots: { id: string; name: string; projectId: string; /** "Prime A · แฝด" */ houseType: string }[]
   /** The team's plot groups (batches built together), e.g. "แปลง 103-107", with their member plots */
   plotGroups: { id: string; name: string; projectId: string; plotIds: string[] }[]
   owners: { id: string; name: string }[]
@@ -97,6 +103,7 @@ export type WeeklyPlanData = {
   salesRequests: WeeklyPlanSalesRequest[]
   salesPlots: WeeklyPlanSalesPlot[]
   targetHints: WeeklyPlanTargetHint[]
+  carryOver: WeeklyPlanCarryOver[]
 }
 
 export type WeeklyPlanResult = { ok: true } | { error: string }
@@ -239,7 +246,7 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
   const [projectsRes, plotsRes, ownersRes, contractorsRes, itemsRes, meetingsRes, requestsRes, salesPlotsRes, scheduleRes, targetRes, groupsRes] =
     await Promise.all([
       supabase.from('projects').select('id, name').order('name'),
-      supabase.from('plots').select('id, name, project_id').order('name'),
+      supabase.from('plots').select('id, name, project_id, house_models(name, code)').order('name'),
       supabase.from('profiles').select('id, full_name, role').in('role', ['admin', 'pm', 'foreman']),
       supabase.from('contractors').select('id, name').order('name'),
       supabase
@@ -372,6 +379,33 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
   }
   targetHints.sort((a, b) => a.date.localeCompare(b.date))
 
+  // Last week's BOQ jobs that are not finished and not yet in this week (the "ยกมา" banner).
+  const prevWeek = addDaysStr(weekStart, -7)
+  const inThisWeek = new Set(items.filter((i) => i.weekStart === weekStart && i.jobAssignmentId).map((i) => `${i.projectId}|${i.jobAssignmentId}`))
+  const prevRes = await supabase
+    .from('weekly_plan_items')
+    .select('project_id, plot_id, title, job_assignment_id, carry_pct, actual_pct, status, plots(name)')
+    .eq('week_start', prevWeek)
+    .not('job_assignment_id', 'is', null)
+  type RawPrev = {
+    project_id: string
+    plot_id: string | null
+    title: string
+    job_assignment_id: string
+    carry_pct: number | null
+    actual_pct: (number | null)[] | null
+    status: WeeklyPlanStatus
+    plots: { name: string } | null
+  }
+  const carryOver: WeeklyPlanCarryOver[] = ((prevRes.data || []) as unknown as RawPrev[])
+    .filter(
+      (r) =>
+        r.status !== 'done' &&
+        !inThisWeek.has(`${r.project_id}|${r.job_assignment_id}`) &&
+        currentProgress({ carryPct: r.carry_pct == null ? null : Number(r.carry_pct), planPct: Array(7).fill(null), actualPct: padDays(r.actual_pct) }) < 100
+    )
+    .map((r) => ({ projectId: r.project_id, plotId: r.plot_id, plotName: r.plots?.name ?? null, title: r.title }))
+
   return {
     role: caller.role,
     userId: caller.userId,
@@ -379,11 +413,10 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
     weekStart,
     weeks,
     projects: (projectsRes.data || []) as { id: string; name: string }[],
-    plots: ((plotsRes.data || []) as { id: string; name: string; project_id: string }[]).map((p) => ({
-      id: p.id,
-      name: p.name,
-      projectId: p.project_id,
-    })),
+    plots: ((plotsRes.data || []) as unknown as { id: string; name: string; project_id: string; house_models: { name: string | null; code: string | null } | { name: string | null; code: string | null }[] | null }[]).map((p) => {
+      const hm = Array.isArray(p.house_models) ? p.house_models[0] : p.house_models
+      return { id: p.id, name: p.name, projectId: p.project_id, houseType: houseTypeLabel(hm?.name, hm?.code) }
+    }),
     plotGroups: ((groupsRes.data || []) as unknown as { id: string; name: string; project_id: string; plot_group_members: { plot_id: string }[] }[])
       .map((g) => ({ id: g.id, name: g.name, projectId: g.project_id, plotIds: g.plot_group_members.map((m) => m.plot_id) }))
       .filter((g) => g.plotIds.length > 0),
@@ -397,6 +430,7 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
     salesRequests,
     salesPlots,
     targetHints,
+    carryOver,
   }
 }
 
@@ -468,6 +502,178 @@ export async function getPlotsJobsForPlan(plotIds: string[]): Promise<{ jobs: We
     }))
     .sort((a, b) => (a.trade || '').localeCompare(b.trade || '', 'th') || a.title.localeCompare(b.title, 'th'))
   return { jobs }
+}
+
+/** One BOQ job on one plot, as the plot board needs it. No prices. */
+export type PlotBoardJob = {
+  id: string
+  plotId: string
+  title: string
+  /** contractor_types id as text, or 'none' */
+  tradeKey: string
+  contractorId: string | null
+  contractorName: string | null
+  /** job_assignments.status - context only */
+  status: string
+  /** 0-100: latest billing or weekly-plan reading; 100 when the job row is marked completed */
+  percent: number
+  /** Position of the BOQ line inside its trade (entry order) */
+  order: number
+  plannedThisWeek: boolean
+  /** Planned last week, not ticked done and still under 100% */
+  missedLastWeek: boolean
+}
+
+export type PlotBoardData = {
+  trades: { key: string; name: string }[]
+  plots: { id: string; name: string; houseType: string; groupName: string }[]
+  jobs: PlotBoardJob[]
+}
+
+/** Plots x trade stages for one project and week: the board the planner taps to put work into the week. */
+export async function getPlotBoard(projectId: string, weekStart: string): Promise<PlotBoardData | { error: string }> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  if (!projectId) return { error: 'กรุณาเลือกโครงการ' }
+  if (!isMonday(weekStart)) return { error: 'สัปดาห์ไม่ถูกต้อง' }
+
+  const supabase = await createClient()
+  const prevWeek = addDaysStr(weekStart, -7)
+  type RawJob = {
+    id: string
+    plot_id: string
+    status: string | null
+    contractor_id: string | null
+    contractors: { name: string } | { name: string }[] | null
+    boq_master: { item_name: string; contractor_type_id: number | null; created_at: string } | { item_name: string; contractor_type_id: number | null; created_at: string }[] | null
+  }
+  const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v)
+
+  let jobRows: RawJob[]
+  try {
+    jobRows = await fetchAllRows<RawJob>(
+      (from, to) =>
+        supabase
+          .from('job_assignments')
+          .select('id, plot_id, status, contractor_id, contractors(name), boq_master(item_name, contractor_type_id, created_at), plots!inner(project_id)')
+          .eq('plots.project_id', projectId)
+          .order('id')
+          .range(from, to) as unknown as PromiseLike<{ data: RawJob[] | null; error: { message: string } | null }>
+    )
+  } catch (e) {
+    return { error: `โหลดงานของแปลงไม่สำเร็จ: ${e instanceof Error ? e.message : ''}` }
+  }
+
+  const [plotsRes, groupsRes, typesRes, templateRes, planRes] = await Promise.all([
+    supabase.from('plots').select('id, name, house_models(name, code)').eq('project_id', projectId),
+    supabase.from('plot_groups').select('id, name, plot_group_members(plot_id)').eq('project_id', projectId).order('name'),
+    supabase.from('contractor_types').select('id, name').order('id'),
+    supabase.from('house_model_phase_template').select('contractor_type_id, sequence_order'),
+    supabase
+      .from('weekly_plan_items')
+      .select('job_assignment_id, week_start, status')
+      .eq('project_id', projectId)
+      .in('week_start', [weekStart, prevWeek])
+      .not('job_assignment_id', 'is', null),
+  ])
+  const failed = [plotsRes, groupsRes, typesRes, planRes].find((r) => r.error)?.error
+  if (failed) return { error: `โหลดบอร์ดไม่สำเร็จ: ${failed.message}` }
+
+  let progress = new Map<string, { percent: number }>()
+  try {
+    progress = await fetchLatestJobProgress(supabase, { projectId })
+  } catch {
+    // Progress is a nice-to-have on the board; without it every job reads 0.
+  }
+
+  const thisWeek = new Set<string>()
+  const missed = new Set<string>()
+  for (const r of (planRes.data || []) as { job_assignment_id: string; week_start: string; status: string }[]) {
+    if (r.week_start === weekStart) thisWeek.add(r.job_assignment_id)
+    else if (r.status !== 'done') missed.add(r.job_assignment_id)
+  }
+
+  // Trades in build order: the average sequence number from the house-model templates, else by id.
+  const seq = new Map<number, number[]>()
+  for (const t of (templateRes.data || []) as { contractor_type_id: number; sequence_order: number }[]) {
+    seq.set(t.contractor_type_id, [...(seq.get(t.contractor_type_id) || []), t.sequence_order])
+  }
+  // Without templates, a typical build order by trade name; unknown trades go last, by id.
+  const TYPICAL_ORDER = ['โครงสร้าง', 'ก่อฉาบ', 'เหล็ก', 'ประปา', 'ไฟฟ้า', 'ฝ้า', 'กระเบื้อง', 'อลูมิเนียม', 'ไม้', 'สี', 'สุขาภิบาล']
+  const seqOf = (id: number, name: string) => {
+    const list = seq.get(id)
+    if (list && list.length > 0) return list.reduce((a, b) => a + b, 0) / list.length
+    const idx = TYPICAL_ORDER.findIndex((k) => name.includes(k))
+    return idx >= 0 ? 1000 + idx : 2000 + id
+  }
+
+  const jobs: PlotBoardJob[] = []
+  const usedTrades = new Set<string>()
+  type BoqInfo = { item_name: string; contractor_type_id: number | null; created_at: string }
+  const sorted: { j: RawJob; boq: BoqInfo }[] = []
+  for (const j of jobRows) {
+    const boq = one(j.boq_master) as BoqInfo | null
+    if (boq) sorted.push({ j, boq })
+  }
+  sorted.sort((a, b) => a.boq.created_at.localeCompare(b.boq.created_at))
+  sorted.forEach(({ j, boq }, order) => {
+    const tradeKey = boq.contractor_type_id == null ? 'none' : String(boq.contractor_type_id)
+    usedTrades.add(tradeKey)
+    const percent = j.status === 'completed' ? 100 : Math.min(100, Math.round(progress.get(j.id)?.percent ?? 0))
+    jobs.push({
+      id: j.id,
+      plotId: j.plot_id,
+      title: boq.item_name,
+      tradeKey,
+      contractorId: j.contractor_id,
+      contractorName: one(j.contractors)?.name ?? null,
+      status: j.status || 'pending',
+      percent,
+      order,
+      plannedThisWeek: thisWeek.has(j.id),
+      missedLastWeek: missed.has(j.id) && percent < 100,
+    })
+  })
+
+  const trades = ((typesRes.data || []) as { id: number; name: string }[])
+    .filter((t) => usedTrades.has(String(t.id)))
+    .sort((a, b) => seqOf(a.id, a.name) - seqOf(b.id, b.name) || a.id - b.id)
+    .map((t) => ({ key: String(t.id), name: t.name }))
+  if (usedTrades.has('none')) trades.push({ key: 'none', name: 'อื่นๆ' })
+
+  const groupOf = new Map<string, string>()
+  for (const g of (groupsRes.data || []) as unknown as { name: string; plot_group_members: { plot_id: string }[] }[]) {
+    for (const m of g.plot_group_members) if (!groupOf.has(m.plot_id)) groupOf.set(m.plot_id, g.name)
+  }
+  const plots = ((plotsRes.data || []) as unknown as { id: string; name: string; house_models: { name: string | null; code: string | null } | { name: string | null; code: string | null }[] | null }[])
+    .map((p) => {
+      const hm = one(p.house_models)
+      return { id: p.id, name: p.name, houseType: houseTypeLabel(hm?.name, hm?.code), groupName: groupOf.get(p.id) || '' }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true }))
+
+  return { trades, plots, jobs }
+}
+
+/**
+ * Sets the note on a plan row (used for the "not done" reason). Any admin/pm/
+ * foreman may do this through weekly_plan_set_note when that function exists;
+ * until then it falls back to a plain update, which RLS limits to the row's
+ * creator and admin/pm.
+ */
+export async function setWeeklyPlanItemNote(id: string, note: string | null): Promise<WeeklyPlanResult> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  const supabase = await createClient()
+  const text = note?.trim() || null
+  const viaRpc = await supabase.rpc('weekly_plan_set_note', { p_id: id, p_note: text })
+  if (viaRpc.error) {
+    const { data, error } = await supabase.from('weekly_plan_items').update({ note: text }).eq('id', id).select('id')
+    if (error) return { error: `บันทึกหมายเหตุไม่สำเร็จ: ${error.message}` }
+    if (!data || data.length === 0) return { error: 'บันทึกเหตุผลได้เฉพาะผู้สร้างรายการหรือ PM' }
+  }
+  revalidatePath('/dashboard/weekly-plan')
+  return { ok: true }
 }
 
 export type WeeklyPlanItemInput = {
@@ -557,6 +763,10 @@ export type WeeklyPlanBatchInput = Omit<WeeklyPlanItemInput, 'plotId' | 'weekSta
   plotIds: string[]
   /** BOQ work: one item is created per job per week. Each job must belong to one of `plotIds`. */
   jobAssignmentIds?: string[]
+  /** BOQ work: starting % and daily PLAN per job (a job already part-done starts from where it is). Falls back to the shared carryPct / planPct. */
+  jobPlans?: Record<string, { carryPct: number | null; planPct: (number | null)[] }>
+  /** BOQ work: crew for jobs that have none yet, by job id. */
+  jobContractors?: Record<string, string>
   /** One item is created per week (Mondays). */
   weekStarts: string[]
 }
@@ -604,19 +814,23 @@ export async function createWeeklyPlanItems(input: WeeklyPlanBatchInput): Promis
     if ((existing || []).length > 0) return { error: DUPLICATE_MESSAGE }
 
     rows = weeks.flatMap((week) =>
-      verified.jobs.map((job) => ({
-        project_id: input.projectId,
-        plot_id: job.plotId,
-        week_start: week,
-        kind: 'main',
-        title: job.title,
-        job_assignment_id: job.id,
-        owner_id: input.ownerId || null,
-        ...detail,
-        // Contractor chosen in the plan wins; otherwise the job's own contractor, if any.
-        contractor_id: detail.contractor_id ?? job.contractorId,
-        created_by: caller.userId,
-      }))
+      verified.jobs.map((job) => {
+        const own = input.jobPlans?.[job.id]
+        const own_detail = own ? detailColumns({ ...input, carryPct: own.carryPct, planPct: own.planPct }) : detail
+        return {
+          project_id: input.projectId,
+          plot_id: job.plotId,
+          week_start: week,
+          kind: 'main',
+          title: job.title,
+          job_assignment_id: job.id,
+          owner_id: input.ownerId || null,
+          ...own_detail,
+          // Contractor chosen in the plan wins; otherwise the job's own contractor, if any.
+          contractor_id: input.jobContractors?.[job.id] || own_detail.contractor_id || job.contractorId,
+          created_by: caller.userId,
+        }
+      })
     )
   } else {
     if (!input.title.trim()) return { error: 'กรุณากรอกชื่องาน' }
@@ -840,4 +1054,59 @@ export async function recordWeeklyPlanActual(id: string, day: number, value: num
   revalidatePath('/dashboard/weekly-plan')
   revalidatePath('/dashboard/billing')
   return { ok: true }
+}
+
+/**
+ * Carries last week's unfinished BOQ jobs into `weekStart` in one click: same
+ * job, contractor and owner, with last week's progress as the starting point
+ * and a suggested target (see rolloverPlan). Jobs already planned for the week
+ * are skipped, so pressing it twice adds nothing. An agreed week stays locked
+ * by the database like any other insert.
+ */
+export async function rollOverWeeklyPlan(projectId: string, weekStart: string): Promise<WeeklyPlanResult & { created?: number }> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  if (!projectId) return { error: 'กรุณาเลือกโครงการ' }
+  if (!isMonday(weekStart)) return { error: 'สัปดาห์ไม่ถูกต้อง' }
+
+  const supabase = await createClient()
+  const prevWeek = addDaysStr(weekStart, -7)
+  const [prevRes, currentRes] = await Promise.all([
+    supabase
+      .from('weekly_plan_items')
+      .select('plot_id, title, job_assignment_id, owner_id, contractor_id, carry_pct, plan_pct, actual_pct, status, note')
+      .eq('project_id', projectId)
+      .eq('week_start', prevWeek)
+      .not('job_assignment_id', 'is', null),
+    supabase.from('weekly_plan_items').select('job_assignment_id').eq('project_id', projectId).eq('week_start', weekStart).not('job_assignment_id', 'is', null),
+  ])
+  if (prevRes.error) return { error: `อ่านแผนสัปดาห์ก่อนไม่สำเร็จ: ${prevRes.error.message}` }
+  if (currentRes.error) return { error: `อ่านแผนสัปดาห์นี้ไม่สำเร็จ: ${currentRes.error.message}` }
+
+  const already = new Set((currentRes.data || []).map((r) => r.job_assignment_id as string))
+  const rows = (prevRes.data || [])
+    .filter((r) => r.status !== 'done' && !already.has(r.job_assignment_id as string))
+    .map((r) => ({ prev: r, next: rolloverPlan({ carryPct: r.carry_pct, planPct: padDays(r.plan_pct), actualPct: padDays(r.actual_pct) }) }))
+    .filter(({ prev }) => currentProgress({ carryPct: prev.carry_pct, planPct: padDays(prev.plan_pct), actualPct: padDays(prev.actual_pct) }) < 100)
+    .map(({ prev, next }) => ({
+      project_id: projectId,
+      plot_id: prev.plot_id,
+      week_start: weekStart,
+      kind: 'main',
+      title: prev.title,
+      job_assignment_id: prev.job_assignment_id,
+      owner_id: prev.owner_id,
+      contractor_id: prev.contractor_id,
+      carry_pct: next.carry,
+      plan_pct: next.plan,
+      // A missed promise keeps its reason ("✗ ของไม่มา") as context for the new week.
+      note: typeof prev.note === 'string' && prev.note.startsWith('✗') && prev.note.slice(1).trim() ? `ยกมา: ${prev.note.slice(1).trim()}` : null,
+      created_by: caller.userId,
+    }))
+  if (rows.length === 0) return { error: 'ไม่มีงานค้างจากสัปดาห์ก่อนที่ต้องต่อ' }
+
+  const { error } = await supabase.from('weekly_plan_items').insert(rows)
+  if (error) return { error: planErrorMessage('ต่องานไม่สำเร็จ', error) }
+  revalidatePath('/dashboard/weekly-plan')
+  return { ok: true, created: rows.length }
 }

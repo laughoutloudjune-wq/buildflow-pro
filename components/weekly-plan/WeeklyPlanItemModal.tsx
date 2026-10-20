@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { ChevronDown, Search, X } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import SearchableSelect from '@/components/ui/SearchableSelect'
@@ -17,9 +17,11 @@ import {
 import {
   WEEKLY_PLAN_KINDS,
   WEEK_DAY_LABELS,
+  currentProgress,
   formatWeekRange,
   linearPlan,
   plotIdsFromRangeText,
+  compressPlotNames,
   type WeeklyPlanKind,
 } from '@/lib/weekly-plan'
 
@@ -30,9 +32,6 @@ function toNum(v: string): number | null {
   const n = Number(v)
   return Number.isNaN(n) ? null : n
 }
-
-/** A row of seven % inputs, Monday to Sunday. */
-const JOB_STATUS_LABEL: Record<string, string> = { pending: 'ยังไม่เริ่ม', in_progress: 'กำลังทำ', completed: 'เสร็จแล้ว' }
 
 function formatQty(q: number | null, unit: string | null): string {
   if (q == null) return ''
@@ -76,11 +75,18 @@ function DayRow({
   )
 }
 
+
+type JobGroup = { title: string; trade: string | null; jobs: WeeklyPlanJob[] }
+
+const END_TARGETS = [100, 75, 50, 25]
+const FREE_KINDS: WeeklyPlanKind[] = ['repair', 'dc', 'inspect', 'other']
+
 export default function WeeklyPlanItemModal({
   data,
   projectId,
   weekStart,
   item,
+  freeOnly = false,
   onClose,
   onSaved,
 }: {
@@ -88,6 +94,8 @@ export default function WeeklyPlanItemModal({
   projectId: string
   weekStart: string
   item: WeeklyPlanItem | null
+  /** New work is only the non-BOQ kind (repair, DC, inspection); BOQ jobs are planned from the plot board. */
+  freeOnly?: boolean
   onClose: () => void
   onSaved: () => void
 }) {
@@ -99,8 +107,8 @@ export default function WeeklyPlanItemModal({
   // An agreed week's plan is locked: only progress (ACTUAL, carry, note) can change.
   const locked = !!item && agreedWeeks.has(item.weekStart)
 
-  const [mode, setMode] = useState<'boq' | 'manual'>(item ? (item.jobAssignmentId ? 'boq' : 'manual') : 'boq')
-  const [kind, setKind] = useState<WeeklyPlanKind>(item?.kind ?? 'main')
+  const [mode, setMode] = useState<'boq' | 'manual'>(item ? (item.jobAssignmentId ? 'boq' : 'manual') : freeOnly ? 'manual' : 'boq')
+  const [kind, setKind] = useState<WeeklyPlanKind>(item?.kind ?? 'repair')
   const [title, setTitle] = useState(item?.title ?? '')
   const [plotIds, setPlotIds] = useState<string[]>(item?.plotId ? [item.plotId] : [])
   const [weekSel, setWeekSel] = useState<string[]>(item ? [item.weekStart] : openWeeks.includes(weekStart) ? [weekStart] : [])
@@ -109,17 +117,18 @@ export default function WeeklyPlanItemModal({
   const [jobSearch, setJobSearch] = useState('')
   const [ownerId, setOwnerId] = useState(item?.ownerId ?? '')
   const [contractorId, setContractorId] = useState(item?.contractorId ?? '')
+  const [crewByTitle, setCrewByTitle] = useState<Record<string, string>>({})
   const [carry, setCarry] = useState(item?.carryPct != null ? String(item.carryPct) : '')
   const [plan, setPlan] = useState<string[]>((item?.planPct ?? Array(7).fill(null)).map((v) => (v == null ? '' : String(v))))
   const [actual, setActual] = useState<string[]>((item?.actualPct ?? Array(7).fill(null)).map((v) => (v == null ? '' : String(v))))
   const [target, setTarget] = useState('')
+  const [endTarget, setEndTarget] = useState(100)
   const [note, setNote] = useState(item?.note ?? '')
   const [plotSearch, setPlotSearch] = useState('')
   const [rangeText, setRangeText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const { theme } = useDepartment()
-  const [step, setStep] = useState(1)
   const [progressOpen, setProgressOpen] = useState(
     !!item && (item.carryPct != null || item.planPct.some((v) => v != null) || item.actualPct.some((v) => v != null))
   )
@@ -150,33 +159,52 @@ export default function WeeklyPlanItemModal({
   const jobs = useMemo(() => (loaded && loaded.key === plotKey ? loaded.jobs : []), [loaded, plotKey])
   const jobsLoading = boqCreate && !!plotKey && loaded?.key !== plotKey
 
-  // The same BOQ line has a separate job row on every plot, so group by line:
-  // ticking a line schedules it on every selected plot that has it.
-  const isBlocked = (j: WeeklyPlanJob) => j.plannedWeeks.some((w) => weekSel.includes(w))
+  // The same job name exists once per house type, and a separate job row per plot.
+  // Merge by NAME so a job shows once however many house types the picked plots cover;
+  // ticking it schedules it on every picked plot that has it.
   const groups = useMemo(() => {
-    const map = new Map<string, { boqItemId: string; title: string; trade: string | null; quantity: number | null; unit: string | null; jobs: WeeklyPlanJob[] }>()
+    const map = new Map<string, JobGroup>()
     for (const j of jobs) {
-      const g = map.get(j.boqItemId)
+      const key = j.title.trim()
+      const g = map.get(key)
       if (g) g.jobs.push(j)
-      else map.set(j.boqItemId, { boqItemId: j.boqItemId, title: j.title, trade: j.trade, quantity: j.quantity, unit: j.unit, jobs: [j] })
+      else map.set(key, { title: key, trade: j.trade, jobs: [j] })
     }
     return [...map.values()].sort((a, b) => (a.trade || '').localeCompare(b.trade || '', 'th') || a.title.localeCompare(b.title, 'th'))
   }, [jobs])
-  const visibleGroups = useMemo(() => {
-    const q = jobSearch.trim().toLowerCase()
-    return q ? groups.filter((g) => `${g.title} ${g.trade ?? ''}`.toLowerCase().includes(q)) : groups
+
+  const eligibility = (g: JobGroup) => {
+    const have = new Set(g.jobs.map((j) => j.plotId))
+    const missing = plotIds.filter((id) => !have.has(id))
+    const done = g.jobs.filter((j) => j.status === 'completed')
+    const dup = g.jobs.filter((j) => j.status !== 'completed' && j.plannedWeeks.some((w) => weekSel.includes(w)))
+    const go = g.jobs.filter((j) => !done.includes(j) && !dup.includes(j))
+    return { missing, done, dup, go }
+  }
+
+  const q = jobSearch.trim().toLowerCase()
+  const visibleGroups = groups.filter((g) => !q || `${g.title} ${g.trade ?? ''}`.toLowerCase().includes(q))
+  const doingGroups = visibleGroups.filter((g) => g.jobs.some((j) => j.status === 'in_progress'))
+  const otherByTrade = useMemo(() => {
+    const by = new Map<string, JobGroup[]>()
+    for (const g of visibleGroups.filter((x) => !x.jobs.some((j) => j.status === 'in_progress'))) {
+      const key = g.trade || 'ไม่ระบุประเภทช่าง'
+      by.set(key, [...(by.get(key) || []), g])
+    }
+    return [...by.entries()]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups, jobSearch])
-  const chosenJobs = groups.filter((g) => boqSel.includes(g.boqItemId)).flatMap((g) => g.jobs.filter((j) => !isBlocked(j)))
+
+  const chosenGroups = groups.filter((g) => boqSel.includes(g.title) && eligibility(g).go.length > 0)
+  const chosenJobs = chosenGroups.flatMap((g) => eligibility(g).go)
   const chosenPlotIds = [...new Set(chosenJobs.map((j) => j.plotId))]
 
   const plots = useMemo(() => data.plots.filter((p) => p.projectId === projectId), [data.plots, projectId])
   const visiblePlots = useMemo(() => {
-    const q = plotSearch.trim().toLowerCase()
-    return q ? plots.filter((p) => p.name.toLowerCase().includes(q)) : plots
+    const qq = plotSearch.trim().toLowerCase()
+    return qq ? plots.filter((p) => `${p.name} ${p.houseType}`.toLowerCase().includes(qq)) : plots
   }, [plots, plotSearch])
-  const plotName = (id: string) => plots.find((p) => p.id === id)?.name ?? ''
   const projectGroups = useMemo(() => data.plotGroups.filter((g) => g.projectId === projectId), [data.plotGroups, projectId])
-  // Clicking a group selects all its plots; clicking again when all are selected clears them.
   const toggleGroup = (ids: string[]) =>
     setPlotIds((prev) => (ids.every((id) => prev.includes(id)) ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])]))
 
@@ -205,6 +233,18 @@ export default function WeeklyPlanItemModal({
     setPlan(linearPlan(toNum(carry) ?? 0, t).map(String))
   }
 
+  // Where each job already is before the first picked week: the newest plan row's progress.
+  const firstWeek = [...weekSel].sort()[0]
+  const startedAt = useMemo(() => {
+    const best = new Map<string, { week: string; pct: number }>()
+    for (const it of data.items) {
+      if (!it.jobAssignmentId || !firstWeek || it.weekStart >= firstWeek) continue
+      const prev = best.get(it.jobAssignmentId)
+      if (!prev || it.weekStart > prev.week) best.set(it.jobAssignmentId, { week: it.weekStart, pct: currentProgress(it) })
+    }
+    return best
+  }, [data.items, firstWeek])
+
   const save = () => {
     setError(null)
     const detail = {
@@ -217,6 +257,8 @@ export default function WeeklyPlanItemModal({
     if (boqCreate) {
       if (plotIds.length === 0) return setError('กรุณาเลือกแปลง')
       if (chosenJobs.length === 0) return setError('กรุณาเลือกงาน BOQ อย่างน้อยหนึ่งรายการ')
+    } else if (!editing && !title.trim()) {
+      return setError('กรุณากรอกชื่องาน')
     }
     if (weekSel.length === 0 && !editing) return setError('กรุณาเลือกสัปดาห์')
     startTransition(async () => {
@@ -235,15 +277,38 @@ export default function WeeklyPlanItemModal({
         else onSaved()
         return
       }
+      if (boqCreate) {
+        const weeks = [...weekSel].sort()
+        // One end-of-week target for the first week: each job starts from where it already is.
+        const jobPlans: Record<string, { carryPct: number | null; planPct: (number | null)[] }> = {}
+        const jobContractors: Record<string, string> = {}
+        for (const g of chosenGroups) {
+          for (const j of eligibility(g).go) {
+            const c = Math.round(Math.min(100, startedAt.get(j.id)?.pct ?? 0))
+            jobPlans[j.id] = { carryPct: c, planPct: linearPlan(c, Math.max(endTarget, c)) }
+            if (!j.contractorId && crewByTitle[g.title]) jobContractors[j.id] = crewByTitle[g.title]
+          }
+        }
+        const base = { projectId, plotIds: chosenPlotIds, jobAssignmentIds: chosenJobs.map((j) => j.id), kind: 'main' as const, title: '', ownerId: ownerId || null, contractorId: null, note, jobContractors }
+        const first = await createWeeklyPlanItems({ ...base, weekStarts: [weeks[0]], jobPlans })
+        if ('error' in first) return setError(first.error)
+        // Later weeks start empty; "ต่องานค้างจากสัปดาห์ก่อน" carries the progress in when they come.
+        if (weeks.length > 1) {
+          const rest = await createWeeklyPlanItems({ ...base, weekStarts: weeks.slice(1) })
+          if ('error' in rest) return setError(rest.error)
+        }
+        onSaved()
+        return
+      }
       const res = await createWeeklyPlanItems({
         projectId,
-        plotIds: boqCreate ? chosenPlotIds : plotIds,
-        jobAssignmentIds: boqCreate ? chosenJobs.map((j) => j.id) : undefined,
+        plotIds,
         weekStarts: weekSel,
-        kind: boqCreate ? 'main' : kind,
-        title: boqCreate ? '' : title,
+        kind,
+        title,
         ownerId: ownerId || null,
-        ...detail,
+        contractorId: null,
+        note,
       })
       if ('error' in res) setError(res.error)
       else onSaved()
@@ -251,40 +316,7 @@ export default function WeeklyPlanItemModal({
   }
 
   const count = boqCreate ? chosenJobs.length * weekSel.length : Math.max(plotIds.length, 1) * weekSel.length
-  const selectedLineCount = boqSel.filter((id) => groups.some((g) => g.boqItemId === id)).length
   const projectName = data.projects.find((p) => p.id === projectId)?.name ?? ''
-
-  // ---- Guided creation: validation per step ------------------------------
-  const focusId = (id: string) => setTimeout(() => document.getElementById(id)?.focus(), 0)
-  const stepProblem = (s: number): { message: string; focus?: string } | null => {
-    if (s === 2) {
-      if (boqCreate && plotIds.length === 0) return { message: 'กรุณาเลือกแปลงอย่างน้อยหนึ่งแปลง', focus: 'wp-plot-search' }
-      if (weekSel.length === 0) return { message: 'กรุณาเลือกสัปดาห์อย่างน้อยหนึ่งสัปดาห์' }
-    }
-    if (s === 3) {
-      if (boqCreate && chosenJobs.length === 0) return { message: 'กรุณาเลือกงาน BOQ อย่างน้อยหนึ่งรายการ', focus: 'wp-job-search' }
-      if (!boqCreate && !title.trim()) return { message: 'กรุณากรอกชื่องาน', focus: 'wp-title' }
-    }
-    return null
-  }
-  const goNext = () => {
-    const problem = stepProblem(step)
-    if (problem) {
-      setError(problem.message)
-      if (problem.focus) focusId(problem.focus)
-      return
-    }
-    setError(null)
-    setStep((s) => Math.min(4, s + 1))
-  }
-  const goBack = () => {
-    setError(null)
-    setStep((s) => Math.max(1, s - 1))
-  }
-  const createLabel = `สร้าง ${count} รายการแผน`
-  const canCreate = count > 0
-
-  const STEPS = ['แหล่งงาน', 'แปลงและสัปดาห์', 'งาน', 'ผู้รับผิดชอบ'] as const
 
   const lockedBanner = locked && (
     <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
@@ -452,399 +484,349 @@ export default function WeeklyPlanItemModal({
     )
   }
 
-  // ---- Creating: four guided steps -----------------------------------------
+
+  // ---- Creating: one sheet, three questions -----------------------------------
+  const pickRow = (g: JobGroup) => {
+    const e = eligibility(g)
+    const on = boqSel.includes(g.title) && e.go.length > 0
+    const crews = [...new Set(g.jobs.map((j) => j.contractorName).filter((n): n is string => !!n))]
+    const needsCrew = e.go.some((j) => !j.contractorId)
+    const notes: string[] = []
+    if (e.done.length) notes.push(`เสร็จแล้ว แปลง ${compressPlotNames(e.done.map((j) => j.plotName))} (ข้าม)`)
+    if (e.dup.length) notes.push(`อยู่ในแผนสัปดาห์ที่เลือกแล้ว แปลง ${compressPlotNames(e.dup.map((j) => j.plotName))} (ข้าม)`)
+    if (e.missing.length) {
+      const names = e.missing.map((id) => plots.find((p) => p.id === id)?.name ?? '').filter(Boolean)
+      notes.push(`แบบบ้านของแปลง ${compressPlotNames(names)} ไม่มีงานนี้`)
+    }
+    return (
+      <label
+        key={g.title}
+        className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 ${
+          e.go.length === 0 ? 'cursor-not-allowed border-slate-100 bg-slate-50 opacity-60' : on ? `cursor-pointer ${theme.selected}` : 'cursor-pointer border-slate-200 hover:bg-slate-50'
+        }`}
+      >
+        <input
+          type="checkbox"
+          className="mt-1 h-4 w-4"
+          checked={on}
+          disabled={e.go.length === 0}
+          onChange={() => setBoqSel((prev) => toggleIn(prev, g.title))}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="text-sm font-medium text-slate-800">{g.title}</span>
+            <span className="text-xs tabular-nums text-slate-500">{e.go.length > 0 ? `${e.go.length} แปลง` : 'ไม่มีแปลงให้เพิ่ม'}</span>
+          </span>
+          <span className="block text-xs text-slate-500">
+            {crews.length > 0 ? crews.join(', ') : needsCrew ? 'ยังไม่มีช่าง' : ''}
+          </span>
+          {needsCrew && e.go.length > 0 && (
+            <select
+              value={crewByTitle[g.title] ?? ''}
+              onChange={(ev) => setCrewByTitle((prev) => ({ ...prev, [g.title]: ev.target.value }))}
+              onClick={(ev) => ev.stopPropagation()}
+              aria-label={`เลือกช่างสำหรับ ${g.title}`}
+              className="mt-1 max-w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"
+            >
+              <option value="">เลือกช่าง (ไม่บังคับ)</option>
+              {data.contractors.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {notes.map((n) => (
+            <span key={n} className="block text-xs text-amber-700">
+              {n}
+            </span>
+          ))}
+        </span>
+      </label>
+    )
+  }
+
+  const summary =
+    count > 0 ? (
+      <>
+        <span className="font-semibold text-slate-800">
+          {boqCreate ? `${chosenGroups.length} งาน · ${chosenPlotIds.length} แปลง` : `${Math.max(plotIds.length, 1)} แปลง`} · {weekSel.length} สัปดาห์
+        </span>{' '}
+        = <span className={`font-semibold ${theme.text}`}>{count} รายการ</span>
+      </>
+    ) : (
+      <span className="text-slate-500">เลือกงานเพื่อดูว่าจะเพิ่มกี่รายการ</span>
+    )
+
   return (
     <Modal
       isOpen
       onClose={onClose}
-      title="เพิ่มรายการแผนงาน"
+      title="เพิ่มงานเข้าแผน"
       placement="right"
-      panelClassName="max-w-4xl"
+      panelClassName="max-w-2xl"
       footer={
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-slate-800" aria-live="polite">
-            {boqCreate ? (
-              <>
-                {selectedLineCount} งาน · {chosenPlotIds.length} แปลง · {weekSel.length} สัปดาห์ = <span className={theme.text}>{count} รายการแผน</span>
-              </>
-            ) : (
-              <>
-                {Math.max(plotIds.length, 1)} แปลง · {weekSel.length} สัปดาห์ = <span className={theme.text}>{count} รายการแผน</span>
-              </>
-            )}
-            <span className="ml-2 text-xs font-normal text-slate-500">
-              {weekSel.length > 0 ? weekSel.slice(0, 3).map(formatWeekRange).join(', ') + (weekSel.length > 3 ? ` +${weekSel.length - 3}` : '') : 'ยังไม่ได้เลือกสัปดาห์'}
-            </span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm" aria-live="polite">
+            {summary}
           </p>
-          <div className="flex justify-end gap-2">
+          <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose} disabled={pending}>
               ยกเลิก
             </Button>
-            {step > 1 && (
-              <Button variant="secondary" onClick={goBack} disabled={pending}>
-                ย้อนกลับ
-              </Button>
-            )}
-            {step < 4 ? (
-              <Button onClick={goNext}>ถัดไป</Button>
-            ) : (
-              <Button onClick={save} disabled={pending || !canCreate}>
-                {pending ? 'กำลังสร้าง...' : createLabel}
-              </Button>
-            )}
+            <Button onClick={save} disabled={pending || count === 0}>
+              {pending ? 'กำลังเพิ่ม...' : 'เพิ่มเข้าแผน'}
+            </Button>
           </div>
         </div>
       }
     >
-      <div className="space-y-4 text-sm">
-        <p className="text-xs text-slate-500">
-          {projectName && <>โครงการ {projectName} · </>}กำลังดูสัปดาห์ {formatWeekRange(weekStart)}
-        </p>
+      <div className="space-y-6 text-sm">
+        <p className="text-xs text-slate-500">{projectName}</p>
 
-        <ol className="flex flex-wrap gap-2" aria-label="ขั้นตอน">
-          {STEPS.map((label, i) => {
-            const n = i + 1
-            const done = n < step
-            const current = n === step
-            return (
-              <li key={label} aria-current={current ? 'step' : undefined}>
+        {!freeOnly && (
+        <div className="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="ประเภทงาน">
+          {(
+            [
+              ['boq', 'งานจาก BOQ'],
+              ['manual', 'งานนอก BOQ (ซ่อม / DC / ตรวจบ้าน)'],
+            ] as const
+          ).map(([m, label]) => (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={mode === m}
+              onClick={() => {
+                setMode(m)
+                setError(null)
+              }}
+              className={`rounded-md px-3 py-1.5 text-sm ${mode === m ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-600'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        )}
+
+        <section className="space-y-2">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <h3 className="font-semibold text-slate-800">แปลงไหน</h3>
+            <span className="text-xs text-slate-500">
+              {plotIds.length > 0 ? `${plotIds.length} แปลง · ${compressPlotNames(plotIds.map((id) => plots.find((p) => p.id === id)?.name ?? ''))}` : 'ยังไม่เลือก'}
+            </span>
+          </div>
+          {projectGroups.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {projectGroups.map((g) => {
+                const on = g.plotIds.every((id) => plotIds.includes(id))
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => toggleGroup(g.plotIds)}
+                    className={`rounded-full border px-3 py-1 text-xs ${on ? theme.selected + ' font-medium' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    {g.name} ({g.plotIds.length})
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" aria-hidden />
+            <input
+              id="wp-plot-search"
+              value={plotSearch}
+              onChange={(e) => setPlotSearch(e.target.value)}
+              placeholder="ค้นหาเลขแปลงหรือแบบบ้าน"
+              aria-label="ค้นหาแปลง"
+              className="w-full rounded-md border border-slate-200 py-2 pl-8 pr-2"
+            />
+          </div>
+          <div className="grid max-h-44 grid-cols-4 gap-1.5 overflow-y-auto sm:grid-cols-5">
+            {visiblePlots.length === 0 && <p className="col-span-full py-2 text-center text-slate-500">ไม่พบแปลง</p>}
+            {visiblePlots.map((p) => {
+              const on = plotIds.includes(p.id)
+              return (
                 <button
+                  key={p.id}
                   type="button"
-                  disabled={n > step}
-                  onClick={() => setStep(n)}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
-                    current
-                      ? theme.selected
-                      : done
-                        ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                        : 'border-slate-100 bg-slate-50 text-slate-400'
-                  }`}
+                  aria-pressed={on}
+                  onClick={() => setPlotIds((prev) => toggleIn(prev, p.id))}
+                  className={`min-w-0 rounded-md border px-1.5 py-1.5 text-center ${on ? theme.selected + ' font-semibold' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                  title={`${p.name} · ${p.houseType}`}
                 >
-                  <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${current ? theme.stepSolid : done ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                    {done ? '✓' : n}
-                  </span>
-                  {label}
+                  <span className="block truncate text-sm tabular-nums">{p.name}</span>
+                  {p.houseType && <span className="block truncate text-[10px] font-normal text-slate-500">{p.houseType}</span>}
                 </button>
-              </li>
-            )
-          })}
-        </ol>
-
-        {step === 1 && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {(
-              [
-                ['boq', 'งานจาก BOQ', 'เลือกงานจาก BOQ ของแต่ละแปลง ระบบดึงชื่องาน ประเภทช่าง และปริมาณให้เอง'],
-                ['manual', 'งานนอก BOQ (DC / ซ่อม / ตรวจ / อื่นๆ)', 'พิมพ์ชื่องานเอง ใช้กับงานที่ไม่อยู่ใน BOQ'],
-              ] as const
-            ).map(([m, label, hint]) => (
-              <button
-                key={m}
-                type="button"
-                aria-pressed={mode === m}
-                onClick={() => setMode(m)}
-                className={`rounded-xl border p-4 text-left transition-colors ${
-                  mode === m ? theme.selected : 'border-slate-200 hover:bg-slate-50'
-                }`}
-              >
-                <span className="block font-semibold text-slate-800">{label}</span>
-                <span className="mt-1 block text-xs text-slate-500">{hint}</span>
-              </button>
-            ))}
+              )
+            })}
           </div>
-        )}
+          <div className="flex gap-2">
+            <input
+              value={rangeText}
+              onChange={(e) => setRangeText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  applyRange()
+                }
+              }}
+              placeholder="หรือพิมพ์ช่วง เช่น 120-124, 127 แล้วกด Enter"
+              aria-label="ช่วงแปลง"
+              className="w-full rounded-md border border-slate-200 px-2 py-2"
+            />
+            <Button type="button" variant="secondary" size="sm" onClick={() => setPlotIds([])}>
+              ล้าง
+            </Button>
+          </div>
+        </section>
 
-        {step === 2 && (
-          <div className="space-y-4">
-            <div>
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <span className="font-medium text-slate-700">
-                  แปลง <span className="font-normal text-slate-500">(เลือกได้หลายแปลง)</span>
-                  {!boqCreate && <span className="ml-1 font-normal text-slate-500">ไม่บังคับ</span>}
-                </span>
-                <span className="text-xs text-slate-500">เลือกแล้ว {plotIds.length}</span>
+        {boqCreate ? (
+          <section className="space-y-2">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h3 className="font-semibold text-slate-800">งานอะไร</h3>
+              <span className="text-xs text-slate-500">งานชื่อเดียวกันรวมเป็นแถวเดียว ไม่ว่าแบบบ้านใด</span>
+            </div>
+            {plotIds.length === 0 ? (
+              <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-slate-500">เลือกแปลงก่อน แล้วงานของแปลงเหล่านั้นจะขึ้นที่นี่</p>
+            ) : jobsLoading ? (
+              <p className="py-3 text-center text-slate-500">กำลังโหลดงาน BOQ...</p>
+            ) : groups.length === 0 ? (
+              <div className="space-y-3 py-3 text-center">
+                <p className="text-slate-600">แปลงที่เลือกยังไม่มีงาน BOQ ต้อง sync งาน BOQ ให้แปลงก่อน</p>
+                <Button type="button" size="sm" variant="secondary" onClick={() => setMode('manual')}>
+                  เปลี่ยนเป็นงานนอก BOQ
+                </Button>
               </div>
-              <div className="space-y-2 rounded-lg border border-slate-200 p-2">
-                {projectGroups.length > 0 && (
-                  <div>
-                    <p className="mb-1 text-xs text-slate-500">กลุ่มแปลง (เลือกทั้งกลุ่มในครั้งเดียว · เลือกซ้ำเพื่อยกเลิกกลุ่ม)</p>
-                    <SearchableSelect
-                      options={projectGroups.map((g) => ({
-                        value: g.id,
-                        label: `${g.plotIds.every((id) => plotIds.includes(id)) ? '✓ ' : ''}${g.name} (${g.plotIds.length} แปลง)`,
-                      }))}
-                      value=""
-                      onChange={(v) => {
-                        const g = projectGroups.find((x) => x.id === v)
-                        if (g) toggleGroup(g.plotIds)
-                      }}
-                      placeholder="เลือกกลุ่มแปลง"
-                    />
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <div className="relative min-w-[8rem] flex-1">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                    <input
-                      id="wp-plot-search"
-                      value={plotSearch}
-                      onChange={(e) => setPlotSearch(e.target.value)}
-                      placeholder="ค้นหาเลขแปลง"
-                      className="w-full rounded-md border border-slate-200 py-2 pl-8 pr-2"
-                    />
-                  </div>
-                  <div className="flex min-w-[10rem] flex-1 gap-1">
-                    <input
-                      value={rangeText}
-                      onChange={(e) => setRangeText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          applyRange()
-                        }
-                      }}
-                      placeholder="ช่วง เช่น 103-107, 120"
-                      className="w-full rounded-md border border-slate-200 px-2 py-2"
-                    />
-                    <Button type="button" variant="secondary" size="sm" onClick={applyRange}>
-                      เพิ่ม
-                    </Button>
-                  </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" aria-hidden />
+                  <input
+                    id="wp-job-search"
+                    value={jobSearch}
+                    onChange={(e) => setJobSearch(e.target.value)}
+                    placeholder="ค้นหางาน เช่น ก่ออิฐ ไฟฟ้า"
+                    aria-label="ค้นหางาน"
+                    className="w-full rounded-md border border-slate-200 py-2 pl-8 pr-2"
+                  />
                 </div>
-                <div className="flex flex-wrap gap-3 text-xs">
-                  <button
-                    type="button"
-                    className="text-indigo-600 hover:underline"
-                    onClick={() => setPlotIds((prev) => [...new Set([...prev, ...visiblePlots.map((p) => p.id)])])}
-                  >
-                    เลือกทั้งหมดที่แสดง ({visiblePlots.length})
-                  </button>
-                  <button type="button" className="text-slate-500 hover:underline" onClick={() => setPlotIds([])}>
-                    ล้างที่เลือก
-                  </button>
-                </div>
-                <div className="grid max-h-36 grid-cols-4 gap-1 overflow-y-auto sm:grid-cols-6 md:grid-cols-8">
-                  {visiblePlots.length === 0 && <p className="col-span-full py-2 text-center text-slate-500">ไม่พบแปลง</p>}
-                  {visiblePlots.map((p) => {
-                    const on = plotIds.includes(p.id)
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => setPlotIds((prev) => toggleIn(prev, p.id))}
-                        className={`truncate rounded-md border px-1.5 py-1.5 text-xs ${
-                          on ? theme.selected + ' font-semibold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                        title={p.name}
-                      >
-                        {on ? '✓ ' : ''}
-                        {p.name}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              {plotIds.length > 0 && (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  {plotIds.slice(0, 20).map((id) => (
-                    <span key={id} className={`inline-flex items-center gap-1 rounded-full py-0.5 pl-2.5 pr-1 text-xs ${theme.chip}`}>
-                      {plotName(id)}
-                      <button
-                        type="button"
-                        aria-label={`เอาแปลง ${plotName(id)} ออก`}
-                        onClick={() => setPlotIds((prev) => prev.filter((x) => x !== id))}
-                        className="rounded-full p-0.5 hover:bg-black/5"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
+                <div className="space-y-2">
+                  {doingGroups.length > 0 && (
+                    <>
+                      <p className="text-xs font-semibold text-slate-600">กำลังทำอยู่</p>
+                      {doingGroups.map(pickRow)}
+                    </>
+                  )}
+                  {otherByTrade.map(([trade, list]) => (
+                    <details key={trade} open={!!q || list.some((g) => boqSel.includes(g.title))} className="rounded-lg">
+                      <summary className="cursor-pointer py-1 text-xs font-semibold text-slate-600">
+                        {trade} · {list.length} งาน
+                      </summary>
+                      <div className="mt-1 space-y-2">{list.map(pickRow)}</div>
+                    </details>
                   ))}
-                  {plotIds.length > 20 && <span className="text-xs text-slate-500">+{plotIds.length - 20} แปลง</span>}
-                  <button type="button" className="ml-1 text-xs text-slate-500 hover:underline" onClick={() => setPlotIds([])}>
-                    ล้างทั้งหมด
-                  </button>
+                  {visibleGroups.length === 0 && <p className="py-2 text-center text-slate-500">ไม่พบงานที่ค้นหา</p>}
                 </div>
-              )}
+              </>
+            )}
+          </section>
+        ) : (
+          <section className="space-y-2">
+            <h3 className="font-semibold text-slate-800">งานอะไร</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {FREE_KINDS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={kind === k}
+                  onClick={() => setKind(k)}
+                  className={`rounded-full border px-3 py-1 text-xs ${kind === k ? theme.selected + ' font-medium' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {WEEKLY_PLAN_KINDS.find((x) => x.value === k)?.label}
+                </button>
+              ))}
             </div>
-
-            <div>
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <span className="font-medium text-slate-700">
-                  สัปดาห์ <span className="font-normal text-slate-500">(ค่าเริ่มต้นคือสัปดาห์ที่กำลังดู เพิ่มสัปดาห์อื่นได้)</span>
-                </span>
-                <span className="flex gap-3 text-xs">
-                  <button type="button" className="text-indigo-600 hover:underline" onClick={() => setWeekSel(openWeeks)}>
-                    ทั้งเดือน
-                  </button>
-                  <button
-                    type="button"
-                    className="text-slate-500 hover:underline"
-                    onClick={() => setWeekSel(openWeeks.includes(weekStart) ? [weekStart] : [])}
-                  >
-                    เฉพาะสัปดาห์นี้
-                  </button>
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                {data.weeks.map((w) => {
-                  const agreed = agreedWeeks.has(w)
-                  const on = weekSel.includes(w) && !agreed
-                  return (
-                    <label
-                      key={w}
-                      className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs ${
-                        agreed
-                          ? 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-500'
-                          : on
-                            ? 'cursor-pointer ' + theme.selected
-                            : 'cursor-pointer border-slate-200 text-slate-600'
-                      }`}
-                    >
-                      <input type="checkbox" checked={on} disabled={agreed} onChange={() => setWeekSel((prev) => toggleIn(prev, w))} />
-                      <span className="min-w-0">
-                        {formatWeekRange(w)}
-                        {agreed && <span className="block text-[11px]">🔒 ตกลงแผนแล้ว — ต้องยกเลิกการตกลงแผนก่อนจึงจะเพิ่มงานได้</span>}
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
+            <input
+              id="wp-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full rounded-md border border-slate-200 px-2 py-2"
+              placeholder="ชื่องาน เช่น ซ่อมรอยร้าวผนังห้องนอน"
+              aria-label="ชื่องาน"
+            />
+            <p className="text-xs text-slate-500">สร้างให้ทุกแปลงที่เลือกในทุกสัปดาห์ที่เลือก ถ้าไม่เลือกแปลงจะเป็นงานของโครงการ</p>
+          </section>
         )}
 
-        {step === 3 && boqCreate && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-slate-700">งาน BOQ ของแปลงที่เลือก</span>
-              <span className="text-xs text-slate-500">
-                แปลง {plotIds.length} · สัปดาห์ {weekSel.length}
-              </span>
-            </div>
-            <div className="space-y-2 rounded-lg border border-slate-200 p-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                <input
-                  id="wp-job-search"
-                  value={jobSearch}
-                  onChange={(e) => setJobSearch(e.target.value)}
-                  placeholder="ค้นหางาน BOQ หรือประเภทช่าง"
-                  className="w-full rounded-md border border-slate-200 py-2 pl-8 pr-2"
-                />
-              </div>
-              <div className="max-h-72 space-y-1 overflow-y-auto">
-                {jobsLoading && <p className="py-3 text-center text-slate-500">กำลังโหลดงาน BOQ...</p>}
-                {!jobsLoading && groups.length === 0 && (
-                  <div className="space-y-3 py-4 text-center">
-                    <p className="text-slate-600">แปลงที่เลือกยังไม่มีงาน BOQ — ต้อง sync งาน BOQ ให้แปลงก่อนจึงจะวางแผนงาน BOQ ได้</p>
-                    <div className="flex flex-wrap justify-center gap-2">
-                      <Button type="button" variant="secondary" size="sm" onClick={() => setStep(2)}>
-                        กลับไปเปลี่ยนแปลง
-                      </Button>
-                      <Button type="button" size="sm" onClick={() => setMode('manual')}>
-                        เปลี่ยนเป็นงานนอก BOQ
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                {!jobsLoading &&
-                  visibleGroups.map((g) => {
-                    const free = g.jobs.filter((j) => !isBlocked(j))
-                    const blocked = free.length === 0
-                    const on = boqSel.includes(g.boqItemId) && !blocked
-                    const plotCount = new Set(g.jobs.map((j) => j.plotId)).size
-                    const noContractor = free.filter((j) => !j.contractorName).length
-                    const statusSummary = (['completed', 'in_progress', 'pending'] as const)
-                      .map((s) => ({ s, n: g.jobs.filter((j) => (j.status || 'pending') === s).length }))
-                      .filter((x) => x.n > 0)
-                      .map((x) => (g.jobs.length === 1 ? JOB_STATUS_LABEL[x.s] : `${JOB_STATUS_LABEL[x.s]} ${x.n}`))
-                      .join(' · ')
-                    return (
-                      <label
-                        key={g.boqItemId}
-                        className={`flex items-start gap-2 rounded-md border px-2 py-2 ${
-                          blocked
-                            ? 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-500'
-                            : on
-                              ? 'cursor-pointer ' + theme.selected
-                              : 'cursor-pointer border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-0.5"
-                          checked={on}
-                          disabled={blocked}
-                          onChange={() => setBoqSel((prev) => toggleIn(prev, g.boqItemId))}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block">{g.title}</span>
-                          <span className="block text-xs text-slate-500">
-                            {[
-                              g.trade,
-                              formatQty(g.quantity, g.unit),
-                              statusSummary,
-                              plotIds.length > 1 ? `${plotCount}/${plotIds.length} แปลงที่เลือกมีงานนี้` : null,
-                              noContractor > 0
-                                ? noContractor === free.length
-                                  ? 'ยังไม่มีผู้รับเหมา'
-                                  : `${noContractor} แปลงยังไม่มีผู้รับผิดชอบ`
-                                : g.jobs[0].contractorName,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </span>
-                          {!blocked && free.length < g.jobs.length && (
-                            <span className="block text-xs text-amber-700">
-                              {g.jobs.length - free.length} แปลงวางแผนในสัปดาห์ที่เลือกแล้ว (จะข้าม)
-                            </span>
-                          )}
-                          {blocked && <span className="block text-xs text-amber-700">วางแผนในสัปดาห์ที่เลือกแล้ว — ข้าม</span>}
-                        </span>
-                      </label>
-                    )
-                  })}
-              </div>
-            </div>
+        <section className="space-y-2">
+          <h3 className="font-semibold text-slate-800">สัปดาห์ไหน</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {data.weeks.map((w) => {
+              const agreed = agreedWeeks.has(w)
+              const on = weekSel.includes(w) && !agreed
+              return (
+                <button
+                  key={w}
+                  type="button"
+                  disabled={agreed}
+                  aria-pressed={on}
+                  onClick={() => setWeekSel((prev) => toggleIn(prev, w))}
+                  title={agreed ? 'ตกลงแผนแล้ว ต้องเปิดแก้ไขแผนก่อนจึงจะเพิ่มงานได้' : undefined}
+                  className={`rounded-full border px-3 py-1 text-xs ${
+                    agreed ? 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-400' : on ? theme.selected + ' font-medium' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  } ${w === weekStart ? 'ring-1 ring-slate-300' : ''}`}
+                >
+                  {formatWeekRange(w)}
+                  {agreed ? ' 🔒' : w === weekStart ? ' (ที่กำลังดู)' : ''}
+                </button>
+              )
+            })}
           </div>
+        </section>
+
+        {boqCreate && (
+          <section className="space-y-2">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h3 className="font-semibold text-slate-800">เป้าหมายสิ้นสัปดาห์</h3>
+              <span className="text-xs text-slate-500">ใช้คำนวณ &quot;ควรเสร็จ&quot; ของแต่ละวัน ไม่ต้องกรอกรายวัน</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {END_TARGETS.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={endTarget === t}
+                  onClick={() => setEndTarget(t)}
+                  className={`rounded-full border px-3 py-1 text-xs tabular-nums ${endTarget === t ? theme.selected + ' font-medium' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {t === 100 ? 'เสร็จ 100%' : `${t}%`}
+                </button>
+              ))}
+            </div>
+            {weekSel.length > 1 && <p className="text-xs text-slate-500">เป้าหมายใช้กับสัปดาห์แรกที่เลือก สัปดาห์ถัดไปใช้ &quot;ต่องานค้างจากสัปดาห์ก่อน&quot; เพื่อยกความคืบหน้าและตั้งเป้าใหม่</p>}
+          </section>
         )}
 
-        {step === 3 && !boqCreate && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block font-medium text-slate-700">ประเภทงาน</span>
-                <select value={kind} onChange={(e) => setKind(e.target.value as WeeklyPlanKind)} className={inputClass}>
-                  {WEEKLY_PLAN_KINDS.map((k) => (
-                    <option key={k.value} value={k.value}>
-                      {k.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block font-medium text-slate-700">รายการงาน</span>
-                <input
-                  id="wp-title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className={inputClass}
-                  placeholder="เช่น ตรวจรับบ้านก่อนโอน"
-                />
-              </label>
-            </div>
-            <p className="text-xs text-slate-500">งานนอก BOQ จะสร้างให้ทุกแปลงที่เลือกในทุกสัปดาห์ที่เลือก (ถ้าไม่เลือกแปลง จะสร้างเป็นงานของโครงการ)</p>
-          </div>
-        )}
-
-        {step === 4 && (
-          <div className="space-y-4">
-            {assignmentFields}
-            {progressSection}
+        <details>
+          <summary className="cursor-pointer text-xs text-slate-600">ผู้คุมงานและหมายเหตุ (ไม่บังคับ)</summary>
+          <div className="mt-2 space-y-3">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-600">ผู้คุมงาน / ผู้รับผิดชอบ</span>
+              <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="w-full rounded-md border border-slate-200 bg-white px-2 py-2">
+                <option value="">ยังไม่มีผู้รับผิดชอบ</option>
+                {data.owners.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             {noteField}
           </div>
-        )}
+        </details>
 
         {errorBox}
       </div>
