@@ -12,9 +12,9 @@ import { getPlotProgressCurve, type PlotProgressCurve } from '@/actions/plot-pro
 import { getPlotPhaseSchedule, type PlotPhaseScheduleRow } from '@/actions/plot-phase-schedule'
 import { getPlotStockTrail, type PlotStockTrail } from '@/actions/plot-stock-trail-actions'
 import { createClient } from '@/lib/supabase/server'
-import { fetchLatestJobProgress, type JobProgress } from '@/actions/_shared/job-progress'
+import { fetchLatestJobProgress, fetchPlannedProgress, type JobProgress } from '@/actions/_shared/job-progress'
 import { fetchPlotExtraWork, fetchPlotRequestedQty, type PlotExtraWorkRow } from '@/actions/_shared/plot-cost'
-import { expectedPercentAt } from '@/lib/cost-control/progress'
+import { expectedFromJobPlans, expectedPercentAt } from '@/lib/cost-control/progress'
 import { permissionsForRole, requireModuleAccess } from '@/lib/auth/route-access'
 import type { PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
 
@@ -113,10 +113,11 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
   let jobProgress = new Map<string, JobProgress>()
   let extraWork: PlotExtraWorkRow[] = []
   let requestedByMaterial = new Map<number, number>()
+  let plannedByJob = new Map<string, number>()
   if (canSeeCost) {
     try {
       const supabase = await createClient()
-      ;[jobProgress, extraWork, requestedByMaterial] = await Promise.all([
+      ;[jobProgress, extraWork, requestedByMaterial, plannedByJob] = await Promise.all([
         fetchLatestJobProgress(supabase, { jobIds: rawJobs.map((j) => j.id as string) }).catch((e) => {
           console.error(e)
           return new Map<string, JobProgress>()
@@ -129,6 +130,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
           console.error(e)
           return new Map<number, number>()
         }),
+        fetchPlannedProgress(supabase, { jobIds: rawJobs.map((j) => j.id as string) }, progressCurve.today.slice(0, 10)),
       ])
     } catch (error) {
       console.error(error)
@@ -176,7 +178,12 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
       }))
   const jobsDone = jobs.filter((j) => j.status === 'completed').length
 
-  const expectedPercent = expectedPercentAt({
+  // The weekly plan is the realistic schedule, so it wins when the plot has
+  // one; otherwise fall back to the phase schedule / target-date ramp.
+  const planExpected = expectedFromJobPlans(
+    jobs.filter((j) => j.cost).map((j) => ({ value: j.cost!.totalBoq, planned: plannedByJob.get(j.id) ?? null }))
+  )
+  const expectedPercent = planExpected ?? expectedPercentAt({
     today: progressCurve.today,
     startDate: progressCurve.startDate,
     targetDate: progressCurve.targetDate,

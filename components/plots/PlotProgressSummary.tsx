@@ -41,7 +41,7 @@ export default function PlotProgressSummary({
             แผน (ควรเสร็จ)
           </div>
           <div className="text-xl font-bold text-slate-700">{pct(expectedPercent)}</div>
-          {expectedPercent == null && <div className="text-[11px] text-slate-400">ยังไม่ได้ตั้งวันที่เป้าหมายเสร็จ</div>}
+          {expectedPercent == null && <div className="text-[11px] text-slate-400">ยังไม่มีแผนงานรายสัปดาห์หรือวันที่เป้าหมายเสร็จ</div>}
         </div>
         <div>
           <div className="text-xs text-slate-500" title="มูลค่างานที่ทำเสร็จจริง ถ่วงน้ำหนักตามมูลค่างานแต่ละรายการ">

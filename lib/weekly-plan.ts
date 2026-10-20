@@ -206,3 +206,74 @@ export function compressPlotNames(names: string[]): string {
   }
   return [...parts, ...others].join(', ')
 }
+
+// ---------------------------------------------------------------------------
+// Check-in view helpers: one number per job, in plain words
+// ---------------------------------------------------------------------------
+
+/** Index 0-6 (Mon..Sun) of `today` inside the week starting `weekStart`; null when outside it. */
+export function dayIndexInWeek(weekStart: string, today: string): number | null {
+  for (let d = 0; d < 7; d++) if (addDaysStr(weekStart, d) === today) return d
+  return null
+}
+
+type CheckInItem = { carryPct: number | null; planPct: (number | null)[]; actualPct: (number | null)[] }
+
+/** How far the job is now: the latest ACTUAL, else what was carried in from last week, else 0. */
+export function currentProgress(item: CheckInItem): number {
+  return latestPct(item.actualPct)?.value ?? item.carryPct ?? 0
+}
+
+/** Where the plan says the job should be by `dayIdx`: the latest PLAN value up to that day, else the carry; null with no plan at all. */
+export function plannedProgressAt(item: CheckInItem, dayIdx: number): number | null {
+  for (let d = Math.min(6, dayIdx); d >= 0; d--) if (item.planPct[d] != null) return item.planPct[d]
+  return item.planPct.some((v) => v != null) ? (item.carryPct ?? 0) : null
+}
+
+export type CheckInState = 'no_plan' | 'behind' | 'on_track'
+
+/** A plain-words judgement: more than 5 points under the plan is "behind". */
+export function checkInState(actual: number, plan: number | null): CheckInState {
+  if (plan == null) return 'no_plan'
+  return actual + 5 < plan ? 'behind' : 'on_track'
+}
+
+/**
+ * Starting point for an unfinished job in the next week: carry in what was
+ * done, and aim as far ahead as last week's plan moved (at least 10 points,
+ * 25 when last week had no plan), never past 100. A suggestion only - the
+ * plan stays editable like any other.
+ */
+export function rolloverPlan(prev: CheckInItem): { carry: number; plan: number[] } {
+  const carry = Math.min(100, Math.max(0, currentProgress(prev)))
+  const prevCarry = prev.carryPct ?? 0
+  let lastPlan: number | null = null
+  for (let d = 6; d >= 0; d--) {
+    if (prev.planPct[d] != null) {
+      lastPlan = prev.planPct[d]
+      break
+    }
+  }
+  const step = lastPlan == null ? 25 : Math.max(10, lastPlan - prevCarry)
+  return { carry, plan: linearPlan(carry, Math.min(100, carry + step)) }
+}
+
+/**
+ * Planned % on `today` for one job from its weekly-plan rows: in the current
+ * week the PLAN value for today; for an earlier week its last PLAN value; a
+ * job whose first plan week is still ahead is 0. Null when it was never
+ * scheduled.
+ */
+export function plannedPercentFromRows(
+  rows: { weekStart: string; carryPct: number | null; planPct: (number | null)[] }[],
+  today: string
+): number | null {
+  const scheduled = rows.filter((r) => r.planPct.some((v) => v != null))
+  if (scheduled.length === 0) return null
+  const week = mondayOf(today)
+  const upTo = scheduled.filter((r) => r.weekStart <= week).sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1))
+  const row = upTo[0]
+  if (!row) return 0
+  const idx = row.weekStart === week ? (dayIndexInWeek(week, today) ?? 6) : 6
+  return plannedProgressAt({ carryPct: row.carryPct, planPct: row.planPct, actualPct: [] }, idx) ?? 0
+}

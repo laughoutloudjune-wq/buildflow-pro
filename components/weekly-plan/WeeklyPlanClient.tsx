@@ -20,7 +20,6 @@ import {
 import {
   addDaysStr,
   compressPlotNames,
-  dailyAverages,
   formatThaiDay,
   formatThaiMonth,
   formatWeekRange,
@@ -30,12 +29,12 @@ import {
   latestPct,
   mondayOf,
   WEEKLY_PLAN_KINDS,
-  WEEK_DAY_LABELS,
 } from '@/lib/weekly-plan'
 import ActionMenu from '@/components/ui/ActionMenu'
 import WeeklyPlanItemModal from './WeeklyPlanItemModal'
 import JobMaterialDetailModal from './JobMaterialDetailModal'
 import RecordProgressModal from './RecordProgressModal'
+import CheckInView from './CheckInView'
 
 /** Latest filled-in value of a Mon..Sun % row. */
 function lastPct(values: (number | null)[]): number | null {
@@ -43,9 +42,8 @@ function lastPct(values: (number | null)[]): number | null {
   return null
 }
 
-/** Material and progress figures for one row or group: BOQ material, material really used, progress expected, progress actual. */
+/** Progress in plain words for one row or group: how far along, where the plan says it should be, and a material warning only when there is one. */
 function ProgressMetrics({
-  materialBoq,
   materialUsed,
   plan,
   actual,
@@ -55,7 +53,6 @@ function ProgressMetrics({
   overCount = 0,
   onDetail,
 }: {
-  materialBoq: number | null
   materialUsed: number | null
   plan: number | null
   actual: number | null
@@ -67,45 +64,37 @@ function ProgressMetrics({
   /** opens the material breakdown; omitted for groups (open a plot's row instead) */
   onDetail?: () => void
 }) {
-  const cells = [
-    { label: 'วัสดุตาม BOQ', hint: 'สัดส่วนวัสดุของงานนี้เทียบกับ BOQ ทั้งหลัง', value: materialBoq },
-    { label: 'วัสดุสั่งจริง', hint: 'วัสดุที่สั่งซื้อแล้ว (PO) เทียบกับ BOQ ของแบบบ้าน', value: materialUsed, warn: warn || overCount > 0, detail: true },
-    { label: 'งานตามแผน', hint: 'ความคืบหน้าที่วางแผนไว้ (PLAN)', value: plan },
-    { label: 'งานจริง', hint: 'ความคืบหน้าจริง (ACTUAL)', value: actual },
-  ]
+  const behind = plan != null && actual != null && actual + 5 < plan
   return (
-    <div className="mt-1.5">
-      <dl className="grid max-w-md grid-cols-4 gap-2">
-        {cells.map((c) => {
-          const cls = `rounded-md px-2 py-1 text-left ${c.warn ? 'bg-red-50 ring-1 ring-inset ring-red-200' : 'bg-slate-50'}`
-          const inner = (
-            <>
-              <dt className="text-[10px] leading-tight text-slate-500">{c.label}</dt>
-              <dd className={`text-sm font-semibold tabular-nums ${c.warn ? 'text-red-700' : 'text-slate-800'}`}>{c.value == null ? '-' : `${c.value}%`}</dd>
-            </>
-          )
-          return c.detail && onDetail && c.value != null ? (
-            <button key={c.label} type="button" title="กดเพื่อดูรายละเอียดวัสดุ" onClick={onDetail} className={`${cls} hover:ring-2`}>
-              {inner}
+    <div className="mt-1.5 space-y-1 text-xs text-slate-600">
+      {(plan != null || actual != null) && (
+        <p>
+          {averaged && <span className="text-slate-500">เฉลี่ยทั้งกลุ่ม · </span>}
+          ทำได้ <span className="font-semibold tabular-nums text-slate-800">{actual == null ? '-' : `${actual}%`}</span>
+          {plan != null && <> · แผน {plan}%</>}
+          {carry != null && <> · ยกมา {carry}%</>}
+          {behind && (
+            <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800 ring-1 ring-inset ring-amber-200">ช้ากว่าแผน</span>
+          )}
+        </p>
+      )}
+      {overCount > 0 && (
+        <p className="font-medium text-red-700">
+          วัสดุเกิน BOQ {overCount} รายการ
+          {onDetail ? (
+            <button type="button" onClick={onDetail} className="ml-2 font-medium text-indigo-600 hover:underline">
+              ดูรายละเอียด
             </button>
           ) : (
-            <div key={c.label} title={c.hint} className={cls}>
-              {inner}
-            </div>
-          )
-        })}
-      </dl>
-      {(carry != null || averaged || warn || overCount > 0) && (
-        <p className="mt-0.5 text-[11px] text-slate-500">
-          {carry != null && <>ยกมา {carry}% · </>}
-          {averaged && <>ค่าเฉลี่ยของกลุ่ม · </>}
-          {overCount > 0 && (
-            <span className="font-medium text-red-700">
-              วัสดุเกิน BOQ {overCount} รายการ{onDetail ? ' · กดที่ช่องวัสดุสั่งจริงเพื่อดูรายละเอียด' : ' · ดูรายแปลงเพื่อดูรายละเอียด'}
-            </span>
+            ' · ดูรายแปลงเพื่อดูรายละเอียด'
           )}
-          {warn && overCount === 0 && <span className="font-medium text-amber-700">สั่งวัสดุเกินกว่างานที่เสร็จ</span>}
         </p>
+      )}
+      {warn && overCount === 0 && <p className="font-medium text-amber-700">สั่งวัสดุเกินกว่างานที่เสร็จ</p>}
+      {onDetail && materialUsed != null && overCount === 0 && !warn && (
+        <button type="button" onClick={onDetail} className="font-medium text-indigo-600 hover:underline">
+          ดูวัสดุของงานนี้
+        </button>
       )}
     </div>
   )
@@ -120,7 +109,7 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
   const router = useRouter()
   const toast = useToast()
   const [pending, startTransition] = useTransition()
-  const [view, setView] = useState<'week' | 'month'>('week')
+  const [view, setView] = useState<'checkin' | 'week' | 'month'>('checkin')
   const [modal, setModal] = useState<{ open: boolean; item: WeeklyPlanItem | null }>({ open: false, item: null })
   const [recordItem, setRecordItem] = useState<WeeklyPlanItem | null>(null)
   const [materialItem, setMaterialItem] = useState<WeeklyPlanItem | null>(null)
@@ -190,7 +179,6 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
         </p>
         {(item.carryPct != null || item.materialUsedPct != null || lastPct(item.planPct) != null || lastPct(item.actualPct) != null) && (
           <ProgressMetrics
-            materialBoq={item.materialBoqPct}
             materialUsed={item.materialUsedPct}
             plan={lastPct(item.planPct)}
             actual={lastPct(item.actualPct)}
@@ -234,7 +222,6 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
     const names = group.map((i) => i.plotName).filter((n): n is string => !!n)
     const plan = average(group.map((i) => latestPct(i.planPct)?.value ?? null))
     const actual = average(group.map((i) => latestPct(i.actualPct)?.value ?? null))
-    const matBoq = average(group.map((i) => i.materialBoqPct))
     const matUsed = average(group.map((i) => i.materialUsedPct))
     const matWarn = matUsed != null && actual != null && matUsed > actual + 15
     const canDeleteAll = group.every((i) => canEdit(i)) && !isAgreed(first.weekStart)
@@ -277,7 +264,7 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
               {first.ownerName ? `ผู้รับผิดชอบ: ${first.ownerName}` : <span className="text-amber-700">ยังไม่มีผู้รับผิดชอบ</span>}
             </p>
             {(plan != null || actual != null || matUsed != null) && (
-              <ProgressMetrics materialBoq={matBoq} materialUsed={matUsed} plan={plan} actual={actual} warn={matWarn} averaged overCount={group.reduce((n, i) => n + i.materialOverCount, 0)} />
+              <ProgressMetrics materialUsed={matUsed} plan={plan} actual={actual} warn={matWarn} averaged overCount={group.reduce((n, i) => n + i.materialOverCount, 0)} />
             )}
             <button
               type="button"
@@ -315,10 +302,10 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
   return (
     <div className="space-y-5">
       <PageHeader
-        title={view === 'week' ? 'แผนงานประจำสัปดาห์' : 'แผนงานประจำเดือน'}
+        title={view === 'checkin' ? 'งานสัปดาห์นี้' : view === 'week' ? 'แผนงานประจำสัปดาห์' : 'แผนงานประจำเดือน'}
         subtitle={project ? project.name : 'เลือกโครงการ'}
         actions={
-          <Button
+          view === 'checkin' ? undefined : <Button
             onClick={() => setModal({ open: true, item: null })}
             disabled={!project || (view === 'week' && !!meeting)}
             title={view === 'week' && meeting ? 'แผนสัปดาห์นี้ตกลงแล้ว — ยกเลิกการตกลงแผนก่อนจึงจะเพิ่มงานได้' : undefined}
@@ -342,18 +329,18 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
           ))}
         </select>
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-sm">
-          {(['week', 'month'] as const).map((v) => (
+          {(['checkin', 'week', 'month'] as const).map((v) => (
             <button
               key={v}
               type="button"
               onClick={() => setView(v)}
               className={`rounded-md px-3 py-1.5 font-medium ${view === v ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`}
             >
-              {v === 'week' ? 'รายสัปดาห์' : 'รายเดือน'}
+              {v === 'checkin' ? 'เช็คงาน' : v === 'week' ? 'แผนรายสัปดาห์' : 'แผนรายเดือน'}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1">
+        {view !== 'checkin' && <div className="flex items-center gap-1">
           <Button variant="secondary" size="sm" onClick={() => go(addDaysStr(weekStart, view === 'week' ? -7 : -28))} aria-label="ก่อนหน้า">
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -363,10 +350,18 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
           <Button variant="secondary" size="sm" onClick={() => go(addDaysStr(weekStart, view === 'week' ? 7 : 28))} aria-label="ถัดไป">
             <ChevronRight className="h-4 w-4" />
           </Button>
-        </div>
+        </div>}
       </div>
 
-      {view === 'week' ? (
+      {view === 'checkin' ? (
+        <CheckInView
+          data={data}
+          projectId={projectId}
+          currentWeek={currentWeek}
+          agreed={isAgreed(currentWeek)}
+          onAdd={() => setModal({ open: true, item: null })}
+        />
+      ) : view === 'week' ? (
         <>
           <Card className={`p-4 ${meeting ? 'border-emerald-200' : ''}`}>
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -418,43 +413,13 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
             </div>
           </Card>
 
-          {weekItems.some((i) => i.planPct.some((v) => v != null) || i.actualPct.some((v) => v != null)) && (
-            <Card className="p-4">
-              {(() => {
-                const avg = dailyAverages(weekItems)
-                const behind = weekItems.filter(isBehindPlan).length
-                return (
-                  <>
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="text-sm font-semibold text-slate-800">สรุปความคืบหน้าสัปดาห์ (เฉลี่ยทุกรายการ)</h3>
-                      {behind > 0 && <span className="text-xs font-medium text-amber-700">⚠ ล่าช้ากว่าแผน {behind} รายการ</span>}
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[28rem] text-center text-sm">
-                        <thead>
-                          <tr className="text-xs text-slate-500">
-                            <th className="w-20 py-1 text-left font-medium"> </th>
-                            {WEEK_DAY_LABELS.map((d) => (
-                              <th key={d} className="py-1 font-medium">{d}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {([['PLAN', avg.plan], ['ACTUAL', avg.actual]] as const).map(([label, row]) => (
-                            <tr key={label} className="border-t border-slate-100">
-                              <td className="py-1.5 text-left text-xs font-semibold text-slate-600">{label}</td>
-                              {row.map((v, i) => (
-                                <td key={i} className="py-1.5 text-slate-700">{v == null ? '-' : `${v}%`}</td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )
-              })()}
-            </Card>
+          {weekItems.length > 0 && (
+            <p className="text-sm text-slate-600">
+              สัปดาห์นี้ {weekItems.length} รายการ · เสร็จแล้ว {weekItems.filter((i) => i.status === 'done').length}
+              {weekItems.filter(isBehindPlan).length > 0 && (
+                <span className="ml-3 font-medium text-amber-700">ช้ากว่าแผน {weekItems.filter(isBehindPlan).length} รายการ</span>
+              )}
+            </p>
           )}
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -679,7 +644,7 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
           key={modal.item?.id ?? 'new'}
           data={data}
           projectId={projectId}
-          weekStart={weekStart}
+          weekStart={view === 'checkin' ? currentWeek : weekStart}
           item={modal.item}
           onClose={() => setModal({ open: false, item: null })}
           onSaved={() => {

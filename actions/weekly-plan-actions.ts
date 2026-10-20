@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getDashboardSession } from '@/lib/auth/route-access'
-import { addDaysStr, isMonday, jobMaterialUsage, mondayOf, weeksOfMonth, type WeeklyPlanKind, type WeeklyPlanStatus } from '@/lib/weekly-plan'
+import { addDaysStr, currentProgress, isMonday, jobMaterialUsage, mondayOf, rolloverPlan, weeksOfMonth, type WeeklyPlanKind, type WeeklyPlanStatus } from '@/lib/weekly-plan'
 
 export type WeeklyPlanItem = {
   id: string
@@ -840,4 +840,57 @@ export async function recordWeeklyPlanActual(id: string, day: number, value: num
   revalidatePath('/dashboard/weekly-plan')
   revalidatePath('/dashboard/billing')
   return { ok: true }
+}
+
+/**
+ * Carries last week's unfinished BOQ jobs into `weekStart` in one click: same
+ * job, contractor and owner, with last week's progress as the starting point
+ * and a suggested target (see rolloverPlan). Jobs already planned for the week
+ * are skipped, so pressing it twice adds nothing. An agreed week stays locked
+ * by the database like any other insert.
+ */
+export async function rollOverWeeklyPlan(projectId: string, weekStart: string): Promise<WeeklyPlanResult & { created?: number }> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  if (!projectId) return { error: 'กรุณาเลือกโครงการ' }
+  if (!isMonday(weekStart)) return { error: 'สัปดาห์ไม่ถูกต้อง' }
+
+  const supabase = await createClient()
+  const prevWeek = addDaysStr(weekStart, -7)
+  const [prevRes, currentRes] = await Promise.all([
+    supabase
+      .from('weekly_plan_items')
+      .select('plot_id, title, job_assignment_id, owner_id, contractor_id, carry_pct, plan_pct, actual_pct, status')
+      .eq('project_id', projectId)
+      .eq('week_start', prevWeek)
+      .not('job_assignment_id', 'is', null),
+    supabase.from('weekly_plan_items').select('job_assignment_id').eq('project_id', projectId).eq('week_start', weekStart).not('job_assignment_id', 'is', null),
+  ])
+  if (prevRes.error) return { error: `อ่านแผนสัปดาห์ก่อนไม่สำเร็จ: ${prevRes.error.message}` }
+  if (currentRes.error) return { error: `อ่านแผนสัปดาห์นี้ไม่สำเร็จ: ${currentRes.error.message}` }
+
+  const already = new Set((currentRes.data || []).map((r) => r.job_assignment_id as string))
+  const rows = (prevRes.data || [])
+    .filter((r) => r.status !== 'done' && !already.has(r.job_assignment_id as string))
+    .map((r) => ({ prev: r, next: rolloverPlan({ carryPct: r.carry_pct, planPct: padDays(r.plan_pct), actualPct: padDays(r.actual_pct) }) }))
+    .filter(({ prev }) => currentProgress({ carryPct: prev.carry_pct, planPct: padDays(prev.plan_pct), actualPct: padDays(prev.actual_pct) }) < 100)
+    .map(({ prev, next }) => ({
+      project_id: projectId,
+      plot_id: prev.plot_id,
+      week_start: weekStart,
+      kind: 'main',
+      title: prev.title,
+      job_assignment_id: prev.job_assignment_id,
+      owner_id: prev.owner_id,
+      contractor_id: prev.contractor_id,
+      carry_pct: next.carry,
+      plan_pct: next.plan,
+      created_by: caller.userId,
+    }))
+  if (rows.length === 0) return { error: 'ไม่มีงานค้างจากสัปดาห์ก่อนที่ต้องต่อ' }
+
+  const { error } = await supabase.from('weekly_plan_items').insert(rows)
+  if (error) return { error: planErrorMessage('ต่องานไม่สำเร็จ', error) }
+  revalidatePath('/dashboard/weekly-plan')
+  return { ok: true, created: rows.length }
 }

@@ -1,6 +1,7 @@
 import type { createClient } from '@/lib/supabase/server'
 import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
 import { latestRecordedByJob } from '@/lib/billing'
+import { plannedPercentFromRows } from '@/lib/weekly-plan'
 import { pickLatestProgress } from '@/lib/cost-control/progress'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
@@ -122,4 +123,60 @@ export async function fetchLatestJobProgress(
     if (picked) result.set(id, picked)
   }
   return result
+}
+
+/**
+ * Where the weekly plan says each job should be today (0-100). Jobs never
+ * scheduled are absent. This is what "Expected" is built from when a plot has
+ * a weekly plan, so the cost views and the plan screen agree on the target.
+ * Soft source: any failure just means no plan-based expectation.
+ */
+export async function fetchPlannedProgress(
+  supabase: Supabase,
+  scope: { jobIds: string[] } | { projectId: string },
+  today: string
+): Promise<Map<string, number>> {
+  type PlanRow = { job_assignment_id: string | null; week_start: string; carry_pct: number | null; plan_pct: (number | null)[] | null }
+  const rows: PlanRow[] = []
+  try {
+    if ('jobIds' in scope) {
+      for (const ids of chunk(scope.jobIds, CHUNK)) {
+        const { data, error } = await supabase
+          .from('weekly_plan_items')
+          .select('job_assignment_id, week_start, carry_pct, plan_pct')
+          .in('job_assignment_id', ids)
+        if (error) throw new Error(error.message)
+        rows.push(...((data || []) as unknown as PlanRow[]))
+      }
+    } else {
+      rows.push(
+        ...(await fetchAllRows<PlanRow>(
+          (from, to) =>
+            supabase
+              .from('weekly_plan_items')
+              .select('job_assignment_id, week_start, carry_pct, plan_pct')
+              .eq('project_id', scope.projectId)
+              .not('job_assignment_id', 'is', null)
+              .range(from, to) as unknown as PromiseLike<{ data: PlanRow[] | null; error: { message: string } | null }>
+        ))
+      )
+    }
+  } catch (error) {
+    console.error('job progress: weekly plan unavailable', error)
+    return new Map()
+  }
+
+  const byJob = new Map<string, { weekStart: string; carryPct: number | null; planPct: (number | null)[] }[]>()
+  for (const r of rows) {
+    if (!r.job_assignment_id) continue
+    const list = byJob.get(r.job_assignment_id) || []
+    list.push({ weekStart: r.week_start, carryPct: r.carry_pct == null ? null : Number(r.carry_pct), planPct: (r.plan_pct || []).map((v) => (v == null ? null : Number(v))) })
+    byJob.set(r.job_assignment_id, list)
+  }
+  const out = new Map<string, number>()
+  for (const [jobId, list] of byJob) {
+    const planned = plannedPercentFromRows(list, today)
+    if (planned != null) out.set(jobId, planned)
+  }
+  return out
 }

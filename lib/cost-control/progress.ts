@@ -149,3 +149,17 @@ export function pickLatestProgress(
   if (weekly) return { percent: weekly.percent, source: 'weekly' }
   return null
 }
+
+/**
+ * Expected % for a plot from its jobs' weekly-plan targets (value-weighted).
+ * A job with no plan counts as 0 expected (nothing was scheduled yet); null
+ * when no job of the plot was ever scheduled, so "no plan" is never shown as
+ * "0% expected".
+ */
+export function expectedFromJobPlans(jobs: { value: number; planned: number | null }[]): number | null {
+  if (!jobs.some((j) => j.planned != null)) return null
+  const total = jobs.reduce((s, j) => s + j.value, 0)
+  if (total <= 0) return null
+  const expected = jobs.reduce((s, j) => s + ((j.planned ?? 0) / 100) * j.value, 0)
+  return Math.max(0, Math.min(100, (expected / total) * 100))
+}

@@ -3,8 +3,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
-import { fetchLatestJobProgress } from '@/actions/_shared/job-progress'
+import { fetchLatestJobProgress, fetchPlannedProgress } from '@/actions/_shared/job-progress'
 import {
+  expectedFromJobPlans,
   expectedPercentAt,
   progressState,
   summarizeProgress,
@@ -148,6 +149,7 @@ export async function getCostBoard(
 
   // ---- labor, progress, extra work (labor viewers only) -------------------
   const jobsByPlot = new Map<string, ProgressJob[]>()
+  const planJobsByPlot = new Map<string, { value: number; planned: number | null }[]>()
   const jobValueByPlotType = new Map<string, Map<number, number>>()
   const startByPlot = new Map<string, string>()
   const extraApproved = new Map<string, number>()
@@ -157,7 +159,7 @@ export async function getCostBoard(
   const phasesByPlot = new Map<string, { contractor_type_id: number; planned_start_date: string; planned_end_date: string }[]>()
 
   if (canSeeLabor) {
-    const [jobs, progress, extraRes, payoutRes, phaseRes] = await Promise.all([
+    const [jobs, progress, planned, extraRes, payoutRes, phaseRes] = await Promise.all([
       fetchAllRows<JobRow>(
         (from, to) =>
           supabase
@@ -169,6 +171,7 @@ export async function getCostBoard(
             .range(from, to) as unknown as PromiseLike<{ data: JobRow[] | null; error: { message: string } | null }>
       ),
       fetchLatestJobProgress(supabase, { projectId: scope.projectId }),
+      fetchPlannedProgress(supabase, { projectId: scope.projectId }, new Date().toISOString().slice(0, 10)),
       supabase
         .from('billings')
         .select('plot_id, total_work_amount, status')
@@ -193,6 +196,9 @@ export async function getCostBoard(
       const list = jobsByPlot.get(job.plot_id) || []
       list.push({ value, progressPercent: progress.get(job.id)?.percent ?? null, paid })
       jobsByPlot.set(job.plot_id, list)
+      const planList = planJobsByPlot.get(job.plot_id) || []
+      planList.push({ value, planned: planned.get(job.id) ?? null })
+      planJobsByPlot.set(job.plot_id, planList)
 
       const typeId = boq?.contractor_type_id
       if (typeId != null) {
@@ -232,8 +238,10 @@ export async function getCostBoard(
       plannedEnd: ph.planned_end_date,
       weight: totalValue > 0 ? (byType?.get(ph.contractor_type_id) || 0) / totalValue : 0,
     }))
+    // The weekly plan wins when the plot has one; else phase schedule / target-date ramp.
     const expectedPercent = canSeeLabor
-      ? expectedPercentAt({ today, startDate: startByPlot.get(plot.id) ?? null, targetDate: plot.target_completion_date, phases })
+      ? (expectedFromJobPlans(planJobsByPlot.get(plot.id) || []) ??
+        expectedPercentAt({ today, startDate: startByPlot.get(plot.id) ?? null, targetDate: plot.target_completion_date, phases }))
       : null
     return {
       plotId: plot.id,
