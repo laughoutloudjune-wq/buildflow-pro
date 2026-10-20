@@ -14,8 +14,7 @@ import type {
   BillingActionSignature,
   BillingApprovalPayload,
 } from '@/lib/types/billing'
-import { assertProgressWithinRange, checkClaimAgainstRecorded, computeBillingTotals, latestRecordedByJob } from '@/lib/billing'
-import { todayInBangkok } from '@/lib/utils'
+import { assertProgressWithinRange, computeBillingTotals } from '@/lib/billing'
 
 // The heavy multi-write paths (approve, undo_approve) call the RPCs added in
 // migration 202604240001_billing_rpcs. TS still normalizes/validates the
@@ -65,20 +64,9 @@ export async function approveBilling(id: string, data: BillingApprovalPayload): 
 
     const totals = computeBillingTotals(approvalType, normalizedJobs, normalizedAdjustments)
 
-    // Approving above the recorded site progress is allowed, but only with a reason.
+    // Approving above the recorded site progress is only a warning on the review
+    // page; the reason is optional and stored when given.
     const overclaimReason = String(data.overclaim_reason || '').trim()
-    if (approvalType === 'progress' && normalizedJobs.length > 0 && !overclaimReason) {
-      const { data: plan, error: planError } = await supabase
-        .from('weekly_plan_items')
-        .select('job_assignment_id, week_start, actual_pct')
-        .in('job_assignment_id', normalizedJobs.map((j) => j.id))
-        .not('actual_pct', 'is', null)
-      if (planError) return { error: translateBillingError(planError.message) }
-      const recorded = latestRecordedByJob((plan || []) as { job_assignment_id: string; week_start: string; actual_pct: (number | null)[] }[])
-      const today = todayInBangkok()
-      const over = normalizedJobs.some((j) => j.progress_percent != null && checkClaimAgainstRecorded(Number(j.progress_percent), recorded[j.id], today).over)
-      if (over) return { error: 'มีงานที่อนุมัติ % สูงกว่าความคืบหน้าจริงหน้างาน กรุณาระบุเหตุผลก่อนอนุมัติ' }
-    }
 
     const signature: BillingActionSignature = {
       user_id: user.id,
