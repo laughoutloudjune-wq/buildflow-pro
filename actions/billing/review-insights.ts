@@ -17,7 +17,7 @@ export type ReviewWeeklyCheck = {
   target: number
 }
 
-export type ReviewMaterialRow = { name: string; unit: string; plan: number; used: number; ordered: number; state: 'over' | 'ordered_over' | 'ok' }
+export type ReviewMaterialRow = { name: string; unit: string; plan: number; jobPlan: number; used: number; ordered: number; state: 'over' | 'ordered_over' | 'ok' }
 
 export type ReviewJobInsight = {
   weekly: ReviewWeeklyCheck[]
@@ -114,10 +114,12 @@ export async function getBillingReviewInsights(billingId: string): Promise<Billi
     const boqIds = [...new Set(jobs.map((j) => j.boq_item_id).filter((v): v is string => !!v))]
     const plotIds = [...new Set(jobs.map((j) => j.plot_id).filter((v): v is string => !!v))]
     if (boqIds.length > 0 && plotIds.length > 0) {
-      const { data: mats } = await supabase.from('boq_material_items').select('boq_id, material_type_id').in('boq_id', boqIds)
+      const { data: mats } = await supabase.from('boq_material_items').select('boq_id, material_type_id, planned_quantity, waste_percent').in('boq_id', boqIds)
       const matsOfBoq = new Map<string, number[]>()
-      for (const m of (mats || []) as { boq_id: string; material_type_id: number }[]) {
+      const jobQty = new Map<string, number>()
+      for (const m of (mats || []) as { boq_id: string; material_type_id: number; planned_quantity: number | string | null; waste_percent: number | string | null }[]) {
         matsOfBoq.set(m.boq_id, [...(matsOfBoq.get(m.boq_id) || []), m.material_type_id])
+        jobQty.set(`${m.boq_id}:${m.material_type_id}`, num(m.planned_quantity))
       }
       type Roll = { material_type_id: number; material_name: string; unit: string; planned_qty: number | string; allowance_qty: number | string; ordered_qty: number | string; issued_qty: number | string }
       const rollByPlot = new Map<string, Map<number, Roll>>()
@@ -136,7 +138,7 @@ export async function getBillingReviewInsights(billingId: string): Promise<Billi
           const cap = num(r.planned_qty) + num(r.allowance_qty)
           const used = num(r.issued_qty)
           const ordered = num(r.ordered_qty)
-          rows.push({ name: r.material_name, unit: r.unit, plan: cap, used, ordered, state: cap > 0 && used > cap ? 'over' : cap > 0 && ordered > cap ? 'ordered_over' : 'ok' })
+          rows.push({ name: r.material_name, unit: r.unit, plan: cap, jobPlan: jobQty.get(`${j.boq_item_id}:${typeId}`) ?? 0, used, ordered, state: cap > 0 && used > cap ? 'over' : cap > 0 && ordered > cap ? 'ordered_over' : 'ok' })
         }
         if (result.jobs[j.id]) result.jobs[j.id].materials = rows
       }
