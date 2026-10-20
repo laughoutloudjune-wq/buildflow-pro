@@ -199,7 +199,8 @@ export default function PlotDetailPageClient({
   }
 
   const handleAssign = (jobId: string, contractorId: string) => {
-    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, contractorId: contractorId || null } : j)))
+    // assignContractor also resets the job to รอเริ่ม, so the screen does the same.
+    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, contractorId: contractorId || null, status: 'pending' } : j)))
     startTransition(async () => {
       await assignContractor(jobId, contractorId, plotId, projectId)
     })

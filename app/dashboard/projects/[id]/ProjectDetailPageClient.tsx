@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, MapPin, AlertCircle, Pencil, Users, GaugeCircle, LayoutList, Map as MapIcon } from 'lucide-react'
@@ -101,6 +101,24 @@ export default function ProjectDetailPageClient({
   const [houseModelFilter, setHouseModelFilter] = useState('')
   const [sellableFilter, setSellableFilter] = useState<SellableFilter>('all')
   const [groupFilter, setGroupFilter] = useState('')
+
+  // "Hide plots not for sale" is the sellable filter set to เปิดขาย, remembered per browser.
+  const HIDE_KEY = 'plots:hideNotSellable'
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(HIDE_KEY) === '1') queueMicrotask(() => setSellableFilter('sellable'))
+    } catch {
+      // storage unavailable: the switch just starts off
+    }
+  }, [])
+  const setHideNotSellable = (on: boolean) => {
+    setSellableFilter(on ? 'sellable' : 'all')
+    try {
+      window.localStorage.setItem(HIDE_KEY, on ? '1' : '0')
+    } catch {
+      // not remembered, still works
+    }
+  }
 
   const [isPending, startTransition] = useTransition()
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
@@ -204,11 +222,13 @@ export default function ProjectDetailPageClient({
 
   const markers: SitePlanMarker[] = useMemo(
     () =>
-      sortedPlots.map((plot) => ({
+      sortedPlots
+        .filter((plot) => !(sellableFilter === 'sellable' && plot.is_sellable === false))
+        .map((plot) => ({
         id: plot.id,
         label: plot.name,
         colorClass: plot.is_sellable === false ? 'bg-slate-400' : 'bg-emerald-500',
-        meta: plot.house_models?.name || undefined,
+        meta: plot.house_models?.name ? `${plot.house_models.name}${plot.house_models.code ? ` · ${plot.house_models.code}` : ''}` : undefined,
         summary: {
           status: (
             <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${plot.is_sellable === false ? 'bg-slate-100 text-slate-600 ring-slate-200' : 'bg-emerald-50 text-emerald-700 ring-emerald-200'}`}>
@@ -374,6 +394,17 @@ export default function ProjectDetailPageClient({
           </select>
         )}
       </PageToolbar>
+
+      <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          checked={sellableFilter === 'sellable'}
+          onChange={(e) => setHideNotSellable(e.target.checked)}
+          className="h-4 w-4 rounded border-slate-300"
+        />
+        ซ่อนแปลงที่ไม่เปิดขาย
+        <span className="text-xs text-slate-500">({plots.filter((p) => p.is_sellable === false).length.toLocaleString('th-TH')} แปลง)</span>
+      </label>
 
       {viewMode === 'map' ? (
         <SitePlanMap
