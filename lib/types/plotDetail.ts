@@ -13,6 +13,9 @@ export type PlotJobRow = {
   unit: string
   quantity: number
   contractorId: string | null
+  /** Latest reported progress 0-100 (billing or the foreman's weekly actual); null when nobody has reported. Null for sales viewers. */
+  progressPercent: number | null
+  progressSource: 'billing' | 'weekly' | null
   cost: {
     contractorName: string | null
     agreedPricePerUnit: number | null
@@ -29,6 +32,8 @@ export type PlotMaterialRowView = {
   materialTypeId: number
   name: string
   unit: string
+  /** Quantity on purchase requests that will still be bought (rejected, cancelled and closed lines excluded). */
+  requestedQty: number
   orderedQty: number
   receivedQty: number
   orderedValue: number | null

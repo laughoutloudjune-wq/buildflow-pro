@@ -15,6 +15,8 @@ import PlotOverviewTab from '@/components/plots/PlotOverviewTab'
 import PlotSalesTab from '@/components/plots/PlotSalesTab'
 import PlotConstructionTab from '@/components/plots/PlotConstructionTab'
 import PlotMaterialsTab from '@/components/plots/PlotMaterialsTab'
+import type { PlotExtraWorkRow } from '@/actions/_shared/plot-cost'
+import { progressState, summarizeProgress } from '@/lib/cost-control/progress'
 import PlotHistoryTab from '@/components/plots/PlotHistoryTab'
 import PlotWorkRequestsTab from '@/components/plots/PlotWorkRequestsTab'
 import {
@@ -71,6 +73,8 @@ export default function PlotDetailPageClient({
   payments,
   progressCurve,
   phaseSchedule,
+  extraWork,
+  expectedPercent,
   canSeeCost,
   canEditConstruction,
   canEditSales,
@@ -100,6 +104,8 @@ export default function PlotDetailPageClient({
   payments: SalePaymentRow[]
   progressCurve: PlotProgressCurve
   phaseSchedule: PlotPhaseScheduleRow[]
+  extraWork: PlotExtraWorkRow[]
+  expectedPercent: number | null
   canSeeCost: boolean
   canEditConstruction: boolean
   canEditSales: boolean
@@ -129,6 +135,15 @@ export default function PlotDetailPageClient({
 
   const [jobs, setJobs] = useState<PlotJobRow[]>(initialJobs)
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>(() => buildPriceDrafts(initialJobs))
+
+  // Recomputed from the live job list so a price change (which moves the
+  // contract value) is reflected without a full reload.
+  const liveProgress = (() => {
+    const summary = summarizeProgress(
+      jobs.filter((j) => j.cost).map((j) => ({ value: j.cost!.totalBoq, progressPercent: j.progressPercent, paid: j.cost!.paid }))
+    )
+    return { summary, health: progressState(summary, expectedPercent) }
+  })()
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isSyncConfirmOpen, setIsSyncConfirmOpen] = useState(false)
@@ -163,6 +178,9 @@ export default function PlotDetailPageClient({
         unit: job.boq_master?.unit || '',
         quantity,
         contractorId: job.contractor_id,
+        // Progress is not part of the raw job rows; keep what the bundle gave us.
+        progressPercent: jobs.find((j) => j.id === job.id)?.progressPercent ?? null,
+        progressSource: jobs.find((j) => j.id === job.id)?.progressSource ?? null,
         cost: { contractorName: job.contractors?.name || null, agreedPricePerUnit: agreedPrice, boqPricePerUnit: boqPrice, effectivePrice, totalBoq, paid },
       }
     })
@@ -360,6 +378,10 @@ export default function PlotDetailPageClient({
           onResetVariablePrice={handleResetVariablePrice}
           onAssign={handleAssign}
           onStatusChange={handleStatusChange}
+          progressSummary={liveProgress.summary}
+          expectedPercent={expectedPercent}
+          progressHealth={liveProgress.health}
+          extraWork={extraWork}
         />
       )}
       {tab === 'materials' && <PlotMaterialsTab materials={materials} canSeeCost={canSeeCost} />}

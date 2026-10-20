@@ -2,6 +2,9 @@ import { User } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import type { PlotJobRow } from '@/lib/types/plotDetail'
 import { TableFrame } from '@/components/ui/TableFrame'
+import PlotProgressSummary from '@/components/plots/PlotProgressSummary'
+import { earnedForJob, paidAheadForJob, type ProgressState, type ProgressSummary } from '@/lib/cost-control/progress'
+import type { PlotExtraWorkRow } from '@/actions/_shared/plot-cost'
 
 const STATUS_LABEL: Record<string, string> = {
   pending: 'รอเริ่ม',
@@ -27,6 +30,10 @@ export default function PlotConstructionTab({
   onResetVariablePrice,
   onAssign,
   onStatusChange,
+  progressSummary,
+  expectedPercent,
+  progressHealth,
+  extraWork,
 }: {
   jobs: PlotJobRow[]
   contractors: Contractor[]
@@ -38,6 +45,10 @@ export default function PlotConstructionTab({
   onResetVariablePrice: (job: PlotJobRow) => void
   onAssign: (jobId: string, contractorId: string) => void
   onStatusChange: (jobId: string, status: string) => void
+  progressSummary?: ProgressSummary
+  expectedPercent?: number | null
+  progressHealth?: ProgressState
+  extraWork?: PlotExtraWorkRow[]
 }) {
   // Sales (canSeeCost=false, so every job.cost is null) sees job name and
   // status only - no contractor column, no price/budget/paid columns at
@@ -45,7 +56,14 @@ export default function PlotConstructionTab({
   // themselves don't exist in this table.
   const showCostColumns = jobs.length === 0 || jobs.some((j) => j.cost)
 
+  const approvedExtra = (extraWork || []).filter((e) => e.status === 'approved')
+  const approvedExtraTotal = approvedExtra.reduce((sum, e) => sum + e.value, 0)
+
   return (
+    <>
+    {showCostColumns && progressSummary && (
+      <PlotProgressSummary summary={progressSummary} expectedPercent={expectedPercent ?? null} health={progressHealth ?? 'unknown'} />
+    )}
     <TableFrame>
       
         <table>
@@ -54,6 +72,12 @@ export default function PlotConstructionTab({
               <th className="px-4 py-3 font-semibold">รายการงาน</th>
               {showCostColumns && <th className="px-4 py-3 font-semibold w-[220px]">Variable Price / Unit</th>}
               {showCostColumns && <th className="px-4 py-3 font-semibold text-right">งบประมาณ (BOQ)</th>}
+              {showCostColumns && (
+                <th className="px-4 py-3 font-semibold w-[150px]" title="ความคืบหน้าล่าสุดจากใบเบิกที่อนุมัติ หรือที่โฟร์แมนบันทึกในแผนประจำสัปดาห์ (แล้วแต่อันไหนใหม่กว่า)">
+                  ความคืบหน้า
+                </th>
+              )}
+              {showCostColumns && <th className="px-4 py-3 font-semibold text-right" title="ความคืบหน้า x มูลค่างาน">มูลค่างานที่ทำได้</th>}
               {showCostColumns && <th className="px-4 py-3 font-semibold text-right">จ่ายแล้ว</th>}
               <th className="px-4 py-3 font-semibold w-[200px]">ผู้รับเหมา</th>
               <th className="px-4 py-3 font-semibold w-[120px]">สถานะ</th>
@@ -122,8 +146,32 @@ export default function PlotConstructionTab({
                     </td>
                   )}
                   {showCostColumns && (
+                    <td className="px-4 py-3">
+                      {job.progressPercent == null ? (
+                        <span className="text-xs text-slate-400">ยังไม่มีข้อมูล</span>
+                      ) : (
+                        <div title={job.progressSource === 'weekly' ? 'จากแผนประจำสัปดาห์ (โฟร์แมนบันทึก)' : 'จากใบเบิกงวดล่าสุดที่อนุมัติ'}>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full bg-blue-500" style={{ width: `${job.progressPercent}%` }} />
+                          </div>
+                          <div className="mt-0.5 text-xs text-slate-600">{Math.round(job.progressPercent)}%</div>
+                        </div>
+                      )}
+                    </td>
+                  )}
+                  {showCostColumns && (
+                    <td className="px-4 py-3 text-right text-slate-600">
+                      {job.cost ? `฿${formatCurrency(earnedForJob({ value: job.cost.totalBoq, progressPercent: job.progressPercent, paid: job.cost.paid }))}` : '—'}
+                    </td>
+                  )}
+                  {showCostColumns && (
                     <td className={`px-4 py-3 text-right font-bold ${isOverBudget ? 'text-red-600' : 'text-emerald-600'}`}>
                       {job.cost ? `฿${formatCurrency(job.cost.paid)}` : '—'}
+                      {job.cost && paidAheadForJob({ value: job.cost.totalBoq, progressPercent: job.progressPercent, paid: job.cost.paid }) > 0 && (
+                        <div className="text-[11px] font-medium text-red-600">
+                          จ่ายล่วงหน้า ฿{formatCurrency(paidAheadForJob({ value: job.cost.totalBoq, progressPercent: job.progressPercent, paid: job.cost.paid }))}
+                        </div>
+                      )}
                     </td>
                   )}
 
@@ -177,5 +225,38 @@ export default function PlotConstructionTab({
         {jobs.length === 0 && <div className="py-12 text-center text-slate-500">ยังไม่มีรายการงาน</div>}
       
     </TableFrame>
+    {showCostColumns && extraWork && extraWork.length > 0 && (
+      <div className="mt-4">
+        <div className="mb-1 flex items-baseline justify-between">
+          <h3 className="text-sm font-semibold text-slate-700">งานเพิ่ม (DC)</h3>
+          <span className="text-xs text-slate-500">อนุมัติแล้วรวม ฿{formatCurrency(approvedExtraTotal)}</span>
+        </div>
+        <TableFrame>
+          <table>
+            <thead>
+              <tr>
+                <th className="px-4 py-2 font-semibold">เลขที่</th>
+                <th className="px-4 py-2 font-semibold">เหตุผล</th>
+                <th className="px-4 py-2 font-semibold">ผู้รับเหมา</th>
+                <th className="px-4 py-2 font-semibold text-right">มูลค่า</th>
+                <th className="px-4 py-2 font-semibold">สถานะ</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {extraWork.map((e) => (
+                <tr key={e.id}>
+                  <td className="px-4 py-2 font-mono text-xs">{e.docNo || '—'}</td>
+                  <td className="px-4 py-2 text-slate-700">{e.reason || '—'}</td>
+                  <td className="px-4 py-2 text-slate-600">{e.contractorName || '—'}</td>
+                  <td className="px-4 py-2 text-right font-medium">฿{formatCurrency(e.value)}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{e.status === 'approved' ? 'อนุมัติแล้ว' : 'รออนุมัติ'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableFrame>
+      </div>
+    )}
+    </>
   )
 }

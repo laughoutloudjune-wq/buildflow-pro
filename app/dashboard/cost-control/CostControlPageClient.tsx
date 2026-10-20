@@ -13,16 +13,19 @@ import { formatCurrency } from '@/lib/currency'
 import ScopePicker, { type CostControlOptions } from '@/components/cost-control/ScopePicker'
 import QtyControlTab from '@/components/cost-control/QtyControlTab'
 import MaterialCostTab from '@/components/cost-control/MaterialCostTab'
+import CostBoardTab from '@/components/cost-control/CostBoardTab'
 import LaborCostTab from '@/components/cost-control/LaborCostTab'
 import { excessValue, rowStatus, type BoqControlOutsideBoqRow, type BoqControlRow, type BoqControlUnassignedRow, type ControlScope } from '@/lib/procurement/boqControl'
+import type { getCostBoard } from '@/actions/procurement/cost-board'
 import type { getBoqControl } from '@/actions/procurement/boq-control'
 import type { MaterialsSummaryRow } from '@/actions/procurement/materials-summary'
 import type { LaborLedgerEntry } from '@/lib/labor-budget'
 import { useDepartment } from '@/components/layout/DepartmentContext'
 
-export type CostControlTab = 'qty' | 'material-cost' | 'labor-cost'
+export type CostControlTab = 'overview' | 'qty' | 'material-cost' | 'labor-cost'
 
 const TAB_LABEL: Record<CostControlTab, string> = {
+  overview: 'ภาพรวมแปลง',
   qty: 'คุมปริมาณวัสดุ',
   'material-cost': 'ต้นทุนวัสดุ',
   'labor-cost': 'ต้นทุนค่าแรง',
@@ -36,6 +39,7 @@ type Props = {
   boqControl: Awaited<ReturnType<typeof getBoqControl>>
   materialsSummary: MaterialsSummaryRow[]
   laborEntries: LaborLedgerEntry[]
+  board: Awaited<ReturnType<typeof getCostBoard>>
   initialError?: string | null
 }
 
@@ -44,7 +48,7 @@ function buildUrl(scope: ControlScope, tab: CostControlTab): string {
   if (scope.projectId) params.set('project', scope.projectId)
   if (scope.plotIds && scope.plotIds.length > 0) params.set('plots', scope.plotIds.join(','))
   else if (scope.plotGroupId) params.set('group', scope.plotGroupId)
-  if (tab !== 'qty') params.set('tab', tab)
+  if (tab !== 'overview') params.set('tab', tab)
   const qs = params.toString()
   return qs ? `/dashboard/cost-control?${qs}` : '/dashboard/cost-control'
 }
@@ -63,6 +67,7 @@ export default function CostControlPageClient({
   boqControl,
   materialsSummary,
   laborEntries,
+  board,
   initialError,
 }: Props) {
   const router = useRouter()
@@ -99,7 +104,7 @@ export default function CostControlPageClient({
     { icon: MapPinOff, label: 'ยังไม่ระบุแปลง', value: `฿${formatCurrency(unassignedTotal)}`, tone: 'text-slate-500' },
   ]
 
-  const visibleTabs: CostControlTab[] = canSeeLabor ? ['qty', 'material-cost', 'labor-cost'] : ['qty', 'material-cost']
+  const visibleTabs: CostControlTab[] = canSeeLabor ? ['overview', 'qty', 'material-cost', 'labor-cost'] : ['overview', 'qty', 'material-cost']
 
   return (
     <PageContainer width="wide">
@@ -154,6 +159,7 @@ export default function CostControlPageClient({
             )}
           </div>
 
+          {tab === 'overview' && <CostBoardTab projectId={scope.projectId} rows={board.rows} totals={board.totals} canSeeLabor={canSeeLabor} />}
           {tab === 'qty' && <QtyControlTab scope={scope} rows={rows} unassigned={unassigned} outsideBoq={outsideBoq} />}
           {tab === 'material-cost' && <MaterialCostTab rows={materialsSummary} />}
           {tab === 'labor-cost' &&

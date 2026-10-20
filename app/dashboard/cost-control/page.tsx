@@ -1,5 +1,6 @@
 import { getBoqControl, getCostControlOptions } from '@/actions/procurement/boq-control'
 import { getMaterialsSummaryForProject } from '@/actions/procurement-actions'
+import { getCostBoard } from '@/actions/procurement/cost-board'
 import { getLaborLedger } from '@/actions/labor-budget-actions'
 import { getDashboardSession, permissionsForRole } from '@/lib/auth/route-access'
 import type { ControlScope } from '@/lib/procurement/boqControl'
@@ -8,7 +9,7 @@ import CostControlPageClient, { type CostControlTab } from './CostControlPageCli
 type SearchParams = { project?: string; group?: string; plots?: string; tab?: string }
 
 function resolveTab(raw: string | undefined): CostControlTab {
-  return raw === 'material-cost' || raw === 'labor-cost' ? raw : 'qty'
+  return raw === 'qty' || raw === 'material-cost' || raw === 'labor-cost' ? raw : 'overview'
 }
 
 /**
@@ -46,14 +47,21 @@ export default async function CostControlPage({ searchParams }: { searchParams: 
   let boqControl: Awaited<ReturnType<typeof getBoqControl>> = { rows: [], unassigned: [], outsideBoq: [] }
   let materialsSummary: Awaited<ReturnType<typeof getMaterialsSummaryForProject>> = []
   let laborEntries: Awaited<ReturnType<typeof getLaborLedger>>['entries'] = []
+  let board: Awaited<ReturnType<typeof getCostBoard>> = {
+    rows: [],
+    totals: { contract: null, paid: null, paidAhead: null, paidAheadJobs: 0, extraWorkApproved: null, extraWorkPending: null, materialUsed: 0, materialNoPlot: 0, toPayOut: null, toPayOutCount: 0 },
+  }
 
   if (scope.projectId) {
     try {
-      const [boqControlRes, materialsRes, laborRes] = await Promise.all([
+      const [boqControlRes, materialsRes, laborRes, boardRes] = await Promise.all([
         getBoqControl(scope),
         getMaterialsSummaryForProject(scope.projectId, { plotGroupId: scope.plotGroupId || undefined, plotIds: scope.plotIds }),
         canSeeLabor ? getLaborLedger({ projectId: scope.projectId, plotGroupId: scope.plotGroupId || undefined }) : Promise.resolve({ entries: [], groups: [] }),
+        // Only the overview tab shows the board, so only it pays for the query.
+        tab === 'overview' ? getCostBoard(scope, { canSeeLabor }) : Promise.resolve(board),
       ])
+      board = boardRes
       boqControl = boqControlRes
       materialsSummary = materialsRes
       // A batch filter (plotGroupId) is pushed into getLaborLedger itself,
@@ -75,6 +83,7 @@ export default async function CostControlPage({ searchParams }: { searchParams: 
       boqControl={boqControl}
       materialsSummary={materialsSummary}
       laborEntries={laborEntries}
+      board={board}
       initialError={initialError}
     />
   )

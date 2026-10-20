@@ -55,12 +55,12 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
     })
   }
 
-  const colCount = canSeeCost ? 10 : 8
+  const colCount = canSeeCost ? 11 : 9
 
   return (
     <div className="space-y-2">
       <p className="text-xs text-slate-500">
-        ใช้จริง = เบิกจากสโตร์ + ส่งตรงแปลง เทียบกับ BOQ รวมเผื่อเสีย · การเบิกที่ระบุเป็นกลุ่มแปลงจะแบ่งเท่ากันทุกแปลงในกลุ่ม · การเบิกเก่าที่ไม่ได้ระบุแปลงจะไม่แสดงที่นี่
+        ลำดับ: BOQ → ขอซื้อ → ยอดสั่ง → รับแล้ว → ใช้จริง · ใช้จริง = เบิกจากสโตร์ + ส่งตรงแปลง เทียบกับ BOQ รวมเผื่อเสีย · การเบิกที่ระบุเป็นกลุ่มแปลงจะแบ่งเท่ากันทุกแปลงในกลุ่ม · การเบิกเก่าที่ไม่ได้ระบุแปลงจะไม่แสดงที่นี่
       </p>
       <TableFrame>
         <table>
@@ -68,6 +68,7 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
             <tr>
               <th className="px-4 py-3 font-semibold">วัสดุ</th>
               <th className="px-4 py-3 font-semibold text-right">BOQ</th>
+              <th className="px-4 py-3 font-semibold text-right" title="จำนวนที่ขอซื้อ (ไม่นับคำขอที่ถูกปฏิเสธ ยกเลิก หรือปิดรายการแล้ว)">ขอซื้อ</th>
               <th className="px-4 py-3 font-semibold text-right">ยอดสั่ง</th>
               <th className="px-4 py-3 font-semibold text-right">รับแล้ว</th>
               <th className="px-4 py-3 font-semibold text-right">เบิกจากสโตร์</th>
@@ -115,6 +116,14 @@ export default function PlotMaterialsTab({ materials, canSeeCost }: { materials:
                       title={m.plannedQty != null && m.allowanceQty ? `ตาม BOQ ${fmt(m.plannedQty)} + เผื่อเสีย ${fmt(m.allowanceQty)}` : undefined}
                     >
                       {m.plannedQty != null ? `${fmt(m.plannedQty + (m.allowanceQty || 0))} ${m.unit}` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-600">
+                      {m.requestedQty ? `${fmt(m.requestedQty)} ${m.unit}` : '—'}
+                      {m.plannedQty != null && m.requestedQty > m.plannedQty + (m.allowanceQty || 0) && (
+                        <div className="text-[11px] font-medium text-red-600" title="จำนวนที่ขอซื้อมากกว่า BOQ รวมเผื่อเสีย (เป็นคำเตือน ไม่ได้ปิดกั้น)">
+                          ขอเกิน BOQ
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right text-slate-600">{m.orderedQty ? `${fmt(m.orderedQty)} ${m.unit}` : '—'}</td>
                     <td className="px-4 py-3 text-right text-slate-600">{m.receivedQty ? `${fmt(m.receivedQty)} ${m.unit}` : '—'}</td>

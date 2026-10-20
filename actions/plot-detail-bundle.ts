@@ -12,6 +12,9 @@ import { getPlotProgressCurve, type PlotProgressCurve } from '@/actions/plot-pro
 import { getPlotPhaseSchedule, type PlotPhaseScheduleRow } from '@/actions/plot-phase-schedule'
 import { getPlotStockTrail, type PlotStockTrail } from '@/actions/plot-stock-trail-actions'
 import { createClient } from '@/lib/supabase/server'
+import { fetchLatestJobProgress, type JobProgress } from '@/actions/_shared/job-progress'
+import { fetchPlotExtraWork, fetchPlotRequestedQty, type PlotExtraWorkRow } from '@/actions/_shared/plot-cost'
+import { expectedPercentAt } from '@/lib/cost-control/progress'
 import { permissionsForRole, requireModuleAccess } from '@/lib/auth/route-access'
 import type { PlotJobRow, PlotMaterialRowView } from '@/lib/types/plotDetail'
 
@@ -104,6 +107,34 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     console.error(error)
   }
 
+  // Progress, extra work and requested quantities are cost-side figures, so
+  // they are only fetched for viewers who may see cost (D2). Each is a soft
+  // source: a failure leaves the older tabs working.
+  let jobProgress = new Map<string, JobProgress>()
+  let extraWork: PlotExtraWorkRow[] = []
+  let requestedByMaterial = new Map<number, number>()
+  if (canSeeCost) {
+    try {
+      const supabase = await createClient()
+      ;[jobProgress, extraWork, requestedByMaterial] = await Promise.all([
+        fetchLatestJobProgress(supabase, { jobIds: rawJobs.map((j) => j.id as string) }).catch((e) => {
+          console.error(e)
+          return new Map<string, JobProgress>()
+        }),
+        fetchPlotExtraWork(supabase, plotId).catch((e) => {
+          console.error(e)
+          return [] as PlotExtraWorkRow[]
+        }),
+        fetchPlotRequestedQty(supabase, projectId, plotId).catch((e) => {
+          console.error(e)
+          return new Map<number, number>()
+        }),
+      ])
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
   const jobs: PlotJobRow[] = canSeeCost
     ? rawJobs.map((job) => {
         const agreedPrice = job.agreed_price_per_unit as number | null
@@ -120,6 +151,8 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
           unit: job.boq_master?.unit || '',
           quantity,
           contractorId: job.contractor_id,
+          progressPercent: jobProgress.get(job.id as string)?.percent ?? null,
+          progressSource: jobProgress.get(job.id as string)?.source ?? null,
           cost: {
             contractorName: job.contractors?.name || null,
             agreedPricePerUnit: agreedPrice,
@@ -137,9 +170,18 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
         unit: job.unit || '',
         quantity: job.quantity || 0,
         contractorId: job.contractor_id,
+        progressPercent: null,
+        progressSource: null,
         cost: null,
       }))
   const jobsDone = jobs.filter((j) => j.status === 'completed').length
+
+  const expectedPercent = expectedPercentAt({
+    today: progressCurve.today,
+    startDate: progressCurve.startDate,
+    targetDate: progressCurve.targetDate,
+    phases: progressCurve.phaseMilestones.map((p) => ({ plannedStart: p.plannedStart, plannedEnd: p.plannedEnd, weight: p.weight })),
+  })
 
   // One row per material that was bought for, handed out to, or planned
   // for this plot - PO figures, store withdrawals / straight-to-plot
@@ -152,6 +194,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
         materialTypeId: id,
         name,
         unit,
+        requestedQty: 0,
         orderedQty: 0,
         receivedQty: 0,
         orderedValue: canSeeCost ? 0 : null,
@@ -199,6 +242,17 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
       console.error(error)
     }
   }
+  for (const [materialTypeId, qty] of requestedByMaterial) {
+    const known = materialRows.get(materialTypeId)
+    if (known) {
+      known.requestedQty = qty
+      continue
+    }
+    // A requested material nothing else mentions yet still needs its row.
+    const supabase = await createClient()
+    const { data: mt } = await supabase.from('material_types').select('name, unit').eq('id', materialTypeId).maybeSingle()
+    rowFor(materialTypeId, mt?.name || '-', mt?.unit || '').requestedQty = qty
+  }
   const materials = Array.from(materialRows.values()).sort((a, b) => a.name.localeCompare(b.name, 'th'))
 
   const historyView = history.map((h) => ({
@@ -230,6 +284,8 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     promotionItems,
     progressCurve,
     phaseSchedule,
+    extraWork,
+    expectedPercent,
     canSeeCost,
     canEditConstruction,
     canEditSales,
