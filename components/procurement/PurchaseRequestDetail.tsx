@@ -17,6 +17,7 @@ import PurchaseRequestDocActions from '@/components/procurement/PurchaseRequestD
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import PurchaseRequestSettleModal from '@/components/procurement/PurchaseRequestSettleModal'
 import RequestOrderComparison from '@/components/procurement/RequestOrderComparison'
+import { compareRequestLine, lineHasFlag, type RequestLineFlag } from '@/lib/procurement/requestFlags'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
 import { getBoqCheckForPurchaseRequest } from '@/actions/procurement/boq-control'
 import { PO_STATUS_LABEL, PO_STATUS_TONE, PR_STATUS_LABEL, PR_STATUS_TONE } from '@/lib/status-labels'
@@ -304,6 +305,7 @@ export default function PurchaseRequestDetail({
   // highlight below frozen at whatever it was on the first render. A lazy
   // initializer runs exactly once per mount, which is an input it can track.
   const [now] = useState(() => Date.now())
+  const [flagFilter, setFlagFilter] = useState<RequestLineFlag | null>(null)
   const [boqCheck, setBoqCheck] = useState<Awaited<ReturnType<typeof getBoqCheckForPurchaseRequest>> | null>(null)
 
   useEffect(() => {
@@ -432,7 +434,7 @@ export default function PurchaseRequestDetail({
       </Card>
 
       {(request.status === 'approved' || request.status === 'ordered' || request.status === 'received') && (
-        <RequestOrderComparison request={request} canReview onChanged={onChanged} />
+        <RequestOrderComparison request={request} canReview onChanged={onChanged} activeFlag={flagFilter} onFlagChange={setFlagFilter} />
       )}
 
       <Card className="overflow-hidden">
@@ -449,7 +451,9 @@ export default function PurchaseRequestDetail({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {(request.purchase_request_items || []).map((item) => {
+              {(request.purchase_request_items || [])
+                .filter((item) => !flagFilter || lineHasFlag(compareRequestLine(request, item, now), flagFilter))
+                .map((item) => {
                 const closed = closedState(request, item)
                 const settlements = item.purchase_request_item_settlements || []
                 const links = item.fulfillment?.links || []

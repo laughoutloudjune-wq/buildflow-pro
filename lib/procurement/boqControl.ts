@@ -79,13 +79,17 @@ export function ceilingQty(row: BoqControlRow): number {
 
 /** Committed-so-far basis for the "would this push us over budget" checks
  * at signing time (BoqCheckLine / getBoqCheckForDraft's 'ordered' basis,
- * getBoqCheckForPurchaseOrder, the PR draft check) - ordered (whether or not
- * it has arrived yet) plus issued from stock. Deliberately not receivedQty -
- * the commitment happens at order time, not delivery. Deliberately NOT used
- * for the cost-control rollup's own ceiling/status/percent any more - see
- * consumedQty below. */
+ * getBoqCheckForPurchaseOrder, the PR draft check): the larger of what was
+ * ordered and what was issued. Never their sum - almost every issue (and
+ * every straight-to-plot delivery, which posts its own 'out' movement) is
+ * material that an order already counted, so adding them showed one batch
+ * of 1,890 bricks as 3,780. The larger figure also stays right when stock
+ * was withdrawn that this scope never ordered (issued > ordered). Deliberately
+ * not receivedQty - the commitment happens at order time, not delivery.
+ * Deliberately NOT used for the cost-control rollup's own ceiling/status/
+ * percent - see consumedQty below. */
 export function totalUsedQty(row: BoqControlRow): number {
-  return row.orderedQty + row.issuedQty
+  return Math.max(row.orderedQty, row.issuedQty)
 }
 
 /** What this scope has actually consumed: every 'out' stock movement against

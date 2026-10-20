@@ -180,7 +180,7 @@ function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsi
           <tr>
             <th>วัสดุ</th>
             <th class="right">BOQ ตามแบบ</th>
-            <th class="right">ซื้อไปแล้ว</th>
+            <th class="right">ยอดสั่งก่อนหน้า</th>
             <th class="right">ใบนี้</th>
             <th class="right">รวมทั้งหมด</th>
             <th class="right">เกิน</th>
