@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
                   return (
                       <View key={`adj-${i}`} style={styles.tableRow}>
                           <Text style={styles.col1}>+</Text>
-                          <Text style={styles.col2}>{adj.description} (งานเพิ่ม)</Text>
+                          <Text style={styles.col2}>{adj.description} (งานเพิ่ม) - {adj.plot_name ? `แปลง ${adj.plot_name}` : 'ส่วนกลาง'}</Text>
                           <Text style={styles.col3}>{adj.quantity} {adj.unit}</Text>
                           <Text style={styles.col4}>{adj.unit_price?.toLocaleString()}</Text>
                           <Text style={styles.col5}>{total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
                   return (
                       <View key={`ded-${i}`} style={styles.tableRow}>
                           <Text style={styles.col1}>-</Text>
-                          <Text style={{ ...styles.col2, color: '#dc2626' }}>{adj.description} (รายการหัก)</Text>
+                          <Text style={{ ...styles.col2, color: '#dc2626' }}>{adj.description} (รายการหัก) - {adj.plot_name ? `แปลง ${adj.plot_name}` : 'ส่วนกลาง'}</Text>
                           <Text style={styles.col3}>{adj.quantity} {adj.unit}</Text>
                           <Text style={styles.col4}>{adj.unit_price?.toLocaleString()}</Text>
                           <Text style={{ ...styles.col5, color: '#dc2626' }}>-{total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
