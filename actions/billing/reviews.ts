@@ -14,7 +14,7 @@ import type {
   BillingActionSignature,
   BillingApprovalPayload,
 } from '@/lib/types/billing'
-import { checkClaimAgainstRecorded, computeBillingTotals, latestRecordedByJob } from '@/lib/billing'
+import { assertProgressWithinRange, checkClaimAgainstRecorded, computeBillingTotals, latestRecordedByJob } from '@/lib/billing'
 import { todayInBangkok } from '@/lib/utils'
 
 // The heavy multi-write paths (approve, undo_approve) call the RPCs added in
@@ -51,6 +51,8 @@ export async function approveBilling(id: string, data: BillingApprovalPayload): 
         progress_percent: job.progress_percent ?? null,
       }))
       .filter((job) => job.id)
+
+    assertProgressWithinRange(normalizedJobs)
 
     const normalizedAdjustments = (data.adjustments || []).map((adj) => ({
       type: (adj.type === 'deduction' ? 'deduction' : 'addition') as 'addition' | 'deduction',
