@@ -70,7 +70,6 @@ export default function PlotDetailPageClient({
   promotions,
   promotionItems,
   history,
-  materials,
   workRequests,
   payments,
   progressCurve,
@@ -389,7 +388,7 @@ export default function PlotDetailPageClient({
           extraWork={extraWork}
         />
       )}
-      {tab === 'materials' && <PlotMaterialsTab materials={materials} canSeeCost={canSeeCost} />}
+      {tab === 'materials' && <PlotMaterialsTab plotId={plotId} />}
       {tab === 'requests' && (
         <PlotWorkRequestsTab plotId={plotId} requests={workRequests} canCreate={canEditSales} />
       )}

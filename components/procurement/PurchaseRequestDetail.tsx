@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useState, useTransition } from 'react'
+import { useCallback, useEffect, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, ListChecks, Loader2, PackageCheck, Pencil, ShoppingCart, Undo2, XCircle } from 'lucide-react'
@@ -20,10 +20,14 @@ import RequestOrderComparison from '@/components/procurement/RequestOrderCompari
 import { compareRequestLine, lineHasFlag, type RequestLineFlag } from '@/lib/procurement/requestFlags'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
 import { getBoqCheckForPurchaseRequest } from '@/actions/procurement/boq-control'
-import { PO_STATUS_LABEL, PO_STATUS_TONE, PR_STATUS_LABEL, PR_STATUS_TONE } from '@/lib/status-labels'
+import { getUnitConversions } from '@/actions/procurement/unit-conversions'
+import UnitConversionNote from '@/components/procurement/UnitConversionNote'
+import { UNKNOWN_CONVERSION_LABEL, type UnitConversions } from '@/lib/procurement/units'
+import { isBoqCheckLineOver } from '@/lib/procurement/boqControl'
+import { pmReviewPurchaseRequest } from '@/actions/procurement-actions'
+import { PR_STATUS_LABEL, PR_STATUS_TONE } from '@/lib/status-labels'
 import type { PurchaseRequest, PurchaseRequestItem } from '@/lib/types/procurement'
 import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
-import type { FulfillmentLink } from '@/lib/procurement/allocationTrace'
 import {
   orderLineUnit,
   orderedQuantity,
@@ -101,23 +105,6 @@ function closedState(request: PurchaseRequest, item: PurchaseRequestItem): 'open
   }
   void request
   return 'open'
-}
-
-/** What the quantity column shows: an answered line reports the purchase (in
- * whatever unit it was really bought in), an open one still reports the ask.
- * Several units on one line - two POs bought it differently - are listed
- * rather than added together. */
-function quantityDisplay(item: PurchaseRequestItem, closed: 'open' | 'ordered' | 'cancelled'): string {
-  const unit = requestLineUnit(item)
-  const sameUnit = orderedQuantity(item)
-  const otherUnits = purchasesInOtherUnits(item)
-  if (closed === 'ordered' && (sameUnit > 0 || otherUnits.length > 0)) {
-    return [
-      ...(sameUnit > 0 ? [`${sameUnit.toLocaleString('th-TH')} ${unit}`] : []),
-      ...otherUnits.map((p) => `${p.quantity.toLocaleString('th-TH')} ${p.unit}`),
-    ].join(' + ')
-  }
-  return `${originalQuantityRequested(item).toLocaleString('th-TH')} ${unit}`
 }
 
 /** The orders this line was answered by, with how much each one takes from
@@ -204,69 +191,6 @@ function lineTags(request: PurchaseRequest, item: PurchaseRequestItem): { label:
   return tags
 }
 
-/** Every PO fulfilling one request line: the supplier, what purchasing
- * actually ordered (with the original ask when it differs), and this line's
- * own allocated / received / outstanding quantity - never the whole PO
- * line's, which on a consolidated order also serves other requests. */
-function FulfillmentTable({ links }: { links: FulfillmentLink[] }) {
-  const fmt = (n: number) => n.toLocaleString('th-TH')
-  return (
-    <table className="w-full text-left text-xs">
-      <thead className="text-slate-400">
-        <tr>
-          <th className="py-1 pr-3 font-medium">ใบสั่งซื้อ</th>
-          <th className="py-1 pr-3 font-medium">ผู้จำหน่าย</th>
-          <th className="py-1 pr-3 font-medium">วัสดุที่สั่งจริง</th>
-          <th className="py-1 pr-3 text-right font-medium">จัดสรรให้ใบนี้</th>
-          <th className="py-1 pr-3 text-right font-medium">รับแล้ว</th>
-          <th className="py-1 pr-3 text-right font-medium">ค้างรับ</th>
-          <th className="py-1 font-medium">สถานะ</th>
-        </tr>
-      </thead>
-      <tbody className="text-slate-600">
-        {links.map((l) => (
-          <tr key={l.allocationId ?? `${l.poId}-${l.poItemId}`} className={l.cancelled ? 'text-slate-400 line-through' : ''}>
-            <td className="py-1 pr-3 font-mono">
-              <Link href={`/dashboard/procurement/orders/${l.poId}`} className="text-indigo-600 hover:underline">
-                {l.poNo}
-              </Link>
-            </td>
-            <td className="py-1 pr-3">{l.supplierName || '-'}</td>
-            <td className="py-1 pr-3">
-              {l.actualMaterialName}
-              {l.isSubstitute && <span className="ml-1 text-slate-500">(ขอไว้: {l.requestedMaterialName})</span>}
-            </td>
-            <td className="whitespace-nowrap py-1 pr-3 text-right">
-              {fmt(l.allocated)} {l.unit}
-              {l.lineOrdered !== l.allocated && <span className="text-slate-500"> / {fmt(l.lineOrdered)}</span>}
-            </td>
-            <td
-              className="whitespace-nowrap py-1 pr-3 text-right"
-              title={l.receivedIsEstimate ? 'ประมาณตามสัดส่วน - ใบรับสินค้าบันทึกต่อรายการใน PO ไม่ได้แยกตามคำขอซื้อ' : undefined}
-            >
-              {l.receivedIsEstimate ? '≈ ' : ''}
-              {fmt(l.received)}
-            </td>
-            <td className="whitespace-nowrap py-1 pr-3 text-right">{fmt(l.outstanding)}</td>
-            <td className="py-1">
-              <span className={`rounded-full px-2 py-0.5 ${PO_STATUS_TONE[l.poStatus]}`}>{PO_STATUS_LABEL[l.poStatus]}</span>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-      {links.some((l) => l.receivedIsEstimate) && (
-        <tfoot>
-          <tr>
-            <td colSpan={7} className="pt-1 text-[11px] text-slate-500">
-              ≈ ประมาณตามสัดส่วนของที่สั่ง - ใบรับสินค้าบันทึกต่อรายการใน PO ไม่ได้ระบุว่าของที่รับเป็นของคำขอซื้อใบไหน
-            </td>
-          </tr>
-        </tfoot>
-      )}
-    </table>
-  )
-}
-
 /** Plot scope is one of three mutually exclusive shapes (single plot, saved
  * group, or an ad-hoc multi-select) - same convention as purchase orders. */
 function plotLabel(request: PurchaseRequest): string | null {
@@ -308,6 +232,26 @@ export default function PurchaseRequestDetail({
   const [flagFilter, setFlagFilter] = useState<RequestLineFlag | null>(null)
   const [boqCheck, setBoqCheck] = useState<Awaited<ReturnType<typeof getBoqCheckForPurchaseRequest>> | null>(null)
 
+  const [conversions, setConversions] = useState<UnitConversions>({})
+  const [conversionsRev, setConversionsRev] = useState(0)
+  const [reviewNote, setReviewNote] = useState(request.pm_review_comment || '')
+  const reloadConversions = useCallback(() => setConversionsRev((n) => n + 1), [])
+  const canSetConversion = true
+
+  const materialIdsKey = (request.purchase_request_items || []).map((i) => i.material_type_id).join(',')
+  useEffect(() => {
+    let cancelled = false
+    const ids = materialIdsKey ? materialIdsKey.split(',').map(Number) : []
+    getUnitConversions(ids)
+      .then((c) => {
+        if (!cancelled) setConversions(c)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [materialIdsKey, conversionsRev])
+
   useEffect(() => {
     let cancelled = false
     getBoqCheckForPurchaseRequest(request.id)
@@ -331,6 +275,18 @@ export default function PurchaseRequestDetail({
       }
       onChanged()
       toast.success('อนุมัติคำขอซื้อเรียบร้อยแล้ว')
+    })
+  }
+
+  function handleReviewed() {
+    startTransition(async () => {
+      const result = await pmReviewPurchaseRequest(request.id, reviewNote)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      onChanged()
+      toast.success('บันทึกว่าตรวจแล้ว')
     })
   }
 
@@ -434,121 +390,138 @@ export default function PurchaseRequestDetail({
       </Card>
 
       {(request.status === 'approved' || request.status === 'ordered' || request.status === 'received') && (
-        <RequestOrderComparison request={request} canReview onChanged={onChanged} activeFlag={flagFilter} onFlagChange={setFlagFilter} />
+        <RequestOrderComparison request={request} canReview={false} onChanged={onChanged} activeFlag={flagFilter} onFlagChange={setFlagFilter} />
       )}
 
-      <Card className="overflow-hidden">
-        <div className="border-b bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">รายการวัสดุ</div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-4 py-2 font-medium">วัสดุ</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right font-medium">จำนวน</th>
-                <th className="px-4 py-2 font-medium">สถานะ</th>
-                <th className="px-4 py-2 font-medium">เวลาที่ต้องสั่ง</th>
-                <th className="px-4 py-2 font-medium">หมายเหตุ</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {(request.purchase_request_items || [])
-                .filter((item) => !flagFilter || lineHasFlag(compareRequestLine(request, item, now), flagFilter))
-                .map((item) => {
-                const closed = closedState(request, item)
-                const settlements = item.purchase_request_item_settlements || []
-                const links = item.fulfillment?.links || []
-                return (
-                  <Fragment key={item.id}>
-                  <tr>
-                    <td className="px-4 py-2.5 text-slate-800">
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-slate-700">รายการวัสดุ</h3>
+        {(request.purchase_request_items || [])
+          .filter((item) => !flagFilter || lineHasFlag(compareRequestLine(request, item, now), flagFilter))
+          .map((item) => {
+            const closed = closedState(request, item)
+            const settlements = item.purchase_request_item_settlements || []
+            const links = item.fulfillment?.links || []
+            const boqLine = boqCheck?.lines.find((l) => l.materialTypeId === item.material_type_id)
+            const masterUnit = item.material_types?.unit || ''
+            return (
+              <Card key={item.id} className="space-y-3 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-800">
                       {item.material_types?.name || '-'}
                       {item.original_material?.name && item.original_material_type_id !== item.material_type_id && (
-                        <span className="ml-2 text-xs text-slate-500">ขอไว้เดิม: {item.original_material.name}</span>
-                      )}
-                      {item.fulfillment?.mixedMaterials && (
-                        <span
-                          className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
-                          title="มีใบสั่งซื้อที่ใช้งานอยู่มากกว่าหนึ่งใบ สั่งวัสดุต่างกัน - รายการนี้จึงแสดงวัสดุที่ขอไว้เดิม ดูวัสดุที่สั่งจริงของแต่ละใบสั่งซื้อในตารางด้านล่าง"
-                        >
-                          สั่งหลายวัสดุ
-                        </span>
+                        <span className="ml-2 text-xs font-normal text-slate-500">ขอไว้เดิม: {item.original_material.name}</span>
                       )}
                       {item.boq_master?.item_name && (
-                        <span className="ml-2 text-xs text-slate-500">สำหรับงาน: {item.boq_master.item_name}</span>
+                        <span className="ml-2 text-xs font-normal text-slate-500">สำหรับงาน: {item.boq_master.item_name}</span>
                       )}
-                      {/* Manual settlements are a human judgement call, so each
-                        * one shows what was closed, why, and a way back out -
-                        * unlike a PO-driven settle, nothing else records it. */}
-                      {settlements.map((settlement) => (
-                        <div key={settlement.id} className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
-                          <span>
-                            {settlement.reason === 'ordered' ? 'สั่งซื้อนอกคำขอ' : 'ตัดออก'} {settlement.quantity}{' '}
-                            {item.material_types?.unit || ''}
-                            {settlement.po_ref ? ` • ${settlement.po_ref}` : ''}
-                          </span>
-                          {settlement.note && <span className="text-slate-500">({settlement.note})</span>}
-                          <span className="text-slate-500">
-                            โดย {settlement.settler?.full_name || settlement.settler?.email || '-'}
-                          </span>
-                          {request.status === 'approved' && (
-                            <button
-                              type="button"
-                              onClick={() => handleUndoSettlement(settlement.id)}
-                              disabled={isPending}
-                              className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
-                            >
-                              <Undo2 className="h-3 w-3" /> ยกเลิก
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </td>
-                    {/* An answered line reports what was actually bought, in
-                      * the unit it was really bought in; an open one still
-                      * reports the ask. The ask is never overwritten - it's
-                      * on the hover and on the printed คำขอซื้อ - but the
-                      * screen follows the order, the same way a material
-                      * substitution already does. */}
-                    <td
-                      className="whitespace-nowrap px-4 py-2.5 text-right font-medium text-slate-700"
-                      title={`ขอไว้ ${originalQuantityRequested(item)} ${requestLineUnit(item)}`}
-                    >
-                      {quantityDisplay(item, closed)}
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-500">
-                      {statusCell(item, closed)}
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {lineTags(request, item).map((t) => (
-                          <span key={t.label} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${t.tone}`}>
-                            {t.label}
-                          </span>
+                    </p>
+                    {item.note && <p className="text-xs text-slate-500">หมายเหตุ: {item.note}</p>}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {statusCell(item, closed)}
+                    {lineTags(request, item).map((t) => (
+                      <span key={t.label} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${t.tone}`}>
+                        {t.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-3">
+                  <div className="rounded-lg bg-slate-50 p-3 text-sm">
+                    <p className="text-xs font-medium text-slate-500">ขอ</p>
+                    <p className="font-medium text-slate-800">
+                      {originalQuantityRequested(item).toLocaleString('th-TH')} {requestLineUnit(item)}
+                    </p>
+                    <UnitConversionNote
+                      materialTypeId={item.material_type_id}
+                      masterUnit={masterUnit}
+                      unit={requestLineUnit(item)}
+                      quantity={originalQuantityRequested(item)}
+                      conversions={conversions}
+                      onSaved={reloadConversions}
+                      canSet={canSetConversion}
+                      compact
+                    />
+                  </div>
+
+                  <div className="rounded-lg bg-slate-50 p-3 text-sm">
+                    <p className="text-xs font-medium text-slate-500">ซื้อ</p>
+                    {links.length === 0 ? (
+                      <p className="text-slate-500">{closed === 'cancelled' ? 'ตัดออก ไม่ได้ซื้อ' : 'ยังไม่มีใบสั่งซื้อ'}</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {links.map((l) => (
+                          <li key={l.allocationId ?? `${l.poId}-${l.poItemId}`} className={l.cancelled ? 'text-slate-400 line-through' : 'text-slate-700'}>
+                            <Link href={`/dashboard/procurement/orders/${l.poId}`} className="font-mono text-indigo-600 hover:underline">
+                              {l.poNo}
+                            </Link>{' '}
+                            {l.allocated.toLocaleString('th-TH')} {l.unit}
+                            {l.isSubstitute && <span className="text-indigo-700"> · {l.actualMaterialName} แทน</span>}
+                            <span className="block text-xs text-slate-500">
+                              {l.supplierName || '-'} · {l.outstanding > 0 ? `ค้างรับ ${l.outstanding.toLocaleString('th-TH')}` : 'ของมาครบ'}
+                              {l.received > 0 ? ` · รับแล้ว ${l.receivedIsEstimate ? '≈' : ''}${l.received.toLocaleString('th-TH')}` : ''}
+                            </span>
+                          </li>
                         ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg bg-slate-50 p-3 text-sm">
+                    <p className="text-xs font-medium text-slate-500">BOQ ของแปลงในคำขอนี้</p>
+                    {!boqLine ? (
+                      <p className="text-slate-500">{boqCheck ? (closed === 'open' ? 'ไม่มีข้อมูล BOQ' : 'ใบสั่งซื้อนับอยู่ในยอดสั่งแล้ว') : 'กำลังโหลด...'}</p>
+                    ) : (
+                      <div className="space-y-0.5 text-slate-700">
+                        <p>ใช้ได้ {boqLine.plannedQty.toLocaleString('th-TH')} {boqLine.unit}</p>
+                        <p>สั่ง/เบิกไปแล้ว {boqLine.alreadyQty.toLocaleString('th-TH')}</p>
+                        <p>คำขอนี้ {boqLine.unconverted ? <span className="text-amber-700">{UNKNOWN_CONVERSION_LABEL}</span> : boqLine.thisDocQty.toLocaleString('th-TH')}</p>
+                        <p className="font-medium">
+                          รวม {boqLine.totalAfter.toLocaleString('th-TH')}
+                          {isBoqCheckLineOver(boqLine) && <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">เกิน BOQ · แค่เตือน</span>}
+                        </p>
                       </div>
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-500">
-                      {item.material_types?.lead_time_days != null ? `${item.material_types.lead_time_days} วัน` : '-'}
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-500">{item.note || '-'}</td>
-                  </tr>
-                  {links.length > 0 && (
-                    <tr className="bg-slate-50/60">
-                      <td colSpan={5} className="px-4 py-2">
-                        <FulfillmentTable links={links} />
-                      </td>
-                    </tr>
-                  )}
-                  </Fragment>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                    )}
+                  </div>
+                </div>
+
+                {/* Manual settlements are a human judgement call, so each one
+                  * shows what was closed, why, and a way back out - unlike a
+                  * PO-driven settle, nothing else records it. */}
+                {settlements.map((settlement) => (
+                  <div key={settlement.id} className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                    <span>
+                      {settlement.reason === 'ordered' ? 'สั่งซื้อนอกคำขอ' : 'ตัดออก'} {settlement.quantity} {item.material_types?.unit || ''}
+                      {settlement.po_ref ? ` • ${settlement.po_ref}` : ''}
+                    </span>
+                    {settlement.note && <span>({settlement.note})</span>}
+                    <span>โดย {settlement.settler?.full_name || settlement.settler?.email || '-'}</span>
+                    {request.status === 'approved' && (
+                      <button
+                        type="button"
+                        onClick={() => handleUndoSettlement(settlement.id)}
+                        disabled={isPending}
+                        className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+                      >
+                        <Undo2 className="h-3 w-3" /> ยกเลิก
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {links.some((l) => l.receivedIsEstimate) && (
+                  <p className="text-[11px] text-slate-500">≈ ประมาณตามสัดส่วนของที่สั่ง ใบรับสินค้าไม่ได้ระบุว่าของที่รับเป็นของคำขอใบไหน</p>
+                )}
+              </Card>
+            )
+          })}
+      </div>
 
       {boqCheck && boqCheck.lines.length > 0 && <BoqCheckPanel lines={boqCheck.lines} scopeLabel={boqCheck.scopeLabel} />}
 
       {/* Decision / next-step bar: stays in view so the decision never sits below a long scroll. */}
-      {(request.status === 'pending_review' || request.status === 'approved') && (
+      {(request.status === 'pending_review' || request.status === 'approved' || ((request.status === 'ordered' || request.status === 'received') && !request.pm_reviewed_at)) && (
         <div className="sticky bottom-0 z-10 -mx-1 pb-1">
           <Card className="elev-floating space-y-3 px-5 py-3">
             {request.status === 'pending_review' && showRejectBox && (
@@ -560,7 +533,7 @@ export default function PurchaseRequestDetail({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 text-sm">
                 <p className="font-semibold text-slate-900">
-                  {request.status === 'pending_review' ? 'รอการตัดสินใจ' : 'อนุมัติแล้ว — พร้อมสั่งซื้อ'}
+                  {request.status === 'pending_review' ? 'รอการตัดสินใจ' : request.status === 'approved' ? 'อนุมัติแล้ว พร้อมออกใบสั่งซื้อ' : 'สั่งแล้ว รอ PM ตรวจเทียบ'}
                 </p>
                 <p className="text-xs text-slate-500">
                   {(request.purchase_request_items || []).length} รายการวัสดุ
@@ -582,7 +555,7 @@ export default function PurchaseRequestDetail({
                   ) : (
                     <>
                       <Button type="button" variant="danger" onClick={() => setShowRejectBox(true)} disabled={isPending}>
-                        ปฏิเสธ
+                        ไม่อนุมัติ
                       </Button>
                       <Button type="button" onClick={handleApprove} disabled={isPending}>
                         {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'อนุมัติ'}
@@ -590,13 +563,26 @@ export default function PurchaseRequestDetail({
                     </>
                   )}
                 </div>
+              ) : request.status === 'ordered' || request.status === 'received' ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={reviewNote}
+                    onChange={(e) => setReviewNote(e.target.value)}
+                    placeholder="หมายเหตุการตรวจ (ถ้ามี)"
+                    className="min-w-0 sm:w-64"
+                  />
+                  <Button type="button" onClick={handleReviewed} disabled={isPending}>
+                    {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'ตรวจแล้ว'}
+                  </Button>
+                </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
                   <Button type="button" variant="secondary" onClick={() => setIsSettleModalOpen(true)}>
-                    <ListChecks className="h-4 w-4" /> เลือกรายการที่จัดการแล้ว
+                    <ListChecks className="h-4 w-4" /> ปิดรายการที่ไม่ต้องสั่ง
                   </Button>
                   <Button type="button" onClick={() => router.push(`/dashboard/procurement/orders/create?fromRequest=${request.id}`)}>
-                    <ShoppingCart className="h-4 w-4" /> สร้างใบสั่งซื้อจากคำขอนี้
+                    <ShoppingCart className="h-4 w-4" /> ออกใบสั่งซื้อ
                   </Button>
                 </div>
               )}

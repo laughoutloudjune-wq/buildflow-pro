@@ -11,7 +11,13 @@ import { createForemanPurchaseRequest } from '@/actions/foreman-purchase-request
 
 const LIST = '/dashboard/foreman/purchase-request'
 
-export default function CreateForemanPurchaseRequestPageClient() {
+export default function CreateForemanPurchaseRequestPageClient({
+  initialScope,
+  initialLines,
+}: {
+  initialScope?: { projectId: string; plotIds: string[] }
+  initialLines?: { material_type_id: number; quantity: number }[]
+}) {
   const router = useRouter()
   const toast = useToast()
 
@@ -23,6 +29,8 @@ export default function CreateForemanPurchaseRequestPageClient() {
         <PurchaseRequestForm
           mode="create"
           createAction={createForemanPurchaseRequest}
+          initialScope={initialScope}
+          initialLines={initialLines}
           onCancel={() => router.push(LIST)}
           onSaved={() => {
             toast.success('ส่งคำขอซื้อวัสดุเรียบร้อยแล้ว')

@@ -29,6 +29,33 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: 'bg-slate-100 text-slate-500',
 }
 
+const TRACK = ['ขอ', 'อนุมัติ', 'สั่ง', 'ของมา']
+
+function Track({ status }: { status: string }) {
+  if (status === 'rejected' || status === 'cancelled') return null
+  const step = status === 'received' ? 4 : status === 'ordered' ? 3 : status === 'approved' ? 2 : 1
+  return (
+    <div className="flex flex-wrap items-center gap-1 text-xs" aria-label="ความคืบหน้าของคำขอ">
+      {TRACK.map((label, i) => (
+        <span key={label} className="flex items-center gap-1">
+          <span className={i < step ? 'font-medium text-emerald-700' : 'text-slate-400'}>
+            {i < step ? '●' : '○'} {label}
+          </span>
+          {i < TRACK.length - 1 && <span className="text-slate-300">→</span>}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+/** One line's state in the requester's words. */
+function lineState(lineStatus: string): { label: string; tone: string } {
+  if (lineStatus === 'arrived') return { label: 'ของมาแล้ว', tone: 'text-emerald-700' }
+  if (lineStatus === 'ordered') return { label: 'สั่งแล้ว รอของ', tone: 'text-violet-700' }
+  if (lineStatus === 'closed') return { label: 'ไม่ต้องสั่งแล้ว', tone: 'text-slate-500' }
+  return { label: 'รอสั่ง', tone: 'text-amber-700' }
+}
+
 export default function ForemanPurchaseRequestPageClient({
   initialRequests,
   initialError,
@@ -99,14 +126,30 @@ export default function ForemanPurchaseRequestPageClient({
                   <p className="text-xs text-slate-500">{new Date(r.created_at).toLocaleDateString('th-TH')}</p>
                 </div>
 
-                <div className="mt-2 space-y-0.5 text-sm text-slate-700">
+                <div className="mt-2">
+                  <Track status={r.status} />
+                </div>
+
+                <div className="mt-2 space-y-1 text-sm text-slate-700">
                   {r.items.map((item, idx) => (
-                    <div key={idx}>
-                      {item.material_name} — {item.quantity_requested.toLocaleString('th-TH')} {item.unit || ''}
+                    <div key={idx} className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span>
+                        {item.material_name} — {item.quantity_requested.toLocaleString('th-TH')} {item.unit || ''}
+                      </span>
+                      {r.status !== 'rejected' && r.status !== 'pending_review' && (
+                        <span className={`text-xs font-medium ${lineState(item.line_status).tone}`}>{lineState(item.line_status).label}</span>
+                      )}
                     </div>
                   ))}
                 </div>
 
+                {r.status === 'rejected' && (
+                  <div className="mt-2">
+                    <Button type="button" size="sm" variant="secondary" onClick={() => router.push(`/dashboard/foreman/purchase-request/create?from=${r.id}`)}>
+                      ขอใหม่จากใบนี้
+                    </Button>
+                  </div>
+                )}
                 {r.status === 'rejected' && r.review_note && (
                   <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                     เหตุผลที่ไม่อนุมัติ: {r.review_note}
