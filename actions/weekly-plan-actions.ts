@@ -27,6 +27,8 @@ export type WeeklyPlanItem = {
   note: string | null
   status: WeeklyPlanStatus
   createdBy: string | null
+  /** When the row was added; compared with the meeting time to tag work added after the plan was agreed */
+  createdAt: string
   /** Set for BOQ work: the plot's job assignment this row schedules. Null = manual (non-BOQ) work. */
   jobAssignmentId: string | null
   jobQuantity: number | null
@@ -82,7 +84,7 @@ export type WeeklyPlanSalesPlot = {
 }
 
 /** A BOQ job left unfinished last week and not yet in this week's plan */
-export type WeeklyPlanCarryOver = { projectId: string; plotId: string | null; plotName: string | null; title: string }
+export type WeeklyPlanCarryOver = { projectId: string; plotId: string | null; plotName: string | null; title: string; percent: number }
 
 export type WeeklyPlanTargetHint = { plotId: string; plotName: string; projectId: string; text: string; date: string }
 
@@ -141,6 +143,7 @@ type RawItem = {
   note: string | null
   status: WeeklyPlanStatus
   created_by: string | null
+  created_at: string
   job_assignment_id: string | null
   plots: { name: string } | null
   owner: { full_name: string | null } | null
@@ -252,7 +255,7 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
       supabase
         .from('weekly_plan_items')
         .select(
-          'id, project_id, plot_id, week_start, kind, title, owner_id, contractor_id, carry_pct, plan_pct, actual_pct, note, status, created_by, job_assignment_id, plots(name), owner:profiles!weekly_plan_items_owner_id_fkey(full_name), contractor:contractors(name), job_assignments(boq_item_id, boq_master(quantity, unit, contractor_types(name)))'
+          'id, project_id, plot_id, week_start, kind, title, owner_id, contractor_id, carry_pct, plan_pct, actual_pct, note, status, created_by, created_at, job_assignment_id, plots(name), owner:profiles!weekly_plan_items_owner_id_fkey(full_name), contractor:contractors(name), job_assignments(boq_item_id, boq_master(quantity, unit, contractor_types(name)))'
         )
         .gte('week_start', rangeStart)
         .lte('week_start', rangeEnd)
@@ -303,6 +306,7 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
     note: r.note,
     status: r.status,
     createdBy: r.created_by,
+    createdAt: r.created_at,
     jobAssignmentId: r.job_assignment_id,
     jobQuantity: r.job_assignments?.boq_master?.quantity == null ? null : Number(r.job_assignments.boq_master.quantity),
     jobUnit: r.job_assignments?.boq_master?.unit ?? null,
@@ -404,7 +408,13 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
         !inThisWeek.has(`${r.project_id}|${r.job_assignment_id}`) &&
         currentProgress({ carryPct: r.carry_pct == null ? null : Number(r.carry_pct), planPct: Array(7).fill(null), actualPct: padDays(r.actual_pct) }) < 100
     )
-    .map((r) => ({ projectId: r.project_id, plotId: r.plot_id, plotName: r.plots?.name ?? null, title: r.title }))
+    .map((r) => ({
+      projectId: r.project_id,
+      plotId: r.plot_id,
+      plotName: r.plots?.name ?? null,
+      title: r.title,
+      percent: Math.round(currentProgress({ carryPct: r.carry_pct == null ? null : Number(r.carry_pct), planPct: Array(7).fill(null), actualPct: padDays(r.actual_pct) })),
+    }))
 
   return {
     role: caller.role,
