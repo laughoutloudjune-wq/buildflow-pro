@@ -17,20 +17,18 @@ import type { PurchaseRequest } from '@/lib/types/procurement'
 import { compareRequestLine } from '@/lib/procurement/requestFlags'
 import { requestLineUnit } from '@/lib/procurement/requestQuantities'
 
-type Pile = 'approve' | 'order' | 'review' | 'done' | 'rejected'
+type Pile = 'approve' | 'order' | 'done' | 'rejected'
 
 function pileOf(r: PurchaseRequest): Pile {
   if (r.status === 'pending_review') return 'approve'
   if (r.status === 'approved') return 'order'
   if (r.status === 'rejected') return 'rejected'
-  if ((r.status === 'ordered' || r.status === 'received') && !r.pm_reviewed_at) return 'review'
   return 'done'
 }
 
 const PILES: { key: Exclude<Pile, 'done' | 'rejected'>; title: string; hint: string; button: string }[] = [
   { key: 'approve', title: 'รออนุมัติ', hint: 'ขอเข้ามาแล้ว รอตัดสินใจ', button: 'อนุมัติ' },
   { key: 'order', title: 'รอออกใบสั่งซื้อ', hint: 'อนุมัติแล้ว ยังไม่ได้สั่ง', button: 'ออกใบสั่งซื้อ' },
-  { key: 'review', title: 'สั่งแล้ว รอ PM ตรวจ', hint: 'เทียบสิ่งที่ขอกับสิ่งที่สั่ง', button: 'ตรวจ' },
 ]
 
 const TRACK = ['ขอ', 'อนุมัติ', 'สั่ง', 'ของมา']
@@ -156,11 +154,11 @@ export default function PurchaseRequestsPageClient({
   }, [requests, search])
 
   const byPile = useMemo(() => {
-    const out: Record<Pile, PurchaseRequest[]> = { approve: [], order: [], review: [], done: [], rejected: [] }
+    const out: Record<Pile, PurchaseRequest[]> = { approve: [], order: [], done: [], rejected: [] }
     for (const r of matches) out[pileOf(r)].push(r)
     // Problem requests first, then the oldest waiting.
     const problems = (r: PurchaseRequest) => (overIds.has(r.id) ? 1 : 0) + chipsOf(r, now, false).filter((c) => c.label === 'เลยวันที่ต้องการ').length
-    for (const key of ['approve', 'order', 'review'] as const) {
+    for (const key of ['approve', 'order'] as const) {
       out[key].sort((a, b) => problems(b) - problems(a) || String(a.created_at).localeCompare(String(b.created_at)))
     }
     return out
@@ -192,7 +190,6 @@ export default function PurchaseRequestsPageClient({
   function act(pile: Pile, r: PurchaseRequest) {
     if (pile === 'approve') approve(r)
     else if (pile === 'order') router.push(`/dashboard/procurement/orders/create?fromRequest=${r.id}`)
-    else setSelectedRequestId(r.id)
   }
 
   function renderCard(r: PurchaseRequest, pile: Pile, button?: string) {
@@ -233,14 +230,14 @@ export default function PurchaseRequestsPageClient({
     )
   }
 
-  const open = byPile.approve.length + byPile.order.length + byPile.review.length
+  const open = byPile.approve.length + byPile.order.length
   const printUrl = `/api/procurement/requests/pdf?ids=${Array.from(checked).join(',')}`
 
   return (
     <PageContainer width="wide">
       <PageHeader
         title="คำขอซื้อ (PR)"
-        subtitle="คำขอที่ต้องมีคนทำต่อ แยกเป็น 3 กอง กองละ 1 ปุ่ม"
+        subtitle="คำขอที่ต้องมีคนทำต่อ แยกเป็น 2 กอง กองละ 1 ปุ่ม"
         actions={
           <div className="flex items-center gap-2">
             <Button onClick={() => router.push('/dashboard/procurement/requests/create')}>

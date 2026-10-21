@@ -24,7 +24,6 @@ import { getUnitConversions } from '@/actions/procurement/unit-conversions'
 import UnitConversionNote from '@/components/procurement/UnitConversionNote'
 import { UNKNOWN_CONVERSION_LABEL, type UnitConversions } from '@/lib/procurement/units'
 import { isBoqCheckLineOver } from '@/lib/procurement/boqControl'
-import { pmReviewPurchaseRequest } from '@/actions/procurement-actions'
 import { PR_STATUS_LABEL, PR_STATUS_TONE } from '@/lib/status-labels'
 import type { PurchaseRequest, PurchaseRequestItem } from '@/lib/types/procurement'
 import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
@@ -234,7 +233,6 @@ export default function PurchaseRequestDetail({
 
   const [conversions, setConversions] = useState<UnitConversions>({})
   const [conversionsRev, setConversionsRev] = useState(0)
-  const [reviewNote, setReviewNote] = useState(request.pm_review_comment || '')
   const reloadConversions = useCallback(() => setConversionsRev((n) => n + 1), [])
   const canSetConversion = true
 
@@ -275,18 +273,6 @@ export default function PurchaseRequestDetail({
       }
       onChanged()
       toast.success('อนุมัติคำขอซื้อเรียบร้อยแล้ว')
-    })
-  }
-
-  function handleReviewed() {
-    startTransition(async () => {
-      const result = await pmReviewPurchaseRequest(request.id, reviewNote)
-      if ('error' in result) {
-        toast.error(result.error)
-        return
-      }
-      onChanged()
-      toast.success('บันทึกว่าตรวจแล้ว')
     })
   }
 
@@ -521,7 +507,7 @@ export default function PurchaseRequestDetail({
       {boqCheck && boqCheck.lines.length > 0 && <BoqCheckPanel lines={boqCheck.lines} scopeLabel={boqCheck.scopeLabel} />}
 
       {/* Decision / next-step bar: stays in view so the decision never sits below a long scroll. */}
-      {(request.status === 'pending_review' || request.status === 'approved' || ((request.status === 'ordered' || request.status === 'received') && !request.pm_reviewed_at)) && (
+      {(request.status === 'pending_review' || request.status === 'approved') && (
         <div className="sticky bottom-0 z-10 -mx-1 pb-1">
           <Card className="elev-floating space-y-3 px-5 py-3">
             {request.status === 'pending_review' && showRejectBox && (
@@ -533,7 +519,7 @@ export default function PurchaseRequestDetail({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 text-sm">
                 <p className="font-semibold text-slate-900">
-                  {request.status === 'pending_review' ? 'รอการตัดสินใจ' : request.status === 'approved' ? 'อนุมัติแล้ว พร้อมออกใบสั่งซื้อ' : 'สั่งแล้ว รอ PM ตรวจเทียบ'}
+                  {request.status === 'pending_review' ? 'รอการตัดสินใจ' : 'อนุมัติแล้ว พร้อมออกใบสั่งซื้อ'}
                 </p>
                 <p className="text-xs text-slate-500">
                   {(request.purchase_request_items || []).length} รายการวัสดุ
@@ -562,19 +548,6 @@ export default function PurchaseRequestDetail({
                       </Button>
                     </>
                   )}
-                </div>
-              ) : request.status === 'ordered' || request.status === 'received' ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="text"
-                    value={reviewNote}
-                    onChange={(e) => setReviewNote(e.target.value)}
-                    placeholder="หมายเหตุการตรวจ (ถ้ามี)"
-                    className="min-w-0 sm:w-64"
-                  />
-                  <Button type="button" onClick={handleReviewed} disabled={isPending}>
-                    {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'ตรวจแล้ว'}
-                  </Button>
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
