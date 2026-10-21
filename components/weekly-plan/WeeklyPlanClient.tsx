@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import {
+  addSalesRequestToPlan,
   agreeWeeklyPlan,
   deleteWeeklyPlanItem,
   recordWeeklyPlanActual,
@@ -437,22 +438,47 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
             </div>
           </Card>
 
-          {(salesRequests.length > 0 || salesPlots.length > 0 || hints.length > 0) && (
+          {salesRequests.length > 0 && (
+            <Card className="p-4">
+              <h3 className="text-sm font-semibold text-slate-800">คำขอจากฝ่ายขาย · {salesRequests.length} รายการ</h3>
+              <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                {salesRequests.map((r) => {
+                  const title = `คำขอ ${r.requestNo || ''}: ${r.title}`.replace('คำขอ :', 'คำขอ:')
+                  const planned = data.items.some((i) => i.weekStart === weekStart && i.plotId === r.plotId && i.title === title)
+                  return (
+                    <li key={r.id} className="flex items-center justify-between gap-3">
+                      <span>
+                        <span className="font-medium">คำขอ {r.requestNo || ''}</span> แปลง {r.plotName}: {r.title}
+                        <span className="ml-2 text-xs text-slate-500">
+                          {REQUEST_STATUS_LABEL[r.status] || r.status}
+                          {r.neededBy ? ` · ต้องการภายใน ${formatThaiDay(r.neededBy)}` : ''}
+                        </span>
+                      </span>
+                      {planned ? (
+                        <span className="shrink-0 text-xs text-emerald-700">อยู่ในแผนสัปดาห์นี้แล้ว</span>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          disabled={pending}
+                          onClick={() => run(() => addSalesRequestToPlan(r.id, weekStart), 'เพิ่มเข้าแผนแล้ว')}
+                        >
+                          + ใส่ในแผน
+                        </Button>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </Card>
+          )}
+
+          {(salesPlots.length > 0 || hints.length > 0) && (
             <Card className="p-4">
               <details>
                 <summary className="cursor-pointer text-sm font-semibold text-slate-800">
-                  งานจากฝ่ายขายและเป้าหมายของแปลง (ดูอย่างเดียว) · {salesRequests.length + salesPlots.length + hints.length} รายการ
+                  สถานะแปลงและเป้าหมาย (ดูอย่างเดียว) · {salesPlots.length + hints.length} รายการ
                 </summary>
                 <ul className="mt-3 space-y-1.5 text-sm text-slate-700">
-                  {salesRequests.map((r) => (
-                    <li key={r.id}>
-                      <span className="font-medium">คำขอ {r.requestNo || ''}</span> แปลง {r.plotName}: {r.title}
-                      <span className="ml-2 text-xs text-slate-500">
-                        {REQUEST_STATUS_LABEL[r.status] || r.status}
-                        {r.neededBy ? ` · ต้องการภายใน ${formatThaiDay(r.neededBy)}` : ''}
-                      </span>
-                    </li>
-                  ))}
                   {salesPlots.map((p) => (
                     <li key={p.plotId}>
                       <span className="font-medium">{p.statusLabel}</span> แปลง {p.plotName}

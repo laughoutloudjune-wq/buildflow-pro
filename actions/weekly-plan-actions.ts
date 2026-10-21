@@ -854,6 +854,48 @@ export async function createWeeklyPlanItems(input: WeeklyPlanBatchInput): Promis
   return { ok: true, created: rows.length }
 }
 
+/** Puts an open sales work request on a week's plan as manual work on its plot.
+ * Title and plot come from the request itself; a request already planned that week is refused. */
+export async function addSalesRequestToPlan(requestId: string, weekStart: string): Promise<WeeklyPlanResult> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  if (!isMonday(weekStart)) return { error: 'สัปดาห์ไม่ถูกต้อง' }
+  const supabase = await createClient()
+  const { data: req, error: reqError } = await supabase
+    .from('sales_work_requests')
+    .select('id, request_no, title, plot_id, status, plots(project_id)')
+    .eq('id', requestId)
+    .maybeSingle()
+  if (reqError) return { error: `โหลดคำขอไม่สำเร็จ: ${reqError.message}` }
+  const r = req as unknown as { id: string; request_no: string | null; title: string; plot_id: string; status: string; plots: { project_id: string } | null } | null
+  if (!r || !r.plots) return { error: 'ไม่พบคำขอ' }
+  if (r.status === 'done' || r.status === 'rejected') return { error: 'คำขอนี้ปิดแล้ว' }
+
+  const title = `คำขอ ${r.request_no || ''}: ${r.title}`.replace('คำขอ :', 'คำขอ:')
+  const { data: existing, error: existingError } = await supabase
+    .from('weekly_plan_items')
+    .select('id')
+    .eq('plot_id', r.plot_id)
+    .eq('week_start', weekStart)
+    .eq('title', title)
+    .limit(1)
+  if (existingError) return { error: `ตรวจสอบรายการซ้ำไม่สำเร็จ: ${existingError.message}` }
+  if ((existing || []).length > 0) return { error: DUPLICATE_MESSAGE }
+
+  const { error } = await supabase.from('weekly_plan_items').insert({
+    project_id: r.plots.project_id,
+    plot_id: r.plot_id,
+    week_start: weekStart,
+    kind: 'other',
+    title,
+    owner_id: null,
+    created_by: caller.userId,
+  })
+  if (error) return { error: planErrorMessage('เพิ่มรายการไม่สำเร็จ', error) }
+  revalidatePath('/dashboard/weekly-plan')
+  return { ok: true }
+}
+
 /** admin/pm edit any item; a foreman only items they created (RLS enforces).
  * For BOQ work the title always comes from the BOQ and the job must belong to the plot. */
 export async function updateWeeklyPlanItem(id: string, input: WeeklyPlanItemInput): Promise<WeeklyPlanResult> {
