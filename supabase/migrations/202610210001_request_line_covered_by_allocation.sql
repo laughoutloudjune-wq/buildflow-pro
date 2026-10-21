@@ -58,6 +58,15 @@ as $$
   end;
 $$;
 
+-- The rule above also depends on the order line's unit and quantity, so
+-- changing either re-checks the requests it is linked to (the other triggers
+-- already cover allocation changes, order status changes and the covers box).
+create or replace trigger purchase_order_items_unit_qty_resync
+  after update of unit, quantity_ordered on public.purchase_order_items
+  for each row
+  when (old.unit is distinct from new.unit or old.quantity_ordered is distinct from new.quantity_ordered)
+  execute function public._poi_covers_resync_trigger();
+
 -- Bring lines that are already fully allocated up to date (this also
 -- recomputes each request's status).
 select public._pri_resync_material(pri.id)
