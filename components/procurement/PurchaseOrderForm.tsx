@@ -27,6 +27,9 @@ import {
   getLastMaterialOrderPrice,
 } from '@/actions/procurement-actions'
 import { getBoqCheckForDraft } from '@/actions/procurement/boq-control'
+import { getUnitConversions } from '@/actions/procurement/unit-conversions'
+import UnitConversionNote from '@/components/procurement/UnitConversionNote'
+import { toBaseQty, type UnitConversions } from '@/lib/procurement/units'
 import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
 import PurchasePurposePicker, { usePurchasePurpose } from '@/components/procurement/PurchasePurposePicker'
 import type { ControlScope } from '@/lib/procurement/boqControl'
@@ -653,6 +656,26 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     [lines]
   )
 
+  // Unit conversions for the materials on the order (master unit <-> the
+  // unit a line is written in), so the BOQ check counts in the BOQ's unit.
+  const [conversions, setConversions] = useState<UnitConversions>({})
+  const [conversionsReload, setConversionsReload] = useState(0)
+  useEffect(() => {
+    if (!materialIdsKey) return
+    let cancelled = false
+    getUnitConversions(materialIdsKey.split(',').map(Number))
+      .then((c) => {
+        if (!cancelled) setConversions(c)
+      })
+      .catch(() => {
+        /* conversions are a convenience for the BOQ check */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [materialIdsKey, conversionsReload])
+  const conversionsKey = useMemo(() => JSON.stringify(conversions), [conversions])
+
   useEffect(() => {
     if (!materialIdsKey) return
     const ids = materialIdsKey.split(',').map(Number)
@@ -685,7 +708,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         .filter((l) => l.material_type_id > 0 && Number(l.quantity_ordered) > 0)
         .map(
           (l) =>
-            `${l.material_type_id}:${Number(l.quantity_ordered)}:${l.project_id || ''}:${l.plot_id || ''}:${l.plot_group_id || ''}`
+            `${l.material_type_id}:${Number(l.quantity_ordered)}:${l.project_id || ''}:${l.plot_id || ''}:${l.plot_group_id || ''}:${encodeURIComponent(l.unit?.trim() || '')}`
         )
         .sort()
         .join(','),
@@ -698,11 +721,14 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     if (mode !== 'edit' || !initialOrder) return undefined
     const map: Record<number, number> = {}
     for (const item of initialOrder.purchase_order_items || []) {
-      map[item.material_type_id] = (map[item.material_type_id] || 0) + Number(item.quantity_ordered || 0)
+      // In the master unit, like the rollup it is subtracted from.
+      const base = toBaseQty(conversions, item.material_type_id, item.material_types?.unit || '', item.unit, Number(item.quantity_ordered || 0))
+      if (base == null) continue
+      map[item.material_type_id] = (map[item.material_type_id] || 0) + base
     }
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, initialOrder?.id])
+  }, [mode, initialOrder?.id, conversionsKey])
 
   const draftScope: ControlScope | null = !projectId
     ? null
@@ -722,13 +748,14 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     let cancelled = false
     const timer = setTimeout(() => {
       const items = draftLinesKey.split(',').map((pair) => {
-        const [materialTypeId, quantity, lineProjectId, linePlotId, linePlotGroupId] = pair.split(':')
+        const [materialTypeId, quantity, lineProjectId, linePlotId, linePlotGroupId, lineUnit] = pair.split(':')
         const override = lineProjectId
           ? { project_id: lineProjectId, plot_id: linePlotId || null, plot_group_id: linePlotGroupId || null }
           : null
         return {
           materialTypeId: Number(materialTypeId),
           quantity: Number(quantity),
+          unit: lineUnit ? decodeURIComponent(lineUnit) : null,
           scope: override
             ? { projectId: lineProjectId, plotGroupId: linePlotGroupId || null, plotIds: linePlotId ? [linePlotId] : [] }
             : undefined,
@@ -748,7 +775,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readOnly, isOutsideBoq, draftScope?.projectId, draftScope?.plotGroupId, (draftScope?.plotIds || []).join(','), draftLinesKey])
+  }, [readOnly, isOutsideBoq, draftScope?.projectId, draftScope?.plotGroupId, (draftScope?.plotIds || []).join(','), draftLinesKey, conversionsKey])
 
   const selectedSupplier = useMemo(() => suppliers.find((s) => s.id === supplierId) || null, [suppliers, supplierId])
   const supplierBranches = useMemo(
@@ -2095,6 +2122,16 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             disabled={readOnly}
                           />
                         </div>
+                        {line.unit?.trim() && line.material_type_id > 0 && !readOnly && (
+                          <UnitConversionNote
+                            materialTypeId={line.material_type_id}
+                            masterUnit={catalogUnit(line)}
+                            unit={line.unit}
+                            quantity={Number(line.quantity_ordered) || 0}
+                            conversions={conversions}
+                            onSaved={() => setConversionsReload((n) => n + 1)}
+                          />
+                        )}
                         {line.quantity_received > 0 && (
                           <div className="mt-1 text-right text-[10px] text-emerald-600">
                             รับแล้ว {line.quantity_received.toLocaleString('th-TH')}

@@ -11,6 +11,7 @@ import { getMaterialPickerOptions, getPlotGroups } from '@/actions/material-acti
 import { createPurchaseRequest, updatePurchaseRequest, getBoqJobOptionsForPlots } from '@/actions/procurement-actions'
 import type { PurchaseRequest } from '@/lib/types/procurement'
 import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
+import PurchaseRequestWizard from '@/components/procurement/PurchaseRequestWizard'
 import PurchasePurposePicker, { usePurchasePurpose, type PurchasePurpose } from '@/components/procurement/PurchasePurposePicker'
 
 type PlotScope = 'none' | 'plot' | 'group' | 'multi'
@@ -35,7 +36,7 @@ type SubmitResult = { id: string; pr_no: string } | { error: string }
 type CreateFn = (payload: Parameters<typeof createPurchaseRequest>[0]) => Promise<SubmitResult>
 type UpdateFn = (id: string, payload: Parameters<typeof createPurchaseRequest>[0]) => Promise<SubmitResult>
 
-export default function PurchaseRequestForm({
+function PurchaseRequestEditForm({
   mode,
   requestId,
   initialRequest,
@@ -63,6 +64,8 @@ export default function PurchaseRequestForm({
   initialPurpose?: PurchasePurpose
   /** Create mode only: prefilled lines (material + quantity). */
   initialLines?: { material_type_id: number; quantity: number }[]
+  /** Create mode only: prefilled project and plots. */
+  initialScope?: { projectId: string; plotIds: string[] }
 }) {
   const toast = useToast()
   const [isPending, startTransition] = useTransition()
@@ -446,4 +449,24 @@ export default function PurchaseRequestForm({
       </div>
     </div>
   )
+}
+
+type FormProps = Parameters<typeof PurchaseRequestEditForm>[0]
+
+/** Creating a request is the three-step flow (plots, materials, needed-by);
+ * editing a saved request keeps the single-page form. */
+export default function PurchaseRequestForm(props: FormProps) {
+  if (props.mode === 'create') {
+    return (
+      <PurchaseRequestWizard
+        onSaved={props.onSaved}
+        onCancel={props.onCancel}
+        createAction={props.createAction}
+        initialPurpose={props.initialPurpose}
+        initialLines={props.initialLines}
+        initialScope={props.initialScope}
+      />
+    )
+  }
+  return <PurchaseRequestEditForm {...props} />
 }

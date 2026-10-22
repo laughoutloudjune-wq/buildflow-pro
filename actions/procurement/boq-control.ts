@@ -16,6 +16,8 @@ import {
   type ControlScope,
 } from '@/lib/procurement/boqControl'
 import type { PurchaseRequestItem } from '@/lib/types/procurement'
+import { toBaseQty } from '@/lib/procurement/units'
+import { loadUnitConversions } from '@/lib/procurement/units-server'
 
 function asSingle<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null
@@ -46,6 +48,8 @@ type RollupRpcRow = {
   ordered_value: number | string
   received_value: number | string
   is_estimated: boolean
+  pending_qty: number | string | null
+  unconverted_lines: number | null
 }
 
 /** Shared by getBoqControl (cost-control page) and every BOQ check panel
@@ -81,6 +85,8 @@ async function fetchRollupRows(
     orderedValue: toNumber(r.ordered_value),
     receivedValue: toNumber(r.received_value),
     isEstimated: Boolean(r.is_estimated),
+    pendingQty: toNumber(r.pending_qty),
+    unconvertedLines: Number(r.unconverted_lines) || 0,
   }))
 }
 
@@ -144,6 +150,11 @@ export async function getBoqControl(scope: ControlScope): Promise<{
 /** The documents behind one row of the rollup, for the row-expansion panel. */
 export async function getBoqControlMaterialDetail(scope: ControlScope, materialTypeId: number): Promise<BoqControlDetailRow[]> {
   await requireModuleAccess('cost_control')
+  return getBoqControlMaterialDetailInternal(scope, materialTypeId)
+}
+
+/** Not exported on purpose (this is a 'use server' file): callers gate on their own module first. */
+async function getBoqControlMaterialDetailInternal(scope: ControlScope, materialTypeId: number): Promise<BoqControlDetailRow[]> {
   const supabase = await createClient()
 
   const { data, error } = await supabase.rpc('boq_control_material_detail', {
@@ -167,6 +178,10 @@ export async function getBoqControlMaterialDetail(scope: ControlScope, materialT
       po_item_id: string | null
       purchase_request_id: string | null
       pr_no: number | null
+      raw_quantity: number | string | null
+      raw_unit: string | null
+      convertible: boolean | null
+      total_plots: number | null
     }[]) || []
   ).map((r) => ({
     docKind: r.doc_kind as BoqControlDetailRow['docKind'],
@@ -181,6 +196,10 @@ export async function getBoqControlMaterialDetail(scope: ControlScope, materialT
     poItemId: r.po_item_id ?? null,
     purchaseRequestId: r.purchase_request_id ?? null,
     prNo: r.pr_no ?? null,
+    rawQuantity: toNumber(r.raw_quantity ?? r.quantity),
+    rawUnit: r.raw_unit ?? '',
+    convertible: r.convertible !== false,
+    totalPlots: Number(r.total_plots) || 1,
   }))
 }
 
@@ -234,6 +253,7 @@ type PoForCheck = {
 type PoItemForCheck = {
   material_type_id: number
   quantity_ordered: number
+  unit: string | null
   material_types: { name: string; unit: string } | { name: string; unit: string }[] | null
   project_id: string | null
   plot_id: string | null
@@ -296,7 +316,7 @@ export async function getBoqCheckForPurchaseOrder(poId: string): Promise<{
        plot_groups (name),
        purchase_order_plots (plot_id, plots (name)),
        purchase_order_items (
-         material_type_id, quantity_ordered, material_types (name, unit),
+         material_type_id, quantity_ordered, unit, material_types (name, unit),
          project_id, plot_id, plot_group_id, projects (name), plots (name), plot_groups (name)
        )`
     )
@@ -319,11 +339,13 @@ export async function getBoqCheckForPurchaseOrder(poId: string): Promise<{
   // effective scope first, and each distinct scope gets its own rollup call.
   // The single-scope case (the vast majority of POs) collapses back to
   // exactly today's behavior: one group, one rollup call, no scope labels.
-  type ThisDoc = { qty: number; name: string; unit: string }
+  type ThisDoc = { qty: number; name: string; unit: string; unconverted: boolean }
   type Group = { scope: ControlScope; scopeLabel: string; byMaterial: Map<number, ThisDoc> }
   const groups = new Map<string, Group>()
+  const poItems = ((po.purchase_order_items as unknown as PoItemForCheck[]) || [])
+  const conversions = await loadUnitConversions(supabase, poItems.map((i) => i.material_type_id))
 
-  for (const item of (po.purchase_order_items as unknown as PoItemForCheck[]) || []) {
+  for (const item of poItems) {
     const materialType = asSingle(item.material_types)
     let itemScope: ControlScope
     let itemScopeLabel: string
@@ -360,8 +382,13 @@ export async function getBoqCheckForPurchaseOrder(poId: string): Promise<{
       qty: 0,
       name: materialType?.name || '-',
       unit: materialType?.unit || '',
+      unconverted: false,
     }
-    existing.qty += Number(item.quantity_ordered) || 0
+    // Counted in the master unit; a line in a unit with no known conversion
+    // is left out rather than added as if it were the same unit.
+    const base = toBaseQty(conversions, item.material_type_id, materialType?.unit || '', item.unit, Number(item.quantity_ordered) || 0)
+    if (base == null) existing.unconverted = true
+    else existing.qty += base
     group.byMaterial.set(item.material_type_id, existing)
   }
   if (groups.size === 0) {
@@ -396,6 +423,7 @@ export async function getBoqCheckForPurchaseOrder(poId: string): Promise<{
         thisDocQty: doc.qty,
         totalAfter,
         scopeLabel: showScopeLabels ? group.scopeLabel : undefined,
+        unconverted: doc.unconverted || undefined,
       })
     }
   })
@@ -433,7 +461,7 @@ export async function getBoqCheckForReceipts(receiptIds: string[]): Promise<{
     .select(
       `quantity_received, unit_price_at_receipt,
        goods_receipts!inner (id, purchase_order_id),
-       purchase_order_items (material_type_id, material_types (name, unit))`
+       purchase_order_items (material_type_id, unit, material_types (name, unit))`
     )
     .in('goods_receipt_id', receiptIds)
   if (error) throw new Error(error.message)
@@ -442,25 +470,33 @@ export async function getBoqCheckForReceipts(receiptIds: string[]): Promise<{
     quantity_received: number
     unit_price_at_receipt: number
     goods_receipts: { id: string; purchase_order_id: string } | { id: string; purchase_order_id: string }[]
-    purchase_order_items: { material_type_id: number; material_types: { name: string; unit: string } | { name: string; unit: string }[] | null } | null
+    purchase_order_items: { material_type_id: number; unit: string | null; material_types: { name: string; unit: string } | { name: string; unit: string }[] | null } | null
   }
 
-  const byPo = new Map<string, Map<number, { qty: number; value: number; name: string; unit: string }>>()
-  for (const row of (receipts || []) as unknown as ReceiptItemRow[]) {
+  const receiptRows = (receipts || []) as unknown as ReceiptItemRow[]
+  const receiptConversions = await loadUnitConversions(
+    supabase,
+    receiptRows.map((r) => r.purchase_order_items?.material_type_id).filter((n): n is number => typeof n === 'number')
+  )
+  const byPo = new Map<string, Map<number, { qty: number; value: number; name: string; unit: string; unconverted: boolean }>>()
+  for (const row of receiptRows) {
     const receipt = asSingle(row.goods_receipts)
     const poi = row.purchase_order_items
     if (!receipt || !poi) continue
     const materialType = asSingle(poi.material_types)
     const poId = receipt.purchase_order_id
-    const materials = byPo.get(poId) || new Map<number, { qty: number; value: number; name: string; unit: string }>()
+    const materials = byPo.get(poId) || new Map<number, { qty: number; value: number; name: string; unit: string; unconverted: boolean }>()
     const existing = materials.get(poi.material_type_id) || {
       qty: 0,
       value: 0,
       name: materialType?.name || '-',
       unit: materialType?.unit || '',
+      unconverted: false,
     }
     const receivedQty = Number(row.quantity_received) || 0
-    existing.qty += receivedQty
+    const receivedBase = toBaseQty(receiptConversions, poi.material_type_id, materialType?.unit || '', poi.unit, receivedQty)
+    if (receivedBase == null) existing.unconverted = true
+    else existing.qty += receivedBase
     existing.value += receivedQty * (Number(row.unit_price_at_receipt) || 0)
     materials.set(poi.material_type_id, existing)
     byPo.set(poId, materials)
@@ -507,6 +543,7 @@ export async function getBoqCheckForReceipts(receiptIds: string[]): Promise<{
         thisDocQty: doc.qty,
         totalAfter,
         thisDocValue: doc.value,
+        unconverted: doc.unconverted || undefined,
       }
     })
 
@@ -568,7 +605,8 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
   const rollupRows = await fetchRollupRows(supabase, resolved.scope)
   const rollupByMaterial = new Map(rollupRows.map((r) => [r.materialTypeId, r]))
 
-  const byMaterial = new Map<number, { qty: number; name: string; unit: string }>()
+  const prConversions = await loadUnitConversions(supabase, items.map((i) => i.material_type_id))
+  const byMaterial = new Map<number, { qty: number; name: string; unit: string; unconverted: boolean }>()
   for (const item of items) {
     // Only lines still waiting to be bought. A line a PO already covers is in
     // the rollup as ordered, so adding the ask on top would count the same
@@ -580,8 +618,11 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
       qty: 0,
       name: item.material_types?.name || '-',
       unit: item.material_types?.unit || '',
+      unconverted: false,
     }
-    existing.qty += ask
+    const askBase = toBaseQty(prConversions, item.material_type_id, item.material_types?.unit || '', item.unit, ask)
+    if (askBase == null) existing.unconverted = true
+    else existing.qty += askBase
     byMaterial.set(item.material_type_id, existing)
   }
 
@@ -601,6 +642,7 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
       alreadyQty,
       thisDocQty: doc.qty,
       totalAfter: alreadyQty + doc.qty,
+      unconverted: doc.unconverted || undefined,
     }
   })
 
@@ -621,6 +663,9 @@ export async function getBoqCheckForDraft(
   items: {
     materialTypeId: number
     quantity: number
+    /** The unit `quantity` is written in; converted to the material's master
+     * unit before the check. Omitted = already in the master unit. */
+    unit?: string | null
     /** This line's own scope override, when it has one (see
      * 202609220002_po_item_project_plot_override.sql) - falls back to the
      * main `scope` param when omitted, exactly like every call site did
@@ -655,8 +700,14 @@ export async function getBoqCheckForDraft(
   if (!scope.projectId) return { lines: [] }
   const supabase = await createClient()
 
-  type Group = { scope: ControlScope; scopeLabel?: string; isMainScope: boolean; byMaterial: Map<number, number> }
+  type Group = { scope: ControlScope; scopeLabel?: string; isMainScope: boolean; byMaterial: Map<number, number>; unconverted: Set<number> }
   const groups = new Map<string, Group>()
+  const draftMaterialIds = Array.from(new Set(items.map((i) => i.materialTypeId).filter(Boolean)))
+  const [draftConversions, draftMaterialsRes] = await Promise.all([
+    loadUnitConversions(supabase, draftMaterialIds),
+    supabase.from('material_types').select('id, name, unit').in('id', draftMaterialIds),
+  ])
+  const masterUnitById = new Map((draftMaterialsRes.data || []).map((m) => [m.id as number, String(m.unit || '')]))
   for (const item of items) {
     if (!item.materialTypeId || !(item.quantity > 0)) continue
     const itemScope = item.scope ?? scope
@@ -667,25 +718,27 @@ export async function getBoqCheckForDraft(
     })
     let group = groups.get(key)
     if (!group) {
-      group = { scope: itemScope, scopeLabel: item.scope ? item.scopeLabel : undefined, isMainScope: !item.scope, byMaterial: new Map() }
+      group = { scope: itemScope, scopeLabel: item.scope ? item.scopeLabel : undefined, isMainScope: !item.scope, byMaterial: new Map(), unconverted: new Set() }
       groups.set(key, group)
     } else if (!item.scope) {
       group.isMainScope = true
     }
-    group.byMaterial.set(item.materialTypeId, (group.byMaterial.get(item.materialTypeId) || 0) + item.quantity)
+    const base = toBaseQty(draftConversions, item.materialTypeId, masterUnitById.get(item.materialTypeId) || '', item.unit, item.quantity)
+    if (base == null) {
+      group.unconverted.add(item.materialTypeId)
+      if (!group.byMaterial.has(item.materialTypeId)) group.byMaterial.set(item.materialTypeId, 0)
+    } else {
+      group.byMaterial.set(item.materialTypeId, (group.byMaterial.get(item.materialTypeId) || 0) + base)
+    }
   }
   if (groups.size === 0) return { lines: [] }
 
   const showScopeLabels = groups.size > 1
   const groupEntries = Array.from(groups.values())
-  const allMaterialIds = Array.from(new Set(groupEntries.flatMap((g) => Array.from(g.byMaterial.keys()))))
 
-  const [rollupsPerGroup, materialsRes] = await Promise.all([
-    Promise.all(groupEntries.map((g) => fetchRollupRows(supabase, g.scope))),
-    supabase.from('material_types').select('id, name, unit').in('id', allMaterialIds),
-  ])
-  if (materialsRes.error) throw new Error(materialsRes.error.message)
-  const nameById = new Map((materialsRes.data || []).map((m) => [m.id, m]))
+  const rollupsPerGroup = await Promise.all(groupEntries.map((g) => fetchRollupRows(supabase, g.scope)))
+  if (draftMaterialsRes.error) throw new Error(draftMaterialsRes.error.message)
+  const nameById = new Map((draftMaterialsRes.data || []).map((m) => [m.id, m]))
 
   const lines: BoqCheckLine[] = []
   groupEntries.forEach((group, gi) => {
@@ -705,6 +758,7 @@ export async function getBoqCheckForDraft(
         thisDocQty,
         totalAfter: alreadyQty + thisDocQty,
         scopeLabel: showScopeLabels ? group.scopeLabel : undefined,
+        unconverted: group.unconverted.has(materialTypeId) || undefined,
       })
     }
   })
@@ -772,4 +826,160 @@ export async function setPoBoqOverrides(
   }
 
   revalidatePath(`/dashboard/procurement/orders/${poId}`)
+}
+
+// ---------------------------------------------------------------------------
+// Materials view helpers (plot page + row detail)
+// ---------------------------------------------------------------------------
+
+export type MaterialPlanSource = {
+  itemName: string
+  /** Planned quantity per plot of this house model, in the master unit. */
+  perPlot: number
+  plots: number
+  wastePercent: number
+}
+
+/** The materials view for one plot: same rollup as the cost-control page,
+ * scoped to the plot. Quantities only - no baht - so every role that can see
+ * the plot page may see it. The row detail (supplier names, documents) is
+ * left to roles that can see cost. */
+export async function getPlotMaterialsControl(plotId: string): Promise<{
+  scope: ControlScope
+  rows: BoqControlRow[]
+  canOpenDetail: boolean
+}> {
+  const { role } = await requireModuleAccess(['projects', 'sales', 'cost_control'])
+  const supabase = await createClient()
+  const { data: plot, error } = await supabase.from('plots').select('project_id').eq('id', plotId).single()
+  if (error || !plot) throw new Error(error?.message || 'ไม่พบแปลง')
+  const scope: ControlScope = { projectId: plot.project_id as string, plotIds: [plotId] }
+  const rows = await fetchRollupRows(supabase, scope)
+  return { scope, rows, canOpenDetail: role !== 'sales' && role !== 'sales_exec' }
+}
+
+/** Documents behind one row, for the plot page (cost-control uses
+ * getBoqControlMaterialDetail, which needs the cost_control module). */
+export async function getPlotMaterialDetail(plotId: string, materialTypeId: number): Promise<BoqControlDetailRow[]> {
+  const { role } = await requireModuleAccess(['projects', 'cost_control'])
+  if (role === 'sales' || role === 'sales_exec') throw new Error('ไม่มีสิทธิ์ดูรายละเอียดเอกสาร')
+  const supabase = await createClient()
+  const { data: plot, error } = await supabase.from('plots').select('project_id').eq('id', plotId).single()
+  if (error || !plot) throw new Error(error?.message || 'ไม่พบแปลง')
+  return getBoqControlMaterialDetailInternal({ projectId: plot.project_id as string, plotIds: [plotId] }, materialTypeId)
+}
+
+/** The BOQ jobs that make up "แผน" for one material in a scope: for each job
+ * line of each house model in scope, the per-plot quantity, how many plots of
+ * that model are in scope, and the waste % applied (the same rule as
+ * boq_control_rollup: the line's own waste %, else the organisation default). */
+export async function getMaterialPlanSources(scope: ControlScope, materialTypeId: number): Promise<MaterialPlanSource[]> {
+  await requireModuleAccess(['cost_control', 'projects'])
+  const supabase = await createClient()
+
+  let plotQuery = supabase.from('plots').select('id, house_model_id').eq('project_id', scope.projectId)
+  if (scope.plotIds && scope.plotIds.length > 0) {
+    plotQuery = plotQuery.in('id', scope.plotIds)
+  } else if (scope.plotGroupId) {
+    const { data: members, error: memberError } = await supabase
+      .from('plot_group_members')
+      .select('plot_id')
+      .eq('group_id', scope.plotGroupId)
+    if (memberError) throw new Error(memberError.message)
+    const ids = (members || []).map((m) => m.plot_id as string)
+    if (ids.length === 0) return []
+    plotQuery = plotQuery.in('id', ids)
+  }
+  const { data: plots, error: plotError } = await plotQuery
+  if (plotError) throw new Error(plotError.message)
+
+  const plotsByModel = new Map<string, number>()
+  for (const p of plots || []) {
+    if (!p.house_model_id) continue
+    const key = String(p.house_model_id)
+    plotsByModel.set(key, (plotsByModel.get(key) || 0) + 1)
+  }
+  if (plotsByModel.size === 0) return []
+
+  const [{ data: boq, error: boqError }, { data: settings }] = await Promise.all([
+    supabase
+      .from('boq_master')
+      .select('id, item_name, house_model_id, boq_material_items!inner(material_type_id, planned_quantity, waste_percent)')
+      .in('house_model_id', Array.from(plotsByModel.keys()))
+      .eq('boq_material_items.material_type_id', materialTypeId),
+    supabase.from('organization_settings').select('default_waste_percent').limit(1),
+  ])
+  if (boqError) throw new Error(boqError.message)
+  const defaultWaste = Number(settings?.[0]?.default_waste_percent) || 0
+
+  const out: MaterialPlanSource[] = []
+  for (const job of boq || []) {
+    const items = (job.boq_material_items as { planned_quantity: number | string; waste_percent: number | string | null }[]) || []
+    for (const item of items) {
+      const own = Number(item.waste_percent) || 0
+      out.push({
+        itemName: String(job.item_name || '-'),
+        perPlot: Number(item.planned_quantity) || 0,
+        plots: plotsByModel.get(String(job.house_model_id)) || 0,
+        wastePercent: own !== 0 ? own : defaultWaste,
+      })
+    }
+  }
+  return out.sort((a, b) => b.perPlot * b.plots - a.perPlot * a.plots)
+}
+
+/**
+ * Which of these purchase requests would push a material over its BOQ
+ * ceiling, for the request list's "เกิน BOQ" chip. Same check as the request
+ * page, run one request at a time (capped), warning information only.
+ */
+export async function getBoqOverRequestIds(prIds: string[]): Promise<string[]> {
+  await requireModuleAccess('procurement')
+  const over: string[] = []
+  for (const id of prIds.slice(0, 60)) {
+    try {
+      const check = await getBoqCheckForPurchaseRequest(id)
+      if (check.lines.some((l) => isBoqCheckLineOver(l))) over.push(id)
+    } catch {
+      // A request whose check cannot run simply gets no chip.
+    }
+  }
+  return over
+}
+
+export type BoqRemainingRow = {
+  materialTypeId: number
+  materialName: string
+  /** The master unit every figure below is in. */
+  unit: string
+  /** BOQ + waste allowance for the plots asked about. */
+  ceiling: number
+  /** Larger of ordered and reached the plots (never their sum). */
+  used: number
+  /** Asked for on other open requests, not yet on an order. */
+  pending: number
+  remaining: number
+}
+
+/** What is still left to ask for, per material, for the plots a purchase
+ * request is being written for. Quantities only (no baht), so foremen can use
+ * it. Drives the request form's "ตาม BOQ ที่ยังเหลือให้ขอ" suggestions and its
+ * amber over-BOQ hint, which never blocks sending. */
+export async function getBoqRemainingForRequest(scope: ControlScope): Promise<BoqRemainingRow[]> {
+  await requireModuleAccess(['procurement', 'foreman'])
+  if (!scope.projectId) return []
+  const supabase = await createClient()
+  const rows = await fetchRollupRows(supabase, scope)
+  return rows
+    .filter((r) => ceilingQty(r) > 0)
+    .map((r) => ({
+      materialTypeId: r.materialTypeId,
+      materialName: r.materialName,
+      unit: r.unit,
+      ceiling: ceilingQty(r),
+      used: totalUsedQty(r),
+      pending: r.pendingQty,
+      remaining: ceilingQty(r) - totalUsedQty(r) - r.pendingQty,
+    }))
+    .sort((a, b) => b.remaining - a.remaining)
 }
