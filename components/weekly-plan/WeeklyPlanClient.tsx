@@ -9,7 +9,6 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import {
-  addSalesRequestToPlan,
   agreeWeeklyPlan,
   deleteWeeklyPlanItem,
   recordWeeklyPlanActual,
@@ -20,10 +19,12 @@ import {
   updateWeeklyPlanItem,
   type WeeklyPlanData,
   type WeeklyPlanItem,
+  type WeeklyPlanSalesRequest,
 } from '@/actions/weekly-plan-actions'
 import { addDaysStr, currentProgress, dayIndexInWeek, formatThaiDay, formatWeekRange, mondayOf } from '@/lib/weekly-plan'
 import { todayInBangkok } from '@/lib/utils'
 import FreeItemEditor from './FreeItemEditor'
+import SalesRequestPlanModal from './SalesRequestPlanModal'
 import AddWorkSheet from './AddWorkSheet'
 
 const REQUEST_STATUS_LABEL: Record<string, string> = { new: 'ใหม่', accepted: 'รับเรื่องแล้ว', in_progress: 'กำลังทำ' }
@@ -78,6 +79,8 @@ function JobRow({
   const from = item.carryPct ?? 0
   const done = value >= 100
   const isJob = !!item.jobAssignmentId
+  // A day was chosen when the item was planned (100% planned on that day only).
+  const plannedDay = !isJob && item.planPct.filter((v) => v != null).length === 1 && item.planPct.indexOf(100) >= 0 ? item.planPct.indexOf(100) : null
   const kindChip = isSalesRequestItem(item) ? 'คำขอขาย' : isJob ? null : KIND_CHIP[item.kind]
 
   const save = (v: number) => {
@@ -143,6 +146,8 @@ function JobRow({
                 </div>
               )}
             </span>
+            {item.ownerName && <span className="text-xs text-slate-600">ดูแล: {item.ownerName}</span>}
+            {plannedDay != null && <span className="text-xs text-slate-600">ทำ {formatThaiDay(addDaysStr(item.weekStart, plannedDay))}</span>}
             {noteText != null ? (
               <input
                 autoFocus
@@ -239,6 +244,7 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
     [data.items, projectId, weekStart]
   )
   const [editing, setEditing] = useState<WeeklyPlanItem | null>(null)
+  const [planningRequest, setPlanningRequest] = useState<WeeklyPlanSalesRequest | null>(null)
   const [adding, setAdding] = useState(false)
   const [failRev, setFailRev] = useState(0)
   const [deleting, setDeleting] = useState<WeeklyPlanItem[] | null>(null)
@@ -432,7 +438,7 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
                   {` · ${REQUEST_STATUS_LABEL[r.status] || r.status}`}
                 </span>
               </div>
-              <Button variant="secondary" size="sm" disabled={pending} onClick={() => run(() => addSalesRequestToPlan(r.id, weekStart), 'เพิ่มเข้าแผนแล้ว')}>
+              <Button variant="secondary" size="sm" disabled={pending} onClick={() => setPlanningRequest(r)}>
                 + ใส่ในแผน
               </Button>
             </div>
@@ -513,6 +519,22 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
+            router.refresh()
+          }}
+        />
+      )}
+
+      {planningRequest && (
+        <SalesRequestPlanModal
+          key={planningRequest.id}
+          data={data}
+          request={planningRequest}
+          weekStart={weekStart}
+          today={today}
+          onClose={() => setPlanningRequest(null)}
+          onAdded={() => {
+            setPlanningRequest(null)
+            toast.success('เพิ่มเข้าแผนแล้ว')
             router.refresh()
           }}
         />

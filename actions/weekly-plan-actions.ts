@@ -866,10 +866,20 @@ export async function createWeeklyPlanItems(input: WeeklyPlanBatchInput): Promis
 
 /** Puts an open sales work request on a week's plan as manual work on its plot.
  * Title and plot come from the request itself; a request already planned that week is refused. */
-export async function addSalesRequestToPlan(requestId: string, weekStart: string): Promise<WeeklyPlanResult> {
+export type SalesRequestPlanInput = {
+  /** Who on the construction side looks after it */
+  ownerId: string | null
+  contractorId: string | null
+  /** 0 = Monday ... 6 = Sunday: the day it will be handled */
+  dayIndex: number | null
+}
+
+export async function addSalesRequestToPlan(requestId: string, weekStart: string, input: SalesRequestPlanInput): Promise<WeeklyPlanResult> {
   const caller = await getCaller()
   if ('error' in caller) return caller
   if (!isMonday(weekStart)) return { error: 'สัปดาห์ไม่ถูกต้อง' }
+  const day = input.dayIndex == null ? null : Math.round(input.dayIndex)
+  if (day != null && (day < 0 || day > 6)) return { error: 'วันที่ไม่ถูกต้อง' }
   const supabase = await createClient()
   const { data: req, error: reqError } = await supabase
     .from('sales_work_requests')
@@ -898,10 +908,15 @@ export async function addSalesRequestToPlan(requestId: string, weekStart: string
     week_start: weekStart,
     kind: 'other',
     title,
-    owner_id: null,
+    owner_id: input.ownerId || null,
+    contractor_id: input.contractorId || null,
+    // The day it will be handled: 100% planned on that day, nothing before it.
+    plan_pct: day == null ? null : Array.from({ length: 7 }, (_, i) => (i === day ? 100 : null)),
     created_by: caller.userId,
   })
   if (error) return { error: planErrorMessage('เพิ่มรายการไม่สำเร็จ', error) }
+  // Tell the sales side who is handling it (best effort: the plan item is already saved).
+  if (input.contractorId) await supabase.from('sales_work_requests').update({ assigned_contractor_id: input.contractorId }).eq('id', r.id)
   revalidatePath('/dashboard/weekly-plan')
   return { ok: true }
 }
