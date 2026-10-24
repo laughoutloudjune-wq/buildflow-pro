@@ -198,7 +198,8 @@ export function buildPurchaseOrderHtml(
   boqCheck?: PurchaseOrderBoqCheck | null,
   /** `showAllocations`: the internal copy. The supplier-facing PO lists one
    * consolidated line per material - which request/plot each slice came from
-   * is our own bookkeeping, so it is only printed when explicitly asked for. */
+   * is our own bookkeeping, so it is only printed when explicitly asked for.
+   * The over-BOQ check is internal too and follows the same flag. */
   options: { showAllocations?: boolean } = {}
 ): string {
   if (!cachedRegular) cachedRegular = fontBase64('Sarabun-Regular.ttf')
@@ -555,7 +556,7 @@ export function buildPurchaseOrderHtml(
       </table>
     </div>
 
-    ${boqCheckBlock(boqCheck, order.outside_boq_reason)}
+    ${options.showAllocations ? boqCheckBlock(boqCheck, order.outside_boq_reason) : ''}
 
     <div class="bottom-row">
       <div class="words-card">
