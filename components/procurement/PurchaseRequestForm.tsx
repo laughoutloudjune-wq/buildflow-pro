@@ -211,6 +211,10 @@ function PurchaseRequestEditForm({
       toast.error(purpose === 'store' ? 'ไม่พบโครงการสโตร์กลางในระบบ' : 'กรุณาเลือกโครงการ')
       return
     }
+    if (purpose === 'project' && plotScope === 'none') {
+      toast.error('กรุณาเลือกแปลงที่ใช้ (หรือเปลี่ยนเป็นสโตร์ / ค่าใช้จ่ายส่วนกลาง)')
+      return
+    }
     if (plotScope === 'plot' && !plotId) {
       toast.error('กรุณาเลือกแปลง')
       return
