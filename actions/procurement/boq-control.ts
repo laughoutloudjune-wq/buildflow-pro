@@ -579,7 +579,8 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
        purchase_request_plots (plot_id, plots (name)),
        purchase_request_items (
          material_type_id, quantity_requested, line_status, unit, material_types!purchase_request_items_material_type_id_fkey (name, unit),
-         purchase_request_item_settlements (quantity)
+         purchase_request_item_settlements (quantity),
+         purchase_order_item_allocations (quantity_allocated, purchase_order_items (unit, purchase_orders (status)))
        )`
     )
     .eq('id', prId)
@@ -599,7 +600,12 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
   })
   if (!resolved) return { lines: [], scopeLabel: 'ไม่ระบุแปลง' }
 
-  const items = (pr.purchase_request_items || []) as unknown as PurchaseRequestItem[]
+  const items = (pr.purchase_request_items || []) as unknown as (PurchaseRequestItem & {
+    purchase_order_item_allocations?: {
+      quantity_allocated: number | string
+      purchase_order_items: { unit: string | null; purchase_orders: { status: string } | { status: string }[] | null } | { unit: string | null; purchase_orders: { status: string } | { status: string }[] | null }[] | null
+    }[]
+  })[]
   if (items.length === 0) return { lines: [], scopeLabel: resolved.scopeLabel }
 
   const rollupRows = await fetchRollupRows(supabase, resolved.scope)
@@ -622,7 +628,22 @@ export async function getBoqCheckForPurchaseRequest(prId: string): Promise<{ lin
     }
     const askBase = toBaseQty(prConversions, item.material_type_id, item.material_types?.unit || '', item.unit, ask)
     if (askBase == null) existing.unconverted = true
-    else existing.qty += askBase
+    else {
+      // A line can be partly on an order and still open (e.g. asked in
+      // "unit", bought in "ตัว"). What is on a live order is already in the
+      // rollup as ordered, so only the rest of the ask is added here.
+      let onOrders = 0
+      let orderUnitKnown = true
+      for (const a of item.purchase_order_item_allocations || []) {
+        const poItem = asSingle(a.purchase_order_items)
+        if (asSingle(poItem?.purchase_orders)?.status === 'cancelled') continue
+        const base = toBaseQty(prConversions, item.material_type_id, item.material_types?.unit || '', poItem?.unit ?? null, Number(a.quantity_allocated) || 0)
+        if (base == null) orderUnitKnown = false
+        else onOrders += base
+      }
+      if (orderUnitKnown) existing.qty += Math.max(0, askBase - onOrders)
+      else existing.qty += askBase
+    }
     byMaterial.set(item.material_type_id, existing)
   }
 
