@@ -187,12 +187,10 @@ declare
   v_role text := public._billing_current_role();
   v_l record;
   v_pr_status text;
-  v_pr_project uuid;
   v_pri_unit text;
   v_pri_qty numeric;
   v_poi_qty numeric;
   v_poi_unit text;
-  v_po_project uuid;
   v_po_status text;
   v_room numeric;
   v_alloc numeric;
@@ -217,8 +215,8 @@ begin
       raise exception 'A link needs a request line and an order line' using errcode = '22023';
     end if;
 
-    select pr.status, pr.project_id, coalesce(nullif(btrim(pri.unit), ''), btrim(mt.unit)), pri.quantity_requested
-    into v_pr_status, v_pr_project, v_pri_unit, v_pri_qty
+    select pr.status, coalesce(nullif(btrim(pri.unit), ''), btrim(mt.unit)), pri.quantity_requested
+    into v_pr_status, v_pri_unit, v_pri_qty
     from public.purchase_request_items pri
     join public.purchase_requests pr on pr.id = pri.purchase_request_id
     join public.material_types mt on mt.id = pri.material_type_id
@@ -230,8 +228,8 @@ begin
       raise exception 'Only an approved request can be linked to an order' using errcode = '42501';
     end if;
 
-    select po.project_id, po.status, poi.quantity_ordered, coalesce(nullif(btrim(poi.unit), ''), btrim(mt.unit))
-    into v_po_project, v_po_status, v_poi_qty, v_poi_unit
+    select po.status, poi.quantity_ordered, coalesce(nullif(btrim(poi.unit), ''), btrim(mt.unit))
+    into v_po_status, v_poi_qty, v_poi_unit
     from public.purchase_order_items poi
     join public.purchase_orders po on po.id = poi.purchase_order_id
     join public.material_types mt on mt.id = poi.material_type_id
@@ -242,9 +240,8 @@ begin
     if v_po_status = 'cancelled' then
       raise exception 'A cancelled order cannot be linked' using errcode = '22023';
     end if;
-    if v_po_project is distinct from v_pr_project then
-      raise exception 'The order belongs to a different project than the request' using errcode = '22023';
-    end if;
+    -- Not restricted to the same project: an order for the store, or another
+    -- site, can answer a request (live: PR lines typed against a store PO).
 
     -- Reuse an existing allocation for this pair; otherwise add one sized to
     -- what is left on the order line (so the order line is never over-
@@ -338,7 +335,7 @@ revoke all on function public._link_resync_trigger() from public, anon, authenti
 
 -- ---------------------------------------------------------------------------
 -- 5. Old typed closures: where the PO number typed at closing points at a PO
---    in the same project holding the same material, make it a real link.
+--    holding the same material, make it a real link.
 --    (Looked at live data 2026-10-26: 14 of 22.) Lines whose PO holds only a
 --    similar item, or no PO number at all, are left as they are.
 -- ---------------------------------------------------------------------------
@@ -354,9 +351,8 @@ select distinct on (pri.id)
   'backfill', s.settled_by
 from public.purchase_request_item_settlements s
 join public.purchase_request_items pri on pri.id = s.purchase_request_item_id
-join public.purchase_requests pr on pr.id = pri.purchase_request_id
 join public.purchase_orders po
-  on po.po_no = btrim(s.po_ref) and po.project_id = pr.project_id and po.status <> 'cancelled'
+  on po.po_no = btrim(s.po_ref) and po.status <> 'cancelled'
 join public.purchase_order_items poi
   on poi.purchase_order_id = po.id and poi.material_type_id = pri.material_type_id
 where s.reason = 'ordered'

@@ -127,13 +127,12 @@ export async function getRequestLinkCandidates(
     if (poError) throw new Error(poError.message)
 
     const orders = new Map<string, RawOrder>(((recent || []) as unknown as RawOrder[]).map((o) => [o.id, o]))
-    // Always include the order a typed PO number points at, however old.
+    // Always include the order a typed PO number points at, however old and whichever project it belongs to.
     const typedRefs = Array.from(new Set(lines.map((l) => l.typedPoRef).filter((v): v is string => !!v)))
     if (typedRefs.length > 0) {
       const { data: typed, error: typedError } = await supabase
         .from('purchase_orders')
         .select(ORDER_SELECT)
-        .eq('project_id', raw.project_id)
         .neq('status', 'cancelled')
         .in('po_no', typedRefs)
       if (typedError) throw new Error(typedError.message)
