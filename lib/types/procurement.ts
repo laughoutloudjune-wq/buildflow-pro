@@ -97,6 +97,20 @@ export type PurchaseRequestItemSettlement = {
   settler?: { full_name: string | null; email: string | null } | null
 }
 
+export type PurchaseRequestPoLink = {
+  id: string
+  source: 'manual' | 'backfill'
+  purchase_order_item_id: string
+  purchase_order_items?: {
+    id: string
+    unit: string | null
+    quantity_ordered: number
+    quantity_received: number
+    material_types?: { name: string; unit: string | null } | null
+    purchase_orders?: { id: string; po_no: string; status: string; suppliers?: { name: string } | null } | null
+  } | null
+}
+
 export type PurchaseRequestItem = {
   id: string
   purchase_request_id: string
@@ -127,6 +141,9 @@ export type PurchaseRequestItem = {
   material_types?: MaterialType | null
   boq_master?: { item_name: string } | null
   purchase_request_item_settlements?: PurchaseRequestItemSettlement[]
+  /** Real links to order lines made on the request or order page (or from an
+   * old typed PO number). The request's status follows these orders. */
+  purchase_request_po_links?: PurchaseRequestPoLink[]
   /** Every PO line raised against this request line, cancelled POs included -
    * po_cancel doesn't hand the quantity back, so these all count towards
    * reconstructing the original ask. */

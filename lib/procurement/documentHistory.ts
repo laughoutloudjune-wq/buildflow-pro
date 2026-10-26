@@ -69,6 +69,8 @@ const ACTION_TITLE: Record<string, string> = {
   delete_po: 'ลบใบสั่งซื้อ',
   void_voucher: 'ยกเลิกใบสำคัญจ่าย',
   cancel_po: 'ยกเลิกใบสั่งซื้อ',
+  link_request_po: 'ผูกคำขอซื้อกับใบสั่งซื้อ',
+  unlink_request_po: 'ยกเลิกการผูกคำขอซื้อกับใบสั่งซื้อ',
 }
 
 const DANGER_ACTIONS = new Set(['undo_received', 'delete_po', 'void_voucher', 'cancel_po'])

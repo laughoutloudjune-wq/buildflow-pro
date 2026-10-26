@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, ListChecks, Loader2, PackageCheck, Pencil, ShoppingCart, Undo2, XCircle } from 'lucide-react'
+import { CheckCircle2, Link2, Loader2, PackageCheck, Pencil, ShoppingCart, Undo2, XCircle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -16,6 +16,8 @@ import {
 import PurchaseRequestDocActions from '@/components/procurement/PurchaseRequestDocActions'
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import PurchaseRequestSettleModal from '@/components/procurement/PurchaseRequestSettleModal'
+import RequestPoLinkSheet from '@/components/procurement/RequestPoLinkSheet'
+import { unlinkRequestFromOrder } from '@/actions/procurement/request-links'
 import RequestOrderComparison from '@/components/procurement/RequestOrderComparison'
 import { compareRequestLine, lineHasFlag, type RequestLineFlag } from '@/lib/procurement/requestFlags'
 import BoqCheckPanel from '@/components/procurement/BoqCheckPanel'
@@ -221,7 +223,10 @@ export default function PurchaseRequestDetail({
   const [rejectNote, setRejectNote] = useState('')
   const [showRejectBox, setShowRejectBox] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [isSettleModalOpen, setIsSettleModalOpen] = useState(false)
+  // Settle modal: null = closed, 'all' = every open line, else one line (its own "ตัดออก").
+  const [settleFor, setSettleFor] = useState<string | null>(null)
+  // Link sheet: null = closed; lineId narrows it to one line; poNo jumps to the PO typed when the line was closed the old way.
+  const [linkSheet, setLinkSheet] = useState<{ lineId?: string; poNo?: string | null } | null>(null)
   // The clock is read once here rather than during render: the compiler
   // caches render output against the inputs it can see, and the clock isn't
   // one of them, so a Date.now() read while rendering can leave the "overdue"
@@ -300,6 +305,20 @@ export default function PurchaseRequestDetail({
       toast.success('คืนจำนวนกลับเข้าคำขอแล้ว')
     })
   }
+
+  function handleUnlink(linkId: string) {
+    startTransition(async () => {
+      const result = await unlinkRequestFromOrder(linkId, { requestId: request.id })
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      onChanged()
+      toast.success('ยกเลิกการผูกกับ PO แล้ว')
+    })
+  }
+
+  const canChangeLines = request.status === 'approved' || request.status === 'ordered'
 
   return (
     <div className="space-y-6">
@@ -389,6 +408,14 @@ export default function PurchaseRequestDetail({
             const links = item.fulfillment?.links || []
             const boqLine = boqCheck?.lines.find((l) => l.materialTypeId === item.material_type_id)
             const masterUnit = item.material_types?.unit || ''
+            const poLinks = item.purchase_request_po_links || []
+            const linkByPoItem = new Map(poLinks.map((l) => [l.purchase_order_item_id, l]))
+            // Links whose order line has no allocation row to show them (the
+            // order was edited after linking) still get listed.
+            const shownPoItems = new Set(links.map((l) => l.poItemId))
+            const extraLinks = poLinks.filter((l) => !shownPoItems.has(l.purchase_order_item_id) && l.purchase_order_items?.purchase_orders)
+            const typedClosure = settlements.find((st) => st.reason === 'ordered' && st.po_ref)
+            const canLinkLine = canChangeLines && (item.line_status === 'open' || (item.line_status === 'closed' && settlements.some((st) => st.reason === 'ordered') && poLinks.length === 0))
             return (
               <Card key={item.id} className="space-y-3 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -434,7 +461,7 @@ export default function PurchaseRequestDetail({
 
                   <div className="rounded-lg bg-slate-50 p-3 text-sm">
                     <p className="text-xs font-medium text-slate-500">ซื้อ</p>
-                    {links.length === 0 ? (
+                    {links.length === 0 && extraLinks.length === 0 ? (
                       <p className="text-slate-500">{closed === 'cancelled' ? 'ตัดออก ไม่ได้ซื้อ' : 'ยังไม่มีใบสั่งซื้อ'}</p>
                     ) : (
                       <ul className="space-y-1">
@@ -448,9 +475,45 @@ export default function PurchaseRequestDetail({
                             <span className="block text-xs text-slate-500">
                               {l.supplierName || '-'} · {l.outstanding > 0 ? `ค้างรับ ${l.outstanding.toLocaleString('th-TH')}` : 'ของมาครบ'}
                               {l.received > 0 ? ` · รับแล้ว ${l.receivedIsEstimate ? '≈' : ''}${l.received.toLocaleString('th-TH')}` : ''}
+                              {canChangeLines && l.poItemId && linkByPoItem.get(l.poItemId) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnlink(linkByPoItem.get(l.poItemId as string)!.id)}
+                                  disabled={isPending}
+                                  className="ml-2 font-medium text-slate-500 hover:text-rose-600 disabled:opacity-50"
+                                >
+                                  ยกเลิกการผูก
+                                </button>
+                              )}
                             </span>
                           </li>
                         ))}
+                        {extraLinks.map((l) => {
+                          const poi = l.purchase_order_items
+                          const po = poi?.purchase_orders
+                          if (!poi || !po) return null
+                          return (
+                            <li key={l.id} className="text-slate-700">
+                              <Link href={`/dashboard/procurement/orders/${po.id}`} className="font-mono text-indigo-600 hover:underline">
+                                {po.po_no}
+                              </Link>{' '}
+                              {Number(poi.quantity_ordered).toLocaleString('th-TH')} {poi.unit || poi.material_types?.unit || ''}
+                              <span className="block text-xs text-slate-500">
+                                {po.suppliers?.name || '-'} · {po.status === 'received' || po.status === 'paid' ? 'ของมาแล้ว' : 'ผูกกับ PO แล้ว'}
+                                {canChangeLines && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUnlink(l.id)}
+                                    disabled={isPending}
+                                    className="ml-2 font-medium text-slate-500 hover:text-rose-600 disabled:opacity-50"
+                                  >
+                                    ยกเลิกการผูก
+                                  </button>
+                                )}
+                              </span>
+                            </li>
+                          )
+                        })}
                       </ul>
                     )}
                   </div>
@@ -473,13 +536,41 @@ export default function PurchaseRequestDetail({
                   </div>
                 </div>
 
+                {canLinkLine && (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    {typedClosure?.po_ref && (
+                      <span className="text-xs text-amber-700">
+                        ปิดไว้ด้วยเลขที่พิมพ์ {typedClosure.po_ref} ยังไม่ได้ผูกกับ PO จริง
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setLinkSheet({ lineId: item.id, poNo: typedClosure?.po_ref ?? null })}
+                      disabled={isPending}
+                      className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+                    >
+                      <Link2 className="h-3.5 w-3.5" /> {typedClosure?.po_ref ? `ผูกกับ ${typedClosure.po_ref}` : 'ผูก PO'}
+                    </button>
+                    {item.line_status === 'open' && (
+                      <button
+                        type="button"
+                        onClick={() => setSettleFor(item.id)}
+                        disabled={isPending}
+                        className="font-medium text-slate-500 hover:text-slate-800 disabled:opacity-50"
+                      >
+                        ตัดออก
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {/* Manual settlements are a human judgement call, so each one
                   * shows what was closed, why, and a way back out - unlike a
                   * PO-driven settle, nothing else records it. */}
                 {settlements.map((settlement) => (
                   <div key={settlement.id} className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
                     <span>
-                      {settlement.reason === 'ordered' ? 'สั่งซื้อนอกคำขอ' : 'ตัดออก'} {settlement.quantity} {item.material_types?.unit || ''}
+                      {settlement.reason === 'ordered' ? (poLinks.length > 0 ? 'เดิมปิดด้วยเลข PO ที่พิมพ์' : 'ซื้อโดยไม่มี PO') : 'ตัดออก'} {settlement.quantity} {item.material_types?.unit || ''}
                       {settlement.po_ref ? ` • ${settlement.po_ref}` : ''}
                     </span>
                     {settlement.note && <span>({settlement.note})</span>}
@@ -551,11 +642,11 @@ export default function PurchaseRequestDetail({
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
-                  <Button type="button" variant="secondary" onClick={() => setIsSettleModalOpen(true)}>
-                    <ListChecks className="h-4 w-4" /> ปิดรายการที่ไม่ต้องสั่ง
+                  <Button type="button" variant="secondary" onClick={() => setLinkSheet({})}>
+                    <Link2 className="h-4 w-4" /> ผูกกับ PO ที่มีอยู่
                   </Button>
                   <Button type="button" onClick={() => router.push(`/dashboard/procurement/orders/create?fromRequest=${request.id}`)}>
-                    <ShoppingCart className="h-4 w-4" /> ออกใบสั่งซื้อ
+                    <ShoppingCart className="h-4 w-4" /> ออกใบสั่งซื้อใหม่
                   </Button>
                 </div>
               )}
@@ -582,12 +673,27 @@ export default function PurchaseRequestDetail({
       {/* Mounted only while open so it always opens against the request's
         * current outstanding quantities rather than whatever they were the
         * first time this detail view rendered. */}
-      {isSettleModalOpen && (
+      {settleFor && (
         <PurchaseRequestSettleModal
           request={request}
-          onClose={() => setIsSettleModalOpen(false)}
+          onlyItemId={settleFor === 'all' ? undefined : settleFor}
+          onClose={() => setSettleFor(null)}
           onSaved={() => {
-            setIsSettleModalOpen(false)
+            setSettleFor(null)
+            onChanged()
+          }}
+        />
+      )}
+
+      {linkSheet && (
+        <RequestPoLinkSheet
+          mode="request"
+          requestId={request.id}
+          onlyLineId={linkSheet.lineId}
+          initialPoNo={linkSheet.poNo}
+          onClose={() => setLinkSheet(null)}
+          onLinked={() => {
+            setLinkSheet(null)
             onChanged()
           }}
         />
