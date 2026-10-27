@@ -292,6 +292,13 @@ export default function PurchaseRequestWizard({
       toast.error(purpose === 'store' ? 'ไม่พบโครงการสโตร์กลางในระบบ' : 'กรุณาเลือกโครงการ')
       return
     }
+    // A request for a project with no plot can't be turned into a purchase
+    // order later: the order needs a plot, a group or "outside BOQ", and has
+    // nothing to copy from the request.
+    if (forProject && plotIds.length === 0 && !plotGroupId) {
+      toast.error('กรุณาเลือกแปลงที่ใช้ (หรือเปลี่ยนเป็นสโตร์ / ค่าใช้จ่ายส่วนกลาง)')
+      return
+    }
     setStep(2)
   }
 

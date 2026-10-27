@@ -314,6 +314,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   const plotScope: PlotScope = purpose === 'project' ? plotScopeChoice : 'none'
   const [plotId, setPlotId] = useState('')
   const [plotGroupId, setPlotGroupId] = useState('')
+  const [requestHasNoPlot, setRequestHasNoPlot] = useState(false)
   // Ad-hoc multi-plot selection ('multi' scope) - any combination of the
   // project's plots, not limited to a pre-saved plot_groups batch.
   const [plotIds, setPlotIds] = useState<string[]>([])
@@ -587,6 +588,11 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
           } else if (pr.purchase_request_plots && pr.purchase_request_plots.length > 0) {
             setPlotScope('multi')
             setPlotIds(pr.purchase_request_plots.map((p) => p.plot_id))
+          } else if (requestProject?.kind !== 'store' && requestProject?.kind !== 'overhead') {
+            // An older request with no plot: nothing to copy, so open the
+            // multi-plot picker and say why, instead of a silent "ไม่ระบุ".
+            setPlotScope('multi')
+            setRequestHasNoPlot(true)
           }
           setNote(pr.note || '')
           setLines(
@@ -1631,6 +1637,12 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                   กลุ่มที่บันทึกไว้
                 </option>
               </select>
+            </div>
+          )}
+
+          {requestHasNoPlot && plotScope !== 'none' && (
+            <div className="col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              คำขอซื้อนี้ไม่ได้ระบุแปลง จึงดึงแปลงมาให้ไม่ได้ กรุณาเลือกแปลงของใบสั่งซื้อเอง หรือติ๊ก &quot;ซื้อนอก BOQ&quot; ด้านล่าง
             </div>
           )}
 
