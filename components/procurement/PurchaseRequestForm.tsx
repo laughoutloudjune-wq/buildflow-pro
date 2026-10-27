@@ -33,6 +33,8 @@ type Line = {
   otherUnit: boolean
   note: string
   boq_id: string | null
+  /** "+ งาน / หมายเหตุ" clicked: show the job picker and note box. */
+  extraOpen?: boolean
   /** This line's own material name, from its joined material_types row
    * (unfiltered by is_active) - falls back to this when the material isn't
    * in the active-only picker list anymore, so a deactivated material still
@@ -85,7 +87,7 @@ function PurchaseRequestEditForm({
   const [isPlotsLoading, setIsPlotsLoading] = useState(false)
   const [materials, setMaterials] = useState<MaterialPickerOption[]>([])
   const [projectId, setProjectId] = useState('')
-  const [plotScopeChoice, setPlotScope] = useState<PlotScope>('none')
+  const [plotScopeChoice, setPlotScope] = useState<PlotScope>(mode === 'create' ? 'multi' : 'none')
   const [plotId, setPlotId] = useState('')
   const [plotGroupId, setPlotGroupId] = useState('')
   const [plotIds, setPlotIds] = useState<string[]>([])
@@ -101,7 +103,7 @@ function PurchaseRequestEditForm({
     projectId,
     (id) => {
       setProjectId(id)
-      setPlotScope('none')
+      setPlotScope(mode === 'create' ? 'multi' : 'none')
     },
     initialPurpose
   )
@@ -194,11 +196,24 @@ function PurchaseRequestEditForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
-  function addLine() {
+  // Picking a material from the search box adds a row and moves the cursor to
+  // its quantity; Enter there returns to the search box for the next one.
+  function addMaterial(material: MaterialPickerOption) {
+    const index = lines.length
     setLines((prev) => [
       ...prev,
-      { material_type_id: 0, quantity_requested: '', unit: '', masterUnit: '', otherUnit: false, note: '', boq_id: null, material_name: null },
+      {
+        material_type_id: material.id,
+        quantity_requested: '',
+        unit: material.unit || '',
+        masterUnit: material.unit || '',
+        otherUnit: false,
+        note: '',
+        boq_id: null,
+        material_name: material.name,
+      },
     ])
+    setTimeout(() => document.getElementById(`pr-qty-${index}`)?.focus(), 0)
   }
 
   // The BOQ job picker's options: every job belonging to any plot currently
@@ -330,7 +345,6 @@ function PurchaseRequestEditForm({
     })
   }
 
-  const materialOptions = materials.map((m) => ({ value: String(m.id), label: `${m.name} (${m.unit})` }))
   const projectOptions = projectsForPurpose.map((p) => ({ value: p.id, label: p.name, sublabel: p.location || undefined }))
   const plotOptions = plots.map((p) => ({ value: p.id, label: p.name }))
   const plotGroupOptions = plotGroups.map((g) => ({
@@ -416,52 +430,34 @@ function PurchaseRequestEditForm({
       </div>
 
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <label className="text-sm font-medium text-slate-700">รายการวัสดุ</label>
-          <Button type="button" variant="secondary" size="sm" onClick={addLine}>
-            <Plus className="h-3.5 w-3.5" /> เพิ่มรายการ
-          </Button>
-        </div>
-        {lines.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-500">
-            ยังไม่มีรายการ กดเพิ่มรายการเพื่อเริ่มต้น
-          </p>
-        ) : (
+        <label className="mb-2 block text-sm font-medium text-slate-700">รายการวัสดุ</label>
+        {lines.length > 0 && (
           <div className="space-y-2">
             {lines.map((line, i) => {
-              // materialOptions only lists active materials (the picker
-              // shouldn't offer a deactivated one for a NEW selection) - but
-              // a line already pointing at one (asked for before it was
-              // deactivated) needs its own option added back in, using the
-              // name embedded on the line itself, or the picker shows a
-              // blank box instead of the real name.
-              const lineMaterialOptions =
-                line.material_type_id && !materialOptions.some((o) => o.value === String(line.material_type_id))
-                  ? [
-                      ...materialOptions,
-                      { value: String(line.material_type_id), label: `${line.material_name || 'วัสดุที่ปิดใช้งานแล้ว'} (${line.unit || '-'}) - ปิดใช้งานแล้ว` },
-                    ]
-                  : materialOptions
+              // A line whose material was deactivated after it was requested
+              // is not in the active-only list: its own joined name is used.
+              const lineName =
+                line.material_name || materials.find((m) => m.id === line.material_type_id)?.name || 'วัสดุที่ปิดใช้งานแล้ว'
+              const extraOpen = !!line.extraOpen || !!line.boq_id || line.note.trim() !== ''
               return (
               <div key={i} className="rounded-lg border border-slate-200 p-2">
                 <div className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <SearchableSelect
-                      options={lineMaterialOptions}
-                      value={line.material_type_id ? String(line.material_type_id) : ''}
-                      onChange={(v) => {
-                        const material = materials.find((m) => m.id === Number(v))
-                        updateLine(i, { material_type_id: Number(v), unit: material?.unit || '', masterUnit: material?.unit || '', otherUnit: false })
-                      }}
-                      placeholder="เลือกวัสดุ"
-                    />
+                  <div className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800" title={lineName}>
+                    {lineName}
                   </div>
                   <input
+                    id={`pr-qty-${i}`}
                     type="number"
                     min="0"
                     step="any"
                     value={line.quantity_requested}
                     onChange={(e) => updateLine(i, { quantity_requested: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        document.getElementById('pr-material-search')?.focus()
+                      }
+                    }}
                     placeholder="จำนวน"
                     className="w-24"
                   />
@@ -515,30 +511,49 @@ function PurchaseRequestEditForm({
                     canSetConversion={createAction === createPurchaseRequest}
                   />
                 )}
-                <div className="mt-2">
-                  {boqJobOptions.length > 0 ? (
-                    <SearchableSelect
-                      options={boqJobOptions.map((j) => ({ value: j.id, label: j.label }))}
-                      value={line.boq_id || ''}
-                      onChange={(v) => updateLine(i, { boq_id: v || null })}
-                      placeholder="สำหรับงาน (ไม่ระบุก็ได้)"
+                {extraOpen ? (
+                  <>
+                    <div className="mt-2">
+                      {boqJobOptions.length > 0 ? (
+                        <SearchableSelect
+                          options={boqJobOptions.map((j) => ({ value: j.id, label: j.label }))}
+                          value={line.boq_id || ''}
+                          onChange={(v) => updateLine(i, { boq_id: v || null })}
+                          placeholder="สำหรับงาน (ไม่ระบุก็ได้)"
+                        />
+                      ) : (
+                        <p className="text-xs text-slate-500">เลือกแปลงก่อน จึงจะระบุได้ว่าวัสดุนี้สำหรับงานใด (ไม่บังคับ)</p>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={line.note}
+                      onChange={(e) => updateLine(i, { note: e.target.value })}
+                      placeholder="หมายเหตุสำหรับรายการนี้ (ถ้ามี)"
+                      className="mt-2 w-full text-sm"
                     />
-                  ) : (
-                    <p className="text-xs text-slate-500">เลือกแปลงก่อน จึงจะระบุได้ว่าวัสดุนี้สำหรับงานใด (ไม่บังคับ)</p>
-                  )}
-                </div>
-                <input
-                  type="text"
-                  value={line.note}
-                  onChange={(e) => updateLine(i, { note: e.target.value })}
-                  placeholder="หมายเหตุสำหรับรายการนี้ (ถ้ามี)"
-                  className="mt-2 w-full text-sm"
-                />
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => updateLine(i, { extraOpen: true })}
+                    className="mt-1 text-xs font-medium text-indigo-600 hover:underline"
+                  >
+                    + งาน / หมายเหตุ
+                  </button>
+                )}
               </div>
               )
             })}
           </div>
         )}
+
+        <MaterialSearch
+          materials={materials}
+          remainingByMaterial={remainingByMaterial}
+          hasLines={lines.length > 0}
+          onPick={addMaterial}
+        />
       </div>
 
       <div>
@@ -600,6 +615,99 @@ function LineHints({
       )}
       {qty > 0 && base == null && line.unit.trim() !== '' && (
         <p className="mt-0.5 text-[11px] text-slate-500">{UNKNOWN_CONVERSION_LABEL}</p>
+      )}
+    </div>
+  )
+}
+
+/** The one way to add a material: a big search box under the list. Only
+ * materials already in the catalog can be picked. */
+function MaterialSearch({
+  materials,
+  remainingByMaterial,
+  hasLines,
+  onPick,
+}: {
+  materials: MaterialPickerOption[]
+  remainingByMaterial: Map<number, BoqRemainingRow>
+  hasLines: boolean
+  onPick: (m: MaterialPickerOption) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const matched = q ? materials.filter((m) => m.name.toLowerCase().includes(q)) : materials
+    // Materials the BOQ allows for these plots come first.
+    return [...matched]
+      .sort((a, b) => Number(remainingByMaterial.has(b.id)) - Number(remainingByMaterial.has(a.id)))
+      .slice(0, 30)
+  }, [materials, query, remainingByMaterial])
+
+  function pick(m: MaterialPickerOption) {
+    onPick(m)
+    setQuery('')
+    setOpen(false)
+  }
+
+  return (
+    <div className={`relative ${hasLines ? 'mt-3' : ''}`}>
+      {!hasLines && (
+        <p className="mb-2 rounded-lg border border-dashed border-slate-200 py-4 text-center text-sm text-slate-500">
+          ยังไม่มีรายการ พิมพ์ชื่อวัสดุด้านล่างเพื่อเพิ่ม
+        </p>
+      )}
+      <div className="relative">
+        <Plus className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-500" />
+        <input
+          id="pr-material-search"
+          type="text"
+          value={query}
+          autoComplete="off"
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setOpen(true)
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              if (results[0]) pick(results[0])
+            }
+          }}
+          placeholder="+ พิมพ์ชื่อวัสดุที่จะขอ"
+          className="w-full rounded-xl border-2 border-indigo-200 py-3 pl-9 pr-3 text-base focus:border-indigo-500"
+        />
+      </div>
+      {open && (
+        <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+          {results.length === 0 ? (
+            <p className="px-3 py-3 text-sm text-slate-500">ไม่พบวัสดุนี้ในรายการ หากต้องการวัสดุใหม่ ให้แจ้งฝ่ายจัดซื้อเพิ่มให้</p>
+          ) : (
+            results.map((m) => {
+              const r = remainingByMaterial.get(m.id)
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pick(m)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-indigo-50"
+                >
+                  <span className="min-w-0 truncate text-slate-800">
+                    {m.name} <span className="text-slate-400">({m.unit})</span>
+                  </span>
+                  {r && (
+                    <span className="shrink-0 text-xs text-slate-500">
+                      BOQ เหลือ {fmt(Math.max(r.remaining, 0))} {r.unit}
+                    </span>
+                  )}
+                </button>
+              )
+            })
+          )}
+        </div>
       )}
     </div>
   )
