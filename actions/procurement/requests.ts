@@ -25,6 +25,14 @@ const SELECT_WITH_RELATIONS = `
       *,
       settler:profiles!purchase_request_item_settlements_settled_by_fkey (full_name, email)
     ),
+    purchase_request_po_links (
+      id, source, purchase_order_item_id,
+      purchase_order_items (
+        id, unit, quantity_ordered, quantity_received,
+        material_types (name, unit),
+        purchase_orders (id, po_no, status, suppliers (name))
+      )
+    ),
     purchase_order_item_allocations (
       id,
       quantity_allocated,

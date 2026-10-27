@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { useDepartment } from '@/components/layout/DepartmentContext'
+import RequestPoLinkSheet from '@/components/procurement/RequestPoLinkSheet'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
 import ReasonDialog from '@/components/ui/ReasonDialog'
@@ -76,6 +77,7 @@ export default function PurchaseOrderDetailPageClient({
   const refresh = onRefresh ?? (() => router.refresh())
   const [isPending, startTransition] = useTransition()
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false)
+  const [isLinkSheetOpen, setIsLinkSheetOpen] = useState(false)
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
   const [isCloseShortDialogOpen, setIsCloseShortDialogOpen] = useState(false)
   const [isUnmarkReceivedConfirmOpen, setIsUnmarkReceivedConfirmOpen] = useState(false)
@@ -259,6 +261,11 @@ export default function PurchaseOrderDetailPageClient({
               {order.status === 'draft' && (
                 <Button type="button" size="sm" onClick={() => handleStatusChange('sent')} disabled={isPending}>
                   <Send className="h-3.5 w-3.5" /> ยืนยันสั่งซื้อ
+                </Button>
+              )}
+              {order.status !== 'cancelled' && order.project_id && (
+                <Button type="button" variant="secondary" size="sm" onClick={() => setIsLinkSheetOpen(true)}>
+                  <Link2 className="h-3.5 w-3.5" /> ผูกกับคำขอซื้อ
                 </Button>
               )}
               {canReceive && (
@@ -494,6 +501,18 @@ export default function PurchaseOrderDetailPageClient({
       />
 
       <DocumentHistoryPanel key={`${id}-${fetchedAt}`} target={{ kind: 'po', id }} />
+
+      {isLinkSheetOpen && (
+        <RequestPoLinkSheet
+          mode="order"
+          orderId={order.id}
+          onClose={() => setIsLinkSheetOpen(false)}
+          onLinked={() => {
+            setIsLinkSheetOpen(false)
+            refresh()
+          }}
+        />
+      )}
 
       <GoodsReceiptModal
         isOpen={isReceiveModalOpen}

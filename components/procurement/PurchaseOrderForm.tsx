@@ -330,6 +330,23 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   // Free-form delivery note, typed per order - not derived from the
   // project's address.
   const [deliveryAddress, setDeliveryAddress] = useState('')
+  // Places a store order can be delivered to, from addresses already saved on
+  // projects (the store itself, sites, overhead). Typing still works for
+  // anything not listed.
+  const deliveryPlaceOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const out: { value: string; label: string }[] = []
+    const projectsList = [...projects].sort((a, b) =>
+      a.kind === 'store' ? -1 : b.kind === 'store' ? 1 : a.name.localeCompare(b.name, 'th')
+    )
+    for (const p of projectsList) {
+      const addr = p.delivery_address?.trim()
+      if (!addr || seen.has(addr)) continue
+      seen.add(addr)
+      out.push({ value: addr, label: `${p.name} - ${addr.length > 60 ? `${addr.slice(0, 60)}…` : addr}` })
+    }
+    return out
+  }, [projects])
   const [status, setStatus] = useState<'draft' | 'sent'>('sent')
   const [paymentTerms, setPaymentTerms] = useState('')
   const [discountMode, setDiscountMode] = useState<DiscountMode>('none')
@@ -1723,7 +1740,22 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
           </div>
 
           <div className="col-span-2">
-            <label className={fieldLabel}>หมายเหตุการจัดส่ง</label>
+            <label className={fieldLabel}>{purpose === 'store' ? 'สถานที่ส่งของ' : 'หมายเหตุการจัดส่ง'}</label>
+            {purpose === 'store' && deliveryPlaceOptions.length > 0 && (
+              <select
+                value={deliveryPlaceOptions.some((o) => o.value === deliveryAddress) ? deliveryAddress : ''}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+                className="mb-2 w-full"
+                disabled={readOnly}
+              >
+                <option value="">เลือกสถานที่ส่งของ หรือพิมพ์เองด้านล่าง</option>
+                {deliveryPlaceOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            )}
             <textarea
               value={deliveryAddress}
               onChange={(e) => setDeliveryAddress(e.target.value)}

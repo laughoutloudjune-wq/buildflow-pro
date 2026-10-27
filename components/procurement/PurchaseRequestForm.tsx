@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
@@ -11,10 +11,15 @@ import { getMaterialPickerOptions, getPlotGroups } from '@/actions/material-acti
 import { createPurchaseRequest, updatePurchaseRequest, getBoqJobOptionsForPlots } from '@/actions/procurement-actions'
 import type { PurchaseRequest } from '@/lib/types/procurement'
 import type { MaterialPickerOption, PlotGroup } from '@/lib/types/materials'
-import PurchaseRequestWizard from '@/components/procurement/PurchaseRequestWizard'
+import { getBoqRemainingForRequest, type BoqRemainingRow } from '@/actions/procurement/boq-control'
+import { getUnitConversions } from '@/actions/procurement/unit-conversions'
+import UnitConversionNote from '@/components/procurement/UnitConversionNote'
+import { toBaseQty, UNKNOWN_CONVERSION_LABEL, type UnitConversions } from '@/lib/procurement/units'
 import PurchasePurposePicker, { usePurchasePurpose, type PurchasePurpose } from '@/components/procurement/PurchasePurposePicker'
 
 type PlotScope = 'none' | 'plot' | 'group' | 'multi'
+const OTHER_UNIT = '__other__'
+const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 })
 type Line = {
   material_type_id: number
   quantity_requested: string
@@ -22,6 +27,10 @@ type Line = {
    * material asked for in a different unit than it's catalogued in (e.g.
    * counting pieces for something catalogued by the box). */
   unit: string
+  /** The material's catalog unit - what the BOQ is counted in. */
+  masterUnit: string
+  /** "หน่วยอื่น…" picked: the unit box is a free text field. */
+  otherUnit: boolean
   note: string
   boq_id: string | null
   /** This line's own material name, from its joined material_types row
@@ -52,6 +61,7 @@ function PurchaseRequestEditForm({
   updateAction = updatePurchaseRequest,
   initialPurpose,
   initialLines,
+  initialScope,
 }: {
   mode: 'create' | 'edit'
   requestId?: string
@@ -83,6 +93,9 @@ function PurchaseRequestEditForm({
   const [neededByDate, setNeededByDate] = useState('')
   const [lines, setLines] = useState<Line[]>([])
   const [boqJobOptions, setBoqJobOptions] = useState<{ id: string; item_name: string; label: string }[]>([])
+  const [remaining, setRemaining] = useState<BoqRemainingRow[]>([])
+  const [conversions, setConversions] = useState<UnitConversions>({})
+  const [conversionsRev, setConversionsRev] = useState(0)
   const { purpose, setPurpose, projectsForPurpose } = usePurchasePurpose(
     projects,
     projectId,
@@ -124,6 +137,8 @@ function PurchaseRequestEditForm({
             // saved before this field existed (unit is null) - same prefill
             // a brand-new line gets.
             unit: i.unit || m.find((mat) => mat.id === i.material_type_id)?.unit || '',
+            masterUnit: m.find((mat) => mat.id === i.material_type_id)?.unit || i.material_types?.unit || '',
+            otherUnit: false,
             note: i.note || '',
             boq_id: i.boq_id,
             material_name: i.material_types?.name || null,
@@ -137,12 +152,21 @@ function PurchaseRequestEditForm({
               material_type_id: l.material_type_id,
               quantity_requested: l.quantity > 0 ? String(l.quantity) : '',
               unit: mat?.unit || '',
+              masterUnit: mat?.unit || '',
+              otherUnit: false,
               note: '',
               boq_id: null,
               material_name: mat?.name || null,
             }
           })
         )
+      }
+      if (mode === 'create' && initialScope?.projectId) {
+        setProjectId(initialScope.projectId)
+        if (initialScope.plotIds.length > 0) {
+          setPlotScope('multi')
+          setPlotIds(initialScope.plotIds)
+        }
       }
       if (mode === 'create' && initialPurpose === 'store') {
         const store = p.find((proj: { kind?: string | null }) => proj.kind === 'store')
@@ -171,7 +195,10 @@ function PurchaseRequestEditForm({
   }, [projectId])
 
   function addLine() {
-    setLines((prev) => [...prev, { material_type_id: 0, quantity_requested: '', unit: '', note: '', boq_id: null, material_name: null }])
+    setLines((prev) => [
+      ...prev,
+      { material_type_id: 0, quantity_requested: '', unit: '', masterUnit: '', otherUnit: false, note: '', boq_id: null, material_name: null },
+    ])
   }
 
   // The BOQ job picker's options: every job belonging to any plot currently
@@ -197,6 +224,44 @@ function PurchaseRequestEditForm({
       .catch(() => setBoqJobOptions([]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedPlotIds.join(',')])
+
+  // What the BOQ still allows for the plots chosen, shown under each line.
+  const hasScope = purpose === 'project' && !!projectId && resolvedPlotIds.length > 0
+  useEffect(() => {
+    let cancelled = false
+    if (!hasScope) return
+    getBoqRemainingForRequest({
+      projectId,
+      plotGroupId: plotScope === 'group' ? plotGroupId || null : null,
+      plotIds: plotScope === 'group' ? [] : resolvedPlotIds,
+    })
+      .then((rows) => {
+        if (!cancelled) setRemaining(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setRemaining([])
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasScope, projectId, plotScope, plotGroupId, resolvedPlotIds.join(',')])
+  const remainingByMaterial = useMemo(() => new Map((hasScope ? remaining : []).map((r) => [r.materialTypeId, r])), [remaining, hasScope])
+
+  const materialIdsKey = lines.map((l) => l.material_type_id).join(',')
+  useEffect(() => {
+    let cancelled = false
+    const ids = materialIdsKey ? materialIdsKey.split(',').map(Number).filter(Boolean) : []
+    if (ids.length === 0) return
+    getUnitConversions(ids)
+      .then((c) => {
+        if (!cancelled) setConversions(c)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [materialIdsKey, conversionsRev])
 
   function updateLine(index: number, patch: Partial<Line>) {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
@@ -386,7 +451,7 @@ function PurchaseRequestEditForm({
                       value={line.material_type_id ? String(line.material_type_id) : ''}
                       onChange={(v) => {
                         const material = materials.find((m) => m.id === Number(v))
-                        updateLine(i, { material_type_id: Number(v), unit: material?.unit || '' })
+                        updateLine(i, { material_type_id: Number(v), unit: material?.unit || '', masterUnit: material?.unit || '', otherUnit: false })
                       }}
                       placeholder="เลือกวัสดุ"
                     />
@@ -400,18 +465,56 @@ function PurchaseRequestEditForm({
                     placeholder="จำนวน"
                     className="w-24"
                   />
-                  <input
-                    type="text"
-                    value={line.unit}
-                    onChange={(e) => updateLine(i, { unit: e.target.value })}
-                    placeholder="หน่วย"
-                    title="หน่วยนับสำหรับรายการนี้ - แก้ไขได้ถ้าต้องการนับต่างจากหน่วยของวัสดุในระบบ"
-                    className="w-20"
-                  />
+                  {(() => {
+                    const known = Object.keys(conversions[line.material_type_id] || {})
+                    const unitOptions = line.masterUnit ? [line.masterUnit, ...known.filter((u) => u !== line.masterUnit)] : known
+                    const selectValue = line.otherUnit ? OTHER_UNIT : unitOptions.includes(line.unit) ? line.unit : line.unit ? OTHER_UNIT : ''
+                    return (
+                      <>
+                        <select
+                          value={selectValue}
+                          onChange={(e) => {
+                            if (e.target.value === OTHER_UNIT) updateLine(i, { otherUnit: true, unit: '' })
+                            else updateLine(i, { otherUnit: false, unit: e.target.value })
+                          }}
+                          className="w-28"
+                          aria-label="หน่วย"
+                          title="หน่วยที่ขอ - เลือกหน่วยอื่นได้ถ้าต้องการขอต่างจากหน่วยของวัสดุในระบบ"
+                        >
+                          {unitOptions.length === 0 && <option value="">หน่วย</option>}
+                          {unitOptions.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                          <option value={OTHER_UNIT}>หน่วยอื่น…</option>
+                        </select>
+                        {selectValue === OTHER_UNIT && (
+                          <input
+                            type="text"
+                            value={line.unit}
+                            onChange={(e) => updateLine(i, { unit: e.target.value, otherUnit: true })}
+                            placeholder="พิมพ์หน่วย เช่น เส้น"
+                            className="w-28"
+                            aria-label="หน่วยอื่น"
+                          />
+                        )}
+                      </>
+                    )
+                  })()}
                   <button type="button" aria-label="ลบรายการ" onClick={() => removeLine(i)} className="rounded-lg p-2 text-slate-300 hover:bg-red-50 hover:text-red-500">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
+                {line.material_type_id > 0 && (
+                  <LineHints
+                    line={line}
+                    conversions={conversions}
+                    remaining={remainingByMaterial.get(line.material_type_id)}
+                    onConversionSaved={() => setConversionsRev((n) => n + 1)}
+                    canSetConversion={createAction === createPurchaseRequest}
+                  />
+                )}
                 <div className="mt-2">
                   {boqJobOptions.length > 0 ? (
                     <SearchableSelect
@@ -455,22 +558,56 @@ function PurchaseRequestEditForm({
   )
 }
 
+/** Under a line: how the unit relates to the master unit, and what the BOQ
+ * still allows (a warning only - the request is sent either way). */
+function LineHints({
+  line,
+  conversions,
+  remaining,
+  onConversionSaved,
+  canSetConversion,
+}: {
+  line: Line
+  conversions: UnitConversions
+  remaining: BoqRemainingRow | undefined
+  onConversionSaved: () => void
+  canSetConversion: boolean
+}) {
+  const qty = Number(line.quantity_requested) || 0
+  const base = toBaseQty(conversions, line.material_type_id, line.masterUnit, line.unit, qty)
+  const over = remaining != null && qty > 0 && base != null && base > remaining.remaining
+  return (
+    <div className="mt-1">
+      <UnitConversionNote
+        materialTypeId={line.material_type_id}
+        masterUnit={line.masterUnit}
+        unit={line.unit}
+        quantity={qty}
+        conversions={conversions}
+        onSaved={onConversionSaved}
+        canSet={canSetConversion}
+      />
+      {remaining && (
+        <p className={`mt-1 text-xs ${over ? 'text-amber-800' : 'text-slate-500'}`}>
+          {over ? (
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium">
+              เกิน BOQ · เหลือให้ขอ {fmt(Math.max(remaining.remaining, 0))} {remaining.unit} · PM จะเห็น (ส่งได้ตามปกติ)
+            </span>
+          ) : (
+            <>BOQ เหลือให้ขอ {fmt(Math.max(remaining.remaining, 0))} {remaining.unit}</>
+          )}
+        </p>
+      )}
+      {qty > 0 && base == null && line.unit.trim() !== '' && (
+        <p className="mt-0.5 text-[11px] text-slate-500">{UNKNOWN_CONVERSION_LABEL}</p>
+      )}
+    </div>
+  )
+}
+
 type FormProps = Parameters<typeof PurchaseRequestEditForm>[0]
 
-/** Creating a request is the three-step flow (plots, materials, needed-by);
- * editing a saved request keeps the single-page form. */
+/** One page for both creating and editing a request. */
 export default function PurchaseRequestForm(props: FormProps) {
-  if (props.mode === 'create') {
-    return (
-      <PurchaseRequestWizard
-        onSaved={props.onSaved}
-        onCancel={props.onCancel}
-        createAction={props.createAction}
-        initialPurpose={props.initialPurpose}
-        initialLines={props.initialLines}
-        initialScope={props.initialScope}
-      />
-    )
-  }
   return <PurchaseRequestEditForm {...props} />
 }
