@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowDown, ArrowUp, ArrowUpDown, Copy, Layers, Loader2, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Copy, Layers, Loader2, PackageCheck, Plus, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import { Button } from '@/components/ui/Button'
@@ -16,6 +16,7 @@ import ReasonDialog from '@/components/ui/ReasonDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import PurchaseOrderModal from '@/components/procurement/PurchaseOrderModal'
+import GoodsReceiptModal from '@/components/procurement/GoodsReceiptModal'
 import {
   duplicatePurchaseOrders,
   deletePurchaseOrders,
@@ -81,6 +82,8 @@ export default function PurchaseOrdersPageClient({
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [viewOrderId, setViewOrderId] = useState<string | null>(null)
+  // Receiving straight from the list: the same window as on the PO page.
+  const [receiveOrder, setReceiveOrder] = useState<PurchaseOrder | null>(null)
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -334,12 +337,13 @@ export default function PurchaseOrdersPageClient({
                 <SortableHeader label="โครงการ" sortKey="project" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
                 <SortableHeader label={dateHeader} sortKey="date" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
                 <SortableHeader label="ยอดรวม" sortKey="total" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} align="right" />
+                <th className="px-4 py-3"><span className="sr-only">รับของ</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-0">
+                  <td colSpan={10} className="p-0">
                     <EmptyState
                       variant={search.trim() || supplierFilter || projectFilter || companyFilter || dateFrom || dateTo ? 'no-results' : 'empty'}
                       title={search.trim() || supplierFilter || projectFilter || companyFilter || dateFrom || dateTo ? 'ไม่พบใบสั่งซื้อตามตัวกรองนี้' : 'ยังไม่มีใบสั่งซื้อ'}
@@ -380,6 +384,13 @@ export default function PurchaseOrdersPageClient({
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{o.projects?.name || '-'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH') : '-'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(o.total_amount)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        {(o.status === 'sent' || o.status === 'partially_received') && (
+                          <Button type="button" size="sm" variant="secondary" onClick={() => setReceiveOrder(o)}>
+                            <PackageCheck className="h-3.5 w-3.5" /> รับของ
+                          </Button>
+                        )}
+                      </td>
                     </tr>
                   )
                 })
@@ -397,6 +408,18 @@ export default function PurchaseOrdersPageClient({
           router.refresh()
         }}
       />
+
+      {receiveOrder && (
+        <GoodsReceiptModal
+          isOpen
+          onClose={() => setReceiveOrder(null)}
+          order={receiveOrder}
+          onSuccess={() => {
+            router.refresh()
+            toast.success(`บันทึกการรับของ ${receiveOrder.po_no} แล้ว`)
+          }}
+        />
+      )}
 
       <ReasonDialog
         isOpen={isDeleteConfirmOpen}

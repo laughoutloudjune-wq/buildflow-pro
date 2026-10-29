@@ -16,6 +16,7 @@ import { formatCurrency } from '@/lib/currency'
 import RecordedProgressCell from '@/components/billings/RecordedProgressCell'
 import type { RecordedProgress } from '@/lib/billing'
 import type { BillingAdjustmentForm, BillableJob, ContractorOption, ProgressHistoryItem, ProjectOption, SelectedBillingJobState } from '@/lib/types/billing'
+import { readLastProject, rememberLastProject } from '@/lib/last-project'
 
 type Adjustment = BillingAdjustmentForm
 type BillingDetail = Awaited<ReturnType<typeof getBillingById>>
@@ -27,6 +28,7 @@ export default function CreateBillingRequestPageClient({
   initialEditingBilling,
   initialSelectedProject,
   initialSelectedContractor,
+  initialPlotName = '',
   initialNote,
   initialAdjustments,
   initialError,
@@ -37,6 +39,7 @@ export default function CreateBillingRequestPageClient({
   initialEditingBilling: BillingDetail
   initialSelectedProject: string
   initialSelectedContractor: string
+  initialPlotName?: string
   initialNote: string
   initialAdjustments: Adjustment[]
   initialError: string | null
@@ -49,7 +52,7 @@ export default function CreateBillingRequestPageClient({
   const [selectedContractor, setSelectedContractor] = useState(initialSelectedContractor)
   const [billableJobs, setBillableJobs] = useState<BillableJob[]>([])
   const [jobSearch, setJobSearch] = useState('')
-  const [jobPlotFilter, setJobPlotFilter] = useState('')
+  const [jobPlotFilter, setJobPlotFilter] = useState(initialPlotName)
   const [selectedJobs, setSelectedJobs] = useState<Map<string, SelectedBillingJobState>>(new Map())
   const [recordedByJob, setRecordedByJob] = useState<Record<string, RecordedProgress>>({})
   const [progressHistoryByJob, setProgressHistoryByJob] = useState<Record<string, ProgressHistoryItem[]>>({})
@@ -62,6 +65,18 @@ export default function CreateBillingRequestPageClient({
   const [submittedData, setSubmittedData] = useState<{ project_id: string; contractor_id: string; net_amount: number; doc_no?: string | number } | null>(null)
   const [editingBilling] = useState<BillingDetail>(initialEditingBilling)
   const [didPrefillJobs, setDidPrefillJobs] = useState(false)
+
+  // A new bill with no project given starts on the project used last time.
+  useEffect(() => {
+    if (editId || initialSelectedProject) return
+    const last = readLastProject(projects.map((p) => p.id))
+    if (last) setSelectedProject(last)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    rememberLastProject(selectedProject)
+  }, [selectedProject])
 
   useEffect(() => {
     if (!selectedProject || !selectedContractor) return

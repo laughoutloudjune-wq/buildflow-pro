@@ -4,6 +4,8 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { formatCurrency } from '@/lib/currency'
 import { formatThaiDay } from '@/lib/weekly-plan'
+import { getDashboardSession } from '@/lib/auth/route-access'
+import { ButtonLink } from '@/components/ui/Button'
 
 type Search = { project?: string }
 
@@ -17,6 +19,9 @@ export default async function ContractorBalancesPage({ searchParams }: { searchP
   const { projects } = await getBillingOptions()
   const projectId = project || projects[0]?.id || ''
   const contractors = projectId ? await getContractorBalances(projectId) : []
+  // "เบิกงวด" opens the bill form on this project and contractor.
+  const { role } = await getDashboardSession()
+  const canRequest = role === 'pm' || role === 'admin'
 
   return (
     <div className="space-y-5">
@@ -48,7 +53,18 @@ export default async function ContractorBalancesPage({ searchParams }: { searchP
           return (
             <Card key={c.contractorId} className="p-0">
               <div className="border-b border-slate-100 px-5 py-3">
-                <h3 className="text-base font-semibold text-slate-900">{c.contractorName}</h3>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-base font-semibold text-slate-900">{c.contractorName}</h3>
+                  {canRequest && (
+                    <ButtonLink
+                      href={`/dashboard/billing/request?projectId=${encodeURIComponent(projectId)}&contractorId=${encodeURIComponent(c.contractorId)}`}
+                      variant="secondary"
+                      size="sm"
+                    >
+                      เบิกงวด
+                    </ButtonLink>
+                  )}
+                </div>
                 <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-6">
                   {[
                     ['มูลค่างานทั้งหมด', value],

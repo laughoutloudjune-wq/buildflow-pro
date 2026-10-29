@@ -1,13 +1,14 @@
 import CreatePurchaseRequestPageClient from './CreatePurchaseRequestPageClient'
 
 /** ?purpose=store&items=12:50,13:20 opens the form prefilled - used by the
- * low-stock list's restock button. */
+ * low-stock list's restock button. ?projectId=&plotId= comes from the plot
+ * page's "ขอซื้อ" button. */
 export default async function CreatePurchaseRequestPage({
   searchParams,
 }: {
-  searchParams: Promise<{ purpose?: string; items?: string }>
+  searchParams: Promise<{ purpose?: string; items?: string; projectId?: string; plotId?: string }>
 }) {
-  const { purpose, items } = await searchParams
+  const { purpose, items, projectId, plotId } = await searchParams
   const initialLines = (items || '')
     .split(',')
     .map((pair) => {
@@ -20,6 +21,7 @@ export default async function CreatePurchaseRequestPage({
     <CreatePurchaseRequestPageClient
       initialPurpose={purpose === 'store' || purpose === 'overhead' ? purpose : undefined}
       initialLines={initialLines}
+      initialScope={projectId ? { projectId, plotIds: plotId ? [plotId] : [] } : undefined}
     />
   )
 }

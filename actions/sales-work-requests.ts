@@ -124,6 +124,15 @@ export async function getWorkRequestsForPlot(plotId: string): Promise<WorkReques
   return ((data || []) as unknown as RawRow[]).map(toRow)
 }
 
+/** One request, to start a DC from it ("ออกใบ DC จากคำขอนี้"). RLS decides
+ * who can read it, as for the plot list above. */
+export async function getWorkRequestById(id: string): Promise<WorkRequestRow | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('sales_work_requests').select(SELECT).eq('id', id).maybeSingle()
+  if (error || !data) return null
+  return toRow(data as unknown as RawRow)
+}
+
 export type WorkRequestQueueFilter = {
   status?: WorkRequestStatus[]
   projectId?: string
