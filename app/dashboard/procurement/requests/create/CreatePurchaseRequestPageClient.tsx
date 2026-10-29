@@ -14,9 +14,11 @@ const LIST = '/dashboard/procurement/requests'
 export default function CreatePurchaseRequestPageClient({
   initialPurpose,
   initialLines,
+  initialScope,
 }: {
   initialPurpose?: PurchasePurpose
   initialLines?: { material_type_id: number; quantity: number }[]
+  initialScope?: { projectId: string; plotIds: string[] }
 }) {
   const router = useRouter()
   const toast = useToast()
@@ -30,6 +32,7 @@ export default function CreatePurchaseRequestPageClient({
           mode="create"
           initialPurpose={initialPurpose}
           initialLines={initialLines}
+          initialScope={initialScope}
           onCancel={() => router.push(LIST)}
           onSaved={() => {
             toast.success('สร้างคำขอซื้อเรียบร้อยแล้ว')

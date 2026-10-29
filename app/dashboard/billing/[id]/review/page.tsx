@@ -1,4 +1,4 @@
-import { getBillingById, getJobProgressHistory } from '@/actions/billing-actions'
+import { getBillingById, getJobProgressHistory, getPendingBillingQueue } from '@/actions/billing-actions'
 import { getDashboardSession } from '@/lib/auth/route-access'
 import type { BillingAdjustmentForm, ProgressHistoryItem } from '@/lib/types/billing'
 import { todayInBangkok } from '@/lib/utils'
@@ -8,8 +8,14 @@ type BillingData = Awaited<ReturnType<typeof getBillingById>>
 type Job = NonNullable<NonNullable<BillingData>['billing_jobs']>[number]
 type Adjustment = BillingAdjustmentForm & { id?: string }
 
-export default async function ReviewBillingPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
+export default async function ReviewBillingPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ done?: string }>
+}) {
+  const [{ id }, { done }] = await Promise.all([params, searchParams])
 
   let billing: BillingData = null
   let jobs: Job[] = []
@@ -27,8 +33,13 @@ export default async function ReviewBillingPage({ params }: { params: Promise<{ 
   const { role } = await getDashboardSession()
   const canApprove = role === 'pm' || role === 'admin'
 
+  // The other bills waiting for review, so approving or rejecting this one
+  // can go straight to the next instead of back to the list.
+  let queue: string[] = []
+
   try {
-    const billingData = await getBillingById(id)
+    const [billingData, pendingIds] = await Promise.all([getBillingById(id), getPendingBillingQueue()])
+    queue = pendingIds
 
     if (billingData) {
       billing = billingData
@@ -74,6 +85,16 @@ export default async function ReviewBillingPage({ params }: { params: Promise<{ 
       initialProgressHistoryByJob={progressHistoryByJob}
       initialError={error}
       canApprove={canApprove}
+      nextPendingId={nextPendingId(queue, id)}
+      pendingAfterThis={queue.filter((q) => q !== id).length}
+      previousOutcome={done === 'approved' || done === 'rejected' ? done : null}
     />
   )
+}
+
+/** The bill after this one in list order, wrapping to the top. */
+function nextPendingId(queue: string[], currentId: string): string | null {
+  const at = queue.indexOf(currentId)
+  const rest = at === -1 ? queue : [...queue.slice(at + 1), ...queue.slice(0, at)]
+  return rest[0] ?? null
 }

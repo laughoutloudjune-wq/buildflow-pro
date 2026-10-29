@@ -15,6 +15,7 @@ import type {
   BillingApprovalPayload,
 } from '@/lib/types/billing'
 import { assertProgressWithinRange, computeBillingTotals } from '@/lib/billing'
+import { completeJobsAtFullProgress, reopenJobsAfterUndo } from '@/actions/_shared/job-status'
 
 // The heavy multi-write paths (approve, undo_approve) call the RPCs added in
 // migration 202604240001_billing_rpcs. TS still normalizes/validates the
@@ -104,6 +105,7 @@ export async function approveBilling(id: string, data: BillingApprovalPayload): 
 
     // Best effort: the approval has already gone through, so a failure here must not undo it.
     await supabase.rpc('billing_set_overclaim_reason', { p_id: id, p_reason: overclaimReason || null })
+    if (approvalType === 'progress') await completeJobsAtFullProgress(supabase, normalizedJobs)
 
     revalidatePath('/dashboard/billing')
     revalidatePath(`/dashboard/billing/${id}`)
@@ -152,6 +154,7 @@ export async function undoApproveBilling(id: string): Promise<BillingActionResul
 
     const { error } = await supabase.rpc('billing_undo_approve', { p_id: id })
     if (error) return { error: translateBillingError(error.message) }
+    await reopenJobsAfterUndo(supabase, id)
 
     revalidatePath('/dashboard/billing')
     revalidatePath(`/dashboard/billing/${id}/review`)

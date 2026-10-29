@@ -187,6 +187,19 @@ export default function PurchaseRequestsPageClient({
     })
   }
 
+  function approveAndOrder(r: PurchaseRequest) {
+    setBusyId(r.id)
+    startTransition(async () => {
+      const result = await approvePurchaseRequest(r.id)
+      if ('error' in result) {
+        setBusyId(null)
+        toast.error(result.error)
+        return
+      }
+      router.push(`/dashboard/procurement/orders/create?fromRequest=${r.id}`)
+    })
+  }
+
   function act(pile: Pile, r: PurchaseRequest) {
     if (pile === 'approve') approve(r)
     else if (pile === 'order') router.push(`/dashboard/procurement/orders/create?fromRequest=${r.id}`)
@@ -221,6 +234,11 @@ export default function PurchaseRequestsPageClient({
             {r.needed_by_date ? ` · ต้องการ ${new Date(r.needed_by_date).toLocaleDateString('th-TH')}` : ''}
           </span>
         </button>
+        {pile === 'approve' && (
+          <Button type="button" size="sm" variant="secondary" onClick={() => approveAndOrder(r)} disabled={isPending && busyId === r.id}>
+            อนุมัติ + ทำ PO
+          </Button>
+        )}
         {button && (
           <Button type="button" size="sm" onClick={() => act(pile, r)} disabled={isPending && busyId === r.id}>
             {isPending && busyId === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : button}
