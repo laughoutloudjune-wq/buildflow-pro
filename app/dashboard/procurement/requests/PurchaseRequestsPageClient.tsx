@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, ChevronDown, ChevronRight, Loader2, MoreHorizontal, Plus, Printer, Search } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -311,6 +312,11 @@ export default function PurchaseRequestsPageClient({
                 <h2 className="flex items-baseline gap-2 px-1 text-sm font-semibold text-slate-800">
                   {pile.title} <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{list.length}</span>
                   <span className="text-xs font-normal text-slate-500">{pile.hint}</span>
+                  {pile.key === 'order' && (
+                    <Link href="/dashboard/procurement/orders/combine" className="ml-auto text-xs font-medium text-indigo-600 hover:text-indigo-800">
+                      ออกใบสั่งซื้อแยกตามร้าน (รวมหลายคำขอ)
+                    </Link>
+                  )}
                 </h2>
                 <Card className="overflow-hidden">
                   <ul className="divide-y divide-slate-100">{list.map((r) => renderCard(r, pile.key, pile.button))}</ul>
