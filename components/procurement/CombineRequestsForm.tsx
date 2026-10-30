@@ -83,6 +83,33 @@ export default function CombineRequestsForm({
     })
   }
 
+  /** Lines grouped by the supplier the material was last bought from. */
+  const supplierGroups = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; count: number }>()
+    let unknown = 0
+    for (const l of lines) {
+      if (!l.last_supplier_id) {
+        unknown += 1
+        continue
+      }
+      const g = map.get(l.last_supplier_id) || { id: l.last_supplier_id, name: l.last_supplier_name || '-', count: 0 }
+      g.count += 1
+      map.set(l.last_supplier_id, g)
+    }
+    return { groups: Array.from(map.values()).sort((a, b) => b.count - a.count), unknown }
+  }, [lines])
+
+  /** One tap: choose this supplier and tick the lines they last supplied.
+   * Everything stays editable - nothing here is locked. */
+  function pickSupplierGroup(id: string) {
+    setSupplierId(id)
+    const next: Record<string, string> = {}
+    for (const l of lines) {
+      if (l.last_supplier_id === id) next[l.purchase_request_item_id] = l.unit_mismatch ? '' : String(l.remaining)
+    }
+    setSelected(next)
+  }
+
   function setQuantity(id: string, value: string) {
     setSelected((prev) => ({ ...prev, [id]: value }))
   }
@@ -231,6 +258,23 @@ export default function CombineRequestsForm({
           )}
         </div>
 
+        {lines.length > 0 && supplierGroups.groups.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-slate-500">ซื้อล่าสุดจาก (กดเพื่อเลือกร้านและติ๊กรายการของร้านนั้น):</span>
+            {supplierGroups.groups.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => pickSupplierGroup(g.id)}
+                className={`rounded-full border px-3 py-1 font-medium ${supplierId === g.id ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+              >
+                {g.name} ({g.count})
+              </button>
+            ))}
+            {supplierGroups.unknown > 0 && <span className="text-slate-400">ยังไม่เคยซื้อ {supplierGroups.unknown} รายการ - เลือกร้านเอง</span>}
+          </div>
+        )}
+
         {!sourceFilter ? (
           <p className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm text-slate-500">เลือกโครงการเพื่อดูรายการที่ยังสั่งซื้อได้</p>
         ) : isLoading ? (
@@ -250,6 +294,7 @@ export default function CombineRequestsForm({
                   <th className="px-3 py-2.5">คำขอซื้อ</th>
                   {sourceFilter === ALL_PROJECTS && <th className="px-3 py-2.5">โครงการ</th>}
                   <th className="px-3 py-2.5">วัสดุ</th>
+                  <th className="px-3 py-2.5">ซื้อล่าสุดจาก</th>
                   <th className="px-3 py-2.5">แปลง / กลุ่มแปลง</th>
                   <th className="px-3 py-2.5">ต้องการภายใน</th>
                   <th className="px-3 py-2.5 text-right">ขอ</th>
@@ -280,6 +325,7 @@ export default function CombineRequestsForm({
                           </span>
                         )}
                       </td>
+                      <td className="px-3 py-2 text-xs text-slate-500">{line.last_supplier_name || '-'}</td>
                       <td className="px-3 py-2 text-slate-500">{line.plot_label || '-'}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-600">
                         {line.needed_by_date ? new Date(line.needed_by_date).toLocaleDateString('th-TH') : '-'}

@@ -417,6 +417,11 @@ export type EligibleRequestLine = {
   requested_at: string
   /** When the site needs it, from the request header; null if none was given. */
   needed_by_date: string | null
+  /** The supplier this material was last ordered from (latest sent / received /
+   * paid order), or null when it was never bought. Only a suggestion: the
+   * combine page uses it to group lines, the supplier stays editable. */
+  last_supplier_id: string | null
+  last_supplier_name: string | null
 }
 
 /** Approved request lines with something left to order, for one project (or
@@ -488,9 +493,42 @@ export async function getEligibleRequestLinesForOrder(projectId?: string | null)
         unit_price: Number(item.material_types?.current_price ?? 0),
         requested_at: request.created_at,
         needed_by_date: request.needed_by_date || null,
+        last_supplier_id: null,
+        last_supplier_name: null,
       })
     }
   }
+
+  // Last supplier per material, from the orders that were really placed.
+  const materialIds = Array.from(new Set(rows.map((r) => r.material_type_id)))
+  if (materialIds.length > 0) {
+    const { data: bought } = await supabase
+      .from('purchase_order_items')
+      .select('material_type_id, purchase_orders!inner(supplier_id, order_date, status, suppliers(name))')
+      .in('material_type_id', materialIds)
+      .limit(5000)
+    type Bought = {
+      material_type_id: number
+      purchase_orders: { supplier_id: string | null; order_date: string | null; status: string; suppliers: { name: string } | { name: string }[] | null }
+    }
+    const last = new Map<number, { date: string; id: string; name: string }>()
+    for (const row of (bought || []) as unknown as Bought[]) {
+      const po = Array.isArray(row.purchase_orders) ? row.purchase_orders[0] : row.purchase_orders
+      if (!po?.supplier_id || po.status === 'draft' || po.status === 'cancelled') continue
+      const sup = Array.isArray(po.suppliers) ? po.suppliers[0] : po.suppliers
+      const date = po.order_date || ''
+      const prev = last.get(row.material_type_id)
+      if (!prev || date > prev.date) last.set(row.material_type_id, { date, id: po.supplier_id, name: sup?.name || '-' })
+    }
+    for (const row of rows) {
+      const hit = last.get(row.material_type_id)
+      if (hit) {
+        row.last_supplier_id = hit.id
+        row.last_supplier_name = hit.name
+      }
+    }
+  }
+
   // Most urgent first: the earliest needed-by date, requests with no date last.
   rows.sort((a, b) => {
     if (a.needed_by_date && b.needed_by_date) return a.needed_by_date.localeCompare(b.needed_by_date) || a.pr_no - b.pr_no
