@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { generatePlotPhaseScheduleFromTemplate } from '@/actions/plot-phase-schedule'
+import { statusAfterContractorChange } from '@/actions/_shared/job-status'
 
 // ดึงข้อมูลแปลง (Plot Info)
 export async function getPlotById(id: string) {
@@ -73,17 +74,20 @@ export async function assignContractor(jobId: string, contractorId: string, plot
 
   const cid = contractorId === "" ? null : contractorId
 
+  // Choosing a contractor starts the job, so the foreman can bill it without
+  // a PM changing the status by hand first (see statusAfterContractorChange).
+  const { data: current } = await supabase.from('job_assignments').select('status').eq('id', jobId).maybeSingle()
+  const status = statusAfterContractorChange(current?.status ?? null, cid)
+
   const { error } = await supabase
     .from('job_assignments')
-    .update({ 
-        contractor_id: cid,
-        status: cid ? 'pending' : 'pending' 
-    })
+    .update({ contractor_id: cid, status })
     .eq('id', jobId)
 
   if (error) throw new Error(error.message)
   
   revalidatePath(`/dashboard/projects/${projectId}/${plotId}`)
+  return { status }
 }
 
 // อัปเดตสถานะงาน (Update Status)

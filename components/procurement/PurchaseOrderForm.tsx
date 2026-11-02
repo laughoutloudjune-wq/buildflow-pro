@@ -27,6 +27,9 @@ import {
   getLastMaterialOrderPrice,
 } from '@/actions/procurement-actions'
 import { getBoqCheckForDraft } from '@/actions/procurement/boq-control'
+import { getUnitConversions } from '@/actions/procurement/unit-conversions'
+import UnitConversionNote from '@/components/procurement/UnitConversionNote'
+import { toBaseQty, type UnitConversions } from '@/lib/procurement/units'
 import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
 import PurchasePurposePicker, { usePurchasePurpose } from '@/components/procurement/PurchasePurposePicker'
 import type { ControlScope } from '@/lib/procurement/boqControl'
@@ -311,6 +314,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   const plotScope: PlotScope = purpose === 'project' ? plotScopeChoice : 'none'
   const [plotId, setPlotId] = useState('')
   const [plotGroupId, setPlotGroupId] = useState('')
+  const [requestHasNoPlot, setRequestHasNoPlot] = useState(false)
   // Ad-hoc multi-plot selection ('multi' scope) - any combination of the
   // project's plots, not limited to a pre-saved plot_groups batch.
   const [plotIds, setPlotIds] = useState<string[]>([])
@@ -326,6 +330,23 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   // Free-form delivery note, typed per order - not derived from the
   // project's address.
   const [deliveryAddress, setDeliveryAddress] = useState('')
+  // Places a store order can be delivered to, from addresses already saved on
+  // projects (the store itself, sites, overhead). Typing still works for
+  // anything not listed.
+  const deliveryPlaceOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const out: { value: string; label: string }[] = []
+    const projectsList = [...projects].sort((a, b) =>
+      a.kind === 'store' ? -1 : b.kind === 'store' ? 1 : a.name.localeCompare(b.name, 'th')
+    )
+    for (const p of projectsList) {
+      const addr = p.delivery_address?.trim()
+      if (!addr || seen.has(addr)) continue
+      seen.add(addr)
+      out.push({ value: addr, label: `${p.name} - ${addr.length > 60 ? `${addr.slice(0, 60)}…` : addr}` })
+    }
+    return out
+  }, [projects])
   const [status, setStatus] = useState<'draft' | 'sent'>('sent')
   const [paymentTerms, setPaymentTerms] = useState('')
   const [discountMode, setDiscountMode] = useState<DiscountMode>('none')
@@ -584,6 +605,11 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
           } else if (pr.purchase_request_plots && pr.purchase_request_plots.length > 0) {
             setPlotScope('multi')
             setPlotIds(pr.purchase_request_plots.map((p) => p.plot_id))
+          } else if (requestProject?.kind !== 'store' && requestProject?.kind !== 'overhead') {
+            // An older request with no plot: nothing to copy, so open the
+            // multi-plot picker and say why, instead of a silent "ไม่ระบุ".
+            setPlotScope('multi')
+            setRequestHasNoPlot(true)
           }
           setNote(pr.note || '')
           setLines(
@@ -653,6 +679,26 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     [lines]
   )
 
+  // Unit conversions for the materials on the order (master unit <-> the
+  // unit a line is written in), so the BOQ check counts in the BOQ's unit.
+  const [conversions, setConversions] = useState<UnitConversions>({})
+  const [conversionsReload, setConversionsReload] = useState(0)
+  useEffect(() => {
+    if (!materialIdsKey) return
+    let cancelled = false
+    getUnitConversions(materialIdsKey.split(',').map(Number))
+      .then((c) => {
+        if (!cancelled) setConversions(c)
+      })
+      .catch(() => {
+        /* conversions are a convenience for the BOQ check */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [materialIdsKey, conversionsReload])
+  const conversionsKey = useMemo(() => JSON.stringify(conversions), [conversions])
+
   useEffect(() => {
     if (!materialIdsKey) return
     const ids = materialIdsKey.split(',').map(Number)
@@ -685,7 +731,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         .filter((l) => l.material_type_id > 0 && Number(l.quantity_ordered) > 0)
         .map(
           (l) =>
-            `${l.material_type_id}:${Number(l.quantity_ordered)}:${l.project_id || ''}:${l.plot_id || ''}:${l.plot_group_id || ''}`
+            `${l.material_type_id}:${Number(l.quantity_ordered)}:${l.project_id || ''}:${l.plot_id || ''}:${l.plot_group_id || ''}:${encodeURIComponent(l.unit?.trim() || '')}`
         )
         .sort()
         .join(','),
@@ -698,11 +744,14 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     if (mode !== 'edit' || !initialOrder) return undefined
     const map: Record<number, number> = {}
     for (const item of initialOrder.purchase_order_items || []) {
-      map[item.material_type_id] = (map[item.material_type_id] || 0) + Number(item.quantity_ordered || 0)
+      // In the master unit, like the rollup it is subtracted from.
+      const base = toBaseQty(conversions, item.material_type_id, item.material_types?.unit || '', item.unit, Number(item.quantity_ordered || 0))
+      if (base == null) continue
+      map[item.material_type_id] = (map[item.material_type_id] || 0) + base
     }
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, initialOrder?.id])
+  }, [mode, initialOrder?.id, conversionsKey])
 
   const draftScope: ControlScope | null = !projectId
     ? null
@@ -722,13 +771,14 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     let cancelled = false
     const timer = setTimeout(() => {
       const items = draftLinesKey.split(',').map((pair) => {
-        const [materialTypeId, quantity, lineProjectId, linePlotId, linePlotGroupId] = pair.split(':')
+        const [materialTypeId, quantity, lineProjectId, linePlotId, linePlotGroupId, lineUnit] = pair.split(':')
         const override = lineProjectId
           ? { project_id: lineProjectId, plot_id: linePlotId || null, plot_group_id: linePlotGroupId || null }
           : null
         return {
           materialTypeId: Number(materialTypeId),
           quantity: Number(quantity),
+          unit: lineUnit ? decodeURIComponent(lineUnit) : null,
           scope: override
             ? { projectId: lineProjectId, plotGroupId: linePlotGroupId || null, plotIds: linePlotId ? [linePlotId] : [] }
             : undefined,
@@ -748,7 +798,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readOnly, isOutsideBoq, draftScope?.projectId, draftScope?.plotGroupId, (draftScope?.plotIds || []).join(','), draftLinesKey])
+  }, [readOnly, isOutsideBoq, draftScope?.projectId, draftScope?.plotGroupId, (draftScope?.plotIds || []).join(','), draftLinesKey, conversionsKey])
 
   const selectedSupplier = useMemo(() => suppliers.find((s) => s.id === supplierId) || null, [suppliers, supplierId])
   const supplierBranches = useMemo(
@@ -1607,6 +1657,12 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             </div>
           )}
 
+          {requestHasNoPlot && plotScope !== 'none' && (
+            <div className="col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              คำขอซื้อนี้ไม่ได้ระบุแปลง จึงดึงแปลงมาให้ไม่ได้ กรุณาเลือกแปลงของใบสั่งซื้อเอง หรือติ๊ก &quot;ซื้อนอก BOQ&quot; ด้านล่าง
+            </div>
+          )}
+
           {plotScope !== 'none' && (
             <div className="col-span-2">
               <div className={plotScope === 'multi' ? 'w-full' : 'w-full sm:max-w-xs'}>
@@ -1684,7 +1740,22 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
           </div>
 
           <div className="col-span-2">
-            <label className={fieldLabel}>หมายเหตุการจัดส่ง</label>
+            <label className={fieldLabel}>{purpose === 'store' ? 'สถานที่ส่งของ' : 'หมายเหตุการจัดส่ง'}</label>
+            {purpose === 'store' && deliveryPlaceOptions.length > 0 && (
+              <select
+                value={deliveryPlaceOptions.some((o) => o.value === deliveryAddress) ? deliveryAddress : ''}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+                className="mb-2 w-full"
+                disabled={readOnly}
+              >
+                <option value="">เลือกสถานที่ส่งของ หรือพิมพ์เองด้านล่าง</option>
+                {deliveryPlaceOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            )}
             <textarea
               value={deliveryAddress}
               onChange={(e) => setDeliveryAddress(e.target.value)}
@@ -2095,6 +2166,16 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             disabled={readOnly}
                           />
                         </div>
+                        {line.unit?.trim() && line.material_type_id > 0 && !readOnly && (
+                          <UnitConversionNote
+                            materialTypeId={line.material_type_id}
+                            masterUnit={catalogUnit(line)}
+                            unit={line.unit}
+                            quantity={Number(line.quantity_ordered) || 0}
+                            conversions={conversions}
+                            onSaved={() => setConversionsReload((n) => n + 1)}
+                          />
+                        )}
                         {line.quantity_received > 0 && (
                           <div className="mt-1 text-right text-[10px] text-emerald-600">
                             รับแล้ว {line.quantity_received.toLocaleString('th-TH')}

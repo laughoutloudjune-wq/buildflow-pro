@@ -64,6 +64,7 @@ export default function SalesRequestsPageClient({
   projects,
   plots,
   canManage,
+  canCreateDc = false,
   canApprove,
   canCreate,
   initialError,
@@ -73,6 +74,8 @@ export default function SalesRequestsPageClient({
   projects: { id: string; name: string }[]
   plots: { id: string; name: string; project_id: string }[]
   canManage: boolean
+  /** Can open the DC form, so "ออกใบ DC จากคำขอนี้" can show. */
+  canCreateDc?: boolean
   canApprove: boolean
   canCreate: boolean
   initialError?: string | null
@@ -389,6 +392,14 @@ export default function SalesRequestsPageClient({
                               <Link2 className="inline h-3 w-3" /> ผูก DC
                             </button>
                           )}
+                          {canCreateDc && row.category === 'extra_work' && !row.billingId && (
+                            <a
+                              href={`/dashboard/foreman/create-dc?srId=${row.id}`}
+                              className="rounded-lg border border-indigo-200 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50"
+                            >
+                              ออกใบ DC จากคำขอนี้
+                            </a>
+                          )}
                         </div>
                         {canManage && dcOptionsFor === row.id && (
                           <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
@@ -400,9 +411,10 @@ export default function SalesRequestsPageClient({
                             </div>
                             {dcOptions.length === 0 ? (
                               <p className="text-[11px] text-slate-500">
-                                ไม่พบใบ DC ที่ยังไม่ได้ผูก — ออกใบ DC ที่หน้า
-                                <a href="/dashboard/foreman/create-dc" className="ml-1 text-indigo-600 hover:underline">สร้างงานเพิ่ม/DC</a>
-                                แล้วกลับมาผูกที่นี่
+                                ไม่พบใบ DC ที่ยังไม่ได้ผูก
+                                {canCreateDc && (
+                                  <a href={`/dashboard/foreman/create-dc?srId=${row.id}`} className="ml-1 text-indigo-600 hover:underline">ออกใบ DC จากคำขอนี้</a>
+                                )}
                               </p>
                             ) : (
                               <div className="space-y-1">

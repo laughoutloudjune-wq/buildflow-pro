@@ -53,6 +53,9 @@ export type ForemanPurchaseRequestItemRow = {
   material_name: string
   unit: string | null
   quantity_requested: number
+  /** Where this line stands: open (waiting to be ordered), ordered (on a
+   * purchase order, goods not here yet), arrived, or closed (dropped). */
+  line_status: string
 }
 
 export type ForemanPurchaseRequestRow = {
@@ -83,7 +86,7 @@ export async function getMyPurchaseRequests(): Promise<ForemanPurchaseRequestRow
       projects (name),
       plots!purchase_requests_plot_id_fkey (name),
       plot_groups (name),
-      purchase_request_items ( quantity_requested, unit, material_types!purchase_request_items_material_type_id_fkey (name, unit) )
+      purchase_request_items ( quantity_requested, unit, line_status, material_types!purchase_request_items_material_type_id_fkey (name, unit) )
     `)
     .eq('requested_by', user.id)
     .order('created_at', { ascending: false })
@@ -103,6 +106,7 @@ export async function getMyPurchaseRequests(): Promise<ForemanPurchaseRequestRow
     purchase_request_items: Array<{
       quantity_requested: number
       unit: string | null
+      line_status: string | null
       material_types: { name: string; unit: string } | { name: string; unit: string }[] | null
     }> | null
   }
@@ -125,7 +129,37 @@ export async function getMyPurchaseRequests(): Promise<ForemanPurchaseRequestRow
         material_name: material?.name || '-',
         unit: i.unit || material?.unit || null,
         quantity_requested: Number(i.quantity_requested) || 0,
+        line_status: i.line_status || 'open',
       }
     }),
   }))
+}
+
+/** Lines and plots of one of this foreman's own requests, to start a new
+ * request from it ("ขอใหม่จากใบนี้" on a rejected one). */
+export async function getMyRequestForReuse(
+  id: string
+): Promise<{ projectId: string; plotIds: string[]; lines: { material_type_id: number; quantity: number }[] } | null> {
+  await requireModuleAccess('foreman')
+  const user = await getCurrentUser()
+  if (!user) return null
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('purchase_requests')
+    .select('project_id, plot_id, purchase_request_plots (plot_id), purchase_request_items (material_type_id, quantity_requested)')
+    .eq('id', id)
+    .eq('requested_by', user.id)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) return null
+  const extraPlots = ((data.purchase_request_plots as { plot_id: string }[] | null) || []).map((p) => p.plot_id)
+  const plotIds = Array.from(new Set([...(data.plot_id ? [data.plot_id as string] : []), ...extraPlots]))
+  return {
+    projectId: data.project_id as string,
+    plotIds,
+    lines: ((data.purchase_request_items as { material_type_id: number; quantity_requested: number }[] | null) || []).map((i) => ({
+      material_type_id: i.material_type_id,
+      quantity: Number(i.quantity_requested) || 0,
+    })),
+  }
 }

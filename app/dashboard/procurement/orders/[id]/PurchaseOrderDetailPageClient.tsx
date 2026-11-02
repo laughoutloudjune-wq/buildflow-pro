@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { useDepartment } from '@/components/layout/DepartmentContext'
+import RequestPoLinkSheet from '@/components/procurement/RequestPoLinkSheet'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { useToast } from '@/components/ui/Toast'
 import ReasonDialog from '@/components/ui/ReasonDialog'
@@ -30,6 +31,7 @@ import { getBoqCheckForPurchaseOrder, setPoBoqOverrides } from '@/actions/procur
 import { PO_STATUS_LABEL as STATUS_LABEL } from '@/lib/status-labels'
 import type { GoodsReceipt, PurchaseOrder } from '@/lib/types/procurement'
 import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
+import PoQuotesPanel from '@/components/procurement/PoQuotesPanel'
 
 function formatDate(value: string | null) {
   if (!value) return null
@@ -76,6 +78,7 @@ export default function PurchaseOrderDetailPageClient({
   const refresh = onRefresh ?? (() => router.refresh())
   const [isPending, startTransition] = useTransition()
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false)
+  const [isLinkSheetOpen, setIsLinkSheetOpen] = useState(false)
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
   const [isCloseShortDialogOpen, setIsCloseShortDialogOpen] = useState(false)
   const [isUnmarkReceivedConfirmOpen, setIsUnmarkReceivedConfirmOpen] = useState(false)
@@ -259,6 +262,11 @@ export default function PurchaseOrderDetailPageClient({
               {order.status === 'draft' && (
                 <Button type="button" size="sm" onClick={() => handleStatusChange('sent')} disabled={isPending}>
                   <Send className="h-3.5 w-3.5" /> ยืนยันสั่งซื้อ
+                </Button>
+              )}
+              {order.status !== 'cancelled' && order.project_id && (
+                <Button type="button" variant="secondary" size="sm" onClick={() => setIsLinkSheetOpen(true)}>
+                  <Link2 className="h-3.5 w-3.5" /> ผูกกับคำขอซื้อ
                 </Button>
               )}
               {canReceive && (
@@ -493,7 +501,21 @@ export default function PurchaseOrderDetailPageClient({
         onStateChange={onFormStateChange}
       />
 
+      <PoQuotesPanel purchaseOrderId={id} canEdit />
+
       <DocumentHistoryPanel key={`${id}-${fetchedAt}`} target={{ kind: 'po', id }} />
+
+      {isLinkSheetOpen && (
+        <RequestPoLinkSheet
+          mode="order"
+          orderId={order.id}
+          onClose={() => setIsLinkSheetOpen(false)}
+          onLinked={() => {
+            setIsLinkSheetOpen(false)
+            refresh()
+          }}
+        />
+      )}
 
       <GoodsReceiptModal
         isOpen={isReceiveModalOpen}

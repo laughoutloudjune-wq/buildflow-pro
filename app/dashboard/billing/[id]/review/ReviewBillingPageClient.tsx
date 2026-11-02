@@ -41,6 +41,9 @@ export default function ReviewBillingPageClient({
   initialProgressHistoryByJob,
   initialError,
   canApprove,
+  nextPendingId,
+  pendingAfterThis,
+  previousOutcome,
 }: {
   id: string
   initialBilling: BillingData
@@ -52,6 +55,9 @@ export default function ReviewBillingPageClient({
   initialProgressHistoryByJob: Record<string, ProgressHistoryItem[]>
   initialError: string | null
   canApprove: boolean
+  nextPendingId: string | null
+  pendingAfterThis: number
+  previousOutcome: 'approved' | 'rejected' | null
 }) {
   const router = useRouter()
 
@@ -74,6 +80,18 @@ export default function ReviewBillingPageClient({
   const [confirmAction, setConfirmAction] = useState<'delete' | 'undoApprove' | 'approve' | null>(null)
   const [rejectModalOpen, setRejectModalOpen] = useState(false)
   const [rejectNote, setRejectNote] = useState('')
+
+  const [outcomeNotice, setOutcomeNotice] = useState(previousOutcome)
+
+  /** After approve/reject: the next waiting bill, or the list when none is left. */
+  const goNext = (outcome: 'approved' | 'rejected') => {
+    if (nextPendingId) {
+      router.push(`/dashboard/billing/${nextPendingId}/review?done=${outcome}`)
+      return
+    }
+    const message = outcome === 'approved' ? 'อนุมัติใบเบิกเรียบร้อยแล้ว ไม่มีใบรอตรวจเหลือ' : 'ปฏิเสธใบเบิกเรียบร้อยแล้ว ไม่มีใบรอตรวจเหลือ'
+    router.push(`/dashboard/billing?type=success&message=${message}`)
+  }
 
   const isExtraWork = billing?.type === 'extra_work'
   const plotNames = useMemo(() => {
@@ -384,7 +402,7 @@ export default function ReviewBillingPageClient({
         setError(result.error)
         return
       }
-      router.push('/dashboard/billing?type=success&message=อนุมัติใบเบิกเรียบร้อยแล้ว')
+      goNext('approved')
     } finally {
       setIsSubmitting(false)
     }
@@ -399,7 +417,7 @@ export default function ReviewBillingPageClient({
         setError(result.error)
         return
       }
-      router.push('/dashboard/billing?type=success&message=ปฏิเสธใบเบิกเรียบร้อยแล้ว')
+      goNext('rejected')
     } finally {
       setIsSubmitting(false)
       setRejectModalOpen(false)
@@ -497,6 +515,23 @@ export default function ReviewBillingPageClient({
         }
         />
       </div>
+
+      {outcomeNotice ? (
+        <NoticeBanner
+          tone="success"
+          message={outcomeNotice === 'approved' ? 'อนุมัติใบก่อนหน้าแล้ว นี่คือใบถัดไปที่รอตรวจ' : 'ปฏิเสธใบก่อนหน้าแล้ว นี่คือใบถัดไปที่รอตรวจ'}
+          onClose={() => setOutcomeNotice(null)}
+        />
+      ) : null}
+
+      {canApprove && billing.status === 'pending_review' && pendingAfterThis > 0 && nextPendingId ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-4 py-2 text-sm text-slate-600 ring-1 ring-inset ring-slate-200">
+          <span>อนุมัติหรือปฏิเสธแล้วจะเปิดใบถัดไปให้เลย · รอตรวจอีก {pendingAfterThis} ใบ</span>
+          <Link href={`/dashboard/billing/${nextPendingId}/review`} className="font-medium text-indigo-600 hover:text-indigo-800">
+            ข้ามไปใบถัดไป →
+          </Link>
+        </div>
+      ) : null}
 
       {error ? <NoticeBanner tone="error" message={error} onClose={() => setError(null)} /> : null}
 

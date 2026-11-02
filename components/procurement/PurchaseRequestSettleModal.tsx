@@ -10,14 +10,14 @@ import type { PurchaseRequest, SettlementReason } from '@/lib/types/procurement'
 
 const REASON_OPTIONS: { value: SettlementReason; label: string; hint: string }[] = [
   {
-    value: 'ordered',
-    label: 'สั่งซื้อแล้ว',
-    hint: 'ซื้อของแล้ว แต่ไม่ได้ออกใบสั่งซื้อจากคำขอนี้ เช่น เปลี่ยนยี่ห้อ หรือออก PO แยกต่างหาก',
+    value: 'cancelled',
+    label: 'ไม่ซื้อแล้ว',
+    hint: 'ตัดรายการนี้ออก ไม่ต้องซื้อแล้ว เพื่อให้คำขอปิดได้ ไม่ค้างอยู่กับของที่ไม่ได้สั่ง',
   },
   {
-    value: 'cancelled',
-    label: 'ไม่สั่งซื้อรายการนี้',
-    hint: 'ตัดรายการนี้ออก ไม่ต้องซื้อแล้ว เพื่อให้คำขอปิดได้ ไม่ค้างอยู่กับของที่ไม่ได้สั่ง',
+    value: 'ordered',
+    label: 'ซื้อเงินสด ไม่มี PO',
+    hint: 'ซื้อของแล้วโดยไม่ได้ออกใบสั่งซื้อ ถ้ามี PO ให้ใช้ \u201cผูก PO\u201d ที่รายการแทน',
   },
 ]
 
@@ -33,22 +33,27 @@ const REASON_OPTIONS: { value: SettlementReason; label: string; hint: string }[]
  * whenever a PO is placed. */
 export default function PurchaseRequestSettleModal({
   request,
+  onlyItemId,
   onClose,
   onSaved,
 }: {
   request: PurchaseRequest
+  /** Open on a single line (its own "ตัดออก" link) instead of every open line. */
+  onlyItemId?: string
   onClose: () => void
   onSaved: () => void
 }) {
   const toast = useToast()
   const [isPending, startTransition] = useTransition()
-  const [reason, setReason] = useState<SettlementReason>('ordered')
-  const [poRef, setPoRef] = useState('')
+  const [reason, setReason] = useState<SettlementReason>('cancelled')
   const [note, setNote] = useState('')
 
   const outstanding = useMemo(
-    () => (request.purchase_request_items || []).filter((item) => item.line_status === 'open'),
-    [request.purchase_request_items]
+    () =>
+      (request.purchase_request_items || []).filter(
+        (item) => item.line_status === 'open' && (!onlyItemId || item.id === onlyItemId)
+      ),
+    [request.purchase_request_items, onlyItemId]
   )
 
   /** Keyed by request item id. A line is only submitted once ticked, so an
@@ -56,8 +61,8 @@ export default function PurchaseRequestSettleModal({
   const [picked, setPicked] = useState<Record<string, { checked: boolean; quantity: string }>>(() =>
     Object.fromEntries(
       (request.purchase_request_items || [])
-        .filter((item) => item.line_status === 'open')
-        .map((item) => [item.id, { checked: false, quantity: String(item.quantity_requested) }])
+        .filter((item) => item.line_status === 'open' && (!onlyItemId || item.id === onlyItemId))
+        .map((item) => [item.id, { checked: Boolean(onlyItemId), quantity: String(item.quantity_requested) }])
     )
   )
 
@@ -88,7 +93,6 @@ export default function PurchaseRequestSettleModal({
       const result = await settlePurchaseRequestItems({
         purchase_request_id: request.id,
         reason,
-        po_ref: reason === 'ordered' ? poRef : '',
         note,
         items: selected.map((item) => ({
           purchase_request_item_id: item.id,
@@ -103,7 +107,7 @@ export default function PurchaseRequestSettleModal({
       onSaved()
       toast.success(
         reason === 'ordered'
-          ? `บันทึกว่าสั่งซื้อแล้ว ${result.settled} รายการ`
+          ? `บันทึกว่าซื้อโดยไม่มี PO ${result.settled} รายการ`
           : `ตัดออก ${result.settled} รายการ`
       )
     })
@@ -112,11 +116,11 @@ export default function PurchaseRequestSettleModal({
   const allChecked = outstanding.length > 0 && selected.length === outstanding.length
 
   return (
-    <Modal isOpen onClose={onClose} title="เลือกรายการที่จัดการแล้ว" panelClassName="max-w-2xl">
+    <Modal isOpen onClose={onClose} title={onlyItemId ? 'ตัดรายการออก' : 'เลือกรายการที่จัดการแล้ว'} panelClassName="max-w-2xl">
       <div className="space-y-5">
         <p className="text-sm text-slate-500">
-          ใช้เมื่อซื้อของแล้วแต่ไม่ได้ออกใบสั่งซื้อจากคำขอนี้ หรือไม่ต้องการซื้อรายการนั้นแล้ว
-          จำนวนที่เลือกจะถูกหักออกจากยอดคงเหลือเหมือนกับที่ออก PO ปกติ และย้อนกลับได้ภายหลัง
+          ใช้เมื่อไม่ต้องซื้อรายการนี้แล้ว หรือซื้อเงินสดโดยไม่มี PO ย้อนกลับได้ภายหลัง
+          ถ้าซื้อด้วย PO อยู่แล้ว ให้ใช้ \u201cผูก PO\u201d ที่รายการนั้นแทน
         </p>
 
         <div className="space-y-2">
@@ -209,21 +213,6 @@ export default function PurchaseRequestSettleModal({
           <p className="text-sm text-red-600">จำนวนที่จัดการต้องไม่เกินจำนวนคงเหลือของรายการ</p>
         )}
 
-        {reason === 'ordered' && (
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              เลขที่ใบสั่งซื้ออ้างอิง <span className="font-normal text-slate-500">(ถ้ามี)</span>
-            </label>
-            <input
-              type="text"
-              value={poRef}
-              onChange={(e) => setPoRef(e.target.value)}
-              placeholder="เช่น PO-20260910001 หรือเลขที่บิลของร้าน"
-              className="w-full"
-            />
-          </div>
-        )}
-
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
             หมายเหตุ <span className="font-normal text-slate-500">(ถ้ามี)</span>
@@ -232,7 +221,7 @@ export default function PurchaseRequestSettleModal({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={2}
-            placeholder={reason === 'ordered' ? 'เช่น สั่งยี่ห้ออื่นแทน' : 'เช่น หน้างานเปลี่ยนแบบ ไม่ต้องใช้แล้ว'}
+            placeholder={reason === 'ordered' ? 'เช่น ซื้อที่ร้านใกล้ไซต์ จ่ายเงินสด' : 'เช่น หน้างานเปลี่ยนแบบ ไม่ต้องใช้แล้ว'}
             className="w-full"
           />
         </div>

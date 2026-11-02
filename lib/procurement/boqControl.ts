@@ -29,6 +29,11 @@ export type BoqControlRow = {
   issuedValue: number
   orderedValue: number
   receivedValue: number
+  /** Open request lines not yet on a purchase order ("รอสั่ง"), in the master unit. */
+  pendingQty: number
+  /** Order/request lines left out of the quantities above because their unit
+   * has no known conversion to the master unit (see lib/procurement/units.ts). */
+  unconvertedLines: number
   /** True when any contributing document only partially overlapped the
    * scope (a batch purchase split across plots) - the true per-house share
    * is an estimate, never presented as fact. */
@@ -69,6 +74,14 @@ export type BoqControlDetailRow = {
   poItemId: string | null
   purchaseRequestId: string | null
   prNo: number | null
+  /** The document's own figure and unit, before conversion to the master unit
+   * (`quantity` is already in the master unit). */
+  rawQuantity: number
+  rawUnit: string
+  /** False when the unit has no known conversion: `quantity` is then 0. */
+  convertible: boolean
+  /** How many plots the document covers - the divisor of the even split. */
+  totalPlots: number
 }
 
 /** The ceiling shown to users: BOQ + allowed waste, never the bare BOQ
@@ -86,24 +99,20 @@ export function ceilingQty(row: BoqControlRow): number {
  * of 1,890 bricks as 3,780. The larger figure also stays right when stock
  * was withdrawn that this scope never ordered (issued > ordered). Deliberately
  * not receivedQty - the commitment happens at order time, not delivery.
- * Deliberately NOT used for the cost-control rollup's own ceiling/status/
- * percent - see consumedQty below. */
+ * This one rule also drives the cost-control rollup's percent / status /
+ * excess, so every screen answers "is this over BOQ" the same way. */
 export function totalUsedQty(row: BoqControlRow): number {
   return Math.max(row.orderedQty, row.issuedQty)
 }
 
 /** What this scope has actually consumed: every 'out' stock movement against
- * it, whatever posted it - a manual withdrawal from the store, or Phase 1's
- * direct_to_site posting for material that never entered the store at all.
- * This, not totalUsedQty, is what the cost-control rollup page compares
- * against the BOQ ceiling (percentUsed/rowStatus/excessValue below) - once
- * material can be bought for house 101 and then issued to house 101, adding
- * purchase and consumption together would double-count the same material
- * (MATERIAL_FLOW_PLAN.md Phase 4). orderedQty/receivedQty stay on the row as
- * their own "on order" figure, still shown, just not part of this. The
- * precommitment checks above keep using totalUsedQty on purpose: an early
- * warning has to count what's already been ordered, not just what's been
- * consumed, or an over-order would never trip it before the material ships. */
+ * it, whatever posted it - a manual withdrawal from the store, or direct_to_site
+ * posting for material that never entered the store at all. Shown as "ถึงแปลง".
+ * It is one input of totalUsedQty above, which is what percentUsed / rowStatus /
+ * excessValue compare with the ceiling: ordering counts too, so an over-order
+ * is flagged before the material ships (the same max rule the PO, request and
+ * receipt checks use). Never add the two - an order and its delivery are the
+ * same material. */
 export function consumedQty(row: BoqControlRow): number {
   return row.issuedQty
 }
@@ -113,7 +122,7 @@ export function consumedQty(row: BoqControlRow): number {
 export function percentUsed(row: BoqControlRow): number | null {
   const ceiling = ceilingQty(row)
   if (ceiling <= 0) return null
-  return (consumedQty(row) / ceiling) * 100
+  return (totalUsedQty(row) / ceiling) * 100
 }
 
 /**
@@ -127,14 +136,14 @@ export function percentUsed(row: BoqControlRow): number | null {
  * at all, such as an opening-balance-only material).
  */
 export function excessValue(row: BoqControlRow): number {
-  const excessQty = consumedQty(row) - ceilingQty(row)
+  const excessQty = totalUsedQty(row) - ceilingQty(row)
   if (excessQty <= 0 || row.orderedQty <= 0) return 0
   const unitPrice = row.orderedValue / row.orderedQty
   return excessQty * unitPrice
 }
 
 export function rowStatus(row: BoqControlRow): BoqControlStatus {
-  const used = consumedQty(row)
+  const used = totalUsedQty(row)
   if (row.plannedQty === 0 && used > 0) return 'not_in_boq'
   const percent = percentUsed(row)
   if (percent === null) return 'no_budget'
@@ -184,6 +193,10 @@ export type BoqCheckLine = {
    * common single-scope case so every existing check keeps looking exactly
    * as it does today. */
   scopeLabel?: string
+  /** Some of this document's lines are in a unit with no known conversion to
+   * the master unit; they are left out of thisDocQty (never added as mixed
+   * units) and the line says "เทียบ BOQ ไม่ได้ จนกว่าจะรู้หน่วย". */
+  unconverted?: boolean
 }
 
 export type BoqCheckOverride = {

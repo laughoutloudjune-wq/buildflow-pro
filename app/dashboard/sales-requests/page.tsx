@@ -13,6 +13,8 @@ import SalesRequestsPageClient from './SalesRequestsPageClient'
 export default async function SalesRequestsPage() {
   const { role, permissions: rolePermissions } = await requireModuleAccess(['sales', 'foreman', 'projects'])
   const canManage = permissionsForRole(role, rolePermissions).projects
+  // The DC form lives under the foreman module.
+  const canCreateDc = canManage && permissionsForRole(role, rolePermissions).foreman
   // Sales exec (and admin) approve/reject new requests before construction sees them.
   const canApprove = role === 'admin' || role === 'sales_exec'
   // Same roles the sales_work_request_create RPC allows, and the sales module on.
@@ -48,6 +50,7 @@ export default async function SalesRequestsPage() {
       projects={projects}
       plots={plots}
       canManage={canManage}
+      canCreateDc={canCreateDc}
       canApprove={canApprove}
       canCreate={canCreate}
       initialError={initialError}

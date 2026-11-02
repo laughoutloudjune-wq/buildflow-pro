@@ -527,3 +527,17 @@ export async function getBillingsForPrint(
     printedBy: (session.profile as { full_name?: string | null } | null)?.full_name || session.user?.email || null,
   }
 }
+
+/** The bills still waiting for PM review, in the billing list's order
+ * (newest first), so the review page can go straight to the next one. */
+export async function getPendingBillingQueue(): Promise<string[]> {
+  await requireModuleAccess([...MONEY_MODULES])
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('billings')
+    .select('id')
+    .eq('status', 'pending_review')
+    .order('created_at', { ascending: false })
+  if (error) return []
+  return (data || []).map((row) => String(row.id))
+}

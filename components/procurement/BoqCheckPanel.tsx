@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Loader2 } from 
 import { Button } from '@/components/ui/Button'
 import { formatCurrency } from '@/lib/currency'
 import { isBoqCheckLineOver, type BoqCheckLine, type BoqCheckOverride } from '@/lib/procurement/boqControl'
+import { UNKNOWN_CONVERSION_LABEL } from '@/lib/procurement/units'
 
 // Re-exported so existing call sites (`import BoqCheckPanel, { type
 // BoqCheckLine } from '.../BoqCheckPanel'`) keep working - the canonical
@@ -117,6 +118,7 @@ export default function BoqCheckPanel({ lines, scopeLabel, onAcknowledge, onReas
                             {line.scopeLabel}
                           </span>
                         )}
+                        {line.unconverted && <p className="mt-1 text-xs font-normal text-amber-700">บางรายการ {UNKNOWN_CONVERSION_LABEL}</p>}
                         {over && (
                           <div className="mt-1.5 max-w-sm">
                             {override ? (

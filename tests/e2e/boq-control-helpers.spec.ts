@@ -29,6 +29,8 @@ function row(overrides: Partial<BoqControlRow> = {}): BoqControlRow {
     orderedValue: 0,
     receivedValue: 0,
     isEstimated: false,
+    pendingQty: 0,
+    unconvertedLines: 0,
     ...overrides,
   }
 }
@@ -51,13 +53,9 @@ test.describe('boqControl helpers', () => {
     expect(ceilingQty(row({ plannedQty: 200, allowanceQty: 10 }))).toBe(210)
   })
 
-  // totalUsedQty drives the precommitment "would this push us over budget"
-  // checks at signing time (BoqCheckLine et al) - it stays ordered+issued on
-  // purpose, so an over-order trips the warning before the material ever
-  // ships. consumedQty is the separate, newer basis the cost-control rollup
-  // itself compares against the ceiling (MATERIAL_FLOW_PLAN.md Phase 4) -
-  // see percentUsed/rowStatus/excessValue below, all of which read
-  // consumedQty, not totalUsedQty.
+  // totalUsedQty is the one "how much is committed" basis: the PO / request /
+  // receipt checks and the cost-control rollup (percentUsed, rowStatus,
+  // excessValue) all read it, so every screen agrees on what is over BOQ.
   test('totalUsedQty is the larger of ordered and issued, never their sum or received', () => {
     expect(totalUsedQty(row({ orderedQty: 100, issuedQty: 20, receivedQty: 999 }))).toBe(100)
     // Straight-to-plot delivery: the same 1,890 is both ordered and issued.
@@ -77,16 +75,23 @@ test.describe('boqControl helpers', () => {
     expect(percentUsed(row({ plannedQty: 200, issuedQty: 100 }))).toBe(50)
   })
 
-  test('percentUsed ignores orderedQty - purchasing alone never moves it', () => {
-    expect(percentUsed(row({ plannedQty: 200, orderedQty: 100, issuedQty: 0 }))).toBe(0)
+  test('percentUsed counts the larger of ordered and issued, never their sum', () => {
+    expect(percentUsed(row({ plannedQty: 200, orderedQty: 100, issuedQty: 0 }))).toBe(50)
+    expect(percentUsed(row({ plannedQty: 200, orderedQty: 100, issuedQty: 100 }))).toBe(50)
   })
 
   test('rowStatus: not_in_boq when nothing was planned but something was consumed', () => {
     expect(rowStatus(row({ plannedQty: 0, allowanceQty: 0, issuedQty: 10 }))).toBe('not_in_boq')
   })
 
-  test('rowStatus: not over from ordering alone - only consumption counts', () => {
-    expect(rowStatus(row({ plannedQty: 0, allowanceQty: 0, orderedQty: 10, issuedQty: 0 }))).toBe('no_budget')
+  test('rowStatus: bought but never planned is not_in_boq', () => {
+    expect(rowStatus(row({ plannedQty: 0, allowanceQty: 0, orderedQty: 10, issuedQty: 0 }))).toBe('not_in_boq')
+  })
+
+  test('rowStatus: ordering past the ceiling is over before anything ships', () => {
+    expect(rowStatus(row({ plannedQty: 100, orderedQty: 101, issuedQty: 0 }))).toBe('over')
+    expect(rowStatus(row({ plannedQty: 100, orderedQty: 90, issuedQty: 0 }))).toBe('watch')
+    expect(rowStatus(row({ plannedQty: 100, orderedQty: 100, issuedQty: 100 }))).toBe('watch')
   })
 
   test('rowStatus: no_budget when nothing was planned and nothing was bought either', () => {
@@ -115,6 +120,11 @@ test.describe('boqControl helpers', () => {
     // average ordered price of 900/90 = 10 baht/unit (stock_movements
     // carries no price of its own).
     expect(excessValue(row({ plannedQty: 100, orderedQty: 90, orderedValue: 900, issuedQty: 120 }))).toBe(200)
+  })
+
+  test('excessValue counts an over-order that has not shipped yet', () => {
+    // 90 ordered at 900 baht against a ceiling of 80: 10 over x 10 baht.
+    expect(excessValue(row({ plannedQty: 80, orderedQty: 90, orderedValue: 900, issuedQty: 0 }))).toBe(100)
   })
 
   test('excessValue is 0 when there is no ordered value to derive a price from (e.g. all-issued)', () => {
