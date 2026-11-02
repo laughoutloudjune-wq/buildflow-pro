@@ -1,11 +1,10 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useState, useTransition, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CalendarCheck, ChevronLeft, ChevronRight, MoreHorizontal, Plus } from 'lucide-react'
+import { CalendarCheck, ChevronLeft, ChevronRight, MoreHorizontal, Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import {
@@ -19,28 +18,42 @@ import {
   updateWeeklyPlanItem,
   type WeeklyPlanData,
   type WeeklyPlanItem,
+  type WeeklyPlanSalesRequest,
 } from '@/actions/weekly-plan-actions'
-import { addDaysStr, currentProgress, dayIndexInWeek, formatThaiDay, formatWeekRange, mondayOf, WEEKLY_PLAN_KINDS } from '@/lib/weekly-plan'
+import { addDaysStr, currentProgress, dayIndexInWeek, formatThaiDay, formatWeekRange, mondayOf } from '@/lib/weekly-plan'
 import { todayInBangkok } from '@/lib/utils'
-import WeeklyPlanItemModal from './WeeklyPlanItemModal'
+import FreeItemEditor from './FreeItemEditor'
+import SalesRequestPlanModal from './SalesRequestPlanModal'
 import AddWorkSheet from './AddWorkSheet'
 
 const REQUEST_STATUS_LABEL: Record<string, string> = { new: 'ใหม่', accepted: 'รับเรื่องแล้ว', in_progress: 'กำลังทำ' }
+
+const KIND_CHIP: Partial<Record<WeeklyPlanItem['kind'], string>> = { repair: 'ซ่อม', dc: 'DC', inspect: 'ตรวจบ้าน', other: 'อื่นๆ' }
+
+/** Free items made from a sales request carry its number in the title (see addSalesRequestToPlan). */
+const isSalesRequestItem = (item: WeeklyPlanItem) => !item.jobAssignmentId && item.title.startsWith('คำขอ')
+
+const salesRequestTitle = (requestNo: string | null, title: string) => `คำขอ ${requestNo || ''}: ${title}`.replace('คำขอ :', 'คำขอ:')
 
 const plotSort = (a: string, b: string) => a.localeCompare(b, 'th', { numeric: true })
 
 type Result = { ok: true } | { error: string }
 
-/** One job on one plot: a % box that saves as you type, a "เสร็จ" button and a ⋯ menu. */
+/** Grid for one row: plot · job · crew · start % · % box · finish · menu. On phones it is two lines. */
+const ROW_GRID =
+  'grid grid-cols-[minmax(0,1fr)_auto_auto_28px] [grid-template-areas:"nm_pc_fin_wm""cw_pc_fin_wm"] items-center gap-x-2 sm:grid-cols-[64px_minmax(0,1fr)_130px_70px_132px_64px_28px] sm:[grid-template-areas:none]'
+
+/** One planned item as a single row. Note, rename and remove sit behind the ⋯ button. */
 function JobRow({
   item,
-  label,
   data,
   canCheck,
-  agreed,
   editable,
+  afterMeeting,
   busy,
   failRev,
+  plotCell,
+  dashed,
   onSavePct,
   onNote,
   onCrew,
@@ -48,13 +61,16 @@ function JobRow({
   onEditFree,
 }: {
   item: WeeklyPlanItem
-  label?: string
   data: WeeklyPlanData
   canCheck: boolean
-  agreed: boolean
   editable: boolean
+  afterMeeting: boolean
   busy: boolean
   failRev: number
+  /** Shown in the first column of the first job of a plot only */
+  plotCell: ReactNode
+  /** Dashed top border between jobs of the same plot */
+  dashed: boolean
   onSavePct: (item: WeeklyPlanItem, v: number) => void
   onNote: (item: WeeklyPlanItem, note: string) => void
   onCrew: (item: WeeklyPlanItem, contractorId: string) => void
@@ -64,12 +80,18 @@ function JobRow({
   const server = item.status === 'done' ? 100 : currentProgress(item)
   const [localState, setLocal] = useState<{ base: number; v: number; rev: number } | null>(null)
   const [text, setText] = useState<string | null>(null)
-  const [open, setOpen] = useState(false)
-  const [note, setNote] = useState(item.note ?? '')
+  const [menu, setMenu] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const [noteText, setNoteText] = useState<string | null>(null)
   // What was just typed shows at once; it is dropped when the saved value changes or a save fails.
   const value = localState && localState.base === server && localState.rev === failRev ? localState.v : server
   const from = item.carryPct ?? 0
   const done = value >= 100
+  const isJob = !!item.jobAssignmentId
+  // A day was chosen when the item was planned (100% planned on that day only).
+  const plannedDay = !isJob && item.planPct.filter((v) => v != null).length === 1 && item.planPct.indexOf(100) >= 0 ? item.planPct.indexOf(100) : null
+  const kindChip = isSalesRequestItem(item) ? 'คำขอขาย' : isJob ? null : KIND_CHIP[item.kind]
+  const gain = Math.round(value - from)
 
   const save = (v: number) => {
     const n = Math.min(100, Math.max(0, Math.round(v)))
@@ -83,20 +105,65 @@ function JobRow({
     const n = Number(t)
     if (Number.isFinite(n)) save(n)
   }
-  const disabledReason = canCheck ? undefined : 'ยังไม่ถึงสัปดาห์นี้ บันทึกความคืบหน้าไม่ได้'
+  const commitNote = () => {
+    const t = noteText
+    setNoteText(null)
+    if (t != null && t.trim() !== (item.note ?? '')) onNote(item, t)
+  }
+  const disabledReason = canCheck ? undefined : 'ยังไม่ถึงสัปดาห์นี้ ใส่ % ได้ตั้งแต่วันจันทร์'
 
   return (
-    <div className="border-b border-slate-100 py-2 last:border-b-0">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <div className="min-w-0 flex-1 basis-48">
-          <div className="truncate text-sm font-medium text-slate-800">{label ?? item.title}</div>
-          <div className="truncate text-xs text-slate-500">
-            {item.jobAssignmentId ? item.contractorName || <span className="text-amber-700">ยังไม่มีช่าง</span> : WEEKLY_PLAN_KINDS.find((k) => k.value === item.kind)?.label}
-            {value !== from && item.jobAssignmentId ? ` · จาก ${Math.round(from)}%` : ''}
-            {item.note ? ` · ${item.note}` : ''}
+    <div className={`border-t py-1.5 ${dashed ? 'border-dashed border-slate-200' : 'border-slate-300'}`}>
+      <div className={ROW_GRID}>
+        <div className="hidden min-w-0 leading-tight sm:block">{plotCell}</div>
+
+        <div className="min-w-0 [grid-area:nm] sm:[grid-area:auto]">
+          <div className={`flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm ${done ? 'text-slate-500' : 'text-slate-800'}`}>
+            <span className="min-w-0 break-words font-medium sm:truncate" title={item.title}>
+              {item.title}
+            </span>
+            {kindChip && <span className="rounded-full bg-slate-100 px-1.5 py-0 text-[11px] text-slate-700">{kindChip}</span>}
+            {afterMeeting && <span className="rounded-full bg-amber-50 px-1.5 py-0 text-[11px] text-amber-800">เพิ่มหลังประชุม</span>}
+            {item.ownerName && <span className="text-xs text-slate-500">ดูแล: {item.ownerName}</span>}
+            {plannedDay != null && <span className="text-xs text-slate-500">ทำ {formatThaiDay(addDaysStr(item.weekStart, plannedDay))}</span>}
+            {item.note && <span className="min-w-0 truncate text-xs text-slate-500" title={item.note}>{item.note}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+
+        <div className="relative min-w-0 [grid-area:cw] sm:[grid-area:auto]">
+          <button
+            type="button"
+            disabled={!editable}
+            onClick={() => setPicking((o) => !o)}
+            aria-expanded={picking}
+            className={`max-w-full truncate text-left text-xs sm:rounded-full sm:border sm:px-2.5 sm:py-0.5 ${
+              item.contractorName ? 'text-slate-500 sm:border-slate-300 sm:text-slate-700 sm:hover:border-indigo-400' : 'text-amber-700 sm:border-dashed sm:border-amber-400'
+            }`}
+          >
+            {item.contractorName || '+ ช่าง'}
+          </button>
+          {picking && (
+            <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-56 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 text-sm shadow-lg">
+              <button type="button" onClick={() => { setPicking(false); onCrew(item, '') }} className="block w-full rounded px-2 py-1.5 text-left text-slate-500 hover:bg-slate-50">
+                ยังไม่เลือกช่าง
+              </button>
+              {data.contractors.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => { setPicking(false); onCrew(item, c.id) }}
+                  className={`block w-full rounded px-2 py-1.5 text-left hover:bg-indigo-50 ${c.id === item.contractorId ? 'bg-indigo-50 font-medium' : ''}`}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="hidden text-right text-xs tabular-nums text-slate-500 sm:block">{isJob ? `${Math.round(from)}%` : ''}</div>
+
+        <div className="flex items-center justify-end gap-1 [grid-area:pc] sm:[grid-area:auto]">
           <input
             type="number"
             min={0}
@@ -114,67 +181,65 @@ function JobRow({
             onKeyDown={(e) => {
               if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
             }}
-            aria-label={`ความคืบหน้า ${label ?? item.title} (%)`}
-            className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1 text-right text-sm tabular-nums disabled:bg-slate-50"
+            aria-label={`ทำไปแล้วกี่ % ${item.title}`}
+            className="w-14 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-right text-sm tabular-nums disabled:bg-slate-50"
           />
           <span className="text-sm text-slate-500">%</span>
+          <span className="hidden w-9 text-xs font-semibold tabular-nums text-emerald-700 sm:inline">{isJob && gain > 0 ? `+${gain}` : ''}</span>
+        </div>
+
+        <div className="[grid-area:fin] sm:[grid-area:auto]">
           <button
             type="button"
             disabled={!canCheck || busy}
             title={disabledReason}
             onClick={() => save(done ? from : 100)}
-            className={`rounded-lg border px-2.5 py-1 text-sm font-medium disabled:opacity-50 ${done ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+            className={`rounded-md border px-2 py-1 text-xs font-medium disabled:opacity-50 ${done ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
           >
             {done ? '✓ เสร็จ' : 'เสร็จ'}
           </button>
-          <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="เพิ่มเติม" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
+        </div>
+
+        <div className="[grid-area:wm] sm:[grid-area:auto]">
+          <button type="button" onClick={() => setMenu((o) => !o)} aria-expanded={menu} aria-label="เพิ่มเติม" className="rounded-md p-1 text-slate-500 hover:bg-slate-100">
             <MoreHorizontal className="h-4 w-4" />
           </button>
         </div>
       </div>
-      {open && (
-        <div className="mt-2 space-y-2 rounded-lg bg-slate-50 p-2.5 text-sm">
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-slate-500">หมายเหตุ (ไม่บังคับ)</span>
-            <input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              onBlur={() => note.trim() !== (item.note ?? '') && onNote(item, note)}
-              disabled={!editable}
-              className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
-            />
-          </label>
-          {item.jobAssignmentId && (
-            <label className="block">
-              <span className="mb-0.5 block text-xs text-slate-500">ช่าง</span>
-              <select
-                value={item.contractorId ?? ''}
-                disabled={!editable || agreed}
-                onChange={(e) => onCrew(item, e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
-              >
-                <option value="">ยังไม่เลือกช่าง</option>
-                {data.contractors.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+
+      {menu && (
+        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs sm:ml-16">
+          {editable && noteText == null && (
+            <button type="button" onClick={() => setNoteText(item.note ?? '')} className="font-medium text-indigo-600 hover:underline">
+              {item.note ? 'แก้หมายเหตุ' : '+ หมายเหตุ'}
+            </button>
           )}
-          <div className="flex gap-4 text-xs">
-            {!item.jobAssignmentId && editable && !agreed && (
-              <button type="button" className="font-medium text-indigo-600 hover:underline" onClick={() => onEditFree(item)}>
-                แก้ไขงาน
-              </button>
-            )}
-            {editable && !agreed && (
-              <button type="button" className="font-medium text-red-600 hover:underline" onClick={() => onDelete(item)}>
-                เอาออกจากแผน
-              </button>
-            )}
-            {agreed && <span className="text-slate-500">แผนตกลงแล้ว เปลี่ยนช่างหรือเอางานออกไม่ได้</span>}
-          </div>
+          {noteText != null && (
+            <input
+              autoFocus
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              onBlur={commitNote}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              }}
+              placeholder="หมายเหตุ"
+              aria-label="หมายเหตุ"
+              className="min-w-0 flex-1 basis-48 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+            />
+          )}
+          {!isJob && editable && (
+            <button type="button" onClick={() => { setMenu(false); onEditFree(item) }} className="font-medium text-indigo-600 hover:underline">
+              แก้ชื่องาน
+            </button>
+          )}
+          {editable ? (
+            <button type="button" onClick={() => { setMenu(false); onDelete(item) }} className="font-medium text-red-600 hover:underline">
+              เอาออกจากแผน
+            </button>
+          ) : (
+            <span className="text-slate-500">แก้หรือเอาออกได้เฉพาะผู้สร้างหรือ PM</span>
+          )}
         </div>
       )}
     </div>
@@ -190,7 +255,8 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
     () => data.items.filter((i) => i.projectId === projectId && i.weekStart === weekStart),
     [data.items, projectId, weekStart]
   )
-  const [modal, setModal] = useState<{ open: boolean; item: WeeklyPlanItem | null }>({ open: false, item: null })
+  const [editing, setEditing] = useState<WeeklyPlanItem | null>(null)
+  const [planningRequest, setPlanningRequest] = useState<WeeklyPlanSalesRequest | null>(null)
   const [adding, setAdding] = useState(false)
   const [failRev, setFailRev] = useState(0)
   const [deleting, setDeleting] = useState<WeeklyPlanItem[] | null>(null)
@@ -200,7 +266,6 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
   const project = data.projects.find((p) => p.id === projectId)
   const canEdit = (item: WeeklyPlanItem) => canManage || item.createdBy === userId
   const meeting = data.meetings.find((m) => m.projectId === projectId && m.weekStart === weekStart)
-  const agreed = !!meeting
 
   // Progress is written on today's column in the current week, the last column of a past week.
   const dayFor = (week: string) => dayIndexInWeek(week, today) ?? (week < today ? 6 : 0)
@@ -209,7 +274,6 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
 
   const salesRequests = data.salesRequests.filter((r) => r.projectId === projectId)
   const salesPlots = data.salesPlots.filter((p) => p.projectId === projectId)
-  const hints = data.targetHints.filter((h) => h.projectId === projectId)
   const carryOver = data.carryOver.filter((c) => c.projectId === projectId)
 
   const go = (week: string, nextProject: string = projectId) => {
@@ -271,55 +335,47 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
       })
     )
 
-  const byPlot = useMemo(() => {
-    const map = new Map<string, WeeklyPlanItem[]>()
+  const salesStatusByPlot = new Map(salesPlots.map((p) => [p.plotId, p.statusLabel]))
+  const groups = useMemo(() => {
+    const map = new Map<string, { plotId: string | null; name: string | null; items: WeeklyPlanItem[] }>()
     for (const i of weekItems) {
-      if (!i.jobAssignmentId) continue
-      const key = i.plotName ?? '-'
-      map.set(key, [...(map.get(key) || []), i])
+      const key = i.plotId ?? ''
+      const g = map.get(key) ?? { plotId: i.plotId, name: i.plotName, items: [] }
+      g.items.push(i)
+      map.set(key, g)
     }
-    return [...map.entries()].sort((a, b) => plotSort(a[0], b[0]))
+    // BOQ jobs first within a plot; work with no plot goes last.
+    for (const g of map.values()) g.items.sort((a, b) => Number(!!b.jobAssignmentId) - Number(!!a.jobAssignmentId))
+    return [...map.values()].sort((a, b) => (a.name == null ? 1 : b.name == null ? -1 : plotSort(a.name, b.name)))
   }, [weekItems])
-  const freeItems = weekItems.filter((i) => !i.jobAssignmentId)
   const finished = weekItems.filter((i) => (i.status === 'done' ? 100 : currentProgress(i)) >= 100).length
+
+  // Sales requests not yet planned this week wait in the box at the top.
+  const waitingRequests = salesRequests.filter(
+    (r) => !weekItems.some((i) => i.plotId === r.plotId && i.title === salesRequestTitle(r.requestNo, r.title))
+  )
+  const hasWaiting = carryOver.length > 0 || waitingRequests.length > 0
 
   const rowProps = {
     data,
     canCheck,
-    agreed,
     busy: pending,
     failRev,
     onSavePct: savePct,
     onNote: (item: WeeklyPlanItem, note: string) => run(() => setWeeklyPlanItemNote(item.id, note.trim() || null)),
     onCrew: setCrew,
     onDelete: (item: WeeklyPlanItem) => setDeleting([item]),
-    onEditFree: (item: WeeklyPlanItem) => setModal({ open: true, item }),
+    onEditFree: (item: WeeklyPlanItem) => setEditing(item),
   }
 
-  return (
-    <div className="space-y-5">
-      <PageHeader
-        title="แผนงาน"
-        subtitle={project ? project.name : 'เลือกโครงการ'}
-        actions={
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => setModal({ open: true, item: null })}
-              disabled={!project || agreed}
-              title={agreed ? 'แผนสัปดาห์นี้ตกลงแล้ว ต้องเปิดแก้ไขแผนก่อนจึงจะเพิ่มงานได้' : 'งานซ่อม · DC · ตรวจบ้าน ที่ไม่อยู่ใน BOQ'}
-            >
-              งานนอก BOQ
-            </Button>
-            <Button onClick={() => setAdding(true)} disabled={!project || agreed} title={agreed ? 'แผนสัปดาห์นี้ตกลงแล้ว ต้องเปิดแก้ไขแผนก่อนจึงจะเพิ่มงานได้' : undefined}>
-              <Plus className="h-4 w-4" /> เพิ่มงานสัปดาห์นี้
-            </Button>
-          </div>
-        }
-      />
+  const [waitOpen, setWaitOpen] = useState(false)
+  const waitingCount = carryOver.length + waitingRequests.length
 
-      <div className="flex flex-wrap items-center gap-3">
-        <select value={projectId} onChange={(e) => go(weekStart, e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" aria-label="โครงการ">
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="mr-1 text-xl font-semibold text-slate-900">แผนงาน</h1>
+        <select value={projectId} onChange={(e) => go(weekStart, e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm" aria-label="โครงการ">
           {data.projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -330,7 +386,7 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
           <Button variant="secondary" size="sm" onClick={() => go(addDaysStr(weekStart, -7))} aria-label="สัปดาห์ก่อน">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="min-w-[10rem] text-center text-sm font-medium text-slate-700">
+          <span className="min-w-[9rem] text-center text-sm font-medium text-slate-700">
             {formatWeekRange(weekStart)}
             {weekStart === currentWeek && <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">สัปดาห์นี้</span>}
           </span>
@@ -340,145 +396,188 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
         </div>
         {weekItems.length > 0 && (
           <span className="text-sm text-slate-600">
-            เสร็จแล้ว {finished}/{weekItems.length} งาน
+            เสร็จ {finished}/{weekItems.length} งาน
           </span>
         )}
+        <div className="ml-auto">
+          <Button onClick={() => setAdding(true)} disabled={!project}>
+            <Plus className="h-4 w-4" /> เพิ่มงาน
+          </Button>
+        </div>
       </div>
 
-      {carryOver.length > 0 && !agreed && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
-          <span className="flex items-start gap-2 text-amber-900">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+      {!canCheck && <p className="rounded-md bg-slate-100 px-3 py-1 text-xs text-slate-600">สัปดาห์หน้า: เพิ่มงานล่วงหน้าได้ · ใส่ % ได้ตั้งแต่วันจันทร์</p>}
+
+      {hasWaiting && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/70 text-sm">
+          <button type="button" onClick={() => setWaitOpen((o) => !o)} aria-expanded={waitOpen} className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left">
             <span>
-              สัปดาห์ก่อนมีงานค้าง {carryOver.length} รายการ
-              <span className="block text-xs text-amber-800">
-                {[...new Set(carryOver.map((c) => c.title))].slice(0, 4).join(', ')}
-                {new Set(carryOver.map((c) => c.title)).size > 4 ? ' ...' : ''}
+              <b className="font-semibold text-slate-800">รอใส่แผน {waitingCount}</b>
+              <span className="text-slate-600">
+                {carryOver.length > 0 ? ` · ค้างจากสัปดาห์ก่อน ${carryOver.length}` : ''}
+                {waitingRequests.length > 0 ? ` · ฝ่ายขายขอ ${waitingRequests.length}` : ''}
               </span>
             </span>
-          </span>
-          <Button
-            size="sm"
-            disabled={pending}
-            onClick={() =>
-              run(async () => {
-                const res = await rollOverWeeklyPlan(projectId, weekStart)
-                if ('error' in res) return res
-                toast.success(`ยกงานค้างมา ${res.created} รายการ`)
-                return { ok: true as const }
-              })
-            }
-          >
-            ยกมาสัปดาห์นี้
-          </Button>
+            <span className="shrink-0 text-xs text-indigo-600">ดู {waitOpen ? '▴' : '▾'}</span>
+          </button>
+          {waitOpen && (
+            <div className="space-y-1.5 border-t border-amber-200 px-3 py-2">
+              {carryOver.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="font-medium text-slate-800">ค้างจากสัปดาห์ก่อน {carryOver.length} งาน</span>
+                    <span className="block text-xs text-slate-600">
+                      {carryOver
+                        .slice(0, 6)
+                        .map((c) => `${c.plotName ? `แปลง ${c.plotName} ` : ''}${c.title} ${c.percent}%`)
+                        .join(' · ')}
+                      {carryOver.length > 6 ? ' ...' : ''}
+                    </span>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() =>
+                      run(async () => {
+                        const res = await rollOverWeeklyPlan(projectId, weekStart)
+                        if ('error' in res) return res
+                        toast.success(`ยกงานค้างมา ${res.created} รายการ`)
+                        return { ok: true as const }
+                      })
+                    }
+                  >
+                    ยกมาทั้งหมด
+                  </Button>
+                </div>
+              )}
+              {waitingRequests.map((r) => (
+                <div key={r.id} className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="font-medium text-slate-800">ฝ่ายขายขอ: {r.title}</span>
+                    <span className="block text-xs text-slate-600">
+                      แปลง {r.plotName}
+                      {r.requestNo ? ` · ${r.requestNo}` : ''}
+                      {r.neededBy ? ` · ต้องการภายใน ${formatThaiDay(r.neededBy)}` : ''}
+                      {` · ${REQUEST_STATUS_LABEL[r.status] || r.status}`}
+                    </span>
+                  </div>
+                  <Button variant="secondary" size="sm" disabled={pending} onClick={() => setPlanningRequest(r)}>
+                    + ใส่ในแผน
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {weekItems.length === 0 ? (
         <Card className="p-8 text-center text-sm text-slate-600">
           <p className="font-medium text-slate-800">ยังไม่มีงานในสัปดาห์นี้</p>
-          <p className="mt-1">กด &quot;เพิ่มงานสัปดาห์นี้&quot; พิมพ์เลขแปลง แล้วติ๊กงานที่จะทำ</p>
+          <p className="mt-1">กด &quot;เพิ่มงาน&quot; พิมพ์เลขแปลง แล้วติ๊กงานที่จะทำ</p>
         </Card>
       ) : (
-        <Card className="space-y-4 p-4">
-          {byPlot.map(([plotName, items]) => (
-            <section key={plotName}>
-              <h3 className="border-b border-slate-200 pb-1 text-sm font-semibold text-slate-800">
-                แปลง {plotName}
-                {items[0]?.plotId && <span className="ml-2 text-xs font-normal text-slate-500">{data.plots.find((p) => p.id === items[0].plotId)?.houseType}</span>}
-              </h3>
-              {items.map((item) => (
-                <JobRow key={item.id} item={item} editable={canEdit(item)} {...rowProps} />
-              ))}
-            </section>
-          ))}
-          {freeItems.length > 0 && (
-            <section>
-              <h3 className="border-b border-slate-200 pb-1 text-sm font-semibold text-slate-800">งานนอก BOQ</h3>
-              {freeItems.map((item) => (
-                <JobRow key={item.id} item={item} label={`${item.plotName ? `แปลง ${item.plotName} · ` : ''}${item.title}`} editable={canEdit(item)} {...rowProps} />
-              ))}
-            </section>
-          )}
-          {!canCheck && <p className="text-xs text-slate-500">ยังไม่ถึงสัปดาห์นี้ บันทึกความคืบหน้าไม่ได้ เพิ่มงานล่วงหน้าได้</p>}
+        <Card className="p-3">
+          <div className="hidden grid-cols-[64px_minmax(0,1fr)_130px_70px_132px_64px_28px] items-center gap-x-2 pb-1 text-xs text-slate-500 sm:grid">
+            <span>แปลง</span>
+            <span>งาน</span>
+            <span>ช่าง</span>
+            <span className="text-right">ต้นสัปดาห์</span>
+            <span className="text-right">ทำไปแล้ว % (ทั้งงาน)</span>
+            <span />
+            <span />
+          </div>
+          {groups.map((g) => {
+            const status = g.plotId ? salesStatusByPlot.get(g.plotId) : null
+            return (
+              <section key={g.plotId ?? 'none'}>
+                <h3 className="pt-2 text-sm font-semibold text-slate-800 sm:hidden">
+                  {g.name ? `แปลง ${g.name}` : 'ไม่ระบุแปลง'}
+                  {status && <span className="ml-2 text-xs font-normal text-slate-500">{status}</span>}
+                </h3>
+                {g.items.map((item, idx) => (
+                  <JobRow
+                    key={item.id}
+                    item={item}
+                    editable={canEdit(item)}
+                    afterMeeting={!!meeting && item.createdAt > meeting.agreedAt}
+                    dashed={idx > 0}
+                    plotCell={
+                      idx === 0 ? (
+                        <>
+                          <span className="block text-sm font-semibold text-slate-800">{g.name ?? 'ไม่ระบุ'}</span>
+                          {status && <span className="block text-[11px] text-slate-500">{status}</span>}
+                        </>
+                      ) : null
+                    }
+                    {...rowProps}
+                  />
+                ))}
+              </section>
+            )
+          })}
         </Card>
       )}
 
-          <Card className={`p-3 ${meeting ? 'border-emerald-200' : ''}`}>
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-              <div className="flex min-w-0 items-center gap-2">
-                <CalendarCheck className={`h-5 w-5 shrink-0 ${meeting ? 'text-emerald-700' : 'text-slate-400'}`} aria-hidden />
-                {meeting ? (
-                  <span className="text-slate-700">
-                    <b className="text-emerald-800">ตกลงแผนในที่ประชุมแล้ว</b>
-                    <span className="ml-2 text-slate-500">
-                      {meeting.agreedByName ? `โดย ${meeting.agreedByName} · ` : ''}
-                      {new Date(meeting.agreedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
-                    </span>
-                    <span className="block text-xs text-slate-500">เพิ่ม ลบ หรือเปลี่ยนงานไม่ได้ เช็คงานและแก้หมายเหตุได้ตามปกติ</span>
-                  </span>
-                ) : (
-                  <span className="text-slate-600">ยังไม่ได้ตกลงแผนสัปดาห์นี้</span>
-                )}
-              </div>
-              {canManage && project && (
-                <div className="flex shrink-0 gap-2">
-                  {meeting ? (
-                    <Button variant="secondary" size="sm" disabled={pending} onClick={() => run(() => unagreeWeeklyPlan(projectId, weekStart), 'เปิดแก้ไขแผนแล้ว')}>
-                      เปิดแก้ไขแผน
-                    </Button>
-                  ) : (
-                    <Button size="sm" disabled={pending} onClick={() => run(() => agreeWeeklyPlan(projectId, weekStart), 'บันทึกการตกลงแผนแล้ว')}>
-                      ตกลงแผนในที่ประชุมแล้ว
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          </Card>
-
-          {(salesRequests.length > 0 || salesPlots.length > 0 || hints.length > 0) && (
-            <Card className="p-4">
-              <details>
-                <summary className="cursor-pointer text-sm font-semibold text-slate-800">
-                  งานจากฝ่ายขายและเป้าหมายของแปลง (ดูอย่างเดียว) · {salesRequests.length + salesPlots.length + hints.length} รายการ
-                </summary>
-                <ul className="mt-3 space-y-1.5 text-sm text-slate-700">
-                  {salesRequests.map((r) => (
-                    <li key={r.id}>
-                      <span className="font-medium">คำขอ {r.requestNo || ''}</span> แปลง {r.plotName}: {r.title}
-                      <span className="ml-2 text-xs text-slate-500">
-                        {REQUEST_STATUS_LABEL[r.status] || r.status}
-                        {r.neededBy ? ` · ต้องการภายใน ${formatThaiDay(r.neededBy)}` : ''}
-                      </span>
-                    </li>
-                  ))}
-                  {salesPlots.map((p) => (
-                    <li key={p.plotId}>
-                      <span className="font-medium">{p.statusLabel}</span> แปลง {p.plotName}
-                    </li>
-                  ))}
-                  {hints.map((h, i) => (
-                    <li key={`${h.plotId}-${i}`} className="text-slate-600">
-                      {formatThaiDay(h.date)} · แปลง {h.plotName}: {h.text}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            </Card>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm">
+        <button type="button" onClick={() => setAdding(true)} disabled={!project} className="font-medium text-indigo-600 hover:underline disabled:opacity-50">
+          + เพิ่มงาน
+        </button>
+        <div className="flex flex-wrap items-center gap-2 text-slate-600">
+          <CalendarCheck className={`h-4 w-4 shrink-0 ${meeting ? 'text-emerald-700' : 'text-slate-400'}`} aria-hidden />
+          {meeting ? (
+            <span>
+              <b className="text-emerald-800">ตกลงแผนแล้ว</b>
+              <span className="text-slate-500">
+                {' '}
+                {meeting.agreedByName ? `โดย ${meeting.agreedByName} · ` : ''}
+                {new Date(meeting.agreedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} · เพิ่มหลังนี้จะมีป้าย &quot;เพิ่มหลังประชุม&quot;
+              </span>
+            </span>
+          ) : (
+            <span>PM: หลังประชุมกับช่าง</span>
           )}
+          {canManage && project && (
+            <>
+              {meeting ? (
+                <Button variant="secondary" size="sm" disabled={pending} onClick={() => run(() => unagreeWeeklyPlan(projectId, weekStart), 'ยกเลิกการตกลงแผนแล้ว')}>
+                  ยกเลิก
+                </Button>
+              ) : (
+                <Button size="sm" disabled={pending} onClick={() => run(() => agreeWeeklyPlan(projectId, weekStart), 'บันทึกการตกลงแผนแล้ว')}>
+                  ประชุมตกลงแผนแล้ว
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
 
-      {modal.open && project && (
-        <WeeklyPlanItemModal
-          key={modal.item?.id ?? 'new'}
+      {editing && (
+        <FreeItemEditor
+          key={editing.id}
           data={data}
-          projectId={projectId}
-          weekStart={weekStart}
-          item={modal.item}
-          freeOnly
-          onClose={() => setModal({ open: false, item: null })}
+          item={editing}
+          onClose={() => setEditing(null)}
           onSaved={() => {
-            setModal({ open: false, item: null })
+            setEditing(null)
+            router.refresh()
+          }}
+        />
+      )}
+
+      {planningRequest && (
+        <SalesRequestPlanModal
+          key={planningRequest.id}
+          data={data}
+          request={planningRequest}
+          weekStart={weekStart}
+          today={today}
+          onClose={() => setPlanningRequest(null)}
+          onAdded={() => {
+            setPlanningRequest(null)
+            toast.success('เพิ่มเข้าแผนแล้ว')
             router.refresh()
           }}
         />
@@ -492,7 +591,7 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
           onClose={() => setAdding(false)}
           onAdded={(n) => {
             setAdding(false)
-            toast.success(`เพิ่มงาน ${n} รายการเข้าแผนสัปดาห์นี้`)
+            toast.success(`เพิ่มงาน ${n} รายการเข้าแผน`)
             router.refresh()
           }}
         />
