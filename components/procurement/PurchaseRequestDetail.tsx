@@ -281,6 +281,19 @@ export default function PurchaseRequestDetail({
     })
   }
 
+  /** Approve, then open the PO form filled from this request: the person who
+   * approves is nearly always the one who writes the PO. */
+  function handleApproveAndOrder() {
+    startTransition(async () => {
+      const result = await approvePurchaseRequest(request.id)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      router.push(`/dashboard/procurement/orders/create?fromRequest=${request.id}`)
+    })
+  }
+
   function handleReject() {
     startTransition(async () => {
       const result = await rejectPurchaseRequest(request.id, rejectNote)
@@ -634,8 +647,11 @@ export default function PurchaseRequestDetail({
                       <Button type="button" variant="danger" onClick={() => setShowRejectBox(true)} disabled={isPending}>
                         ไม่อนุมัติ
                       </Button>
-                      <Button type="button" onClick={handleApprove} disabled={isPending}>
-                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'อนุมัติ'}
+                      <Button type="button" variant="secondary" onClick={handleApprove} disabled={isPending}>
+                        อนุมัติ
+                      </Button>
+                      <Button type="button" onClick={handleApproveAndOrder} disabled={isPending}>
+                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><ShoppingCart className="h-4 w-4" /> อนุมัติ + ทำ PO</>}
                       </Button>
                     </>
                   )}

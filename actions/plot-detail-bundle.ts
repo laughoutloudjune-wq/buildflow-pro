@@ -32,6 +32,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
   const canSeeCost = role !== 'sales' && role !== 'sales_exec'
   const canEditConstruction = perms.projects
   const canEditSales = perms.sales
+  const quickLinks = plotQuickLinks(perms, projectId, plotId)
 
   let plot: Awaited<ReturnType<typeof getPlotById>> = null
   let rawJobs: Awaited<ReturnType<typeof getJobAssignments>> = []
@@ -310,7 +311,25 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     canSeeCost,
     canEditConstruction,
     canEditSales,
+    quickLinks,
   }
+}
+
+export type PlotQuickLink = { key: 'progress' | 'dc' | 'purchase' | 'withdraw'; label: string; href: string }
+
+/** "Start from here" buttons on the plot page: each opens its form with this
+ * project and plot already chosen. Only forms the viewer's role can open. */
+function plotQuickLinks(perms: ReturnType<typeof permissionsForRole>, projectId: string, plotId: string): PlotQuickLink[] {
+  if (!perms.projects) return []
+  const qs = `projectId=${encodeURIComponent(projectId)}&plotId=${encodeURIComponent(plotId)}`
+  const links: PlotQuickLink[] = []
+  if (perms.foreman) links.push({ key: 'progress', label: 'เบิกงวด', href: `/dashboard/foreman/request?${qs}` })
+  else if (perms.billing) links.push({ key: 'progress', label: 'เบิกงวด', href: `/dashboard/billing/request?${qs}` })
+  if (perms.foreman) links.push({ key: 'dc', label: 'งานเพิ่ม (DC)', href: `/dashboard/foreman/create-dc?${qs}` })
+  if (perms.foreman) links.push({ key: 'purchase', label: 'ขอซื้อ', href: `/dashboard/foreman/purchase-request/create?${qs}` })
+  else if (perms.procurement) links.push({ key: 'purchase', label: 'ขอซื้อ', href: `/dashboard/procurement/requests/create?${qs}` })
+  if (perms.materials) links.push({ key: 'withdraw', label: 'เบิกของ', href: `/dashboard/stock?withdraw=1&${qs}` })
+  return links
 }
 
 export type PlotDetailBundle = Awaited<ReturnType<typeof getPlotDetailBundle>>

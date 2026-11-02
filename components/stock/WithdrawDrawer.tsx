@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -22,10 +22,13 @@ export default function WithdrawDrawer({
   isOpen,
   onClose,
   onSuccess,
+  preset,
 }: {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+  /** Opened from a plot page's "เบิกของ": start on that project and plot. */
+  preset?: { projectId: string; plotId?: string } | null
 }) {
   const [materials, setMaterials] = useState<StockOverviewRow[]>([])
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
@@ -46,9 +49,15 @@ export default function WithdrawDrawer({
   const [plotId, setPlotId] = useState('')
   const [plotGroupId, setPlotGroupId] = useState('')
   const [boqLines, setBoqLines] = useState<BoqCheckLine[]>([])
+  // The preset plot is applied once that project's plots have loaded.
+  const pendingPlotId = useRef('')
 
   useEffect(() => {
     if (isOpen) void bootstrap()
+    if (isOpen && preset?.projectId) {
+      pendingPlotId.current = preset.plotId || ''
+      setProjectId(preset.projectId)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
@@ -72,6 +81,9 @@ export default function WithdrawDrawer({
         setPlots((plotRows || []).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })))
         setPlotGroups(groupRows)
         if ((plotRows || []).length > 0) setPlotScope('plot')
+        const wanted = pendingPlotId.current
+        pendingPlotId.current = ''
+        if (wanted && (plotRows || []).some((p: { id: string }) => p.id === wanted)) setPlotId(wanted)
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : 'โหลดข้อมูลแปลงไม่สำเร็จ'))
       .finally(() => setIsPlotsLoading(false))

@@ -10,6 +10,8 @@ import NoticeBanner from '@/components/ui/NoticeBanner'
 import { createClient } from '@/lib/supabase/client'
 import { createBillingRequest, updateBillingRequest } from '@/actions/billing-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
+import { linkWorkRequestBilling } from '@/actions/sales-work-requests'
+import { readLastProject, rememberLastProject } from '@/lib/last-project'
 import { Camera, CheckCircle } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import AdjustmentLineItems from '@/components/billings/AdjustmentLineItems'
@@ -39,6 +41,8 @@ export default function CreateExtraWorkPageClient({
   initialExistingAttachmentUrls,
   initialAdjustments,
   initialError,
+  workRequestId = null,
+  workRequestNo = null,
 }: {
   editId: string | null
   initialProjects: ProjectOption[]
@@ -52,6 +56,8 @@ export default function CreateExtraWorkPageClient({
   initialExistingAttachmentUrls: string[]
   initialAdjustments: Adjustment[]
   initialError: string | null
+  workRequestId?: string | null
+  workRequestNo?: string | null
 }) {
   const router = useRouter()
 
@@ -76,6 +82,18 @@ export default function CreateExtraWorkPageClient({
   const [docNo, setDocNo] = useState<string | number>('')
   const [existingAttachmentUrls] = useState<string[]>(initialExistingAttachmentUrls)
 
+  // A new DC with no project given starts on the project used last time.
+  useEffect(() => {
+    if (editId || initialSelectedProject) return
+    const last = readLastProject(projects.map((p) => p.id))
+    if (last) setSelectedProject(last)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    rememberLastProject(selectedProject)
+  }, [selectedProject])
+
   // Genuine client-side cascade: the plot dropdown only makes sense once a
   // project is chosen, so it fetches on demand rather than up front.
   useEffect(() => {
@@ -93,10 +111,13 @@ export default function CreateExtraWorkPageClient({
     setAdjustments(next)
   }
 
+  // A new line starts on the plot chosen above; it can still be changed per line.
+  const selectedPlotName = plots.find((p) => p.id === selectedPlot)?.name || ''
+
   const addAdjustment = (type: 'addition' | 'deduction') => {
     setAdjustments([
       ...adjustments,
-      { type, description: '', plot_name: '', unit: 'หน่วย', quantity: 1, unit_price: 0 },
+      { type, description: '', plot_name: selectedPlotName, unit: 'หน่วย', quantity: 1, unit_price: 0 },
     ])
   }
 
@@ -197,6 +218,11 @@ export default function CreateExtraWorkPageClient({
         setError(result.error)
         return
       }
+      if (workRequestId && !editId) {
+        // The DC is saved either way; a failed link can still be made on the requests page.
+        const linked = await linkWorkRequestBilling(workRequestId, result.id)
+        if (!linked.success) setError(`บันทึกใบ DC แล้ว แต่ผูกกับคำขอฝ่ายขายไม่สำเร็จ: ${linked.error || ''}`)
+      }
       setSuccessNextPath(result.nextPath)
       setDocNo(result.doc_no || '-')
       setShowSuccessModal(true)
@@ -233,6 +259,11 @@ export default function CreateExtraWorkPageClient({
       )}
 
       <PageHeader title="สร้างงานเพิ่ม (DC)" subtitle="ระบุโครงการ แปลง และเหตุผล แนบรูปถ่าย แล้วส่งให้ PM พิจารณา" />
+      {workRequestId && (
+        <div className="rounded-xl bg-indigo-50 px-4 py-2 text-sm text-indigo-900 ring-1 ring-inset ring-indigo-100">
+          ใบ DC นี้สร้างจากคำขอฝ่ายขาย{workRequestNo ? ` ${workRequestNo}` : ''} · บันทึกแล้วจะผูกกับคำขอให้อัตโนมัติ
+        </div>
+      )}
       <Card className="p-5 border-amber-200 bg-amber-50/40">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div>
