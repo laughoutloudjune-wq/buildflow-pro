@@ -48,9 +48,14 @@ export function toBaseQty(
   return f == null ? null : quantity / f
 }
 
-/** "1 มัด = 10 เส้น" */
+/** Said the way people say it, always with a whole-ish number: when the unit
+ * is the bigger one ("1 ลัง = 12 ชิ้น") the stored factor is below 1 and is
+ * flipped; otherwise "1 มัด = 10 เส้น". The stored factor stays "how many of
+ * `unit` make 1 master unit" either way. */
 export function conversionText(masterUnit: string, unit: string, factor: number): string {
-  return `1 ${masterUnit} = ${factor.toLocaleString('th-TH', { maximumFractionDigits: 4 })} ${unit}`
+  const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 4 })
+  if (factor > 0 && factor < 1) return `1 ${unit} = ${fmt(Math.round((1 / factor) * 1e6) / 1e6)} ${masterUnit}`
+  return `1 ${masterUnit} = ${fmt(factor)} ${unit}`
 }
 
 export const UNKNOWN_CONVERSION_LABEL = 'เทียบ BOQ ไม่ได้ จนกว่าจะรู้หน่วย'
