@@ -3,7 +3,8 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { ClipboardCheck, ClipboardList, Hammer, History, LayoutGrid, Pencil, Tag } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
+import { Button, ButtonLink } from '@/components/ui/Button'
+import type { PlotQuickLink } from '@/actions/plot-detail-bundle'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Badge } from '@/components/ui/Badge'
@@ -79,6 +80,7 @@ export default function PlotDetailPageClient({
   canSeeCost,
   canEditConstruction,
   canEditSales,
+  quickLinks = [],
   onClose,
   onRefresh,
   visibleTabs,
@@ -111,6 +113,8 @@ export default function PlotDetailPageClient({
   canSeeCost: boolean
   canEditConstruction: boolean
   canEditSales: boolean
+  /** Forms that open with this plot already chosen (getPlotDetailBundle). */
+  quickLinks?: PlotQuickLink[]
   /** Set when rendered inside PlotDetailModal (the map's quick-view) instead
    * of as its own page - swaps the "back to list" navigation for just
    * closing the modal, so it doesn't push a real page navigation from
@@ -198,10 +202,12 @@ export default function PlotDetailPageClient({
   }
 
   const handleAssign = (jobId: string, contractorId: string) => {
-    // assignContractor also resets the job to รอเริ่ม, so the screen does the same.
-    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, contractorId: contractorId || null, status: 'pending' } : j)))
+    // Choosing a contractor starts the job (cleared -> รอเริ่ม); the screen
+    // shows the status the server actually saved.
+    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, contractorId: contractorId || null } : j)))
     startTransition(async () => {
-      await assignContractor(jobId, contractorId, plotId, projectId)
+      const { status } = await assignContractor(jobId, contractorId, plotId, projectId)
+      setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status } : j)))
     })
   }
 
@@ -305,6 +311,11 @@ export default function PlotDetailPageClient({
           actions={
             canEditConstruction && showConstructionTab ? (
               <>
+                {quickLinks.map((link) => (
+                  <ButtonLink key={link.key} href={link.href} variant="secondary" size="sm">
+                    {link.label}
+                  </ButtonLink>
+                ))}
                 <Button variant="secondary" size="sm" onClick={handleSync} disabled={isPending}>
                   ดึง BOQ
                 </Button>

@@ -1,4 +1,5 @@
 import { getBillingOptions, getBillingById } from '@/actions/billing-actions'
+import { getPlotById } from '@/actions/job-actions'
 import type { BillingAdjustmentForm, BillingAdjustmentRecord } from '@/lib/types/billing'
 import CreateBillingRequestPageClient from './CreateBillingRequestPageClient'
 
@@ -8,9 +9,9 @@ type BillingDetail = Awaited<ReturnType<typeof getBillingById>>
 export default async function CreateBillingRequestPage({
   searchParams,
 }: {
-  searchParams: Promise<{ editId?: string }>
+  searchParams: Promise<{ editId?: string; projectId?: string; plotId?: string; contractorId?: string }>
 }) {
-  const { editId } = await searchParams
+  const { editId, projectId, plotId, contractorId } = await searchParams
 
   let projects: Awaited<ReturnType<typeof getBillingOptions>>['projects'] = []
   let contractors: Awaited<ReturnType<typeof getBillingOptions>>['contractors'] = []
@@ -20,6 +21,9 @@ export default async function CreateBillingRequestPage({
   let initialNote = ''
   let initialAdjustments: Adjustment[] = []
   let initialError: string | null = null
+  // "Start from here" links (plot page, contractor balances) pass what is
+  // already known; editing a bill always wins over them.
+  let initialPlotName = ''
 
   try {
     const options = await getBillingOptions()
@@ -29,6 +33,16 @@ export default async function CreateBillingRequestPage({
     // getBillingOptions never throws today, but fall back quietly rather
     // than break the page if that changes - the original client fetch had
     // no error handling here either.
+  }
+
+  if (!editId) {
+    initialSelectedProject = projectId || ''
+    initialSelectedContractor = contractorId || ''
+    if (plotId) {
+      const plot = await getPlotById(plotId)
+      initialPlotName = plot?.name || ''
+      if (!initialSelectedProject) initialSelectedProject = plot?.project_id || ''
+    }
   }
 
   if (editId) {
@@ -61,6 +75,7 @@ export default async function CreateBillingRequestPage({
       initialEditingBilling={editingBilling}
       initialSelectedProject={initialSelectedProject}
       initialSelectedContractor={initialSelectedContractor}
+      initialPlotName={initialPlotName}
       initialNote={initialNote}
       initialAdjustments={initialAdjustments}
       initialError={initialError}
