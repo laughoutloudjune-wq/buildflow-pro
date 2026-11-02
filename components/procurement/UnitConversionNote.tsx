@@ -34,6 +34,8 @@ export default function UnitConversionNote({
 }) {
   const toast = useToast()
   const [factorText, setFactorText] = useState('')
+  // Default: "1 [this unit] = ? [master]" - the order is usually in the bigger unit (ลัง).
+  const [bigIsMaster, setBigIsMaster] = useState(false)
   const [pending, startTransition] = useTransition()
   const u = (unit ?? '').trim()
   if (!materialTypeId || !u || isMasterUnit(masterUnit, u)) return null
@@ -59,11 +61,14 @@ export default function UnitConversionNote({
       toast.error('ใส่จำนวนที่มากกว่า 0')
       return
     }
+    // Stored as "how many of this unit make 1 master unit"; the typed number is
+    // either that, or the other way round (1 this unit = f master).
+    const factor = bigIsMaster ? f : Math.round((1 / f) * 1e12) / 1e12
     startTransition(async () => {
-      const res = await setUnitConversion(materialTypeId, u, f)
+      const res = await setUnitConversion(materialTypeId, u, factor)
       if ('error' in res) toast.error(res.error)
       else {
-        toast.success(`จำไว้แล้ว ${conversionText(masterUnit, u, f)}`)
+        toast.success(`จำไว้แล้ว ${conversionText(masterUnit, u, factor)}`)
         setFactorText('')
         onSaved?.()
       }
@@ -73,11 +78,11 @@ export default function UnitConversionNote({
   return (
     <div className={`text-xs text-amber-800 ${compact ? '' : 'mt-1'}`}>
       <p>
-        ยังไม่รู้ว่า 1 {masterUnit} = กี่ {u} · ส่งได้ ระบบจะยังไม่เทียบ BOQ ให้บรรทัดนี้
+        ยังไม่รู้ว่า 1 {bigIsMaster ? masterUnit : u} = กี่ {bigIsMaster ? u : masterUnit} · ส่งได้ ระบบจะยังไม่เทียบ BOQ ให้บรรทัดนี้
       </p>
       {canSet && (
         <span className="mt-1 inline-flex flex-wrap items-center gap-1.5 text-slate-700">
-          1 {masterUnit} =
+          1 {bigIsMaster ? masterUnit : u} =
           <input
             type="number"
             min="0"
@@ -91,10 +96,13 @@ export default function UnitConversionNote({
                 save()
               }
             }}
-            aria-label={`1 ${masterUnit} เท่ากับกี่ ${u}`}
+            aria-label={bigIsMaster ? `1 ${masterUnit} เท่ากับกี่ ${u}` : `1 ${u} เท่ากับกี่ ${masterUnit}`}
             className="w-20 rounded border border-slate-300 px-1.5 py-0.5 text-right tabular-nums"
           />
-          {u}
+          {bigIsMaster ? u : masterUnit}
+          <button type="button" onClick={() => setBigIsMaster((v) => !v)} className="text-indigo-600 underline">
+            สลับ
+          </button>
           <button type="button" onClick={save} disabled={pending || !factorText} className="rounded bg-indigo-600 px-2 py-0.5 font-medium text-white disabled:opacity-50">
             จำไว้
           </button>

@@ -70,6 +70,15 @@ function chipsOf(r: PurchaseRequest, now: number, overBoq: boolean): Chip[] {
   return chips
 }
 
+/** For an approved request: how many lines already have a PO (or are closed)
+ * versus how many still need one. Null when nothing is covered yet. */
+function coverageOf(r: PurchaseRequest): { done: number; total: number } | null {
+  const items = r.purchase_request_items || []
+  const done = items.filter((i) => i.line_status && i.line_status !== 'open').length
+  if (r.status !== 'approved' || done === 0 || done === items.length) return null
+  return { done, total: items.length }
+}
+
 function Track({ step, rejected }: { step: number; rejected: boolean }) {
   if (rejected) return <span className="text-xs font-medium text-rose-600">ไม่อนุมัติ</span>
   return (
@@ -223,6 +232,11 @@ export default function PurchaseRequestsPageClient({
           </span>
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Track step={trackStep(r)} rejected={r.status === 'rejected'} />
+            {coverageOf(r) && (
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                มี PO แล้ว {coverageOf(r)!.done}/{coverageOf(r)!.total} รายการ · เหลือ {coverageOf(r)!.total - coverageOf(r)!.done} ที่ยังไม่มี PO
+              </span>
+            )}
             {chips.map((c) => (
               <span key={c.label} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${c.tone}`}>
                 {c.label}
