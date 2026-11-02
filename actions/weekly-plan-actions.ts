@@ -27,6 +27,8 @@ export type WeeklyPlanItem = {
   note: string | null
   status: WeeklyPlanStatus
   createdBy: string | null
+  /** When the row was added; compared with the meeting time to tag work added after the plan was agreed */
+  createdAt: string
   /** Set for BOQ work: the plot's job assignment this row schedules. Null = manual (non-BOQ) work. */
   jobAssignmentId: string | null
   jobQuantity: number | null
@@ -82,7 +84,7 @@ export type WeeklyPlanSalesPlot = {
 }
 
 /** A BOQ job left unfinished last week and not yet in this week's plan */
-export type WeeklyPlanCarryOver = { projectId: string; plotId: string | null; plotName: string | null; title: string }
+export type WeeklyPlanCarryOver = { projectId: string; plotId: string | null; plotName: string | null; title: string; percent: number }
 
 export type WeeklyPlanTargetHint = { plotId: string; plotName: string; projectId: string; text: string; date: string }
 
@@ -141,6 +143,7 @@ type RawItem = {
   note: string | null
   status: WeeklyPlanStatus
   created_by: string | null
+  created_at: string
   job_assignment_id: string | null
   plots: { name: string } | null
   owner: { full_name: string | null } | null
@@ -252,7 +255,7 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
       supabase
         .from('weekly_plan_items')
         .select(
-          'id, project_id, plot_id, week_start, kind, title, owner_id, contractor_id, carry_pct, plan_pct, actual_pct, note, status, created_by, job_assignment_id, plots(name), owner:profiles!weekly_plan_items_owner_id_fkey(full_name), contractor:contractors(name), job_assignments(boq_item_id, boq_master(quantity, unit, contractor_types(name)))'
+          'id, project_id, plot_id, week_start, kind, title, owner_id, contractor_id, carry_pct, plan_pct, actual_pct, note, status, created_by, created_at, job_assignment_id, plots(name), owner:profiles!weekly_plan_items_owner_id_fkey(full_name), contractor:contractors(name), job_assignments(boq_item_id, boq_master(quantity, unit, contractor_types(name)))'
         )
         .gte('week_start', rangeStart)
         .lte('week_start', rangeEnd)
@@ -303,6 +306,7 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
     note: r.note,
     status: r.status,
     createdBy: r.created_by,
+    createdAt: r.created_at,
     jobAssignmentId: r.job_assignment_id,
     jobQuantity: r.job_assignments?.boq_master?.quantity == null ? null : Number(r.job_assignments.boq_master.quantity),
     jobUnit: r.job_assignments?.boq_master?.unit ?? null,
@@ -404,7 +408,13 @@ export async function getWeeklyPlanData(weekStartInput: string): Promise<WeeklyP
         !inThisWeek.has(`${r.project_id}|${r.job_assignment_id}`) &&
         currentProgress({ carryPct: r.carry_pct == null ? null : Number(r.carry_pct), planPct: Array(7).fill(null), actualPct: padDays(r.actual_pct) }) < 100
     )
-    .map((r) => ({ projectId: r.project_id, plotId: r.plot_id, plotName: r.plots?.name ?? null, title: r.title }))
+    .map((r) => ({
+      projectId: r.project_id,
+      plotId: r.plot_id,
+      plotName: r.plots?.name ?? null,
+      title: r.title,
+      percent: Math.round(currentProgress({ carryPct: r.carry_pct == null ? null : Number(r.carry_pct), planPct: Array(7).fill(null), actualPct: padDays(r.actual_pct) })),
+    }))
 
   return {
     role: caller.role,
@@ -852,6 +862,63 @@ export async function createWeeklyPlanItems(input: WeeklyPlanBatchInput): Promis
   if (error) return { error: planErrorMessage('เพิ่มรายการไม่สำเร็จ', error) }
   revalidatePath('/dashboard/weekly-plan')
   return { ok: true, created: rows.length }
+}
+
+/** Puts an open sales work request on a week's plan as manual work on its plot.
+ * Title and plot come from the request itself; a request already planned that week is refused. */
+export type SalesRequestPlanInput = {
+  /** Who on the construction side looks after it */
+  ownerId: string | null
+  contractorId: string | null
+  /** 0 = Monday ... 6 = Sunday: the day it will be handled */
+  dayIndex: number | null
+}
+
+export async function addSalesRequestToPlan(requestId: string, weekStart: string, input: SalesRequestPlanInput): Promise<WeeklyPlanResult> {
+  const caller = await getCaller()
+  if ('error' in caller) return caller
+  if (!isMonday(weekStart)) return { error: 'สัปดาห์ไม่ถูกต้อง' }
+  const day = input.dayIndex == null ? null : Math.round(input.dayIndex)
+  if (day != null && (day < 0 || day > 6)) return { error: 'วันที่ไม่ถูกต้อง' }
+  const supabase = await createClient()
+  const { data: req, error: reqError } = await supabase
+    .from('sales_work_requests')
+    .select('id, request_no, title, plot_id, status, plots(project_id)')
+    .eq('id', requestId)
+    .maybeSingle()
+  if (reqError) return { error: `โหลดคำขอไม่สำเร็จ: ${reqError.message}` }
+  const r = req as unknown as { id: string; request_no: string | null; title: string; plot_id: string; status: string; plots: { project_id: string } | null } | null
+  if (!r || !r.plots) return { error: 'ไม่พบคำขอ' }
+  if (r.status === 'done' || r.status === 'rejected') return { error: 'คำขอนี้ปิดแล้ว' }
+
+  const title = `คำขอ ${r.request_no || ''}: ${r.title}`.replace('คำขอ :', 'คำขอ:')
+  const { data: existing, error: existingError } = await supabase
+    .from('weekly_plan_items')
+    .select('id')
+    .eq('plot_id', r.plot_id)
+    .eq('week_start', weekStart)
+    .eq('title', title)
+    .limit(1)
+  if (existingError) return { error: `ตรวจสอบรายการซ้ำไม่สำเร็จ: ${existingError.message}` }
+  if ((existing || []).length > 0) return { error: DUPLICATE_MESSAGE }
+
+  const { error } = await supabase.from('weekly_plan_items').insert({
+    project_id: r.plots.project_id,
+    plot_id: r.plot_id,
+    week_start: weekStart,
+    kind: 'other',
+    title,
+    owner_id: input.ownerId || null,
+    contractor_id: input.contractorId || null,
+    // The day it will be handled: 100% planned on that day, nothing before it.
+    plan_pct: day == null ? null : Array.from({ length: 7 }, (_, i) => (i === day ? 100 : null)),
+    created_by: caller.userId,
+  })
+  if (error) return { error: planErrorMessage('เพิ่มรายการไม่สำเร็จ', error) }
+  // Tell the sales side who is handling it (best effort: the plan item is already saved).
+  if (input.contractorId) await supabase.from('sales_work_requests').update({ assigned_contractor_id: input.contractorId }).eq('id', r.id)
+  revalidatePath('/dashboard/weekly-plan')
+  return { ok: true }
 }
 
 /** admin/pm edit any item; a foreman only items they created (RLS enforces).

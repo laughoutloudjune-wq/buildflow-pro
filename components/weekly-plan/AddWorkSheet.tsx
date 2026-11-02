@@ -5,7 +5,14 @@ import Modal from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { createWeeklyPlanItems, getPlotBoard, type PlotBoardData, type PlotBoardJob } from '@/actions/weekly-plan-actions'
-import { compressPlotNames, plotIdsFromRangeText } from '@/lib/weekly-plan'
+import { compressPlotNames, plotIdsFromRangeText, type WeeklyPlanKind } from '@/lib/weekly-plan'
+
+const FREE_KINDS: { value: WeeklyPlanKind; label: string }[] = [
+  { value: 'repair', label: 'ซ่อม' },
+  { value: 'dc', label: 'DC' },
+  { value: 'inspect', label: 'ตรวจบ้าน' },
+  { value: 'other', label: 'อื่นๆ' },
+]
 
 type Row = { title: string; order: number; jobs: PlotBoardJob[] }
 
@@ -30,6 +37,8 @@ export default function AddWorkSheet({
   const [text, setText] = useState('')
   const [ticked, setTicked] = useState<Record<string, boolean>>({})
   const [crew, setCrew] = useState<Record<string, string>>({})
+  const [freeKind, setFreeKind] = useState<WeeklyPlanKind>('repair')
+  const [freeTitle, setFreeTitle] = useState('')
 
   useEffect(() => {
     let alive = true
@@ -66,8 +75,10 @@ export default function AddWorkSheet({
   const chosen = rows.filter((r) => ticked[r.title])
   const jobsChosen = chosen.flatMap((r) => r.jobs)
 
+  const freeReady = freeTitle.trim() !== ''
+
   const submit = () => {
-    if (jobsChosen.length === 0) return
+    if (jobsChosen.length === 0 && !freeReady) return
     const jobPlans: Record<string, { carryPct: number | null; planPct: (number | null)[] }> = {}
     const jobContractors: Record<string, string> = {}
     for (const r of chosen) {
@@ -77,19 +88,42 @@ export default function AddWorkSheet({
       }
     }
     startTransition(async () => {
-      const res = await createWeeklyPlanItems({
-        projectId,
-        kind: 'main',
-        title: '',
-        ownerId: null,
-        plotIds: [...new Set(jobsChosen.map((j) => j.plotId))],
-        jobAssignmentIds: jobsChosen.map((j) => j.id),
-        jobPlans,
-        jobContractors,
-        weekStarts: [weekStart],
-      })
-      if ('error' in res) toast.error(res.error)
-      else onAdded(res.created ?? jobsChosen.length)
+      let created = 0
+      if (jobsChosen.length > 0) {
+        const res = await createWeeklyPlanItems({
+          projectId,
+          kind: 'main',
+          title: '',
+          ownerId: null,
+          plotIds: [...new Set(jobsChosen.map((j) => j.plotId))],
+          jobAssignmentIds: jobsChosen.map((j) => j.id),
+          jobPlans,
+          jobContractors,
+          weekStarts: [weekStart],
+        })
+        if ('error' in res) {
+          toast.error(res.error)
+          return
+        }
+        created += res.created ?? jobsChosen.length
+      }
+      if (freeReady) {
+        // The typed plots, or one project-level item when none are typed.
+        const res = await createWeeklyPlanItems({
+          projectId,
+          kind: freeKind,
+          title: freeTitle,
+          ownerId: null,
+          plotIds,
+          weekStarts: [weekStart],
+        })
+        if ('error' in res) {
+          toast.error(res.error)
+          return
+        }
+        created += res.created ?? 1
+      }
+      onAdded(created)
     })
   }
 
@@ -97,16 +131,16 @@ export default function AddWorkSheet({
     <Modal
       isOpen
       onClose={onClose}
-      title="เพิ่มงานสัปดาห์นี้"
+      title="เพิ่มงาน"
       panelClassName="max-w-lg"
       footer={
         <div className="flex items-center justify-between gap-3 px-1">
-          <span className="text-sm text-slate-600">{jobsChosen.length > 0 ? `เลือก ${chosen.length} งาน · ${jobsChosen.length} แปลง` : 'ยังไม่ได้เลือกงาน'}</span>
+          <span className="text-sm text-slate-600">{jobsChosen.length > 0 ? `เลือก ${chosen.length} งาน · ${jobsChosen.length} แปลง` : freeReady ? 'เพิ่มงานนอก BOQ' : 'ยังไม่ได้เลือกงาน'}</span>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose}>
               ยกเลิก
             </Button>
-            <Button onClick={submit} disabled={pending || jobsChosen.length === 0}>
+            <Button onClick={submit} disabled={pending || (jobsChosen.length === 0 && !freeReady)}>
               เพิ่มเข้าแผน
             </Button>
           </div>
@@ -181,6 +215,31 @@ export default function AddWorkSheet({
             {hidden > 0 && <p className="text-xs text-slate-500">ซ่อนงานที่เสร็จแล้วหรืออยู่ในแผนสัปดาห์นี้แล้ว {hidden} รายการ</p>}
           </div>
         )}
+
+        <div className="space-y-2 border-t border-slate-200 pt-4">
+          <p className="text-sm font-medium text-slate-700">งานอื่นที่ไม่อยู่ใน BOQ</p>
+          <div className="flex flex-wrap gap-1.5">
+            {FREE_KINDS.map((k) => (
+              <button
+                key={k.value}
+                type="button"
+                aria-pressed={freeKind === k.value}
+                onClick={() => setFreeKind(k.value)}
+                className={`rounded-full border px-3 py-1 text-xs ${freeKind === k.value ? 'border-indigo-300 bg-indigo-50 font-medium text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+          <input
+            value={freeTitle}
+            onChange={(e) => setFreeTitle(e.target.value)}
+            placeholder="ชื่องาน เช่น ซ่อมรอยร้าวผนังห้องนอน"
+            aria-label="ชื่องานนอก BOQ"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <p className="text-xs text-slate-500">สร้างให้ทุกแปลงที่พิมพ์ด้านบน ถ้าไม่พิมพ์แปลงจะเป็นงานไม่ระบุแปลง</p>
+        </div>
       </div>
     </Modal>
   )
