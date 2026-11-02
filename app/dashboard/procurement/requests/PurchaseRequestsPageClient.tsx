@@ -26,11 +26,19 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'all', label: 'ทั้งหมด' },
 ]
 
+/** 'ordered' but nothing is on its way: every line was closed by hand (bought
+ * without a PO, or dropped). Waiting for goods that will never come buries it
+ * in "รอของ" for good, so it counts as finished. */
+function isClosedOut(r: PurchaseRequest): boolean {
+  const items = r.purchase_request_items || []
+  return r.status === 'ordered' && items.length > 0 && items.every((i) => i.line_status === 'closed')
+}
+
 function inTab(r: PurchaseRequest, tab: Tab): boolean {
   if (tab === 'all') return true
   if (tab === 'todo') return r.status === 'pending_review' || r.status === 'approved'
-  if (tab === 'wait') return r.status === 'ordered'
-  return r.status === 'received'
+  if (tab === 'wait') return r.status === 'ordered' && !isClosedOut(r)
+  return r.status === 'received' || isClosedOut(r)
 }
 
 function plotText(r: PurchaseRequest): string {
@@ -66,6 +74,7 @@ function statusOf(r: PurchaseRequest): { label: string; tone: string } {
       return { label: `รอสั่ง ${open} จาก ${items.length}`, tone: 'bg-indigo-50 text-indigo-700' }
     }
     case 'ordered':
+      if (isClosedOut(r)) return { label: 'ปิดรายการแล้ว', tone: 'bg-slate-100 text-slate-500' }
       return { label: 'รอของ', tone: 'bg-slate-100 text-slate-700' }
     case 'received':
       return { label: 'ของมาครบ', tone: 'bg-emerald-50 text-emerald-700' }
@@ -80,6 +89,8 @@ function lineStatus(r: PurchaseRequest, item: PurchaseRequestItem): { label: str
   if (r.status === 'pending_review') return { label: 'รออนุมัติ', tone: 'text-amber-700' }
   if (r.status === 'rejected') return { label: 'ไม่อนุมัติ', tone: 'text-rose-600' }
   if (r.status === 'cancelled') return { label: 'ยกเลิก', tone: 'text-slate-400' }
+  // Older requests were received before orders were linked to lines, so their lines still say "open".
+  if (r.status === 'received' && item.line_status === 'open') return { label: 'ซื้อแล้ว', tone: 'text-emerald-700' }
   switch (item.line_status) {
     case 'arrived':
       return { label: 'ของมาแล้ว', tone: 'text-emerald-700' }

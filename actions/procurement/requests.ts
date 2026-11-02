@@ -284,6 +284,24 @@ export async function approvePurchaseRequest(id: string): Promise<{ ok: true } |
   }
 }
 
+/** Withdraw (the requester, while it waits for review) or cancel (PM/Admin,
+ * before anything is ordered) a request. Refused by the database while an order
+ * is linked, so a cancelled request never hides spend. */
+export async function cancelPurchaseRequest(id: string, reason?: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireModuleAccess(['procurement', 'foreman'])
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('pr_cancel', { p_id: id, p_reason: reason?.trim() || null })
+    if (error) return { error: translatePrError(error.message) }
+    revalidatePath('/dashboard/procurement/requests')
+    revalidatePath(`/dashboard/procurement/requests/${id}`)
+    revalidatePath('/dashboard/foreman/purchase-request')
+    return { ok: true }
+  } catch (error) {
+    return { error: translatePrError(error instanceof Error ? error.message : 'ยกเลิกคำขอไม่สำเร็จ') }
+  }
+}
+
 /** PM/Admin marks that they compared this request with what was ordered.
  * A record only: it never blocks a PO. */
 export async function pmReviewPurchaseRequest(id: string, comment?: string): Promise<{ ok: true } | { error: string }> {
