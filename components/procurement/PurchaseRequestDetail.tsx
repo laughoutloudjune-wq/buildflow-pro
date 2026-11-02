@@ -213,9 +213,12 @@ function plotLabel(request: PurchaseRequest): string | null {
 export default function PurchaseRequestDetail({
   request,
   onChanged,
+  onDecided,
 }: {
   request: PurchaseRequest
   onChanged: () => void
+  /** Called after this request was approved or rejected, so a list that walks through requests can move on to the next one. */
+  onDecided?: () => void
 }) {
   const router = useRouter()
   const toast = useToast()
@@ -278,6 +281,7 @@ export default function PurchaseRequestDetail({
       }
       onChanged()
       toast.success('อนุมัติคำขอซื้อเรียบร้อยแล้ว')
+      onDecided?.()
     })
   }
 
@@ -304,6 +308,7 @@ export default function PurchaseRequestDetail({
       setShowRejectBox(false)
       onChanged()
       toast.success('ปฏิเสธคำขอซื้อแล้ว')
+      onDecided?.()
     })
   }
 
