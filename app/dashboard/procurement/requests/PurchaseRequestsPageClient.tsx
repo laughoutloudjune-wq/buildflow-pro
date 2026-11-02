@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, ChevronRight, Loader2, MoreHorizontal, Plus, Printer, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, MoreHorizontal, Plus, Printer, Search } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -12,7 +12,6 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import PurchaseRequestDetail from '@/components/procurement/PurchaseRequestDetail'
-import RequestPoLinkSheet from '@/components/procurement/RequestPoLinkSheet'
 import { approvePurchaseRequest } from '@/actions/procurement-actions'
 import { getBoqOverRequestIds } from '@/actions/procurement/boq-control'
 import type { PurchaseRequest, PurchaseRequestItem } from '@/lib/types/procurement'
@@ -26,8 +25,6 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'done', label: 'เสร็จ' },
   { key: 'all', label: 'ทั้งหมด' },
 ]
-
-const GRID = 'md:grid-cols-[56px_120px_minmax(0,1fr)_96px_80px_150px_190px]'
 
 function inTab(r: PurchaseRequest, tab: Tab): boolean {
   if (tab === 'all') return true
@@ -95,18 +92,6 @@ function lineStatus(r: PurchaseRequest, item: PurchaseRequestItem): { label: str
   }
 }
 
-function itemNames(r: PurchaseRequest): { shown: string; more: number } {
-  const items = r.purchase_request_items || []
-  if (items.length === 0) return { shown: '-', more: 0 }
-  return {
-    shown: items
-      .slice(0, 2)
-      .map((i) => i.material_types?.name || '-')
-      .join(', '),
-    more: Math.max(items.length - 2, 0),
-  }
-}
-
 export default function PurchaseRequestsPageClient({
   requests,
   initialError,
@@ -120,9 +105,9 @@ export default function PurchaseRequestsPageClient({
   const [search, setSearch] = useState('')
   const [today] = useState(() => new Date().setHours(0, 0, 0, 0))
   const [tab, setTab] = useState<Tab>('todo')
-  const [openId, setOpenId] = useState<string | null>(null)
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
-  const [linkRequestId, setLinkRequestId] = useState<string | null>(null)
+  // The requests the popup walks through (the list as it was when it opened), so ‹ ใบก่อน / ใบถัดไป › stay put while statuses change.
+  const [navIds, setNavIds] = useState<string[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [checked, setChecked] = useState<Set<string>>(new Set())
@@ -254,108 +239,95 @@ export default function PurchaseRequestsPageClient({
     return null
   }
 
-  function renderRow(r: PurchaseRequest) {
+  function openRequest(id: string) {
+    setNavIds(rows.map((r) => r.id))
+    setSelectedRequestId(id)
+  }
+
+  function renderCard(r: PurchaseRequest) {
     const status = statusOf(r)
     const late = isLate(r, today)
     const over = overIds.has(r.id)
-    const names = itemNames(r)
-    const expanded = openId === r.id
     const items = r.purchase_request_items || []
+    const shown = items.slice(0, 4)
     return (
-      <li key={r.id} className="px-3 py-2">
+      <li key={r.id}>
         <div
-          className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 md:gap-x-3 ${GRID} cursor-pointer rounded-md hover:bg-slate-50`}
-          onClick={() => setOpenId(expanded ? null : r.id)}
+          className="grid cursor-pointer grid-cols-1 gap-x-4 gap-y-1.5 px-4 py-3 hover:bg-slate-50 md:grid-cols-[minmax(0,1fr)_auto]"
+          onClick={() => openRequest(r.id)}
           role="button"
           tabIndex={0}
-          aria-expanded={expanded}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault()
-              setOpenId(expanded ? null : r.id)
+              openRequest(r.id)
             }
           }}
         >
-          <span className="hidden md:flex md:items-center">
-            {selectMode ? (
-              <input
-                type="checkbox"
-                checked={checked.has(r.id)}
-                onClick={(e) => e.stopPropagation()}
-                onChange={() => toggleOne(r.id)}
-                aria-label={`เลือก #${pad(r.pr_no)}`}
-              />
-            ) : expanded ? (
-              <ChevronDown className="h-4 w-4 text-slate-400" />
-            ) : (
-              <ChevronRight className="h-4 w-4 text-slate-400" />
-            )}
-          </span>
-          <span className="hidden font-mono text-sm font-medium text-indigo-600 md:block">#{pad(r.pr_no)}</span>
-          <span className="order-1 min-w-0 truncate text-sm text-slate-800 md:order-none">
-            {selectMode && (
-              <input
-                type="checkbox"
-                className="mr-2 md:hidden"
-                checked={checked.has(r.id)}
-                onClick={(e) => e.stopPropagation()}
-                onChange={() => toggleOne(r.id)}
-                aria-label={`เลือก #${pad(r.pr_no)}`}
-              />
-            )}
-            <span className="mr-1.5 font-mono text-xs text-indigo-600 md:hidden">#{pad(r.pr_no)}</span>
-            {names.shown}
-            {names.more > 0 && <span className="text-slate-400"> อีก {names.more}</span>}
-            {over && <span className="ml-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">เกิน BOQ</span>}
-          </span>
-          <span className="hidden truncate text-sm text-slate-600 md:block">{r.requester?.full_name || r.requester?.email || '-'}</span>
-          <span className={`hidden text-sm md:block ${late ? 'font-semibold text-rose-600' : 'text-slate-600'}`}>{fmtDate(r.needed_by_date)}</span>
-          <span className="order-2 flex flex-wrap items-center justify-end gap-1 md:order-none md:justify-start">
-            <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${status.tone}`}>{status.label}</span>
-            {late && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">เลยวัน</span>}
-          </span>
-          <span className="order-3 col-span-2 text-xs text-slate-500 md:hidden">
-            {r.projects?.name || '-'}
-            {plotText(r) ? ` · ${plotText(r)}` : ''}
-            {r.needed_by_date ? ` · ต้องการ ${fmtDate(r.needed_by_date)}` : ''}
-          </span>
-          <span className="order-4 col-span-2 flex justify-end md:order-none md:col-span-1" onClick={(e) => e.stopPropagation()}>
-            {renderActions(r)}
-          </span>
-        </div>
-        {expanded && (
-          <div className="mx-2 mb-2 mt-1 space-y-1 rounded-lg bg-slate-50 px-3 py-2 text-sm md:ml-[68px]">
-            <p className="text-xs text-slate-500">
-              {r.projects?.name || '-'}
-              {plotText(r) ? ` · ${plotText(r)}` : ' · ไม่ระบุแปลง'}
-              {` · ขอเมื่อ ${new Date(r.created_at).toLocaleDateString('th-TH')}`}
-            </p>
-            {items.map((item) => {
-              const s = lineStatus(r, item)
-              const unit = requestLineUnit(item)
-              return (
-                <div key={item.id} className="flex items-baseline justify-between gap-3">
-                  <span className="min-w-0 text-slate-700">
-                    {item.material_types?.name || '-'} · {Number(item.quantity_requested).toLocaleString('th-TH')} {unit}
-                  </span>
-                  <span className={`shrink-0 text-xs ${s.tone}`}>{s.label}</span>
-                </div>
-              )
-            })}
-            <div className="flex flex-wrap gap-4 pt-1">
-              <button type="button" onClick={() => setSelectedRequestId(r.id)} className="text-xs font-medium text-indigo-600 hover:underline">
-                เปิดใบ #{pad(r.pr_no)}
-              </button>
-              {(r.status === 'approved' || r.status === 'ordered') && (
-                <button type="button" onClick={() => setLinkRequestId(r.id)} className="text-xs font-medium text-indigo-600 hover:underline">
-                  ผูกกับ PO ที่มีอยู่
-                </button>
+          <div className="min-w-0 space-y-0.5">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              {selectMode && (
+                <input
+                  type="checkbox"
+                  checked={checked.has(r.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() => toggleOne(r.id)}
+                  aria-label={`เลือก #${pad(r.pr_no)}`}
+                />
               )}
+              <span className="font-mono font-semibold text-indigo-600">#{pad(r.pr_no)}</span>
+              <span className="font-medium text-slate-800">{plotText(r) || r.projects?.name || 'ไม่ระบุแปลง'}</span>
+              <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${status.tone}`}>{status.label}</span>
+              {late && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">เลยวัน</span>}
+              {over && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">เกิน BOQ</span>}
             </div>
+            <p className="text-xs text-slate-500">
+              {r.requester?.full_name || r.requester?.email || '-'} · {items.length} รายการ
+              {r.needed_by_date ? (
+                <>
+                  {' · ต้องการ '}
+                  <span className={late ? 'font-semibold text-rose-600' : ''}>{fmtDate(r.needed_by_date)}</span>
+                </>
+              ) : (
+                ''
+              )}
+            </p>
           </div>
-        )}
+          <div className="flex items-start justify-end" onClick={(e) => e.stopPropagation()}>
+            {renderActions(r)}
+          </div>
+          {items.length > 0 && (
+            <div className="grid gap-x-8 gap-y-0.5 text-[13px] md:col-span-2 md:grid-cols-2">
+              {shown.map((item) => {
+                const s = lineStatus(r, item)
+                return (
+                  <div key={item.id} className="flex min-w-0 items-baseline justify-between gap-2">
+                    <span className="truncate text-slate-700">
+                      {item.material_types?.name || '-'} · {Number(item.quantity_requested).toLocaleString('th-TH')} {requestLineUnit(item)}
+                    </span>
+                    <span className={`shrink-0 text-xs ${s.tone}`}>{s.label}</span>
+                  </div>
+                )
+              })}
+              {items.length > shown.length && <span className="text-xs text-slate-400">อีก {items.length - shown.length} รายการ</span>}
+            </div>
+          )}
+        </div>
       </li>
     )
+  }
+
+  // Popup navigation: stays inside the list the popup was opened from.
+  const navIndex = selectedRequestId ? navIds.indexOf(selectedRequestId) : -1
+  function goTo(offset: number) {
+    const target = navIds[navIndex + offset]
+    if (target) setSelectedRequestId(target)
+  }
+  // After approving or rejecting: on to the next request, or close at the end of the list.
+  function goNextOrClose() {
+    const target = navIds[navIndex + 1]
+    if (target) setSelectedRequestId(target)
+    else setSelectedRequestId(null)
   }
 
   const printUrl = `/api/procurement/requests/pdf?ids=${Array.from(checked).join(',')}`
@@ -418,7 +390,6 @@ export default function PurchaseRequestsPageClient({
             aria-selected={tab === t.key}
             onClick={() => {
               setTab(t.key)
-              setOpenId(null)
             }}
             className={`rounded-full border px-3.5 py-1.5 text-sm transition ${
               tab === t.key ? 'border-indigo-600 bg-indigo-600 font-medium text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
@@ -451,21 +422,12 @@ export default function PurchaseRequestsPageClient({
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          <div className={`hidden gap-x-3 border-b border-slate-100 px-3 py-2 text-xs text-slate-500 md:grid ${GRID}`}>
-            <span />
-            <span>เลขที่</span>
-            <span>ของที่ขอ</span>
-            <span>ผู้ขอ</span>
-            <span>ต้องการ</span>
-            <span>สถานะ</span>
-            <span />
-          </div>
           {rows.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-slate-500">
               {search.trim() ? 'ไม่พบคำขอตามคำค้นหาในแท็บนี้' : 'ไม่มีคำขอในแท็บนี้'}
             </p>
           ) : (
-            <ul className="divide-y divide-slate-100">{rows.map(renderRow)}</ul>
+            <ul className="divide-y divide-slate-100">{rows.map(renderCard)}</ul>
           )}
         </Card>
       )}
@@ -475,21 +437,31 @@ export default function PurchaseRequestsPageClient({
         onClose={() => setSelectedRequestId(null)}
         title={selectedRequest ? `คำขอซื้อ #${pad(selectedRequest.pr_no)}` : undefined}
         panelClassName="max-w-6xl"
+        footer={
+          navIds.length > 1 && navIndex >= 0 ? (
+            <div className="flex items-center justify-between gap-3 px-5 py-3">
+              <Button type="button" variant="secondary" size="sm" onClick={() => goTo(-1)} disabled={navIndex <= 0}>
+                <ChevronLeft className="h-4 w-4" /> ใบก่อน
+              </Button>
+              <span className="text-xs text-slate-500">
+                {navIndex + 1} / {navIds.length}
+              </span>
+              <Button type="button" variant="secondary" size="sm" onClick={() => goTo(1)} disabled={navIndex >= navIds.length - 1}>
+                ใบถัดไป <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
-        {selectedRequest && <PurchaseRequestDetail request={selectedRequest} onChanged={() => router.refresh()} />}
+        {selectedRequest && (
+          <PurchaseRequestDetail
+            key={selectedRequest.id}
+            request={selectedRequest}
+            onChanged={() => router.refresh()}
+            onDecided={goNextOrClose}
+          />
+        )}
       </Modal>
-
-      {linkRequestId && (
-        <RequestPoLinkSheet
-          mode="request"
-          requestId={linkRequestId}
-          onClose={() => setLinkRequestId(null)}
-          onLinked={() => {
-            setLinkRequestId(null)
-            router.refresh()
-          }}
-        />
-      )}
     </PageContainer>
   )
 }
