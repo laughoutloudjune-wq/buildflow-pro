@@ -623,7 +623,15 @@ export default function PurchaseRequestDetail({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 text-sm">
                 <p className="font-semibold text-slate-900">
-                  {request.status === 'pending_review' ? 'รอการตัดสินใจ' : 'อนุมัติแล้ว พร้อมออกใบสั่งซื้อ'}
+                  {request.status === 'pending_review'
+                    ? 'รอการตัดสินใจ'
+                    : (() => {
+                        const all = request.purchase_request_items || []
+                        const left = all.filter((i) => i.line_status === 'open').length
+                        return left > 0 && left < all.length
+                          ? `มี PO แล้ว ${all.length - left} รายการ · เหลือ ${left} รายการที่ยังไม่มี PO`
+                          : 'อนุมัติแล้ว พร้อมออกใบสั่งซื้อ'
+                      })()}
                 </p>
                 <p className="text-xs text-slate-500">
                   {(request.purchase_request_items || []).length} รายการวัสดุ
