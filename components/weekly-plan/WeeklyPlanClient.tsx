@@ -1,11 +1,10 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useState, useTransition, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { CalendarCheck, ChevronLeft, ChevronRight, MoreHorizontal, Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { useToast } from '@/components/ui/Toast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import {
@@ -40,7 +39,11 @@ const plotSort = (a: string, b: string) => a.localeCompare(b, 'th', { numeric: t
 
 type Result = { ok: true } | { error: string }
 
-/** One planned item: name, crew chip, note link, a progress bar with a % box that saves as you type, and a ⋯ menu. */
+/** Grid for one row: plot · job · crew · start % · % box · finish · menu. On phones it is two lines. */
+const ROW_GRID =
+  'grid grid-cols-[minmax(0,1fr)_auto_auto_28px] [grid-template-areas:"nm_pc_fin_wm""cw_pc_fin_wm"] items-center gap-x-2 sm:grid-cols-[64px_minmax(0,1fr)_130px_70px_132px_64px_28px] sm:[grid-template-areas:none]'
+
+/** One planned item as a single row. Note, rename and remove sit behind the ⋯ button. */
 function JobRow({
   item,
   data,
@@ -49,6 +52,8 @@ function JobRow({
   afterMeeting,
   busy,
   failRev,
+  plotCell,
+  dashed,
   onSavePct,
   onNote,
   onCrew,
@@ -62,6 +67,10 @@ function JobRow({
   afterMeeting: boolean
   busy: boolean
   failRev: number
+  /** Shown in the first column of the first job of a plot only */
+  plotCell: ReactNode
+  /** Dashed top border between jobs of the same plot */
+  dashed: boolean
   onSavePct: (item: WeeklyPlanItem, v: number) => void
   onNote: (item: WeeklyPlanItem, note: string) => void
   onCrew: (item: WeeklyPlanItem, contractorId: string) => void
@@ -82,6 +91,7 @@ function JobRow({
   // A day was chosen when the item was planned (100% planned on that day only).
   const plannedDay = !isJob && item.planPct.filter((v) => v != null).length === 1 && item.planPct.indexOf(100) >= 0 ? item.planPct.indexOf(100) : null
   const kindChip = isSalesRequestItem(item) ? 'คำขอขาย' : isJob ? null : KIND_CHIP[item.kind]
+  const gain = Math.round(value - from)
 
   const save = (v: number) => {
     const n = Math.min(100, Math.max(0, Math.round(v)))
@@ -103,101 +113,57 @@ function JobRow({
   const disabledReason = canCheck ? undefined : 'ยังไม่ถึงสัปดาห์นี้ ใส่ % ได้ตั้งแต่วันจันทร์'
 
   return (
-    <div className="border-b border-slate-100 py-2.5 last:border-b-0">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {isJob || !editable ? (
-              <span className="text-sm font-medium text-slate-800">{item.title}</span>
-            ) : (
-              <button type="button" onClick={() => onEditFree(item)} className="text-left text-sm font-medium text-slate-800 hover:underline" title="แก้ไขชื่อ ประเภท แปลง">
-                {item.title}
-              </button>
-            )}
-            {kindChip && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">{kindChip}</span>}
-            {afterMeeting && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">เพิ่มหลังประชุม</span>}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="relative">
-              <button
-                type="button"
-                disabled={!editable}
-                onClick={() => setPicking((o) => !o)}
-                aria-expanded={picking}
-                className={`rounded-full border px-2.5 py-0.5 text-xs ${item.contractorName ? 'border-slate-300 text-slate-700 hover:border-indigo-400' : 'border-dashed border-amber-400 text-amber-700'}`}
-              >
-                {item.contractorName || '+ ช่าง'}
-              </button>
-              {picking && (
-                <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-56 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 text-sm shadow-lg">
-                  <button type="button" onClick={() => { setPicking(false); onCrew(item, '') }} className="block w-full rounded px-2 py-1.5 text-left text-slate-500 hover:bg-slate-50">
-                    ยังไม่เลือกช่าง
-                  </button>
-                  {data.contractors.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => { setPicking(false); onCrew(item, c.id) }}
-                      className={`block w-full rounded px-2 py-1.5 text-left hover:bg-indigo-50 ${c.id === item.contractorId ? 'bg-indigo-50 font-medium' : ''}`}
-                    >
-                      {c.name}
-                    </button>
-                  ))}
-                </div>
-              )}
+    <div className={`border-t py-1.5 ${dashed ? 'border-dashed border-slate-200' : 'border-slate-300'}`}>
+      <div className={ROW_GRID}>
+        <div className="hidden min-w-0 leading-tight sm:block">{plotCell}</div>
+
+        <div className="min-w-0 [grid-area:nm] sm:[grid-area:auto]">
+          <div className={`flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm ${done ? 'text-slate-500' : 'text-slate-800'}`}>
+            <span className="min-w-0 break-words font-medium sm:truncate" title={item.title}>
+              {item.title}
             </span>
-            {item.ownerName && <span className="text-xs text-slate-600">ดูแล: {item.ownerName}</span>}
-            {plannedDay != null && <span className="text-xs text-slate-600">ทำ {formatThaiDay(addDaysStr(item.weekStart, plannedDay))}</span>}
-            {noteText != null ? (
-              <input
-                autoFocus
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                onBlur={commitNote}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                }}
-                placeholder="หมายเหตุ"
-                aria-label="หมายเหตุ"
-                className="min-w-0 flex-1 basis-40 rounded-md border border-slate-300 px-2 py-0.5 text-xs"
-              />
-            ) : item.note ? (
-              <button type="button" disabled={!editable} onClick={() => setNoteText(item.note ?? '')} className="text-left text-xs text-slate-600 hover:underline">
-                📝 {item.note}
-              </button>
-            ) : (
-              editable && (
-                <button type="button" onClick={() => setNoteText('')} className="text-xs text-indigo-600 hover:underline">
-                  + หมายเหตุ
-                </button>
-              )
-            )}
+            {kindChip && <span className="rounded-full bg-slate-100 px-1.5 py-0 text-[11px] text-slate-700">{kindChip}</span>}
+            {afterMeeting && <span className="rounded-full bg-amber-50 px-1.5 py-0 text-[11px] text-amber-800">เพิ่มหลังประชุม</span>}
+            {item.ownerName && <span className="text-xs text-slate-500">ดูแล: {item.ownerName}</span>}
+            {plannedDay != null && <span className="text-xs text-slate-500">ทำ {formatThaiDay(addDaysStr(item.weekStart, plannedDay))}</span>}
+            {item.note && <span className="min-w-0 truncate text-xs text-slate-500" title={item.note}>{item.note}</span>}
           </div>
         </div>
-        <div className="relative shrink-0">
-          <button type="button" onClick={() => setMenu((o) => !o)} aria-expanded={menu} aria-label="เพิ่มเติม" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
-            <MoreHorizontal className="h-4 w-4" />
+
+        <div className="relative min-w-0 [grid-area:cw] sm:[grid-area:auto]">
+          <button
+            type="button"
+            disabled={!editable}
+            onClick={() => setPicking((o) => !o)}
+            aria-expanded={picking}
+            className={`max-w-full truncate text-left text-xs sm:rounded-full sm:border sm:px-2.5 sm:py-0.5 ${
+              item.contractorName ? 'text-slate-500 sm:border-slate-300 sm:text-slate-700 sm:hover:border-indigo-400' : 'text-amber-700 sm:border-dashed sm:border-amber-400'
+            }`}
+          >
+            {item.contractorName || '+ ช่าง'}
           </button>
-          {menu && (
-            <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-slate-200 bg-white p-1 text-sm shadow-lg">
-              {editable ? (
-                <button type="button" onClick={() => { setMenu(false); onDelete(item) }} className="block w-full rounded px-2 py-1.5 text-left text-red-600 hover:bg-red-50">
-                  เอาออกจากแผน
+          {picking && (
+            <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-56 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 text-sm shadow-lg">
+              <button type="button" onClick={() => { setPicking(false); onCrew(item, '') }} className="block w-full rounded px-2 py-1.5 text-left text-slate-500 hover:bg-slate-50">
+                ยังไม่เลือกช่าง
+              </button>
+              {data.contractors.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => { setPicking(false); onCrew(item, c.id) }}
+                  className={`block w-full rounded px-2 py-1.5 text-left hover:bg-indigo-50 ${c.id === item.contractorId ? 'bg-indigo-50 font-medium' : ''}`}
+                >
+                  {c.name}
                 </button>
-              ) : (
-                <span className="block px-2 py-1.5 text-xs text-slate-500">เอาออกได้เฉพาะผู้สร้างหรือ PM</span>
-              )}
+              ))}
             </div>
           )}
         </div>
-      </div>
-      <div className="mt-2 flex items-center gap-3">
-        <div className="h-2 min-w-[3rem] flex-1 rounded-full bg-slate-100" role="progressbar" aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={100}>
-          <div className={`h-2 rounded-full ${done ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
-        </div>
-        {isJob && <span className="shrink-0 text-xs text-slate-500">ต้นสัปดาห์ {Math.round(from)}%</span>}
-        <div className="flex shrink-0 items-center gap-1.5">
-          <span className="hidden text-xs text-slate-500 sm:inline">ทำไปแล้วกี่ %</span>
+
+        <div className="hidden text-right text-xs tabular-nums text-slate-500 sm:block">{isJob ? `${Math.round(from)}%` : ''}</div>
+
+        <div className="flex items-center justify-end gap-1 [grid-area:pc] sm:[grid-area:auto]">
           <input
             type="number"
             min={0}
@@ -216,20 +182,66 @@ function JobRow({
               if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
             }}
             aria-label={`ทำไปแล้วกี่ % ${item.title}`}
-            className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1 text-right text-sm tabular-nums disabled:bg-slate-50"
+            className="w-14 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-right text-sm tabular-nums disabled:bg-slate-50"
           />
           <span className="text-sm text-slate-500">%</span>
+          <span className="hidden w-9 text-xs font-semibold tabular-nums text-emerald-700 sm:inline">{isJob && gain > 0 ? `+${gain}` : ''}</span>
+        </div>
+
+        <div className="[grid-area:fin] sm:[grid-area:auto]">
           <button
             type="button"
             disabled={!canCheck || busy}
             title={disabledReason}
             onClick={() => save(done ? from : 100)}
-            className={`rounded-lg border px-2.5 py-1 text-sm font-medium disabled:opacity-50 ${done ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+            className={`rounded-md border px-2 py-1 text-xs font-medium disabled:opacity-50 ${done ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
           >
             {done ? '✓ เสร็จ' : 'เสร็จ'}
           </button>
         </div>
+
+        <div className="[grid-area:wm] sm:[grid-area:auto]">
+          <button type="button" onClick={() => setMenu((o) => !o)} aria-expanded={menu} aria-label="เพิ่มเติม" className="rounded-md p-1 text-slate-500 hover:bg-slate-100">
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+        </div>
       </div>
+
+      {menu && (
+        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs sm:ml-16">
+          {editable && noteText == null && (
+            <button type="button" onClick={() => setNoteText(item.note ?? '')} className="font-medium text-indigo-600 hover:underline">
+              {item.note ? 'แก้หมายเหตุ' : '+ หมายเหตุ'}
+            </button>
+          )}
+          {noteText != null && (
+            <input
+              autoFocus
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              onBlur={commitNote}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              }}
+              placeholder="หมายเหตุ"
+              aria-label="หมายเหตุ"
+              className="min-w-0 flex-1 basis-48 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+            />
+          )}
+          {!isJob && editable && (
+            <button type="button" onClick={() => { setMenu(false); onEditFree(item) }} className="font-medium text-indigo-600 hover:underline">
+              แก้ชื่องาน
+            </button>
+          )}
+          {editable ? (
+            <button type="button" onClick={() => { setMenu(false); onDelete(item) }} className="font-medium text-red-600 hover:underline">
+              เอาออกจากแผน
+            </button>
+          ) : (
+            <span className="text-slate-500">แก้หรือเอาออกได้เฉพาะผู้สร้างหรือ PM</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -356,18 +368,14 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
     onEditFree: (item: WeeklyPlanItem) => setEditing(item),
   }
 
-  const addButton = (variant: 'primary' | 'secondary') => (
-    <Button variant={variant} onClick={() => setAdding(true)} disabled={!project}>
-      <Plus className="h-4 w-4" /> เพิ่มงาน
-    </Button>
-  )
+  const [waitOpen, setWaitOpen] = useState(false)
+  const waitingCount = carryOver.length + waitingRequests.length
 
   return (
-    <div className="space-y-5">
-      <PageHeader title="แผนงาน" subtitle={project ? project.name : 'เลือกโครงการ'} actions={addButton('primary')} />
-
-      <div className="flex flex-wrap items-center gap-3">
-        <select value={projectId} onChange={(e) => go(weekStart, e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" aria-label="โครงการ">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="mr-1 text-xl font-semibold text-slate-900">แผนงาน</h1>
+        <select value={projectId} onChange={(e) => go(weekStart, e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm" aria-label="โครงการ">
           {data.projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -378,7 +386,7 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
           <Button variant="secondary" size="sm" onClick={() => go(addDaysStr(weekStart, -7))} aria-label="สัปดาห์ก่อน">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="min-w-[10rem] text-center text-sm font-medium text-slate-700">
+          <span className="min-w-[9rem] text-center text-sm font-medium text-slate-700">
             {formatWeekRange(weekStart)}
             {weekStart === currentWeek && <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">สัปดาห์นี้</span>}
           </span>
@@ -388,62 +396,80 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
         </div>
         {weekItems.length > 0 && (
           <span className="text-sm text-slate-600">
-            เสร็จแล้ว {finished}/{weekItems.length} งาน
+            เสร็จ {finished}/{weekItems.length} งาน
           </span>
         )}
+        <div className="ml-auto">
+          <Button onClick={() => setAdding(true)} disabled={!project}>
+            <Plus className="h-4 w-4" /> เพิ่มงาน
+          </Button>
+        </div>
       </div>
 
-      {!canCheck && <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">สัปดาห์หน้า: เพิ่มงานล่วงหน้าได้ · ใส่ % ได้ตั้งแต่วันจันทร์</p>}
+      {!canCheck && <p className="rounded-md bg-slate-100 px-3 py-1 text-xs text-slate-600">สัปดาห์หน้า: เพิ่มงานล่วงหน้าได้ · ใส่ % ได้ตั้งแต่วันจันทร์</p>}
 
       {hasWaiting && (
-        <Card className="space-y-2 border-amber-200 bg-amber-50/60 p-4">
-          <h3 className="text-sm font-semibold text-slate-800">รอใส่แผน</h3>
-          {carryOver.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-amber-100/60 px-3 py-2 text-sm">
-              <div className="min-w-0">
-                <span className="font-medium text-slate-800">ค้างจากสัปดาห์ก่อน {carryOver.length} งาน</span>
-                <span className="block text-xs text-slate-600">
-                  {carryOver
-                    .slice(0, 6)
-                    .map((c) => `${c.plotName ? `แปลง ${c.plotName} ` : ''}${c.title} ${c.percent}%`)
-                    .join(' · ')}
-                  {carryOver.length > 6 ? ' ...' : ''}
-                </span>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={pending}
-                onClick={() =>
-                  run(async () => {
-                    const res = await rollOverWeeklyPlan(projectId, weekStart)
-                    if ('error' in res) return res
-                    toast.success(`ยกงานค้างมา ${res.created} รายการ`)
-                    return { ok: true as const }
-                  })
-                }
-              >
-                ยกมาทั้งหมด
-              </Button>
+        <div className="rounded-lg border border-amber-200 bg-amber-50/70 text-sm">
+          <button type="button" onClick={() => setWaitOpen((o) => !o)} aria-expanded={waitOpen} className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left">
+            <span>
+              <b className="font-semibold text-slate-800">รอใส่แผน {waitingCount}</b>
+              <span className="text-slate-600">
+                {carryOver.length > 0 ? ` · ค้างจากสัปดาห์ก่อน ${carryOver.length}` : ''}
+                {waitingRequests.length > 0 ? ` · ฝ่ายขายขอ ${waitingRequests.length}` : ''}
+              </span>
+            </span>
+            <span className="shrink-0 text-xs text-indigo-600">ดู {waitOpen ? '▴' : '▾'}</span>
+          </button>
+          {waitOpen && (
+            <div className="space-y-1.5 border-t border-amber-200 px-3 py-2">
+              {carryOver.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="font-medium text-slate-800">ค้างจากสัปดาห์ก่อน {carryOver.length} งาน</span>
+                    <span className="block text-xs text-slate-600">
+                      {carryOver
+                        .slice(0, 6)
+                        .map((c) => `${c.plotName ? `แปลง ${c.plotName} ` : ''}${c.title} ${c.percent}%`)
+                        .join(' · ')}
+                      {carryOver.length > 6 ? ' ...' : ''}
+                    </span>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() =>
+                      run(async () => {
+                        const res = await rollOverWeeklyPlan(projectId, weekStart)
+                        if ('error' in res) return res
+                        toast.success(`ยกงานค้างมา ${res.created} รายการ`)
+                        return { ok: true as const }
+                      })
+                    }
+                  >
+                    ยกมาทั้งหมด
+                  </Button>
+                </div>
+              )}
+              {waitingRequests.map((r) => (
+                <div key={r.id} className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="font-medium text-slate-800">ฝ่ายขายขอ: {r.title}</span>
+                    <span className="block text-xs text-slate-600">
+                      แปลง {r.plotName}
+                      {r.requestNo ? ` · ${r.requestNo}` : ''}
+                      {r.neededBy ? ` · ต้องการภายใน ${formatThaiDay(r.neededBy)}` : ''}
+                      {` · ${REQUEST_STATUS_LABEL[r.status] || r.status}`}
+                    </span>
+                  </div>
+                  <Button variant="secondary" size="sm" disabled={pending} onClick={() => setPlanningRequest(r)}>
+                    + ใส่ในแผน
+                  </Button>
+                </div>
+              ))}
             </div>
           )}
-          {waitingRequests.map((r) => (
-            <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-amber-100/60 px-3 py-2 text-sm">
-              <div className="min-w-0">
-                <span className="font-medium text-slate-800">ฝ่ายขายขอ: {r.title}</span>
-                <span className="block text-xs text-slate-600">
-                  แปลง {r.plotName}
-                  {r.requestNo ? ` · ${r.requestNo}` : ''}
-                  {r.neededBy ? ` · ต้องการภายใน ${formatThaiDay(r.neededBy)}` : ''}
-                  {` · ${REQUEST_STATUS_LABEL[r.status] || r.status}`}
-                </span>
-              </div>
-              <Button variant="secondary" size="sm" disabled={pending} onClick={() => setPlanningRequest(r)}>
-                + ใส่ในแผน
-              </Button>
-            </div>
-          ))}
-        </Card>
+        </div>
       )}
 
       {weekItems.length === 0 ? (
@@ -452,51 +478,68 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
           <p className="mt-1">กด &quot;เพิ่มงาน&quot; พิมพ์เลขแปลง แล้วติ๊กงานที่จะทำ</p>
         </Card>
       ) : (
-        <Card className="space-y-4 p-4">
-          <p className="text-xs text-slate-500">ช่อง % = ความคืบหน้าทั้งงาน (ไม่ใช่เฉพาะสัปดาห์นี้)</p>
-          {groups.map((g) => (
-            <section key={g.plotId ?? 'none'}>
-              <h3 className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-1 text-sm font-semibold text-slate-800">
-                {g.name ? `แปลง ${g.name}` : 'ไม่ระบุแปลง'}
-                {g.plotId && <span className="text-xs font-normal text-slate-500">{data.plots.find((p) => p.id === g.plotId)?.houseType}</span>}
-                {g.plotId && salesStatusByPlot.get(g.plotId) && (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-700">{salesStatusByPlot.get(g.plotId)}</span>
-                )}
-              </h3>
-              {g.items.map((item) => (
-                <JobRow
-                  key={item.id}
-                  item={item}
-                  editable={canEdit(item)}
-                  afterMeeting={!!meeting && item.createdAt > meeting.agreedAt}
-                  {...rowProps}
-                />
-              ))}
-            </section>
-          ))}
-          <div>{addButton('secondary')}</div>
+        <Card className="p-3">
+          <div className="hidden grid-cols-[64px_minmax(0,1fr)_130px_70px_132px_64px_28px] items-center gap-x-2 pb-1 text-xs text-slate-500 sm:grid">
+            <span>แปลง</span>
+            <span>งาน</span>
+            <span>ช่าง</span>
+            <span className="text-right">ต้นสัปดาห์</span>
+            <span className="text-right">ทำไปแล้ว % (ทั้งงาน)</span>
+            <span />
+            <span />
+          </div>
+          {groups.map((g) => {
+            const status = g.plotId ? salesStatusByPlot.get(g.plotId) : null
+            return (
+              <section key={g.plotId ?? 'none'}>
+                <h3 className="pt-2 text-sm font-semibold text-slate-800 sm:hidden">
+                  {g.name ? `แปลง ${g.name}` : 'ไม่ระบุแปลง'}
+                  {status && <span className="ml-2 text-xs font-normal text-slate-500">{status}</span>}
+                </h3>
+                {g.items.map((item, idx) => (
+                  <JobRow
+                    key={item.id}
+                    item={item}
+                    editable={canEdit(item)}
+                    afterMeeting={!!meeting && item.createdAt > meeting.agreedAt}
+                    dashed={idx > 0}
+                    plotCell={
+                      idx === 0 ? (
+                        <>
+                          <span className="block text-sm font-semibold text-slate-800">{g.name ?? 'ไม่ระบุ'}</span>
+                          {status && <span className="block text-[11px] text-slate-500">{status}</span>}
+                        </>
+                      ) : null
+                    }
+                    {...rowProps}
+                  />
+                ))}
+              </section>
+            )
+          })}
         </Card>
       )}
 
-      <Card className={`p-3 ${meeting ? 'border-emerald-200' : ''}`}>
-        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-          <div className="flex min-w-0 items-center gap-2">
-            <CalendarCheck className={`h-5 w-5 shrink-0 ${meeting ? 'text-emerald-700' : 'text-slate-400'}`} aria-hidden />
-            {meeting ? (
-              <span className="text-slate-700">
-                <b className="text-emerald-800">ตกลงแผนในที่ประชุมแล้ว</b>
-                <span className="ml-2 text-slate-500">
-                  {meeting.agreedByName ? `โดย ${meeting.agreedByName} · ` : ''}
-                  {new Date(meeting.agreedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
-                </span>
-                <span className="block text-xs text-slate-500">ยังเพิ่ม เอาออก หรือเปลี่ยนช่างได้ งานที่เพิ่มหลังประชุมจะมีป้าย &quot;เพิ่มหลังประชุม&quot;</span>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm">
+        <button type="button" onClick={() => setAdding(true)} disabled={!project} className="font-medium text-indigo-600 hover:underline disabled:opacity-50">
+          + เพิ่มงาน
+        </button>
+        <div className="flex flex-wrap items-center gap-2 text-slate-600">
+          <CalendarCheck className={`h-4 w-4 shrink-0 ${meeting ? 'text-emerald-700' : 'text-slate-400'}`} aria-hidden />
+          {meeting ? (
+            <span>
+              <b className="text-emerald-800">ตกลงแผนแล้ว</b>
+              <span className="text-slate-500">
+                {' '}
+                {meeting.agreedByName ? `โดย ${meeting.agreedByName} · ` : ''}
+                {new Date(meeting.agreedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} · เพิ่มหลังนี้จะมีป้าย &quot;เพิ่มหลังประชุม&quot;
               </span>
-            ) : (
-              <span className="text-slate-600">PM: หลังประชุมวางแผนกับช่างแล้ว กดบันทึกไว้</span>
-            )}
-          </div>
+            </span>
+          ) : (
+            <span>PM: หลังประชุมกับช่าง</span>
+          )}
           {canManage && project && (
-            <div className="flex shrink-0 gap-2">
+            <>
               {meeting ? (
                 <Button variant="secondary" size="sm" disabled={pending} onClick={() => run(() => unagreeWeeklyPlan(projectId, weekStart), 'ยกเลิกการตกลงแผนแล้ว')}>
                   ยกเลิก
@@ -506,10 +549,10 @@ export default function WeeklyPlanClient({ data, projectId }: { data: WeeklyPlan
                   ประชุมตกลงแผนแล้ว
                 </Button>
               )}
-            </div>
+            </>
           )}
         </div>
-      </Card>
+      </div>
 
       {editing && (
         <FreeItemEditor
