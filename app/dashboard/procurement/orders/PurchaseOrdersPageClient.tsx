@@ -361,13 +361,9 @@ export default function PurchaseOrdersPageClient({
                         <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggleOne(o.id)} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => setViewOrderId(o.id)}
-                          className="font-mono font-medium text-indigo-600 hover:underline"
-                        >
+                        <Link href={`/dashboard/procurement/work?open=PO:${o.id}`} className="font-mono font-medium text-indigo-600 hover:underline">
                           {o.po_no}
-                        </button>
+                        </Link>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${STATUS_TEXT[o.status]}`}>

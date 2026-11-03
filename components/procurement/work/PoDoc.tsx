@@ -10,17 +10,19 @@ import {
   setPurchaseOrderStatus,
   cancelPurchaseOrder,
   closePurchaseOrderShort,
+  unmarkPurchaseOrderReceived,
   deletePurchaseOrder,
   duplicatePurchaseOrder,
 } from '@/actions/procurement-actions'
 import { docNo } from '@/lib/status-labels'
 import { buildChain, orderIsLate, orderStatusWord, isReceiptPaid } from '@/lib/procurement/workQueue'
 import RequestPoLinkSheet from '@/components/procurement/RequestPoLinkSheet'
+import PoQuotesPanel from '@/components/procurement/PoQuotesPanel'
 import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
 import { DocChainBar, DocFacts, DocModal, DocTable, DocTrack, Hint, StatusChip, WarnTag, fmtDate, qtyText, type MoreItem } from './docUi'
 import type { DocCtx } from './types'
 
-type Ask = 'cancel' | 'short' | 'delete' | null
+type Ask = 'cancel' | 'short' | 'delete' | 'unreceive' | null
 
 /** A purchase order, in the one window layout. Send, receive and pay from here. */
 export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
@@ -58,6 +60,7 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
     setAsk(null)
     if (kind === 'cancel') run(() => cancelPurchaseOrder(id, reason), `${order!.po_no} ยกเลิกแล้ว`)
     if (kind === 'short') run(() => closePurchaseOrderShort(id, reason), `${order!.po_no} ปิดแล้ว (ร้านส่งไม่ครบ)`)
+    if (kind === 'unreceive') run(() => unmarkPurchaseOrderReceived(id, reason), `${order!.po_no} ยกเลิกการรับของแล้ว`)
     if (kind === 'delete') run(() => deletePurchaseOrder(id, reason), `ลบร่าง ${order!.po_no} แล้ว`, () => ctx.close())
   }
 
@@ -86,6 +89,7 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
   if (order.status === 'sent' || order.status === 'partially_received') {
     more.push({ key: 'short', label: 'ปิด PO (ร้านส่งไม่ครบ)', onClick: () => setAsk('short') })
   }
+  if (order.status === 'received' && unpaidReceipts.length > 0) more.push({ key: 'unreceive', label: 'ยกเลิกการรับของ', onClick: () => setAsk('unreceive'), danger: true })
   if (order.status === 'sent' || order.status === 'partially_received' || order.status === 'draft') {
     more.push({ key: 'cancel', label: 'ยกเลิกใบสั่งซื้อ', onClick: () => setAsk('cancel'), danger: true })
   }
@@ -224,11 +228,12 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
         </DocTable>
 
         <details className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
-          <summary className="cursor-pointer text-slate-600">เงื่อนไข · ประวัติ</summary>
+          <summary className="cursor-pointer text-slate-600">เงื่อนไข · ใบเสนอราคา · ประวัติ</summary>
           <div className="space-y-2 pt-2">
             <p className="text-slate-600">เครดิต: {order.payment_terms || '-'}</p>
             {order.delivery_address && <p className="text-slate-600">ส่งที่: {order.delivery_address}</p>}
             {order.note && <p className="text-slate-600">หมายเหตุ: {order.note}</p>}
+            <PoQuotesPanel purchaseOrderId={id} canEdit={order.status !== 'cancelled' && order.status !== 'paid'} />
             <DocumentHistoryPanel key={id} target={{ kind: 'po', id }} />
           </div>
         </details>
@@ -237,7 +242,7 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
 
       <ReasonDialog
         isOpen={ask !== null}
-        title={ask === 'cancel' ? 'ยกเลิกใบสั่งซื้อ' : ask === 'short' ? 'ปิดใบสั่งซื้อ (ร้านส่งไม่ครบ)' : 'ลบร่างใบสั่งซื้อ'}
+        title={ask === 'cancel' ? 'ยกเลิกใบสั่งซื้อ' : ask === 'unreceive' ? 'ยกเลิกการรับของ' : ask === 'short' ? 'ปิดใบสั่งซื้อ (ร้านส่งไม่ครบ)' : 'ลบร่างใบสั่งซื้อ'}
         label="เหตุผล"
         required
         busy={isPending}

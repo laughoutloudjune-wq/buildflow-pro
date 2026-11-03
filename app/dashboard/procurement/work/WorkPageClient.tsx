@@ -303,6 +303,9 @@ export default function WorkPageClient({
   }
 
   // ----- rendering -----
+  // A form (new order / receive / pay) takes the place of the document window
+  // while it is open; the document comes back when the form closes.
+  const formOpen = poCreateKey !== null || receiveFor !== null || payFor !== null
   const receiveOrder = receiveFor ? ix.orderById.get(receiveFor) : null
   const payReceipts = payFor ? payFor.map((id) => ix.receiptById.get(id)).filter((r): r is GoodsReceipt => Boolean(r)) : []
   const payOthers = payReceipts.length
@@ -465,7 +468,7 @@ export default function WorkPageClient({
         </div>
       )}
 
-      {current && currentExists && (
+      {current && currentExists && !formOpen && (
         <>
           {current.type === 'PR' && <PrDoc key={`PR:${current.id}`} id={current.id} ctx={ctx} />}
           {current.type === 'PO' && <PoDoc key={`PO:${current.id}`} id={current.id} ctx={ctx} />}
@@ -473,7 +476,7 @@ export default function WorkPageClient({
           {current.type === 'PP' && <PpDoc key={`PP:${current.id}`} id={current.id} ctx={ctx} />}
         </>
       )}
-      {current && !currentExists && (
+      {current && !currentExists && !formOpen && (
         <Modal isOpen onClose={closeWindow} title={DOC_TYPE_LABEL[current.type]}>
           <div className="flex items-center gap-2 py-8 text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลดเอกสาร...
@@ -504,9 +507,13 @@ export default function WorkPageClient({
           isOpen
           order={receiveOrder}
           onClose={() => setReceiveFor(null)}
-          onSuccess={() => {
+          onSuccess={(receiptId) => {
             setReceiveFor(null)
             refresh()
+            if (receiptId) {
+              if (current) setStack((prev) => [...prev, current])
+              setCurrent({ type: 'RI', id: receiptId })
+            }
           }}
         />
       )}

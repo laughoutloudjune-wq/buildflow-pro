@@ -50,6 +50,8 @@ export default function PaymentVoucherModal({
   const [paymentDate, setPaymentDate] = useState(() => todayInBangkok())
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [note, setNote] = useState('')
+  const [whtPercent, setWhtPercent] = useState('')
+  const [reference, setReference] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [boqCheck, setBoqCheck] = useState<Awaited<ReturnType<typeof getBoqCheckForReceipts>>>({ perPo: [], overCount: 0 })
   const [isBoqCheckLoading, setIsBoqCheckLoading] = useState(true)
@@ -63,6 +65,8 @@ export default function PaymentVoucherModal({
   const receiptIds = useMemo(() => receipts.map((r) => r.id), [receipts])
   const receiptKey = receiptIds.join(',')
   const total = useMemo(() => receipts.reduce((sum, r) => sum + receiptAmount(r), 0), [receipts])
+  const wht = Math.max(0, Number(whtPercent) || 0)
+  const whtAmount = Math.round(total * wht) / 100
   const supplierId = receipts[0]?.purchase_orders?.supplier_id || null
 
   useEffect(() => {
@@ -114,7 +118,16 @@ export default function PaymentVoucherModal({
       company_id: companyId,
       payment_date: paymentDate,
       payment_method: paymentMethod,
-      note: note.trim() || undefined,
+      // Withholding tax and the bank / cheque reference have no column of their
+      // own; they are kept as lines in the voucher note so they print and show.
+      note:
+        [
+          wht > 0 ? `หัก ณ ที่จ่าย ${wht}% = ฿${formatCurrency(whtAmount)} (จ่ายสุทธิ ฿${formatCurrency(total - whtAmount)})` : '',
+          reference.trim() ? `อ้างอิง: ${reference.trim()}` : '',
+          note.trim(),
+        ]
+          .filter(Boolean)
+          .join('\n') || undefined,
       receipt_ids: receiptIds,
     })
       .then((result) => {
@@ -216,6 +229,17 @@ export default function PaymentVoucherModal({
                   </label>
                 ))}
               </div>
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">หัก ณ ที่จ่าย (%)</label>
+              <input type="number" min="0" step="0.5" value={whtPercent} onChange={(e) => setWhtPercent(e.target.value)} className="w-full" placeholder="ไม่หักใส่ว่าง" />
+              {wht > 0 && <p className="mt-1 text-xs text-slate-500">หัก ฿{formatCurrency(whtAmount)} · จ่ายสุทธิ ฿{formatCurrency(total - whtAmount)} (ยอดนี้บันทึกในหมายเหตุ)</p>}
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">อ้างอิง (เลขโอน / เช็ค)</label>
+              <input value={reference} onChange={(e) => setReference(e.target.value)} className="w-full" />
             </div>
           </div>
           <div>

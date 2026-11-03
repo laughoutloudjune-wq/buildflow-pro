@@ -40,6 +40,7 @@ export default function PrDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
   const [settleFor, setSettleFor] = useState<string | null>(null)
   const [linking, setLinking] = useState(false)
   const [overNames, setOverNames] = useState<string[]>([])
+  const [lastBought, setLastBought] = useState<Map<string, { shop: string; price: number; unit: string }>>(new Map())
 
   useEffect(() => {
     let cancelled = false
@@ -54,6 +55,26 @@ export default function PrDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
       cancelled = true
     }
   }, [id])
+
+  const projectId = request?.project_id
+  const isApproved = request?.status === 'approved'
+  useEffect(() => {
+    if (!projectId || !isApproved) return
+    let cancelled = false
+    getEligibleRequestLinesForOrder(projectId)
+      .then((lines) => {
+        if (cancelled) return
+        const map = new Map<string, { shop: string; price: number; unit: string }>()
+        for (const l of lines) if (l.purchase_request_id === id && l.last_supplier_name) map.set(l.purchase_request_item_id, { shop: l.last_supplier_name, price: l.unit_price, unit: l.unit })
+        setLastBought(map)
+      })
+      .catch(() => {
+        // The hint is optional.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, projectId, isApproved])
 
   const open = useMemo(() => (request ? openLines(request) : []), [request])
   const wantsOrder = ctx.autoOrderId === id
@@ -256,6 +277,12 @@ export default function PrDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
                       <div className="text-xs text-slate-500">ขอไว้: {item.original_material.name}</div>
                     )}
                     {item.note && <div className="text-xs text-slate-500">{item.note}</div>}
+                    {isOpen && lastBought.get(item.id) && (
+                      <div className="text-xs text-slate-500">
+                        ซื้อล่าสุด {lastBought.get(item.id)!.shop}
+                        {lastBought.get(item.id)!.price > 0 ? ` ฿${qtyText(lastBought.get(item.id)!.price)}/${lastBought.get(item.id)!.unit}` : ''}
+                      </div>
+                    )}
                   </td>
                   <td className="n whitespace-nowrap">
                     {qtyText(Number(item.quantity_requested))} {unit}

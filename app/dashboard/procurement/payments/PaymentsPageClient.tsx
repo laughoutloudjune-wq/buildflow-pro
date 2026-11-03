@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Loader2, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -120,7 +121,11 @@ export default function PaymentsPageClient({
                   const ris = v.payment_voucher_receipts || []
                   return (
                     <tr key={v.id} className="transition-colors hover:bg-slate-50">
-                      <td className="whitespace-nowrap px-4 py-3 font-mono font-medium text-slate-800">{v.pp_no}</td>
+                      <td className="whitespace-nowrap px-4 py-3 font-mono font-medium">
+                        <Link href={`/dashboard/procurement/work?open=PP:${v.id}`} className="text-indigo-600 hover:underline">
+                          {v.pp_no}
+                        </Link>
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{new Date(v.payment_date).toLocaleDateString('th-TH')}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-700">{v.suppliers?.name || '-'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{v.companies?.name || '-'}</td>

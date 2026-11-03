@@ -47,19 +47,21 @@ export default function ReceiptsPageClient({
   }, [initialError])
 
   const [search, setSearch] = useState('')
+  const [paidFilter, setPaidFilter] = useState<'all' | 'unpaid' | 'paid'>('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [detailReceipt, setDetailReceipt] = useState<GoodsReceipt | null>(null)
   const [isPayModalOpen, setIsPayModalOpen] = useState(false)
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return receipts
-    return receipts.filter((r) => {
+    const byPaid = receipts.filter((r) => (paidFilter === 'all' ? true : paidFilter === 'paid' ? isPaid(r) : !isPaid(r)))
+    if (!q) return byPaid
+    return byPaid.filter((r) => {
       const materials = (r.goods_receipt_items || []).map((i) => i.purchase_order_items?.material_types?.name || '').join(' ')
       const haystack = `${r.ri_no} ${r.purchase_orders?.po_no || ''} ${r.purchase_orders?.suppliers?.name || ''} ${materials}`.toLowerCase()
       return haystack.includes(q)
     })
-  }, [receipts, search])
+  }, [receipts, search, paidFilter])
 
   const selectedReceipts = useMemo(() => receipts.filter((r) => selected.has(r.id)), [receipts, selected])
   const selectedTotal = useMemo(() => selectedReceipts.reduce((sum, r) => sum + receiptAmount(r), 0), [selectedReceipts])
@@ -89,6 +91,19 @@ export default function ReceiptsPageClient({
         title="ใบรับสินค้า (RI)"
         subtitle="ทุกครั้งที่รับของจาก PO จะสร้างใบรับสินค้า (RI) - เลือกใบที่ยังไม่จ่ายเพื่อสร้างใบสำคัญจ่าย"
       />
+
+      <div className="flex gap-2 text-sm" role="group" aria-label="สถานะการจ่าย">
+        {([['all', 'ทั้งหมด'], ['unpaid', 'รอจ่าย'], ['paid', 'จ่ายแล้ว']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setPaidFilter(key)}
+            className={`rounded-full px-3 py-1.5 ${paidFilter === key ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       <PageToolbar
         search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาเลขที่ RI / PO / ผู้จำหน่าย / วัสดุ' }}
@@ -155,13 +170,9 @@ export default function ReceiptsPageClient({
                         />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => setDetailReceipt(r)}
-                          className="font-mono font-medium text-indigo-600 hover:underline"
-                        >
+                        <Link href={`/dashboard/procurement/work?open=RI:${r.id}`} className="font-mono font-medium text-indigo-600 hover:underline">
                           {r.ri_no}
-                        </button>
+                        </Link>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-500">{new Date(r.received_at).toLocaleDateString('th-TH')}</td>
                       <td className="whitespace-nowrap px-4 py-3">
