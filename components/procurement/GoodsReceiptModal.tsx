@@ -31,7 +31,7 @@ export default function GoodsReceiptModal({
   isOpen: boolean
   onClose: () => void
   order: PurchaseOrder
-  onSuccess: () => void
+  onSuccess: (receiptId?: string) => void
 }) {
   const toast = useToast()
   const { theme } = useDepartment()
@@ -221,7 +221,7 @@ export default function GoodsReceiptModal({
         toast.error(result.error)
         return
       }
-      onSuccess()
+      onSuccess(result.id)
       onClose()
     })
   }

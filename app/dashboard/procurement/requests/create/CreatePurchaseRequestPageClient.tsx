@@ -5,7 +5,6 @@ import { Card } from '@/components/ui/Card'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
-import { useToast } from '@/components/ui/Toast'
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import type { PurchasePurpose } from '@/components/procurement/PurchasePurposePicker'
 
@@ -21,7 +20,6 @@ export default function CreatePurchaseRequestPageClient({
   initialScope?: { projectId: string; plotIds: string[] }
 }) {
   const router = useRouter()
-  const toast = useToast()
 
   return (
     <PageContainer width="form">
@@ -34,10 +32,9 @@ export default function CreatePurchaseRequestPageClient({
           initialLines={initialLines}
           initialScope={initialScope}
           onCancel={() => router.push(LIST)}
-          onSaved={() => {
-            toast.success('สร้างคำขอซื้อเรียบร้อยแล้ว')
-            router.push(LIST)
-            router.refresh()
+          onSaved={(result) => {
+            // The form already showed the success toast; open the new request in the work window.
+            router.push(`/dashboard/procurement/requests?open=PR:${result.id}`)
           }}
         />
       </Card>

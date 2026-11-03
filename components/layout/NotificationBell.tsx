@@ -14,7 +14,7 @@ const TYPE_LABEL: Record<NotificationItem['type'], string> = {
   new_request: 'มีคำขอเบิกใหม่รอตรวจสอบ',
   billing_approved: 'คำขอเบิกได้รับการอนุมัติ',
   billing_rejected: 'คำขอเบิกถูกปฏิเสธ',
-  pr_pending_review: 'มีคำขอซื้อใหม่รอตรวจสอบ',
+  pr_pending_review: 'มีคำขอซื้อใหม่รออนุมัติ',
   pr_approved: 'คำขอซื้อได้รับการอนุมัติ',
   pr_rejected: 'คำขอซื้อถูกปฏิเสธ',
   pr_ordered: 'คำขอซื้อของคุณถูกสั่งซื้อแล้ว',

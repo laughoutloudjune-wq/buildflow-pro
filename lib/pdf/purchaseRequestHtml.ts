@@ -65,10 +65,10 @@ const c = {
 }
 
 const STATUS_STAMP: Partial<Record<PurchaseRequestStatus, { label: string; color: string }>> = {
-  pending_review: { label: 'รอตรวจสอบ / PENDING', color: '#d97706' },
+  pending_review: { label: 'รออนุมัติ / PENDING', color: '#d97706' },
   approved: { label: 'อนุมัติแล้ว / APPROVED', color: '#059669' },
-  rejected: { label: 'ปฏิเสธ / REJECTED', color: '#dc2626' },
-  ordered: { label: 'สั่งซื้อแล้ว', color: '#7c3aed' },
+  rejected: { label: 'ไม่อนุมัติ / REJECTED', color: '#dc2626' },
+  ordered: { label: 'สั่งซื้อแล้ว / ORDERED', color: '#7c3aed' },
   cancelled: { label: 'ยกเลิก / CANCELLED', color: '#86868b' },
 }
 
