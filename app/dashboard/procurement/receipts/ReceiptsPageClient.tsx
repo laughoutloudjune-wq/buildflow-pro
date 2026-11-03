@@ -170,12 +170,12 @@ export default function ReceiptsPageClient({
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <Link href={`/dashboard/procurement/work?open=RI:${r.id}`} className="break-all font-mono font-medium text-indigo-600 hover:underline">
+                        <button type="button" onClick={() => setDetailReceipt(r)} className="break-all font-mono font-medium text-indigo-600 hover:underline">
                           {r.ri_no}
-                        </Link>
+                        </button>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        <Link href={`/dashboard/procurement/work?open=PO:${r.purchase_order_id}`} className="font-mono text-slate-600 hover:underline">
+                        <Link href={`/dashboard/procurement/orders/${r.purchase_order_id}`} className="font-mono text-indigo-600 hover:underline">
                           {r.purchase_orders?.po_no || '-'}
                         </Link>
                       </td>
