@@ -8,6 +8,7 @@
 import type { PaymentMethod } from '@/lib/types/procurement'
 import { docNo } from '@/lib/status-labels'
 import {
+  isClosedOut,
   isReceiptPaid,
   openLines,
   orderIsLate,
@@ -114,6 +115,9 @@ function nowOfRequest(id: string, ix: WorkIndex, today: string): Now | null {
     return { word: 'ยกเลิก', sub: 'คำขอนี้ถูกยกเลิกแล้ว', text: 'คำขอนี้ถูกยกเลิกแล้ว', group: 'done', step: 4 }
   }
 
+  if (isClosedOut(r)) {
+    return { word: 'ปิดรายการแล้ว', sub: 'ทุกรายการปิดแล้ว ไม่มีของค้างรอ', text: 'ทุกรายการถูกปิดแล้ว (ซื้อโดยไม่มีใบสั่งซื้อ หรือไม่ซื้อ) · ไม่มีของค้างรอ', group: 'done', step: 4 }
+  }
   const open = openLines(r)
   const live = items.filter((i) => i.line_status !== 'closed').length
   if (r.status === 'approved' && open.length > 0) {

@@ -52,6 +52,14 @@ export function receiptAmount(r: GoodsReceipt): number {
   return (r.goods_receipt_items || []).reduce((sum, i) => sum + i.quantity_received * i.unit_price_at_receipt, 0)
 }
 
+/** 'ordered' but every line was closed by hand (bought without an order, or
+ * dropped): nothing is on its way, so it counts as finished, not as waiting
+ * for goods that will never come. */
+export function isClosedOut(r: PurchaseRequest): boolean {
+  const items = r.purchase_request_items || []
+  return r.status === 'ordered' && items.length > 0 && items.every((i) => i.line_status === 'closed')
+}
+
 export function requestIsLate(r: PurchaseRequest, today: string): boolean {
   return Boolean(r.needed_by_date) && r.needed_by_date! < today && (r.status === 'pending_review' || r.status === 'approved')
 }
@@ -68,6 +76,8 @@ export function orderIsLate(po: PurchaseOrder, today: string): boolean {
  * how much of it has actually arrived. */
 export function requestLineWord(request: PurchaseRequest, item: PurchaseRequestItem): { word: LineStatusWord | null; tone: 'go' | 'wait' | 'ok' } {
   if (request.status === 'pending_review') return { word: null, tone: 'wait' }
+  // Older requests were received before orders were linked to lines, so their lines still say "open".
+  if (request.status === 'received' && item.line_status === 'open') return { word: 'ซื้อแล้ว', tone: 'ok' }
   if (item.line_status === 'closed') return { word: 'ไม่ซื้อ', tone: 'wait' }
   if (item.line_status === 'arrived') return { word: 'ของมาแล้ว', tone: 'ok' }
   if (item.line_status === 'ordered') {
@@ -95,7 +105,7 @@ export function requestStatusWord(r: PurchaseRequest): { label: string; tone: Do
     case 'received':
       return { label: 'ของครบ', tone: 'ok' }
     case 'ordered':
-      return { label: 'รอของ', tone: 'wait' }
+      return isClosedOut(r) ? { label: 'ปิดรายการแล้ว', tone: 'wait' } : { label: 'รอของ', tone: 'wait' }
     default: {
       const items = r.purchase_request_items || []
       const live = items.filter((i) => i.line_status !== 'closed').length
@@ -290,7 +300,7 @@ export function stageRows(stage: WorkStage, data: WorkData, ix: WorkIndex, query
     const dated: { ref: DocRef; at: string }[] = []
     for (const pv of data.vouchers) dated.push({ ref: { type: 'PP', id: pv.id }, at: pv.payment_date || pv.created_at })
     for (const r of data.requests) {
-      if (r.status === 'received' || r.status === 'rejected' || r.status === 'cancelled') dated.push({ ref: { type: 'PR', id: r.id }, at: r.reviewed_at || r.created_at })
+      if (r.status === 'received' || r.status === 'rejected' || r.status === 'cancelled' || isClosedOut(r)) dated.push({ ref: { type: 'PR', id: r.id }, at: r.reviewed_at || r.created_at })
     }
     dated.sort((a, b) => b.at.localeCompare(a.at))
     for (const d of dated) out.push(d.ref)

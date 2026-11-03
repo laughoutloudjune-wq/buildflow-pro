@@ -122,4 +122,4 @@ export const DOC_TONE_CLASS: Record<DocTone, string> = {
 }
 
 /** The words for one line inside a request, same everywhere. */
-export type LineStatusWord = 'รอสั่ง' | 'สั่งแล้ว' | 'มาบางส่วน' | 'ของมาแล้ว' | 'ไม่ซื้อ'
+export type LineStatusWord = 'รอสั่ง' | 'สั่งแล้ว' | 'มาบางส่วน' | 'ของมาแล้ว' | 'ซื้อแล้ว' | 'ไม่ซื้อ'
