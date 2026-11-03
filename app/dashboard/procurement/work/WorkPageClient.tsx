@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Loader2, Plus } from 'lucide-react'
@@ -147,10 +147,21 @@ export default function WorkPageClient({
     [current]
   )
 
+  // A window opened by a link from another page (PO page, receipts list...)
+  // closes back to that page; one opened on this page just closes.
+  const openedByLink = useRef(parseRef(initialOpen) !== null)
   const closeWindow = useCallback(() => {
     setStack([])
     setCurrent(null)
-  }, [])
+    if (openedByLink.current) {
+      openedByLink.current = false
+      if (window.history.length > 1) {
+        router.back()
+        return
+      }
+      router.replace('/dashboard/procurement/work')
+    }
+  }, [router])
 
   const index = current ? navRefs.findIndex((r) => sameRef(r, current)) : -1
   const position = current && stack.length === 0 && index >= 0
