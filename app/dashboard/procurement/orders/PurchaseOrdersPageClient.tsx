@@ -414,10 +414,12 @@ export default function PurchaseOrdersPageClient({
           options={options}
           combined={false}
           onClose={() => setCreating(false)}
-          onCreated={() => {
+          onCreated={(id) => {
+            // Show the order just saved (in the same editable window) instead
+            // of closing, and refresh the list behind it.
             setCreating(false)
+            setViewOrderId(id)
             router.refresh()
-            toast.success('สร้างใบสั่งซื้อแล้ว')
           }}
         />
       )}
