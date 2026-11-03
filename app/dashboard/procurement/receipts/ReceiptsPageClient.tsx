@@ -133,11 +133,10 @@ export default function ReceiptsPageClient({
             <thead>
               <tr>
                 <th className="w-10 px-4 py-3" />
-                <th className="px-4 py-3">เลขที่ RI</th>
+                <th className="px-4 py-3">เลขที่ RI / PO</th>
                 <th className="px-4 py-3">วันที่</th>
-                <th className="px-4 py-3">PO</th>
                 <th className="px-4 py-3">ผู้จำหน่าย</th>
-                <th className="px-4 py-3">วัสดุ</th>
+                <th className="hidden px-4 py-3 md:table-cell">วัสดุ</th>
                 <th className="px-4 py-3 text-right">ยอดสุทธิ</th>
                 <th className="px-4 py-3">ใบสำคัญจ่าย</th>
               </tr>
@@ -145,7 +144,7 @@ export default function ReceiptsPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-0">
+                  <td colSpan={7} className="p-0">
                     <EmptyState
                       variant={search.trim() ? 'no-results' : 'empty'}
                       title={search.trim() ? 'ไม่พบใบรับสินค้าตามคำค้นหา' : 'ยังไม่มีใบรับสินค้า'}
@@ -169,24 +168,22 @@ export default function ReceiptsPageClient({
                           title={paid ? 'จ่ายแล้ว' : undefined}
                         />
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <Link href={`/dashboard/procurement/work?open=RI:${r.id}`} className="font-mono font-medium text-indigo-600 hover:underline">
+                      <td className="px-4 py-3">
+                        <Link href={`/dashboard/procurement/work?open=RI:${r.id}`} className="break-all font-mono font-medium text-indigo-600 hover:underline">
                           {r.ri_no}
                         </Link>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{new Date(r.received_at).toLocaleDateString('th-TH')}</td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <Link href={`/dashboard/procurement/orders/${r.purchase_order_id}`} className="font-mono text-indigo-600 hover:underline">
+                        <Link href={`/dashboard/procurement/work?open=PO:${r.purchase_order_id}`} className="block break-all font-mono text-xs text-slate-500 hover:underline">
                           {r.purchase_orders?.po_no || '-'}
                         </Link>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">{r.purchase_orders?.suppliers?.name || '-'}</td>
-                      <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">
-                        {label}
-                        {extra > 0 && <span className="ml-1 text-xs text-slate-500">+{extra}</span>}
+                      <td className="px-4 py-3 text-slate-500">{new Date(r.received_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</td>
+                      <td className="px-4 py-3 text-slate-700">{r.purchase_orders?.suppliers?.name || '-'}</td>
+                      <td className="hidden px-4 py-3 text-slate-500 md:table-cell">
+                        <span className="line-clamp-2">{label}</span>
+                        {extra > 0 && <span className="text-xs text-slate-500">+{extra} รายการ</span>}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(receiptAmount(r))}</td>
-                      <td className="whitespace-nowrap px-4 py-3">
+                      <td className="px-4 py-3">
                         {paid ? (
                           <Link href={`/dashboard/procurement/work?open=PP:${r.payment_voucher_receipts?.[0]?.payment_voucher_id ?? ''}`} className="font-mono text-emerald-600 hover:underline">
                             {voucher?.pp_no || 'จ่ายแล้ว'}

@@ -98,9 +98,7 @@ export default function PaymentsPageClient({
                 <th className="px-4 py-3">เลขที่ PP</th>
                 <th className="px-4 py-3">วันที่</th>
                 <th className="px-4 py-3">ผู้จำหน่าย</th>
-                <th className="px-4 py-3">บริษัทผู้ซื้อ</th>
-                <th className="px-4 py-3">รูปแบบ</th>
-                <th className="px-4 py-3">ใบรับสินค้า</th>
+                <th className="hidden px-4 py-3 md:table-cell">ใบรับสินค้า</th>
                 <th className="px-4 py-3 text-right">ยอดสุทธิ</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -108,7 +106,7 @@ export default function PaymentsPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-0">
+                  <td colSpan={6} className="p-0">
                     <EmptyState
                       variant={search.trim() ? 'no-results' : 'empty'}
                       title={search.trim() ? 'ไม่พบใบสำคัญจ่ายตามคำค้นหา' : 'ยังไม่มีใบสำคัญจ่าย'}
@@ -126,13 +124,16 @@ export default function PaymentsPageClient({
                           {v.pp_no}
                         </Link>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{new Date(v.payment_date).toLocaleDateString('th-TH')}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">{v.suppliers?.name || '-'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{v.companies?.name || '-'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{PAYMENT_METHOD_LABEL[v.payment_method]}</td>
-                      <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">
-                        {ris[0]?.goods_receipts?.ri_no || '-'}
-                        {ris.length > 1 && <span className="ml-1 text-xs text-slate-500">+{ris.length - 1}</span>}
+                      <td className="px-4 py-3 text-slate-500">{new Date(v.payment_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {v.suppliers?.name || '-'}
+                        <span className="block text-xs text-slate-500">
+                          {[v.companies?.name, PAYMENT_METHOD_LABEL[v.payment_method]].filter(Boolean).join(' · ')}
+                        </span>
+                      </td>
+                      <td className="hidden px-4 py-3 text-slate-500 md:table-cell">
+                        {ris.slice(0, 2).map((x) => x.goods_receipts?.ri_no).filter(Boolean).join(', ') || '-'}
+                        {ris.length > 2 && <span className="ml-1 text-xs text-slate-500">+{ris.length - 2}</span>}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(v.total_amount)}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">

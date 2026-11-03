@@ -118,8 +118,8 @@ export function Hint({ children, tone = 'warn' }: { children: ReactNode; tone?: 
 /** The table every document uses: same look, columns differ by document. */
 export function DocTable({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200">
-      <table className="w-full min-w-[520px] text-sm [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-[11px] [&_th]:font-medium [&_th]:text-slate-500 [&_thead]:bg-slate-50 [&_tbody_tr]:border-t [&_tbody_tr]:border-slate-100 [&_tfoot_tr]:border-t [&_tfoot_tr]:border-slate-100 [&_.n]:text-right [&_.n]:tabular-nums">
+    <div className="overflow-hidden rounded-xl border border-slate-200">
+      <table className="w-full table-fixed text-sm sm:table-auto [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-[11px] [&_th]:font-medium [&_th]:text-slate-500 [&_thead]:bg-slate-50 [&_tbody_tr]:border-t [&_tbody_tr]:border-slate-100 [&_tfoot_tr]:border-t [&_tfoot_tr]:border-slate-100 [&_.n]:text-right [&_.n]:tabular-nums">
         {children}
       </table>
     </div>
