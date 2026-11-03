@@ -329,12 +329,9 @@ export default function PurchaseOrdersPageClient({
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={rows.length === 0} />
                 </th>
-                <SortableHeader label="เลขที่ PO" sortKey="po_no" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
-                <SortableHeader label="สถานะ" sortKey="status" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
+                <SortableHeader label="เลขที่ PO / สถานะ" sortKey="po_no" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
                 <SortableHeader label="ผู้จำหน่าย" sortKey="supplier" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
-                <SortableHeader label="บริษัทผู้ซื้อ" sortKey="company" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
-                <th className="px-4 py-3">วัสดุ</th>
-                <SortableHeader label="โครงการ" sortKey="project" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
+                <th className="hidden px-4 py-3 md:table-cell">วัสดุ</th>
                 <SortableHeader label={dateHeader} sortKey="date" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
                 <SortableHeader label="ยอดรวม" sortKey="total" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} align="right" />
                 <th className="px-4 py-3"><span className="sr-only">รับของ</span></th>
@@ -343,7 +340,7 @@ export default function PurchaseOrdersPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-0">
+                  <td colSpan={7} className="p-0">
                     <EmptyState
                       variant={search.trim() || supplierFilter || projectFilter || companyFilter || dateFrom || dateTo ? 'no-results' : 'empty'}
                       title={search.trim() || supplierFilter || projectFilter || companyFilter || dateFrom || dateTo ? 'ไม่พบใบสั่งซื้อตามตัวกรองนี้' : 'ยังไม่มีใบสั่งซื้อ'}
@@ -360,31 +357,28 @@ export default function PurchaseOrdersPageClient({
                       <td className="px-4 py-3">
                         <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggleOne(o.id)} />
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => setViewOrderId(o.id)}
-                          className="font-mono font-medium text-indigo-600 hover:underline"
-                        >
+                      <td className="px-4 py-3">
+                        <Link href={`/dashboard/procurement/work?open=PO:${o.id}`} className="break-all font-mono font-medium text-indigo-600 hover:underline">
                           {o.po_no}
-                        </button>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${STATUS_TEXT[o.status]}`}>
+                        </Link>
+                        <span className={`mt-0.5 flex items-center gap-1.5 text-xs font-medium ${STATUS_TEXT[o.status]}`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[o.status]}`} />
                           {STATUS_LABEL[o.status]}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">{o.suppliers?.name || '-'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{o.companies?.name || '-'}</td>
-                      <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">
-                        {materialLabel}
-                        {materialExtra > 0 && <span className="ml-1 text-xs text-slate-500">+{materialExtra}</span>}
+                      <td className="px-4 py-3 text-slate-700">
+                        {o.suppliers?.name || '-'}
+                        <span className="block text-xs text-slate-500">
+                          {[o.projects?.name, o.companies?.name].filter(Boolean).join(' · ')}
+                        </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{o.projects?.name || '-'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH') : '-'}</td>
+                      <td className="hidden px-4 py-3 text-slate-500 md:table-cell">
+                        <span className="line-clamp-2">{materialLabel}</span>
+                        {materialExtra > 0 && <span className="text-xs text-slate-500">+{materialExtra} รายการ</span>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(o.total_amount)}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right">
                         {(o.status === 'sent' || o.status === 'partially_received') && (
                           <Button type="button" size="sm" variant="secondary" onClick={() => setReceiveOrder(o)}>
                             <PackageCheck className="h-3.5 w-3.5" /> รับของ

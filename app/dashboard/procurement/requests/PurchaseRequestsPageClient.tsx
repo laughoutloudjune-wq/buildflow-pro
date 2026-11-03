@@ -51,6 +51,8 @@ function isLate(r: PurchaseRequest, today: number): boolean {
 const fmtDate = (d: string | null) =>
   d ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '–'
 
+const fmtCreated = (iso: string) =>
+  new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' })
 const pad = (n: number) => String(n).padStart(4, '0')
 
 /** One word for where the request stands. For an approved request it says how
@@ -105,6 +107,7 @@ export default function PurchaseRequestsPageClient({
   const [search, setSearch] = useState('')
   const [today] = useState(() => new Date().setHours(0, 0, 0, 0))
   const [tab, setTab] = useState<Tab>('todo')
+  const [sortMode, setSortMode] = useState<'default' | 'newest' | 'oldest' | 'needed'>('default')
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   // The requests the popup walks through (the list as it was when it opened), so ‹ ใบก่อน / ใบถัดไป › stay put while statuses change.
   const [navIds, setNavIds] = useState<string[]>([])
@@ -173,11 +176,14 @@ export default function PurchaseRequestsPageClient({
 
   const rows = useMemo(() => {
     const list = matches.filter((r) => inTab(r, tab))
+    if (sortMode === 'newest') return [...list].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    if (sortMode === 'oldest') return [...list].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+    if (sortMode === 'needed') return [...list].sort((a, b) => (a.needed_by_date || '9999').localeCompare(b.needed_by_date || '9999'))
     if (tab === 'all' || tab === 'done') return list
     // Problems first (overdue, over BOQ), then the oldest waiting.
     const problems = (r: PurchaseRequest) => (isLate(r, today) ? 2 : 0) + (overIds.has(r.id) ? 1 : 0)
     return [...list].sort((a, b) => problems(b) - problems(a) || String(a.created_at).localeCompare(String(b.created_at)))
-  }, [matches, tab, today, overIds])
+  }, [matches, tab, today, overIds, sortMode])
 
   function toggleOne(id: string) {
     setChecked((prev) => {
@@ -282,7 +288,7 @@ export default function PurchaseRequestsPageClient({
               {over && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">เกิน BOQ</span>}
             </div>
             <p className="text-xs text-slate-500">
-              {r.requester?.full_name || r.requester?.email || '-'} · {items.length} รายการ
+              {r.requester?.full_name || r.requester?.email || '-'} · สร้าง {fmtCreated(r.created_at)} · {items.length} รายการ
               {r.needed_by_date ? (
                 <>
                   {' · ต้องการ '}
@@ -376,6 +382,12 @@ export default function PurchaseRequestsPageClient({
             className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm"
           />
         </div>
+        <select value={sortMode} onChange={(e) => setSortMode(e.target.value as typeof sortMode)} className="w-auto text-sm" aria-label="เรียงตาม">
+          <option value="default">เรียง: เร่งด่วนก่อน</option>
+          <option value="newest">เรียง: ใหม่สุด</option>
+          <option value="oldest">เรียง: เก่าสุด</option>
+          <option value="needed">เรียง: วันที่ต้องการ</option>
+        </select>
         <Link href="/dashboard/procurement/orders/combine" className="ml-auto text-sm font-medium text-indigo-600 hover:text-indigo-800">
           ออกใบสั่งซื้อแยกตามร้าน (รวมหลายคำขอ)
         </Link>

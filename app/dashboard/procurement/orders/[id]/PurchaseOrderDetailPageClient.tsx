@@ -233,9 +233,9 @@ export default function PurchaseOrderDetailPageClient({
   const lifecycleIndex = ({ draft: 0, sent: 1, partially_received: 2, received: 2, paid: 3, cancelled: -1 } as Record<string, number>)[order.status] ?? 0
   const lifecycle = [
     { label: 'ร่าง', date: formatDate(order.created_at), by: undefined as string | undefined },
-    { label: 'ยืนยันสั่งซื้อ', date: formatDate(order.confirmed_at), by: undefined as string | undefined },
-    { label: order.status === 'partially_received' ? 'รับของบางส่วน' : 'รับของ', date: formatDate(order.received_at), by: order.receiver?.full_name },
-    { label: 'ชำระแล้ว', date: formatDate(order.paid_at), by: order.payer?.full_name },
+    { label: 'ส่งใบสั่งซื้อ', date: formatDate(order.confirmed_at), by: undefined as string | undefined },
+    { label: order.status === 'partially_received' ? 'รับบางส่วน' : 'รับของ', date: formatDate(order.received_at), by: order.receiver?.full_name },
+    { label: 'จ่ายแล้ว', date: formatDate(order.paid_at), by: order.payer?.full_name },
   ]
 
   return (
@@ -261,7 +261,7 @@ export default function PurchaseOrderDetailPageClient({
               {/* The next valid step is the one prominent action. */}
               {order.status === 'draft' && (
                 <Button type="button" size="sm" onClick={() => handleStatusChange('sent')} disabled={isPending}>
-                  <Send className="h-3.5 w-3.5" /> ยืนยันสั่งซื้อ
+                  <Send className="h-3.5 w-3.5" /> ส่งใบสั่งซื้อ
                 </Button>
               )}
               {order.status !== 'cancelled' && order.project_id && (
@@ -276,7 +276,7 @@ export default function PurchaseOrderDetailPageClient({
               )}
               {order.status === 'paid' && (
                 <Link
-                  href="/dashboard/procurement/payments"
+                  href={`/dashboard/procurement/work?open=PO:${order.id}`}
                   className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-indigo-600 hover:underline"
                 >
                   ดูใบสำคัญจ่าย →
