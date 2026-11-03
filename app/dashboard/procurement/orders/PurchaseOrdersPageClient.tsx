@@ -16,6 +16,8 @@ import ReasonDialog from '@/components/ui/ReasonDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import PurchaseOrderModal from '@/components/procurement/PurchaseOrderModal'
+import PurchaseOrderCreateModal from '@/components/procurement/PurchaseOrderCreateModal'
+import type { PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
 import GoodsReceiptModal from '@/components/procurement/GoodsReceiptModal'
 import {
   duplicatePurchaseOrders,
@@ -70,9 +72,11 @@ function SortableHeader({
 
 export default function PurchaseOrdersPageClient({
   orders,
+  options,
   initialError,
 }: {
   orders: PurchaseOrder[]
+  options: PurchaseOrderFormOptions
   initialError?: string | null
 }) {
   const router = useRouter()
@@ -82,6 +86,7 @@ export default function PurchaseOrdersPageClient({
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [viewOrderId, setViewOrderId] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
   // Receiving straight from the list: the same window as on the PO page.
   const [receiveOrder, setReceiveOrder] = useState<PurchaseOrder | null>(null)
 
@@ -251,11 +256,9 @@ export default function PurchaseOrdersPageClient({
                 <Layers className="h-4 w-4" /> รวมคำขอซื้อ
               </Button>
             </Link>
-            <Link href="/dashboard/procurement/orders/create">
-              <Button>
-                <Plus className="h-4 w-4" /> สร้างใบสั่งซื้อ
-              </Button>
-            </Link>
+            <Button onClick={() => setCreating(true)}>
+              <Plus className="h-4 w-4" /> สร้างใบสั่งซื้อ
+            </Button>
           </div>
         }
       />
@@ -359,29 +362,29 @@ export default function PurchaseOrdersPageClient({
                   const { label: materialLabel, extra: materialExtra } = materialSummary(o)
                   return (
                     <tr key={o.id} className="transition-colors hover:bg-slate-50">
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-1.5">
                         <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggleOne(o.id)} />
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <Link href={`/dashboard/procurement/orders/${o.id}`} className="font-mono font-medium text-indigo-600 hover:underline">
+                      <td className="whitespace-nowrap px-3 py-1.5">
+                        <button type="button" onClick={() => setViewOrderId(o.id)} className="font-mono font-medium text-indigo-600 hover:underline">
                           {o.po_no}
-                        </Link>
+                        </button>
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3">
+                      <td className="whitespace-nowrap px-3 py-1.5">
                         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${STATUS_TEXT[o.status]}`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[o.status]}`} />
                           {STATUS_LABEL[o.status]}
                         </span>
                       </td>
-                      <td className="max-w-[11rem] truncate px-3 py-3 text-slate-700" title={o.suppliers?.name || ''}>{o.suppliers?.name || '-'}</td>
-                      <td className="max-w-[10rem] truncate px-3 py-3 text-slate-700" title={o.projects?.name || ''}>{o.projects?.name || '-'}</td>
-                      <td className="hidden max-w-[10rem] truncate px-3 py-3 text-slate-500 xl:table-cell" title={o.companies?.name || ''}>{o.companies?.name || '-'}</td>
-                      <td className="hidden max-w-[12rem] truncate px-3 py-3 text-slate-500 2xl:table-cell" title={materialLabel}>
+                      <td className="max-w-[11rem] truncate px-3 py-1.5 text-slate-700" title={o.suppliers?.name || ''}>{o.suppliers?.name || '-'}</td>
+                      <td className="max-w-[10rem] truncate px-3 py-1.5 text-slate-700" title={o.projects?.name || ''}>{o.projects?.name || '-'}</td>
+                      <td className="hidden max-w-[10rem] truncate px-3 py-1.5 text-slate-500 xl:table-cell" title={o.companies?.name || ''}>{o.companies?.name || '-'}</td>
+                      <td className="hidden max-w-[12rem] truncate px-3 py-1.5 text-slate-500 2xl:table-cell" title={materialLabel}>
                         {materialLabel}{materialExtra > 0 && <span className="text-xs"> +{materialExtra}</span>}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(o.total_amount)}</td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}</td>
+                      <td className="whitespace-nowrap px-4 py-1.5 text-right font-semibold text-slate-800">฿{formatCurrency(o.total_amount)}</td>
+                      <td className="px-4 py-1.5 text-right">
                         {(o.status === 'sent' || o.status === 'partially_received') && (
                           <Button type="button" size="sm" variant="secondary" onClick={() => setReceiveOrder(o)}>
                             <PackageCheck className="h-3.5 w-3.5" /> รับของ
@@ -405,6 +408,19 @@ export default function PurchaseOrdersPageClient({
           router.refresh()
         }}
       />
+
+      {creating && (
+        <PurchaseOrderCreateModal
+          options={options}
+          combined={false}
+          onClose={() => setCreating(false)}
+          onCreated={() => {
+            setCreating(false)
+            router.refresh()
+            toast.success('สร้างใบสั่งซื้อแล้ว')
+          }}
+        />
+      )}
 
       {receiveOrder && (
         <GoodsReceiptModal
