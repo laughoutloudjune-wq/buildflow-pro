@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -10,6 +10,7 @@ import { PageContainer } from '@/components/ui/PageContainer'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/Toast'
 import { type ForemanPurchaseRequestRow } from '@/actions/foreman-purchase-requests'
+import { cancelPurchaseRequest } from '@/actions/procurement-actions'
 
 const STATUS_LABEL: Record<string, string> = {
   pending_review: 'รอตรวจสอบ',
@@ -65,6 +66,20 @@ export default function ForemanPurchaseRequestPageClient({
 }) {
   const router = useRouter()
   const toast = useToast()
+  const [withdrawing, setWithdrawing] = useState<string | null>(null)
+
+  async function withdraw(r: ForemanPurchaseRequestRow) {
+    if (!window.confirm('ถอนคำขอซื้อนี้ใช่ไหม')) return
+    setWithdrawing(r.id)
+    const result = await cancelPurchaseRequest(r.id)
+    setWithdrawing(null)
+    if ('error' in result) {
+      toast.error(result.error)
+      return
+    }
+    toast.success('ถอนคำขอแล้ว')
+    router.refresh()
+  }
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -143,6 +158,13 @@ export default function ForemanPurchaseRequestPageClient({
                   ))}
                 </div>
 
+                {r.status === 'pending_review' && (
+                  <div className="mt-2">
+                    <Button type="button" size="sm" variant="secondary" onClick={() => withdraw(r)} disabled={withdrawing === r.id}>
+                      ถอนคำขอ
+                    </Button>
+                  </div>
+                )}
                 {r.status === 'rejected' && (
                   <div className="mt-2">
                     <Button type="button" size="sm" variant="secondary" onClick={() => router.push(`/dashboard/foreman/purchase-request/create?from=${r.id}`)}>

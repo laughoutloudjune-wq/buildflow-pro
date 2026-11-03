@@ -24,6 +24,7 @@ import {
   updatePurchaseRequest as updatePurchaseRequestImpl,
   approvePurchaseRequest as approvePurchaseRequestImpl,
   rejectPurchaseRequest as rejectPurchaseRequestImpl,
+  cancelPurchaseRequest as cancelPurchaseRequestImpl,
   settlePurchaseRequestItems as settlePurchaseRequestItemsImpl,
   undoPurchaseRequestItemSettlement as undoPurchaseRequestItemSettlementImpl,
   pmReviewPurchaseRequest as pmReviewPurchaseRequestImpl,
@@ -152,6 +153,10 @@ export async function approvePurchaseRequest(id: string) {
 
 export async function rejectPurchaseRequest(id: string, note?: string) {
   return rejectPurchaseRequestImpl(id, note)
+}
+
+export async function cancelPurchaseRequest(id: string, reason?: string) {
+  return cancelPurchaseRequestImpl(id, reason)
 }
 
 export async function settlePurchaseRequestItems(input: Parameters<typeof settlePurchaseRequestItemsImpl>[0]) {
