@@ -8,7 +8,8 @@ import { formatCurrency } from '@/lib/currency'
 import { voidPaymentVoucher } from '@/actions/procurement-actions'
 import { docNo } from '@/lib/status-labels'
 import { buildChain } from '@/lib/procurement/workQueue'
-import { DocChainBar, DocFacts, DocModal, DocTable, StatusChip, fmtDate, type MoreItem } from './docUi'
+import { DocFacts, DocModal, DocSteps, DocTable, fmtDate, type MoreItem } from './docUi'
+import { nowOf } from '@/lib/procurement/nowStatus'
 import type { DocCtx } from './types'
 
 const METHOD: Record<string, string> = { cash: 'เงินสด', bank_transfer: 'เงินโอน', director_loan: 'เงินกู้ยืมกรรมการ' }
@@ -21,6 +22,7 @@ export default function PpDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
   const [voiding, setVoiding] = useState(false)
   if (!voucher) return null
   const chain = buildChain({ type: 'PP', id }, ctx.ix)
+  const now = nowOf({ type: 'PP', id }, ctx.ix, ctx.today)
   const lines = voucher.payment_voucher_receipts || []
 
   function confirmVoid(reason: string) {
@@ -43,7 +45,7 @@ export default function PpDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
     <>
       <DocModal
         title={`ใบจ่ายเงิน ${docNo('PP', voucher.pp_no)}`}
-        status={<StatusChip label="จ่ายแล้ว" tone="ok" />}
+        now={now}
         onClose={ctx.close}
         onBack={ctx.back ?? undefined}
         backLabel={ctx.backLabel}
@@ -57,7 +59,7 @@ export default function PpDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
           </a>
         }
       >
-        <DocChainBar chain={chain} current={{ type: 'PP', id }} ix={ctx.ix} onGo={ctx.go} />
+        <DocSteps chain={chain} current={{ type: 'PP', id }} ix={ctx.ix} now={now} onGo={ctx.go} />
         <DocFacts
           items={[
             { label: 'ร้าน', value: voucher.suppliers?.name || '-' },

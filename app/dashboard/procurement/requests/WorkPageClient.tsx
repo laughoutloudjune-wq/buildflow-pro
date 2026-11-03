@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Loader2, Plus } from 'lucide-react'
+import { Loader2, MoreHorizontal, Plus, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -19,22 +19,11 @@ import {
 import type { EligibleRequestLine } from '@/actions/procurement/requests'
 import { getBoqOverRequestIds } from '@/actions/procurement/boq-control'
 import { buildCombineDraft, saveCombineDraft, type CombineDraft } from '@/lib/procurement/combineDraft'
-import { requestLineUnit } from '@/lib/procurement/requestQuantities'
 import { DOC_TYPE_LABEL, docNo } from '@/lib/status-labels'
 import {
   DONE_LIMIT,
   WORK_STAGES,
   buildIndex,
-  openLines,
-  orderIsLate,
-  orderStatusWord,
-  receiptAmount,
-  receiptStatusWord,
-  requestIsLate,
-  requestLineWord,
-  requestPlotText,
-  requestStatusWord,
-  requesterName,
   sameRef,
   stageCounts,
   stageRows,
@@ -51,7 +40,8 @@ import PaymentVoucherModal from '@/components/procurement/PaymentVoucherModal'
 import PurchaseOrderModal from '@/components/procurement/PurchaseOrderModal'
 import PurchaseOrderCreateModal from '@/components/procurement/PurchaseOrderCreateModal'
 import type { PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
-import { StatusChip, WarnTag, fmtDate, fmtDateTime, qtyText } from '@/components/procurement/work/docUi'
+import { WarnTag, fmtDate, fmtDateTime, qtyText } from '@/components/procurement/work/docUi'
+import { GroupLegend, WorkSections } from '@/components/procurement/work/WorkList'
 import type { DocCtx } from '@/components/procurement/work/types'
 import PrDoc from '@/components/procurement/work/PrDoc'
 import PoDoc from '@/components/procurement/work/PoDoc'
@@ -111,6 +101,17 @@ export default function WorkPageClient({
   const [view, setView] = useState<'req' | 'sup'>('req')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<WorkSort>('urgent')
+  // Print several requests on one sheet: tick PR rows, then "พิมพ์ที่เลือก".
+  const [selectMode, setSelectMode] = useState(false)
+  const [printChecked, setPrintChecked] = useState<Set<string>>(new Set())
+  const togglePrint = useCallback((id: string) => {
+    setPrintChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   const counts = useMemo(() => stageCounts(data, ix, query, today), [data, ix, query, today])
   const allRows = useMemo(() => stageRows(stage, data, ix, query, today), [stage, data, ix, query, today])
@@ -147,10 +148,21 @@ export default function WorkPageClient({
     [current]
   )
 
+  // A window opened by a link from another page (PO page, receipts list...)
+  // closes back to that page; one opened on this page just closes.
+  const openedByLink = useRef(parseRef(initialOpen) !== null)
   const closeWindow = useCallback(() => {
     setStack([])
     setCurrent(null)
-  }, [])
+    if (openedByLink.current) {
+      openedByLink.current = false
+      if (window.history.length > 1) {
+        router.back()
+        return
+      }
+      router.replace('/dashboard/procurement/requests')
+    }
+  }, [router])
 
   const index = current ? navRefs.findIndex((r) => sameRef(r, current)) : -1
   const position = current && stack.length === 0 && index >= 0
@@ -325,7 +337,7 @@ export default function WorkPageClient({
   return (
     <PageContainer width="wide">
       <PageHeader
-        title="งานจัดซื้อ"
+        title="คำขอซื้อ (PR)"
         subtitle="ทุกขั้นอยู่หน้าเดียว: รออนุมัติ › รอสั่ง › รอของ › รอจ่าย › เสร็จ"
         actions={
           <>
@@ -341,6 +353,24 @@ export default function WorkPageClient({
                 <Plus className="h-4 w-4" /> สร้างคำขอซื้อ
               </Button>
             </Link>
+            <details className="relative">
+              <summary className="inline-flex min-h-9 cursor-pointer list-none items-center rounded-[10px] border border-slate-200 bg-white px-3 text-slate-700 hover:bg-slate-50 [&::-webkit-details-marker]:hidden" aria-label="เมนูเพิ่มเติม">
+                <MoreHorizontal className="h-4 w-4" />
+              </summary>
+              <div className="absolute right-0 z-20 mt-1 w-60 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  onClick={(e) => {
+                    ;(e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open')
+                    setSelectMode((v) => !v)
+                    setPrintChecked(new Set())
+                  }}
+                >
+                  <Printer className="h-4 w-4" /> {selectMode ? 'เลิกเลือกหลายใบ' : 'เลือกหลายใบเพื่อพิมพ์'}
+                </button>
+              </div>
+            </details>
           </>
         }
       />
@@ -400,6 +430,20 @@ export default function WorkPageClient({
               </button>
             ))}
           </div>
+        </div>
+      )}
+      {selectMode && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm text-indigo-800">
+          <span>
+            เลือกแล้ว <b>{printChecked.size}</b> ใบ · ติ๊กที่แถวคำขอ
+          </span>
+          {printChecked.size > 0 && (
+            <a href={`/api/procurement/requests/pdf?ids=${Array.from(printChecked).join(',')}`} target="_blank" rel="noreferrer">
+              <Button type="button" size="sm" variant="secondary">
+                <Printer className="h-3.5 w-3.5" /> พิมพ์ที่เลือก (รวมหลายใบต่อแผ่น)
+              </Button>
+            </a>
+          )}
         </div>
       )}
       {stage === 'pay' && <p className="text-sm text-slate-500">ติ๊กรวมหลายใบของร้านเดียวกันได้ในหน้าต่างจ่ายเงิน</p>}
@@ -466,26 +510,25 @@ export default function WorkPageClient({
       ) : rows.length === 0 ? (
         <Empty text={query.trim() ? 'ไม่พบเอกสารที่ค้นหา' : EMPTY_TEXT[stage]} />
       ) : (
-        <div className="space-y-2">
-          {rows.map((ref) => (
-            <RowCard
-              key={`${ref.type}:${ref.id}`}
-              docRef={ref}
-              data={data}
-              ix={ix}
-              today={today}
-              over={ref.type === 'PR' && overIds.has(ref.id)}
-              onOpen={() => openFromList(ref)}
-              onOrder={() => {
-                openFromList(ref)
-                setAutoOrderId(ref.id)
-              }}
-              onApprove={quickApprove}
-              onSend={quickSend}
-              onReceive={(id) => setReceiveFor(id)}
-              onPay={(id) => setPayFor([id])}
-            />
-          ))}
+        <div className="space-y-3">
+          <GroupLegend />
+          <WorkSections
+            stage={stage}
+            rows={rows}
+            ix={ix}
+            today={today}
+            overIds={overIds}
+            print={{ selectMode, checked: printChecked, toggle: togglePrint }}
+            onOpen={openFromList}
+            onOrder={(ref) => {
+              openFromList(ref)
+              setAutoOrderId(ref.id)
+            }}
+            onApprove={quickApprove}
+            onSend={quickSend}
+            onReceive={(id) => setReceiveFor(id)}
+            onPay={(id) => setPayFor([id])}
+          />
           {stage === 'done' && !query.trim() && allRows.length > rows.length && (
             <p className="py-2 text-center text-xs text-slate-500">แสดง {rows.length} ใบล่าสุดจาก {allRows.length} · ค้นหาเพื่อดูใบที่เก่ากว่า</p>
           )}
@@ -569,178 +612,4 @@ export default function WorkPageClient({
 
 function Empty({ text }: { text: string }) {
   return <div className="rounded-xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-500">{text}</div>
-}
-
-function RowCard({
-  docRef,
-  data,
-  ix,
-  today,
-  over,
-  onOpen,
-  onOrder,
-  onApprove,
-  onSend,
-  onReceive,
-  onPay,
-}: {
-  docRef: DocRef
-  data: WorkData
-  ix: ReturnType<typeof buildIndex>
-  today: string
-  over: boolean
-  onOpen: () => void
-  onOrder: () => void
-  onApprove: (r: PurchaseRequest) => void
-  onSend: (o: PurchaseOrder) => void
-  onReceive: (poId: string) => void
-  onPay: (riId: string) => void
-}) {
-  void data
-  const stop = (fn: () => void) => (e: React.MouseEvent) => {
-    e.stopPropagation()
-    fn()
-  }
-  let tag = ''
-  let no = ''
-  let title = ''
-  let chip: { label: string; tone: Parameters<typeof StatusChip>[0]['tone'] } | null = null
-  let late = false
-  let meta = ''
-  let amount: number | null = null
-  let action: React.ReactNode = null
-  let lines: { text: string; word?: string; tone?: 'go' | 'wait' | 'ok' }[] = []
-
-  if (docRef.type === 'PR') {
-    const r = ix.requestById.get(docRef.id)
-    if (!r) return null
-    tag = DOC_TYPE_LABEL.PR
-    no = docNo('PR', r.pr_no)
-    title = requestPlotText(r)
-    chip = requestStatusWord(r)
-    late = requestIsLate(r, today)
-    const items = r.purchase_request_items || []
-    meta = `${requesterName(r)} · สร้าง ${fmtDateTime(r.created_at)} · ${items.length} รายการ · ต้องการ ${fmtDate(r.needed_by_date)}${r.status === 'rejected' && r.review_note ? ` · ${r.review_note}` : ''}`
-    lines = items.map((i) => {
-      const w = requestLineWord(r, i)
-      return { text: `${i.material_types?.name || '-'} · ${qtyText(Number(i.quantity_requested))} ${requestLineUnit(i)}`, word: w.word ?? undefined, tone: w.tone }
-    })
-    if (r.status === 'pending_review') {
-      action = (
-        <Button type="button" size="sm" variant="secondary" onClick={stop(() => onApprove(r))}>
-          อนุมัติ
-        </Button>
-      )
-    } else if (r.status === 'approved' && openLines(r).length > 0) {
-      action = (
-        <Button type="button" size="sm" onClick={stop(onOrder)}>
-          ออกใบสั่งซื้อ
-        </Button>
-      )
-    }
-  } else if (docRef.type === 'PO') {
-    const o = ix.orderById.get(docRef.id)
-    if (!o) return null
-    tag = DOC_TYPE_LABEL.PO
-    no = docNo('PO', o.po_no)
-    title = o.suppliers?.name || '-'
-    chip = orderStatusWord(o)
-    late = orderIsLate(o, today)
-    const prNos = Array.from(ix.requestsOfPo.get(o.id) || []).map((id) => docNo('PR', ix.requestById.get(id)?.pr_no))
-    meta = `สร้าง ${fmtDateTime(o.created_at)} · สั่ง ${fmtDate(o.order_date)} · ส่งของ ${fmtDate(o.expected_delivery_date)}${prNos.length ? ` · จากคำขอ ${prNos.join(', ')}` : ''}`
-    amount = Number(o.total_amount)
-    lines = (o.purchase_order_items || []).map((i) => {
-      const ordered = Number(i.quantity_ordered)
-      const received = Number(i.quantity_received)
-      const word = received >= ordered && ordered > 0 ? 'มาครบ' : received > 0 ? `มา ${qtyText(received)}` : o.status === 'draft' ? undefined : 'ยังไม่มา'
-      return {
-        text: `${i.material_types?.name || '-'} · ${qtyText(ordered)} ${i.unit || i.material_types?.unit || ''}`,
-        word,
-        tone: received >= ordered && ordered > 0 ? 'ok' : 'wait',
-      }
-    })
-    if (o.status === 'draft') {
-      action = (
-        <Button type="button" size="sm" onClick={stop(() => onSend(o))}>
-          ส่งใบสั่งซื้อ
-        </Button>
-      )
-    } else if (o.status === 'sent' || o.status === 'partially_received') {
-      action = (
-        <Button type="button" size="sm" onClick={stop(() => onReceive(o.id))}>
-          รับของ
-        </Button>
-      )
-    }
-  } else if (docRef.type === 'RI') {
-    const r = ix.receiptById.get(docRef.id)
-    if (!r) return null
-    tag = DOC_TYPE_LABEL.RI
-    no = docNo('RI', r.ri_no)
-    title = r.purchase_orders?.suppliers?.name || '-'
-    chip = receiptStatusWord(r)
-    meta = `รับ ${fmtDateTime(r.received_at)} · ${r.purchase_orders?.po_no || ''}${r.delivery_note_no ? ` · ใบส่งของ ${r.delivery_note_no}` : ''}`
-    amount = receiptAmount(r)
-    if (!(r.payment_voucher_receipts || []).length) {
-      action = (
-        <Button type="button" size="sm" onClick={stop(() => onPay(r.id))}>
-          จ่ายเงิน
-        </Button>
-      )
-    }
-  } else {
-    const v = ix.voucherById.get(docRef.id)
-    if (!v) return null
-    tag = DOC_TYPE_LABEL.PP
-    no = docNo('PP', v.pp_no)
-    title = v.suppliers?.name || '-'
-    chip = { label: 'จ่ายแล้ว', tone: 'ok' }
-    meta = `จ่าย ${fmtDate(v.payment_date)} · สร้าง ${fmtDateTime(v.created_at)} · ${(v.payment_voucher_receipts || []).map((x) => x.goods_receipts?.ri_no).filter(Boolean).join(', ')}`
-    amount = Number(v.total_amount)
-  }
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' && e.target === e.currentTarget) onOpen()
-      }}
-      className="cursor-pointer rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-indigo-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50"
-    >
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">{tag}</span>
-            <span className="font-mono text-sm font-semibold text-indigo-600">{no}</span>
-            <span className="min-w-0 truncate text-sm font-medium text-slate-800">{title}</span>
-            {chip && <StatusChip label={chip.label} tone={chip.tone} />}
-            {late && <WarnTag>เลยวัน</WarnTag>}
-            {over && <WarnTag tone="late">เกิน BOQ</WarnTag>}
-          </div>
-          <p className="mt-0.5 text-xs text-slate-500">{meta}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {amount !== null && <span className="text-sm font-semibold tabular-nums text-slate-800">฿{formatCurrency(amount)}</span>}
-          {action}
-        </div>
-      </div>
-      {lines.length > 0 && (
-        <ul className="mt-2 grid gap-x-6 gap-y-0.5 border-t border-slate-100 pt-2 text-xs text-slate-600 sm:grid-cols-2">
-          {lines.slice(0, 4).map((l, i) => (
-            <li key={i} className="flex items-center justify-between gap-2">
-              <span className="truncate">{l.text}</span>
-              {l.word && (
-                <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] ${l.tone === 'ok' ? 'bg-emerald-50 text-emerald-700' : l.tone === 'go' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
-                  {l.word}
-                </span>
-              )}
-            </li>
-          ))}
-          {lines.length > 4 && <li className="text-slate-400">อีก {lines.length - 4} รายการ</li>}
-        </ul>
-      )}
-    </div>
-  )
 }

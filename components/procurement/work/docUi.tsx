@@ -5,7 +5,8 @@ import { ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
 import { DOC_TONE_CLASS, DOC_TYPE_LABEL, type DocTone, type DocType } from '@/lib/status-labels'
-import { refNo, type Chain, type DocRef, type WorkIndex } from '@/lib/procurement/workQueue'
+import { refNo, isReceiptPaid, type Chain, type DocRef, type WorkIndex } from '@/lib/procurement/workQueue'
+import { GROUP_CLASS, type Now } from '@/lib/procurement/nowStatus'
 
 /** The one status chip every list and window uses. */
 export function StatusChip({ label, tone, className }: { label: string; tone: DocTone; className?: string }) {
@@ -94,6 +95,95 @@ export function DocTrack({ steps, current }: { steps: string[]; current: number 
   )
 }
 
+/** The "ตอนนี้" box at the top of every window: what is happening, in one
+ * sentence, with the buttons that move it on. */
+export function NowBox({ now, children }: { now: Now; children?: ReactNode }) {
+  const g = GROUP_CLASS[now.group]
+  return (
+    <div className={cn('flex flex-col gap-3 rounded-xl border-l-[5px] px-4 py-3 sm:flex-row sm:items-center', g.soft, g.border)}>
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] text-slate-500">ตอนนี้</div>
+        <div className={cn('text-[19px] font-bold leading-tight', g.word)}>{now.word}</div>
+        <p className="mt-1 text-sm text-slate-700">{now.text}</p>
+      </div>
+      {children && <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-stretch">{children}</div>}
+    </div>
+  )
+}
+
+const STEP_LABELS = ['คำขอซื้อ', 'ใบสั่งซื้อ', 'รับของ', 'จ่ายเงิน']
+const STEP_TYPES: DocType[] = ['PR', 'PO', 'RI', 'PP']
+
+/** One strip of four steps replaces the old chain bar and step track: each
+ * box holds the document numbers, a small state line, and marks where this
+ * document is stuck. */
+export function DocSteps({ chain, current, ix, now, onGo }: { chain: Chain; current: DocRef; ix: WorkIndex; now: Now | null; onGo: (ref: DocRef) => void }) {
+  const stuck = now ? now.step : 4
+
+  const requests = chain.PR.map((r) => ix.requestById.get(r.id)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+  const orders = chain.PO.map((r) => ix.orderById.get(r.id)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+  const receipts = chain.RI.map((r) => ix.receiptById.get(r.id)).filter((r): r is NonNullable<typeof r> => Boolean(r))
+
+  const lines: string[] = ['', '', '', '']
+  if (requests[0]) {
+    const st = requests[0].status
+    lines[0] = st === 'pending_review' ? 'รออนุมัติ' : st === 'rejected' ? 'ไม่อนุมัติ' : st === 'cancelled' ? 'ยกเลิก' : 'อนุมัติแล้ว'
+  }
+  if (orders.length > 0) {
+    if (orders.every((o) => o.status === 'draft')) lines[1] = 'ร่าง'
+    else if (requests[0] && current.type === 'PR') {
+      const items = (requests[0].purchase_request_items || []).filter((i) => i.line_status !== 'closed')
+      const ordered = items.filter((i) => i.line_status !== 'open').length
+      lines[1] = `สั่งแล้ว ${ordered} จาก ${items.length} รายการ`
+    } else lines[1] = 'ส่งร้านแล้ว'
+    const anyIn = orders.some((o) => (o.purchase_order_items || []).some((i) => Number(i.quantity_received) > 0))
+    const allIn = orders.every((o) => o.status === 'received' || o.status === 'paid')
+    lines[2] = allIn ? 'มาครบ' : anyIn ? 'มาบางส่วน' : ''
+  }
+  if (receipts.length > 0) {
+    const paid = receipts.filter(isReceiptPaid).length
+    lines[3] = paid === receipts.length ? 'จ่ายครบ' : paid > 0 ? `จ่ายแล้ว ${paid} จาก ${receipts.length} ใบ` : ''
+  }
+
+  return (
+    <ol className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-4" aria-label="ขั้นตอน">
+      {STEP_TYPES.map((type, i) => {
+        const refs = chain[type]
+        const done = i < stuck
+        const here = i === stuck
+        return (
+          <li key={type} className={cn('flex min-w-0 flex-col gap-0.5 bg-white px-3 py-2', here && 'bg-white outline outline-2 -outline-offset-2 outline-amber-400')}>
+            <span className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+              <span className={cn('flex h-4 w-4 items-center justify-center rounded-full text-[10px]', done ? 'bg-emerald-500 text-white' : here ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-600')}>
+                {done ? '✓' : i + 1}
+              </span>
+              {STEP_LABELS[i]}
+            </span>
+            {refs.length === 0 ? (
+              <span className="text-xs text-slate-400">ยังไม่มี</span>
+            ) : (
+              <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+                {refs.map((ref) =>
+                  ref.type === current.type && ref.id === current.id ? (
+                    <b key={ref.id} className="font-mono text-xs font-semibold text-slate-900">
+                      {refNo(ref, ix)}
+                    </b>
+                  ) : (
+                    <button key={ref.id} type="button" onClick={() => onGo(ref)} className="font-mono text-xs font-medium text-indigo-600 hover:underline">
+                      {refNo(ref, ix)}
+                    </button>
+                  )
+                )}
+              </span>
+            )}
+            <span className="text-[11px] text-slate-500">{lines[i] || (here && refs.length === 0 ? 'ค้างอยู่ตรงนี้' : '\u00a0')}</span>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
 /** Four key facts, same strip on every document. */
 export function DocFacts({ items }: { items: { label: string; value: ReactNode }[] }) {
   return (
@@ -177,6 +267,7 @@ export type DocPosition = { index: number; total: number; onPrev?: () => void; o
 export function DocModal({
   title,
   status,
+  now,
   onClose,
   backLabel,
   onBack,
@@ -188,6 +279,8 @@ export function DocModal({
 }: {
   title: string
   status?: ReactNode
+  /** When given, the "ตอนนี้" box at the top carries the status and the main buttons. */
+  now?: Now | null
   onClose: () => void
   backLabel?: string | null
   onBack?: () => void
@@ -232,8 +325,8 @@ export function DocModal({
           )}
           <MoreMenu items={more || []} />
           <span className="flex-1" />
-          {secondary}
-          {primary}
+          {!now && secondary}
+          {!now && primary}
         </div>
       }
     >
@@ -244,8 +337,14 @@ export function DocModal({
               <ChevronLeft className="h-4 w-4" /> กลับไป {backLabel}
             </button>
           )}
-          {status}
+          {!now && status}
         </div>
+        {now && (
+          <NowBox now={now}>
+            {primary}
+            {secondary}
+          </NowBox>
+        )}
         {children}
       </div>
     </Modal>

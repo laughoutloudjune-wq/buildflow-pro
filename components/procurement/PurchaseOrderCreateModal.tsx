@@ -16,10 +16,13 @@ import PurchaseOrderForm, { type PurchaseOrderFormHandle, type PurchaseOrderForm
  */
 export default function PurchaseOrderCreateModal({
   options,
+  combined = true,
   onClose,
   onCreated,
 }: {
   options: PurchaseOrderFormOptions
+  /** true: lines handed over by the combine draft; false: a blank new order. */
+  combined?: boolean
   onClose: () => void
   onCreated: (id: string) => void
 }) {
@@ -52,7 +55,7 @@ export default function PurchaseOrderCreateModal({
       <PurchaseOrderForm
         ref={formRef}
         mode="create"
-        combined
+        combined={combined}
         initialOptions={options}
         onClose={onClose}
         onSaved={(id) => {

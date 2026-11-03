@@ -18,14 +18,14 @@ import {
   requestIsLate,
   requestLineWord,
   requestPlotText,
-  requestStatusWord,
   requesterName,
 } from '@/lib/procurement/workQueue'
 import PurchaseRequestForm from '@/components/procurement/PurchaseRequestForm'
 import PurchaseRequestSettleModal from '@/components/procurement/PurchaseRequestSettleModal'
 import RequestPoLinkSheet from '@/components/procurement/RequestPoLinkSheet'
 import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
-import { DocChainBar, DocFacts, DocModal, DocTable, DocTrack, Hint, StatusChip, WarnTag, fmtDate, qtyText, type MoreItem } from './docUi'
+import { DocFacts, DocModal, DocSteps, DocTable, Hint, StatusChip, WarnTag, fmtDate, fmtDateTime, qtyText, type MoreItem } from './docUi'
+import { daysBetween, nowOf } from '@/lib/procurement/nowStatus'
 import type { DocCtx } from './types'
 
 /** A request, in the one window layout. Approve, order, link or close lines
@@ -88,12 +88,15 @@ export default function PrDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
   const picked = open.filter((i) => !unchecked.has(i.id))
 
   if (!request) return null
-  const status = requestStatusWord(request)
   const late = requestIsLate(request, ctx.today)
+  const now = nowOf({ type: 'PR', id }, ctx.ix, ctx.today)
   const chain = buildChain({ type: 'PR', id }, ctx.ix)
   const items = request.purchase_request_items || []
   const isPendingReview = request.status === 'pending_review'
-  const current = request.status === 'received' ? 4 : request.status === 'ordered' ? 3 : request.status === 'approved' ? 2 : 1
+  // Fully ordered and waiting: the main button receives goods on the order that is still open.
+  const waitingOrder = request.status !== 'pending_review' && open.length === 0
+    ? Array.from(ctx.ix.posOfRequest.get(id) || []).map((p) => ctx.ix.orderById.get(p)).find((o) => o && (o.status === 'sent' || o.status === 'partially_received'))
+    : undefined
 
   function approve(thenOrder: boolean) {
     startTransition(async () => {
@@ -169,6 +172,10 @@ export default function PrDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
     <Button type="button" onClick={() => startOrder()} disabled={isPending || picked.length === 0}>
       ออกใบสั่งซื้อ ({picked.length})
     </Button>
+  ) : waitingOrder ? (
+    <Button type="button" onClick={() => ctx.receive(waitingOrder.id)}>
+      รับของ
+    </Button>
   ) : null
 
   const secondary = isPendingReview ? (
@@ -179,13 +186,17 @@ export default function PrDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
     <Button type="button" variant="secondary" onClick={() => setLinking(true)}>
       ผูกกับ PO เดิม
     </Button>
+  ) : waitingOrder ? (
+    <Button type="button" variant="secondary" onClick={() => ctx.go({ type: 'PO', id: waitingOrder.id })}>
+      เปิด {docNo('PO', waitingOrder.po_no)}
+    </Button>
   ) : null
 
   return (
     <>
       <DocModal
         title={`คำขอซื้อ ${docNo('PR', request.pr_no)}`}
-        status={<StatusChip label={status.label} tone={status.tone} />}
+        now={now}
         onClose={ctx.close}
         onBack={ctx.back ?? undefined}
         backLabel={ctx.backLabel}
@@ -194,28 +205,21 @@ export default function PrDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
         primary={primary}
         secondary={secondary}
       >
-        <DocChainBar chain={chain} current={{ type: 'PR', id }} ix={ctx.ix} onGo={ctx.go} />
-        {request.status === 'rejected' ? (
-          <Hint tone="bad">ไม่อนุมัติ{request.review_note ? `: ${request.review_note}` : ''}</Hint>
-        ) : request.status === 'cancelled' ? (
-          <Hint tone="bad">คำขอนี้ถูกยกเลิกแล้ว</Hint>
-        ) : (
-          <DocTrack steps={['ส่งคำขอ', 'อนุมัติ', 'สั่งซื้อ', 'ของมาครบ']} current={current} />
-        )}
+        <DocSteps chain={chain} current={{ type: 'PR', id }} ix={ctx.ix} now={now} onGo={ctx.go} />
         <DocFacts
           items={[
             { label: 'แปลง', value: requestPlotText(request) },
             { label: 'ผู้ขอ', value: requesterName(request) },
+            { label: 'ส่งคำขอ', value: fmtDateTime(request.created_at) },
             {
               label: 'ต้องการภายใน',
               value: (
                 <span className="inline-flex flex-wrap items-center gap-1.5">
                   {fmtDate(request.needed_by_date)}
-                  {late && <WarnTag>เลยวัน</WarnTag>}
+                  {late && <WarnTag>เลย {daysBetween(request.needed_by_date, ctx.today)} วัน</WarnTag>}
                 </span>
               ),
             },
-            { label: 'โครงการ', value: request.projects?.name || '-' },
           ]}
         />
         {overNames.length > 0 && (
@@ -251,7 +255,7 @@ export default function PrDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
               const isOpen = item.line_status === 'open' && !isPendingReview
               const unit = requestLineUnit(item)
               return (
-                <tr key={item.id}>
+                <tr key={item.id} className={isOpen ? 'bg-amber-50/50' : undefined}>
                   {open.length > 0 && !isPendingReview && (
                     <td>
                       {isOpen && (
