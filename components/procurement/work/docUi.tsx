@@ -260,3 +260,13 @@ export function fmtDate(iso: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return '-'
   return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
 }
+
+/** "2 พ.ย. 08:10": when a document was made. */
+export function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '-'
+  const day = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' })
+  const time = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' })
+  return `${day} ${time}`
+}

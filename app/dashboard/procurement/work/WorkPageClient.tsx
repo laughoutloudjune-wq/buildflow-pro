@@ -38,6 +38,9 @@ import {
   sameRef,
   stageCounts,
   stageRows,
+  sortRefs,
+  WORK_SORTS,
+  type WorkSort,
   type DocRef,
   type WorkData,
   type WorkStage,
@@ -48,7 +51,7 @@ import PaymentVoucherModal from '@/components/procurement/PaymentVoucherModal'
 import PurchaseOrderModal from '@/components/procurement/PurchaseOrderModal'
 import PurchaseOrderCreateModal from '@/components/procurement/PurchaseOrderCreateModal'
 import type { PurchaseOrderFormOptions } from '@/components/procurement/PurchaseOrderForm'
-import { StatusChip, WarnTag, fmtDate, qtyText } from '@/components/procurement/work/docUi'
+import { StatusChip, WarnTag, fmtDate, fmtDateTime, qtyText } from '@/components/procurement/work/docUi'
 import type { DocCtx } from '@/components/procurement/work/types'
 import PrDoc from '@/components/procurement/work/PrDoc'
 import PoDoc from '@/components/procurement/work/PoDoc'
@@ -107,10 +110,12 @@ export default function WorkPageClient({
   const [stage, setStage] = useState<WorkStage>(() => (initialStage && STAGE_FROM_PARAM[initialStage]) || 'appr')
   const [view, setView] = useState<'req' | 'sup'>('req')
   const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<WorkSort>('urgent')
 
   const counts = useMemo(() => stageCounts(data, ix, query, today), [data, ix, query, today])
   const allRows = useMemo(() => stageRows(stage, data, ix, query, today), [stage, data, ix, query, today])
-  const rows = useMemo(() => (stage === 'done' && !query.trim() ? allRows.slice(0, DONE_LIMIT) : allRows), [stage, allRows, query])
+  const sortedRows = useMemo(() => sortRefs(allRows, sort, ix), [allRows, sort, ix])
+  const rows = useMemo(() => (stage === 'done' && !query.trim() ? sortedRows.slice(0, DONE_LIMIT) : sortedRows), [stage, sortedRows, query])
 
   // ----- the document window -----
   const [stack, setStack] = useState<DocRef[]>([])
@@ -290,8 +295,13 @@ export default function WorkPageClient({
       g.lines.push(l)
       map.set(key, g)
     }
+    for (const g of map.values()) {
+      if (sort === 'newest') g.lines.sort((a, b) => b.requested_at.localeCompare(a.requested_at))
+      else if (sort === 'oldest') g.lines.sort((a, b) => a.requested_at.localeCompare(b.requested_at))
+      else if (sort === 'needed') g.lines.sort((a, b) => (a.needed_by_date || '9999').localeCompare(b.needed_by_date || '9999'))
+    }
     return Array.from(map.values()).sort((a, b) => (a.id === '' ? 1 : b.id === '' ? -1 : b.lines.length - a.lines.length))
-  }, [eligible, query])
+  }, [eligible, query, sort])
 
   function startSupplierPo(group: { id: string; lines: EligibleRequestLine[] }) {
     const picks = group.lines.filter((l) => !unticked.has(l.purchase_request_item_id))
@@ -355,6 +365,19 @@ export default function WorkPageClient({
             </button>
           )
         })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+        <label className="mb-0 flex items-center gap-2">
+          เรียงตาม
+          <select value={sort} onChange={(e) => setSort(e.target.value as WorkSort)} className="w-auto" aria-label="เรียงตาม">
+            {WORK_SORTS.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {stage === 'order' && (
@@ -421,7 +444,8 @@ export default function WorkPageClient({
                         <span className="min-w-0">
                           {l.material_name}
                           <span className="ml-1 text-xs text-slate-500">
-                            · {docNo('PR', l.pr_no)} {l.plot_label || l.project_name}
+                            · {docNo('PR', l.pr_no)} {l.plot_label || l.project_name} · สร้าง {fmtDateTime(l.requested_at)}
+                            {l.needed_by_date ? ` · ต้องการ ${fmtDate(l.needed_by_date)}` : ''}
                           </span>
                           {late && <WarnTag>เลยวัน</WarnTag>}
                         </span>
@@ -596,7 +620,7 @@ function RowCard({
     chip = requestStatusWord(r)
     late = requestIsLate(r, today)
     const items = r.purchase_request_items || []
-    meta = `${requesterName(r)} · ${items.length} รายการ · ต้องการ ${fmtDate(r.needed_by_date)}${r.status === 'rejected' && r.review_note ? ` · ${r.review_note}` : ''}`
+    meta = `${requesterName(r)} · สร้าง ${fmtDateTime(r.created_at)} · ${items.length} รายการ · ต้องการ ${fmtDate(r.needed_by_date)}${r.status === 'rejected' && r.review_note ? ` · ${r.review_note}` : ''}`
     lines = items.map((i) => {
       const w = requestLineWord(r, i)
       return { text: `${i.material_types?.name || '-'} · ${qtyText(Number(i.quantity_requested))} ${requestLineUnit(i)}`, word: w.word ?? undefined, tone: w.tone }
@@ -623,7 +647,7 @@ function RowCard({
     chip = orderStatusWord(o)
     late = orderIsLate(o, today)
     const prNos = Array.from(ix.requestsOfPo.get(o.id) || []).map((id) => docNo('PR', ix.requestById.get(id)?.pr_no))
-    meta = `สั่ง ${fmtDate(o.order_date)} · ส่งของ ${fmtDate(o.expected_delivery_date)}${prNos.length ? ` · จากคำขอ ${prNos.join(', ')}` : ''}`
+    meta = `สร้าง ${fmtDateTime(o.created_at)} · สั่ง ${fmtDate(o.order_date)} · ส่งของ ${fmtDate(o.expected_delivery_date)}${prNos.length ? ` · จากคำขอ ${prNos.join(', ')}` : ''}`
     amount = Number(o.total_amount)
     lines = (o.purchase_order_items || []).map((i) => {
       const ordered = Number(i.quantity_ordered)
@@ -655,7 +679,7 @@ function RowCard({
     no = docNo('RI', r.ri_no)
     title = r.purchase_orders?.suppliers?.name || '-'
     chip = receiptStatusWord(r)
-    meta = `รับ ${fmtDate(r.received_at)} · ${r.purchase_orders?.po_no || ''}${r.delivery_note_no ? ` · ใบส่งของ ${r.delivery_note_no}` : ''}`
+    meta = `รับ ${fmtDateTime(r.received_at)} · ${r.purchase_orders?.po_no || ''}${r.delivery_note_no ? ` · ใบส่งของ ${r.delivery_note_no}` : ''}`
     amount = receiptAmount(r)
     if (!(r.payment_voucher_receipts || []).length) {
       action = (
@@ -671,7 +695,7 @@ function RowCard({
     no = docNo('PP', v.pp_no)
     title = v.suppliers?.name || '-'
     chip = { label: 'จ่ายแล้ว', tone: 'ok' }
-    meta = `${fmtDate(v.payment_date)} · ${(v.payment_voucher_receipts || []).map((x) => x.goods_receipts?.ri_no).filter(Boolean).join(', ')}`
+    meta = `จ่าย ${fmtDate(v.payment_date)} · สร้าง ${fmtDateTime(v.created_at)} · ${(v.payment_voucher_receipts || []).map((x) => x.goods_receipts?.ri_no).filter(Boolean).join(', ')}`
     amount = Number(v.total_amount)
   }
 

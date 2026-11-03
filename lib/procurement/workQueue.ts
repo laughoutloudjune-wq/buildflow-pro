@@ -310,3 +310,41 @@ export function stageCounts(data: WorkData, ix: WorkIndex, query: string, today:
   }
   return result
 }
+
+// ---------------------------------------------------------------------------
+// Sorting
+// ---------------------------------------------------------------------------
+
+export type WorkSort = 'urgent' | 'newest' | 'oldest' | 'needed'
+
+export const WORK_SORTS: { key: WorkSort; label: string }[] = [
+  { key: 'urgent', label: 'เร่งด่วนก่อน' },
+  { key: 'newest', label: 'ใหม่สุด' },
+  { key: 'oldest', label: 'เก่าสุด' },
+  { key: 'needed', label: 'วันที่ต้องการ' },
+]
+
+function createdAt(ref: DocRef, ix: WorkIndex): string {
+  if (ref.type === 'PR') return ix.requestById.get(ref.id)?.created_at || ''
+  if (ref.type === 'PO') return ix.orderById.get(ref.id)?.created_at || ''
+  if (ref.type === 'RI') return ix.receiptById.get(ref.id)?.received_at || ''
+  const v = ix.voucherById.get(ref.id)
+  return v?.created_at || v?.payment_date || ''
+}
+
+function neededOn(ref: DocRef, ix: WorkIndex): string {
+  if (ref.type === 'PR') return ix.requestById.get(ref.id)?.needed_by_date || ''
+  if (ref.type === 'PO') return ix.orderById.get(ref.id)?.expected_delivery_date || ''
+  return ''
+}
+
+/** Re-order a stage list. "urgent" keeps the stage's own order (late first). */
+export function sortRefs(refs: DocRef[], mode: WorkSort, ix: WorkIndex): DocRef[] {
+  if (mode === 'urgent') return refs
+  const out = [...refs]
+  if (mode === 'newest') out.sort((a, b) => createdAt(b, ix).localeCompare(createdAt(a, ix)))
+  if (mode === 'oldest') out.sort((a, b) => createdAt(a, ix).localeCompare(createdAt(b, ix)))
+  // Earliest needed date first; documents with no date go last.
+  if (mode === 'needed') out.sort((a, b) => (neededOn(a, ix) || '9999').localeCompare(neededOn(b, ix) || '9999'))
+  return out
+}
