@@ -187,7 +187,7 @@ export default function ReceiptsPageClient({
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(receiptAmount(r))}</td>
                       <td className="px-4 py-3">
                         {paid ? (
-                          <Link href={`/dashboard/procurement/work?open=PP:${r.payment_voucher_receipts?.[0]?.payment_voucher_id ?? ''}`} className="font-mono text-emerald-600 hover:underline">
+                          <Link href={`/dashboard/procurement/requests?open=PP:${r.payment_voucher_receipts?.[0]?.payment_voucher_id ?? ''}`} className="font-mono text-emerald-600 hover:underline">
                             {voucher?.pp_no || 'จ่ายแล้ว'}
                           </Link>
                         ) : (

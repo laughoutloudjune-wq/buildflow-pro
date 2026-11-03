@@ -34,7 +34,7 @@ export default function CreatePurchaseRequestPageClient({
           onCancel={() => router.push(LIST)}
           onSaved={(result) => {
             // The form already showed the success toast; open the new request in the work window.
-            router.push(`/dashboard/procurement/work?open=PR:${result.id}`)
+            router.push(`/dashboard/procurement/requests?open=PR:${result.id}`)
           }}
         />
       </Card>

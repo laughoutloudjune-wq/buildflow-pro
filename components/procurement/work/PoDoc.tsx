@@ -15,11 +15,12 @@ import {
   duplicatePurchaseOrder,
 } from '@/actions/procurement-actions'
 import { docNo } from '@/lib/status-labels'
-import { buildChain, orderIsLate, orderStatusWord, isReceiptPaid } from '@/lib/procurement/workQueue'
+import { buildChain, orderIsLate, isReceiptPaid } from '@/lib/procurement/workQueue'
 import RequestPoLinkSheet from '@/components/procurement/RequestPoLinkSheet'
 import PoQuotesPanel from '@/components/procurement/PoQuotesPanel'
 import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
-import { DocChainBar, DocFacts, DocModal, DocTable, DocTrack, Hint, StatusChip, WarnTag, fmtDate, qtyText, type MoreItem } from './docUi'
+import { DocFacts, DocModal, DocSteps, DocTable, WarnTag, fmtDate, qtyText, type MoreItem } from './docUi'
+import { daysBetween, nowOf } from '@/lib/procurement/nowStatus'
 import type { DocCtx } from './types'
 
 type Ask = 'cancel' | 'short' | 'delete' | 'unreceive' | null
@@ -33,14 +34,11 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
   const [linking, setLinking] = useState(false)
 
   if (!order) return null
-  const status = orderStatusWord(order)
+  const now = nowOf({ type: 'PO', id }, ctx.ix, ctx.today)
   const late = orderIsLate(order, ctx.today)
   const chain = buildChain({ type: 'PO', id }, ctx.ix)
   const items = order.purchase_order_items || []
   const unpaidReceipts = (ctx.ix.receiptsOfPo.get(id) || []).filter((r) => !isReceiptPaid(r))
-
-  const current =
-    order.status === 'draft' ? 0 : order.status === 'sent' || order.status === 'partially_received' ? 2 : order.status === 'received' ? 3 : 4
 
   function run(action: () => Promise<{ ok: true } | { error: string } | { id: string; po_no: string }>, done: string, then?: (r: unknown) => void) {
     startTransition(async () => {
@@ -122,7 +120,7 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
     <>
       <DocModal
         title={`ใบสั่งซื้อ ${docNo('PO', order.po_no)}`}
-        status={<StatusChip label={status.label} tone={status.tone} />}
+        now={now}
         onClose={ctx.close}
         onBack={ctx.back ?? undefined}
         backLabel={ctx.backLabel}
@@ -131,22 +129,21 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
         primary={primary}
         secondary={secondary}
       >
-        <DocChainBar chain={chain} current={{ type: 'PO', id }} ix={ctx.ix} onGo={ctx.go} />
-        {order.status === 'cancelled' ? <Hint tone="bad">ใบสั่งซื้อนี้ยกเลิกแล้ว</Hint> : <DocTrack steps={['ร่าง', 'ส่งร้านแล้ว', 'รับของ', 'จ่ายเงิน']} current={current} />}
+        <DocSteps chain={chain} current={{ type: 'PO', id }} ix={ctx.ix} now={now} onGo={ctx.go} />
         <DocFacts
           items={[
             { label: 'ร้าน', value: order.suppliers?.name || '-' },
-            { label: 'บริษัทผู้ซื้อ', value: order.companies?.name || '-' },
+            { label: 'สั่งวันที่', value: fmtDate(order.order_date) },
             {
-              label: 'สั่ง / ส่งของ',
+              label: 'นัดส่ง',
               value: (
                 <span className="inline-flex flex-wrap items-center gap-1.5">
-                  {fmtDate(order.order_date)} / {fmtDate(order.expected_delivery_date)}
-                  {late && <WarnTag>เลยวัน</WarnTag>}
+                  {fmtDate(order.expected_delivery_date)}
+                  {late && <WarnTag>เลย {daysBetween(order.expected_delivery_date, ctx.today)} วัน</WarnTag>}
                 </span>
               ),
             },
-            { label: 'ยอดรวม VAT', value: `฿${formatCurrency(total)}` },
+            { label: 'ยอดสุทธิ', value: `฿${formatCurrency(total)}` },
           ]}
         />
 
@@ -156,6 +153,7 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
               <th>วัสดุ</th>
               <th className="n">สั่ง</th>
               <th className="n">รับแล้ว</th>
+              <th className="n">ค้าง</th>
               <th className="n hidden sm:table-cell">ราคา/หน่วย</th>
               <th className="n">รวม</th>
               <th className="hidden sm:table-cell">จากคำขอ</th>
@@ -185,6 +183,9 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
                     {qtyText(ordered)} {unit}
                   </td>
                   <td className={`n ${ordered > 0 && received >= ordered ? 'font-semibold text-emerald-700' : ''}`}>{received > 0 ? qtyText(received) : '–'}</td>
+                  <td className={`n ${ordered - received > 0 && order.status !== 'draft' ? 'font-semibold text-amber-700' : ''}`}>
+                    {order.status !== 'draft' && ordered - received > 0 ? qtyText(ordered - received) : '–'}
+                  </td>
                   <td className="n hidden sm:table-cell">{formatCurrency(Number(item.unit_price))}</td>
                   <td className="n">{formatCurrency(lineTotal)}</td>
                   <td className="hidden sm:table-cell">
@@ -207,19 +208,19 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={3} className="hidden sm:table-cell" />
+              <td colSpan={4} className="hidden sm:table-cell" />
               <td className="n text-slate-500">รวม</td>
               <td className="n">{formatCurrency(subtotal)}</td>
               <td className="hidden sm:table-cell" />
             </tr>
             <tr>
-              <td colSpan={3} className="hidden sm:table-cell" />
+              <td colSpan={4} className="hidden sm:table-cell" />
               <td className="n text-slate-500">VAT {Number(order.vat_percent)}%</td>
               <td className="n">{formatCurrency(vat)}</td>
               <td className="hidden sm:table-cell" />
             </tr>
             <tr>
-              <td colSpan={3} className="hidden sm:table-cell" />
+              <td colSpan={4} className="hidden sm:table-cell" />
               <td className="n font-semibold">สุทธิ</td>
               <td className="n font-semibold">{formatCurrency(total)}</td>
               <td className="hidden sm:table-cell" />

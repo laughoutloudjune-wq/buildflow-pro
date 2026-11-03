@@ -276,7 +276,7 @@ export default function PurchaseOrderDetailPageClient({
               )}
               {order.status === 'paid' && (
                 <Link
-                  href={`/dashboard/procurement/work?open=PO:${order.id}`}
+                  href={`/dashboard/procurement/requests?open=PO:${order.id}`}
                   className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-indigo-600 hover:underline"
                 >
                   ดูใบสำคัญจ่าย →

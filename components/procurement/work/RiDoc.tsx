@@ -3,8 +3,9 @@
 import { Button } from '@/components/ui/Button'
 import { formatCurrency } from '@/lib/currency'
 import { docNo } from '@/lib/status-labels'
-import { buildChain, isReceiptPaid, receiptAmount, receiptStatusWord } from '@/lib/procurement/workQueue'
-import { DocChainBar, DocFacts, DocModal, DocTable, StatusChip, fmtDate, qtyText, type MoreItem } from './docUi'
+import { buildChain, isReceiptPaid, receiptAmount } from '@/lib/procurement/workQueue'
+import { DocFacts, DocModal, DocSteps, DocTable, fmtDate, qtyText, type MoreItem } from './docUi'
+import { nowOf } from '@/lib/procurement/nowStatus'
 import type { DocCtx } from './types'
 
 const DEST: Record<string, string> = { store: 'เข้าสโตร์', site: 'ส่งตรงหน้างาน' }
@@ -13,7 +14,7 @@ const DEST: Record<string, string> = { store: 'เข้าสโตร์', sit
 export default function RiDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
   const receipt = ctx.ix.receiptById.get(id)
   if (!receipt) return null
-  const status = receiptStatusWord(receipt)
+  const now = nowOf({ type: 'RI', id }, ctx.ix, ctx.today)
   const chain = buildChain({ type: 'RI', id }, ctx.ix)
   const paid = isReceiptPaid(receipt)
   const items = receipt.goods_receipt_items || []
@@ -26,7 +27,7 @@ export default function RiDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
   return (
     <DocModal
       title={`ใบรับของ ${docNo('RI', receipt.ri_no)}`}
-      status={<StatusChip label={status.label} tone={status.tone} />}
+      now={now}
       onClose={ctx.close}
       onBack={ctx.back ?? undefined}
       backLabel={ctx.backLabel}
@@ -43,7 +44,7 @@ export default function RiDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
         )
       }
     >
-      <DocChainBar chain={chain} current={{ type: 'RI', id }} ix={ctx.ix} onGo={ctx.go} />
+      <DocSteps chain={chain} current={{ type: 'RI', id }} ix={ctx.ix} now={now} onGo={ctx.go} />
       <DocFacts
         items={[
           { label: 'ร้าน', value: receipt.purchase_orders?.suppliers?.name || '-' },
