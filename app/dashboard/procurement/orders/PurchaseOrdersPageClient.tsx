@@ -329,10 +329,15 @@ export default function PurchaseOrdersPageClient({
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={rows.length === 0} />
                 </th>
-                <SortableHeader label="เลขที่ PO / สถานะ" sortKey="po_no" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
+                <SortableHeader label="เลขที่ PO" sortKey="po_no" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
+                <SortableHeader label="สถานะ" sortKey="status" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
                 <SortableHeader label="ผู้จำหน่าย" sortKey="supplier" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
-                <th className="hidden px-4 py-3 md:table-cell">วัสดุ</th>
-                <SortableHeader label={dateHeader} sortKey="date" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
+                <SortableHeader label="โครงการ" sortKey="project" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
+                <th className="hidden px-3 py-3 xl:table-cell">
+                  <button type="button" onClick={() => toggleSort('company')} className="inline-flex items-center gap-1 hover:text-slate-700">บริษัทผู้ซื้อ <ArrowUpDown className={`h-3 w-3 ${sort.key === 'company' ? 'text-indigo-600' : 'text-slate-300'}`} /></button>
+                </th>
+                <th className="hidden px-3 py-3 2xl:table-cell">วัสดุ</th>
+                <SortableHeader label="วันที่" sortKey="date" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} />
                 <SortableHeader label="ยอดรวม" sortKey="total" activeKey={sort.key} direction={sort.direction} onSort={toggleSort} align="right" />
                 <th className="px-4 py-3"><span className="sr-only">รับของ</span></th>
               </tr>
@@ -340,7 +345,7 @@ export default function PurchaseOrdersPageClient({
             <tbody className="divide-y divide-slate-100 bg-white">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-0">
+                  <td colSpan={10} className="p-0">
                     <EmptyState
                       variant={search.trim() || supplierFilter || projectFilter || companyFilter || dateFrom || dateTo ? 'no-results' : 'empty'}
                       title={search.trim() || supplierFilter || projectFilter || companyFilter || dateFrom || dateTo ? 'ไม่พบใบสั่งซื้อตามตัวกรองนี้' : 'ยังไม่มีใบสั่งซื้อ'}
@@ -357,26 +362,24 @@ export default function PurchaseOrdersPageClient({
                       <td className="px-4 py-3">
                         <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggleOne(o.id)} />
                       </td>
-                      <td className="px-4 py-3">
-                        <Link href={`/dashboard/procurement/work?open=PO:${o.id}`} className="break-all font-mono font-medium text-indigo-600 hover:underline">
+                      <td className="whitespace-nowrap px-3 py-3">
+                        <Link href={`/dashboard/procurement/work?open=PO:${o.id}`} className="font-mono font-medium text-indigo-600 hover:underline">
                           {o.po_no}
                         </Link>
-                        <span className={`mt-0.5 flex items-center gap-1.5 text-xs font-medium ${STATUS_TEXT[o.status]}`}>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3">
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${STATUS_TEXT[o.status]}`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[o.status]}`} />
                           {STATUS_LABEL[o.status]}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {o.suppliers?.name || '-'}
-                        <span className="block text-xs text-slate-500">
-                          {[o.projects?.name, o.companies?.name].filter(Boolean).join(' · ')}
-                        </span>
+                      <td className="max-w-[11rem] truncate px-3 py-3 text-slate-700" title={o.suppliers?.name || ''}>{o.suppliers?.name || '-'}</td>
+                      <td className="max-w-[10rem] truncate px-3 py-3 text-slate-700" title={o.projects?.name || ''}>{o.projects?.name || '-'}</td>
+                      <td className="hidden max-w-[10rem] truncate px-3 py-3 text-slate-500 xl:table-cell" title={o.companies?.name || ''}>{o.companies?.name || '-'}</td>
+                      <td className="hidden max-w-[12rem] truncate px-3 py-3 text-slate-500 2xl:table-cell" title={materialLabel}>
+                        {materialLabel}{materialExtra > 0 && <span className="text-xs"> +{materialExtra}</span>}
                       </td>
-                      <td className="hidden px-4 py-3 text-slate-500 md:table-cell">
-                        <span className="line-clamp-2">{materialLabel}</span>
-                        {materialExtra > 0 && <span className="text-xs text-slate-500">+{materialExtra} รายการ</span>}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-slate-500">{dateValue ? new Date(dateValue).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(o.total_amount)}</td>
                       <td className="px-4 py-3 text-right">
                         {(o.status === 'sent' || o.status === 'partially_received') && (
