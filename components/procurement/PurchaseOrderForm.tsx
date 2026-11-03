@@ -229,7 +229,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   /** Edit mode only: when set (the orders-list quick-view modal), a save
    * calls this instead of navigating to the order's own page - there's
    * nowhere to navigate to from inside a dialog that's already showing it. */
-  onSaved?: () => void
+  onSaved?: (createdId?: string) => void
   /** Same modal case: suppresses this form's own bottom action bar (fixed
    * to the viewport, which escapes the modal's bounds entirely) - the modal
    * renders its own footer instead, driven by `ref` and `onStateChange`. */
@@ -1327,7 +1327,14 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             toast.error(result.error)
             return
           }
-          router.push(`/dashboard/procurement/orders/${result.id}`)
+          if (onSaved) {
+            // Inside the งานจัดซื้อ window: stay there and show the new order.
+            initialSnapshotRef.current = dirtySnapshot
+            toast.success(status === 'draft' ? 'บันทึกร่างใบสั่งซื้อแล้ว' : 'ส่งใบสั่งซื้อแล้ว')
+            onSaved(result.id)
+          } else {
+            router.push(`/dashboard/procurement/orders/${result.id}`)
+          }
         } else if (orderId) {
           const result = await updatePurchaseOrder(orderId, payload)
           if ('error' in result) {
@@ -1458,7 +1465,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                     status === 'sent' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  ยืนยันสั่งซื้อ
+                  ส่งใบสั่งซื้อ
                 </button>
                 <button
                   type="button"
@@ -1473,7 +1480,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             </div>
           )}
           {readOnly && (
-            <span className="rounded-full bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700">ยืนยันสั่งซื้อแล้ว (ล็อก)</span>
+            <span className="rounded-full bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700">ส่งใบสั่งซื้อแล้ว (ล็อก)</span>
           )}
         </div>
       </Card>

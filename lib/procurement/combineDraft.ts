@@ -72,3 +72,68 @@ export function takeCombineDraft(): CombineDraft | null {
 export function allocationTotal(allocations: { quantity: string | number }[]): number {
   return allocations.reduce((sum, a) => sum + (Number(a.quantity) || 0), 0)
 }
+
+/** Turns ticked request lines into the draft the PO form opens with: lines
+ * for the same material become one supplier-facing line that keeps its
+ * per-request breakdown; a line asked in another unit stays on its own (see
+ * CombineDraftLine.single). Same rules the combine page uses. */
+export function buildCombineDraft(
+  picks: {
+    line: {
+      purchase_request_item_id: string
+      project_id: string
+      plot_ids: string[]
+      plot_label: string | null
+      pr_no: number
+      material_type_id: number
+      material_name: string
+      unit: string
+      request_unit: string
+      unit_mismatch: boolean
+      unit_price: number
+    }
+    qty: number
+  }[],
+  projectId: string,
+  supplierId: string
+): CombineDraft {
+  const groups = new Map<string, { head: (typeof picks)[number]['line']; rows: typeof picks }>()
+  for (const pick of picks) {
+    const key = pick.line.unit_mismatch ? `line:${pick.line.purchase_request_item_id}` : `material:${pick.line.material_type_id}`
+    const group = groups.get(key) || { head: pick.line, rows: [] }
+    group.rows.push(pick)
+    groups.set(key, group)
+  }
+
+  const plotIds = Array.from(
+    new Set(picks.filter((p) => p.line.project_id === projectId).flatMap((p) => p.line.plot_ids))
+  )
+
+  const lines: CombineDraftLine[] = Array.from(groups.values()).map(({ head, rows }) => {
+    const single = head.unit_mismatch
+    return {
+      material_type_id: head.material_type_id,
+      material_name: head.material_name,
+      material_unit: head.unit,
+      unit_price: head.unit_price,
+      allocations: single
+        ? []
+        : rows.map((r) => ({
+            purchase_request_item_id: r.line.purchase_request_item_id,
+            quantity: String(r.qty),
+            pr_no: r.line.pr_no,
+            plot_label: r.line.plot_label,
+          })),
+      single: single
+        ? {
+            purchase_request_item_id: rows[0].line.purchase_request_item_id,
+            // A line asked in another unit has no same-unit number to prefill.
+            quantity: rows[0].qty > 0 ? String(rows[0].qty) : '',
+            request_unit: rows[0].line.request_unit,
+            pr_no: rows[0].line.pr_no,
+          }
+        : null,
+    }
+  })
+  return { projectId, supplierId, plotIds, lines }
+}

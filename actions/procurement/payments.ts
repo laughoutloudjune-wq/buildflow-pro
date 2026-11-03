@@ -26,6 +26,15 @@ export async function getPaymentVouchers(): Promise<PaymentVoucher[]> {
   return (data as unknown as PaymentVoucher[]) || []
 }
 
+/** One voucher by id - for the printable PP and its window. */
+export async function getPaymentVoucherById(id: string): Promise<PaymentVoucher | null> {
+  await requireModuleAccess('procurement')
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('payment_vouchers').select(SELECT_WITH_RELATIONS).eq('id', id).maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as unknown as PaymentVoucher) || null
+}
+
 export async function createPaymentVoucher(input: {
   supplier_id: string
   company_id: string

@@ -14,10 +14,10 @@ import type { BillingStatus } from '@/lib/types/billing'
 
 export const PO_STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
   draft: 'ร่าง',
-  sent: 'ยืนยันสั่งซื้อ',
-  partially_received: 'รับของบางส่วน',
-  received: 'รับของแล้ว',
-  paid: 'ชำระแล้ว',
+  sent: 'รอของ',
+  partially_received: 'รับบางส่วน',
+  received: 'รอจ่าย',
+  paid: 'จ่ายแล้ว',
   cancelled: 'ยกเลิก',
 }
 
@@ -52,11 +52,11 @@ export const PO_STATUS_TEXT: Record<PurchaseOrderStatus, string> = {
 }
 
 export const PR_STATUS_LABEL: Record<PurchaseRequestStatus, string> = {
-  pending_review: 'รอตรวจสอบ',
-  approved: 'อนุมัติแล้ว',
-  rejected: 'ปฏิเสธ',
-  ordered: 'สั่งซื้อแล้ว',
-  received: 'รับของครบ',
+  pending_review: 'รออนุมัติ',
+  approved: 'รอสั่ง',
+  rejected: 'ไม่อนุมัติ',
+  ordered: 'รอของ',
+  received: 'ของครบ',
   cancelled: 'ยกเลิก',
 }
 
@@ -85,3 +85,41 @@ export const BILLING_STATUS_TONE: Record<BillingStatus, 'success' | 'warning' | 
   approved: 'success',
   rejected: 'danger',
 }
+
+// ---------------------------------------------------------------------------
+// Purchasing documents: one set of names and numbers (งานจัดซื้อ page)
+// ---------------------------------------------------------------------------
+
+export type DocType = 'PR' | 'PO' | 'RI' | 'PP'
+
+export const DOC_TYPE_LABEL: Record<DocType, string> = {
+  PR: 'คำขอซื้อ',
+  PO: 'ใบสั่งซื้อ',
+  RI: 'ใบรับของ',
+  PP: 'ใบจ่ายเงิน',
+}
+
+/** The number as people read and say it. A request carries a plain integer
+ * (shown as "PR-0012", never "#0012" or "12"); PO / RI / PP numbers are
+ * already text such as "PO-20261102001" and are shown as they are. */
+export function docNo(type: DocType, no: number | string | null | undefined): string {
+  if (no == null || no === '') return '-'
+  if (type === 'PR' && typeof no === 'number') return `PR-${String(no).padStart(4, '0')}`
+  return String(no)
+}
+
+/** Tone for a status chip on the งานจัดซื้อ page: 'late' needs a look, 'go' is
+ * the next thing to do, 'wait' is out of our hands, 'ok' is done, 'bad' ended
+ * without a purchase. */
+export type DocTone = 'late' | 'go' | 'wait' | 'ok' | 'bad'
+
+export const DOC_TONE_CLASS: Record<DocTone, string> = {
+  late: 'bg-amber-50 text-amber-700',
+  go: 'bg-indigo-50 text-indigo-700',
+  wait: 'bg-slate-100 text-slate-600',
+  ok: 'bg-emerald-50 text-emerald-700',
+  bad: 'bg-red-50 text-red-700',
+}
+
+/** The words for one line inside a request, same everywhere. */
+export type LineStatusWord = 'รอสั่ง' | 'สั่งแล้ว' | 'มาบางส่วน' | 'ของมาแล้ว' | 'ไม่ซื้อ'
