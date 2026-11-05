@@ -127,9 +127,7 @@ export type PurchaseOrderBoqCheck = {
 
 /** Same table the on-screen BoqCheckPanel shows, so the paper being signed
  * carries the same numbers as the screen (BOQ_CONTROL_PLAN.md 9.4). Renders
- * nothing when there's nothing to check (no plot scope, no BOQ lines) or
- * when everything is within budget and unremarkable - a printed PO that
- * only ever shows this section when it matters stays readable. */
+ * every PO line with its BOQ quantity (internal copy only), flagging over-BOQ. */
 function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsideBoqReason: string | null): string {
   if (!boqCheck) return ''
   if (boqCheck.isOutsideBoq) {
@@ -139,25 +137,59 @@ function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsi
         ${outsideBoqReason ? `<br /><strong>เหตุผล:</strong> ${esc(outsideBoqReason)}` : ''}
       </div>`
   }
-  if (boqCheck.lines.length === 0) return ''
+  if (boqCheck.lines.length === 0) {
+    return `
+      <div class="table-card" style="padding:8px 10px; font-size:9.5px; color:${c.muted};">
+        เทียบ BOQ ไม่ได้ - ใบสั่งซื้อนี้ยังไม่ระบุแปลง${boqCheck.scopeLabel ? ` (${esc(boqCheck.scopeLabel)})` : ''}
+      </div>`
+  }
 
+  // Every line is listed, within budget or not: the reader of the internal
+  // copy needs the planned quantity next to what is being ordered, and an
+  // over-BOQ line is flagged (warning only - printing is never blocked).
   const overrideByMaterial = new Map(boqCheck.existingOverrides.map((o) => [o.materialTypeId, o]))
   const overLines = boqCheck.lines.filter(isBoqCheckLineOver)
-  if (overLines.length === 0) return ''
 
-  const rows = overLines
+  const rows = boqCheck.lines
     .map((line) => {
-      const override = overrideByMaterial.get(line.materialTypeId)
-      const diff = line.totalAfter - line.plannedQty
-      return `
+      const u = esc(line.unit)
+      const scope = line.scopeLabel ? `<span style="color:${c.muted}; font-size:8px;"> · ${esc(line.scopeLabel)}</span>` : ''
+      const name = `${esc(line.materialName)}${scope}`
+      if (line.unconverted) {
+        return `
         <tr>
-          <td>${esc(line.materialName)}</td>
-          <td class="right nowrap">${qty(line.plannedQty)} ${esc(line.unit)}</td>
-          <td class="right nowrap">${qty(line.alreadyQty)} ${esc(line.unit)}</td>
-          <td class="right nowrap">${qty(line.thisDocQty)} ${esc(line.unit)}</td>
-          <td class="right nowrap">${qty(line.totalAfter)} ${esc(line.unit)}</td>
-          <td class="right nowrap" style="color:#dc2626;">+${qty(diff)} ${esc(line.unit)}</td>
-        </tr>
+          <td>${name}</td>
+          <td class="right nowrap">${line.plannedQty > 0 ? `${qty(line.plannedQty)} ${u}` : '-'}</td>
+          <td colspan="4" style="color:${c.muted};">เทียบ BOQ ไม่ได้ จนกว่าจะรู้หน่วย</td>
+        </tr>`
+      }
+      if (line.plannedQty <= 0) {
+        return `
+        <tr>
+          <td>${name}</td>
+          <td class="right nowrap">-</td>
+          <td class="right nowrap">${qty(line.alreadyQty)} ${u}</td>
+          <td class="right nowrap">${qty(line.thisDocQty)} ${u}</td>
+          <td class="right nowrap">${qty(line.totalAfter)} ${u}</td>
+          <td class="right nowrap" style="color:${c.muted};">ไม่มีใน BOQ</td>
+        </tr>`
+      }
+      const over = isBoqCheckLineOver(line)
+      const diff = line.totalAfter - line.plannedQty
+      const override = overrideByMaterial.get(line.materialTypeId)
+      const main = `
+        <tr>
+          <td>${name}</td>
+          <td class="right nowrap">${qty(line.plannedQty)} ${u}</td>
+          <td class="right nowrap">${qty(line.alreadyQty)} ${u}</td>
+          <td class="right nowrap">${qty(line.thisDocQty)} ${u}</td>
+          <td class="right nowrap">${qty(line.totalAfter)} ${u}</td>
+          <td class="right nowrap" style="${over ? 'color:#dc2626; font-weight:700;' : `color:${c.muted};`}">${
+            over ? `เกิน +${qty(diff)} ${u}` : `เหลือ ${qty(-diff)} ${u}`
+          }</td>
+        </tr>`
+      if (!over) return main
+      return `${main}
         <tr>
           <td colspan="6" style="font-size:8px; color:${c.muted}; padding-top:0;">
             ${
@@ -170,10 +202,13 @@ function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsi
     })
     .join('')
 
+  const heading = overLines.length > 0 ? `เกิน BOQ ${overLines.length} รายการ` : 'เทียบกับ BOQ - ไม่เกิน'
+  const accent = overLines.length > 0 ? '#dc2626' : c.muted
+
   return `
-    <div class="table-card" style="border-left: 2.5px solid #dc2626;">
-      <div style="padding:8px 10px 0; font-size:9px; font-weight:700; color:#dc2626; text-transform:uppercase;">
-        เกิน BOQ ${overLines.length} รายการ (${esc(boqCheck.scopeLabel)})
+    <div class="table-card" style="border-left: 2.5px solid ${accent};">
+      <div style="padding:8px 10px 0; font-size:9px; font-weight:700; color:${accent}; text-transform:uppercase;">
+        ${heading} (${esc(boqCheck.scopeLabel)})
       </div>
       <table>
         <thead>
@@ -183,7 +218,7 @@ function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsi
             <th class="right">ยอดสั่งก่อนหน้า</th>
             <th class="right">ใบนี้</th>
             <th class="right">รวมทั้งหมด</th>
-            <th class="right">เกิน</th>
+            <th class="right">เทียบ BOQ</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
