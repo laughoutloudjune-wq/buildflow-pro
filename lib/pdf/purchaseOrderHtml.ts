@@ -4,6 +4,7 @@ import { bahtText } from '@/lib/bahtText'
 import type { PurchaseOrder, PurchaseOrderItem } from '@/lib/types/procurement'
 import { allocationRows } from '@/lib/procurement/allocations'
 import type { SignatureSlot } from '@/lib/types/signatures'
+import type { PastOrdersForMaterial } from '@/actions/procurement/boq-control'
 import { isBoqCheckLineOver, type BoqCheckLine, type BoqCheckOverride } from '@/lib/procurement/boqControl'
 
 // Fonts are embedded as base64 data URIs rather than linked - Puppeteer's
@@ -127,10 +128,12 @@ export type PurchaseOrderBoqCheck = {
 
 /** Same table the on-screen BoqCheckPanel shows, so the paper being signed
  * carries the same numbers as the screen (BOQ_CONTROL_PLAN.md 9.4). Renders
- * nothing when there's nothing to check (no plot scope, no BOQ lines) or
- * when everything is within budget and unremarkable - a printed PO that
- * only ever shows this section when it matters stays readable. */
-function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsideBoqReason: string | null): string {
+ * every PO line with its BOQ quantity (internal copy only), flagging over-BOQ. */
+function boqCheckBlock(
+  boqCheck: PurchaseOrderBoqCheck | null | undefined,
+  outsideBoqReason: string | null,
+  past: PastOrdersForMaterial[] | null | undefined
+): string {
   if (!boqCheck) return ''
   if (boqCheck.isOutsideBoq) {
     return `
@@ -139,25 +142,67 @@ function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsi
         ${outsideBoqReason ? `<br /><strong>เหตุผล:</strong> ${esc(outsideBoqReason)}` : ''}
       </div>`
   }
-  if (boqCheck.lines.length === 0) return ''
+  if (boqCheck.lines.length === 0) {
+    return `
+      <div class="table-card" style="padding:8px 10px; font-size:9.5px; color:${c.muted};">
+        เทียบ BOQ ไม่ได้ - ใบสั่งซื้อนี้ยังไม่ระบุแปลง${boqCheck.scopeLabel ? ` (${esc(boqCheck.scopeLabel)})` : ''}
+      </div>`
+  }
 
+  // Every line is listed, within budget or not: the reader of the internal
+  // copy needs the planned quantity next to what is being ordered, and an
+  // over-BOQ line is flagged (warning only - printing is never blocked).
   const overrideByMaterial = new Map(boqCheck.existingOverrides.map((o) => [o.materialTypeId, o]))
-  const overLines = boqCheck.lines.filter(isBoqCheckLineOver)
-  if (overLines.length === 0) return ''
+  // The "ordered before" figure comes from the purchase orders' own plots (same
+  // as the trail above), not from the request-weighted BOQ rollup.
+  const pastByMaterial = new Map((past || []).map((p) => [p.materialTypeId, p]))
+  const lines = boqCheck.lines.map((line) => {
+    const p = pastByMaterial.get(line.materialTypeId)
+    if (!p || line.unconverted) return line
+    return { ...line, alreadyQty: p.totalQty, totalAfter: p.totalQty + line.thisDocQty }
+  })
+  const overLines = lines.filter(isBoqCheckLineOver)
 
-  const rows = overLines
+  const rows = lines
     .map((line) => {
-      const override = overrideByMaterial.get(line.materialTypeId)
-      const diff = line.totalAfter - line.plannedQty
-      return `
+      const u = esc(line.unit)
+      const scope = line.scopeLabel ? `<span style="color:${c.muted}; font-size:8px;"> · ${esc(line.scopeLabel)}</span>` : ''
+      const name = `${esc(line.materialName)}${scope}`
+      if (line.unconverted) {
+        return `
         <tr>
-          <td>${esc(line.materialName)}</td>
-          <td class="right nowrap">${qty(line.plannedQty)} ${esc(line.unit)}</td>
-          <td class="right nowrap">${qty(line.alreadyQty)} ${esc(line.unit)}</td>
-          <td class="right nowrap">${qty(line.thisDocQty)} ${esc(line.unit)}</td>
-          <td class="right nowrap">${qty(line.totalAfter)} ${esc(line.unit)}</td>
-          <td class="right nowrap" style="color:#dc2626;">+${qty(diff)} ${esc(line.unit)}</td>
-        </tr>
+          <td>${name}</td>
+          <td class="right nowrap">${line.plannedQty > 0 ? `${qty(line.plannedQty)} ${u}` : '-'}</td>
+          <td colspan="4" style="color:${c.muted};">เทียบ BOQ ไม่ได้ จนกว่าจะรู้หน่วย</td>
+        </tr>`
+      }
+      if (line.plannedQty <= 0) {
+        return `
+        <tr>
+          <td>${name}</td>
+          <td class="right nowrap">-</td>
+          <td class="right nowrap">${qty(line.alreadyQty)} ${u}</td>
+          <td class="right nowrap">${qty(line.thisDocQty)} ${u}</td>
+          <td class="right nowrap">${qty(line.totalAfter)} ${u}</td>
+          <td class="right nowrap" style="color:${c.muted};">ไม่มีใน BOQ</td>
+        </tr>`
+      }
+      const over = isBoqCheckLineOver(line)
+      const diff = line.totalAfter - line.plannedQty
+      const override = overrideByMaterial.get(line.materialTypeId)
+      const main = `
+        <tr>
+          <td>${name}</td>
+          <td class="right nowrap">${qty(line.plannedQty)} ${u}</td>
+          <td class="right nowrap">${qty(line.alreadyQty)} ${u}</td>
+          <td class="right nowrap">${qty(line.thisDocQty)} ${u}</td>
+          <td class="right nowrap">${qty(line.totalAfter)} ${u}</td>
+          <td class="right nowrap" style="${over ? 'color:#dc2626; font-weight:700;' : `color:${c.muted};`}">${
+            over ? `เกิน +${qty(diff)} ${u}` : `เหลือ ${qty(-diff)} ${u}`
+          }</td>
+        </tr>`
+      if (!over) return main
+      return `${main}
         <tr>
           <td colspan="6" style="font-size:8px; color:${c.muted}; padding-top:0;">
             ${
@@ -170,10 +215,13 @@ function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsi
     })
     .join('')
 
+  const heading = overLines.length > 0 ? `เกิน BOQ ${overLines.length} รายการ` : 'เทียบกับ BOQ - ไม่เกิน'
+  const accent = overLines.length > 0 ? '#dc2626' : c.muted
+
   return `
-    <div class="table-card" style="border-left: 2.5px solid #dc2626;">
-      <div style="padding:8px 10px 0; font-size:9px; font-weight:700; color:#dc2626; text-transform:uppercase;">
-        เกิน BOQ ${overLines.length} รายการ (${esc(boqCheck.scopeLabel)})
+    <div class="table-card" style="border-left: 2.5px solid ${accent};">
+      <div style="padding:8px 10px 0; font-size:9px; font-weight:700; color:${accent}; text-transform:uppercase;">
+        ${heading} (${esc(boqCheck.scopeLabel)})
       </div>
       <table>
         <thead>
@@ -183,10 +231,127 @@ function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsi
             <th class="right">ยอดสั่งก่อนหน้า</th>
             <th class="right">ใบนี้</th>
             <th class="right">รวมทั้งหมด</th>
-            <th class="right">เกิน</th>
+            <th class="right">เทียบ BOQ</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
+      </table>
+    </div>`
+}
+
+/** "120, 121, 122, 124" -> "120–122, 124": plot names that are numbers collapse into ranges. */
+function plotRanges(names: string[]): string {
+  const nums = names.map((n) => (/^\d+$/.test(n) ? Number(n) : NaN))
+  if (nums.some((n) => Number.isNaN(n))) return names.join(', ')
+  const sorted = Array.from(new Set(nums)).sort((x, y) => x - y)
+  const parts: string[] = []
+  let start = sorted[0]
+  let prev = sorted[0]
+  for (let i = 1; i <= sorted.length; i++) {
+    const n = sorted[i]
+    if (n === prev + 1) {
+      prev = n
+      continue
+    }
+    parts.push(start === prev ? `${start}` : `${start}–${prev}`)
+    start = n
+    prev = n
+  }
+  return parts.join(', ')
+}
+
+/** Material trail for the internal copy: for each material on this PO, which of
+ * this PO's plots have already been ordered, and on which earlier POs. Everything
+ * is read from the purchase orders (their assigned plots and quantities); the
+ * request a line came from shows only as its PR number. Shown whether or not the
+ * material has a BOQ line. */
+function pastOrdersBlock(order: PurchaseOrder, past: PastOrdersForMaterial[] | null | undefined): string {
+  if (!past) return ''
+  const byMaterial = new Map(past.map((p) => [p.materialTypeId, p]))
+  const thisQty = new Map<number, { qty: number; unit: string }>()
+  for (const it of order.purchase_order_items || []) {
+    const id = it.material_type_id as number
+    const cur = thisQty.get(id) || { qty: 0, unit: it.unit || it.material_types?.unit || '' }
+    cur.qty += Number(it.quantity_ordered) || 0
+    thisQty.set(id, cur)
+  }
+  const seen = new Set<number>()
+  const body = (order.purchase_order_items || [])
+    .filter((it) => {
+      const id = it.material_type_id
+      if (id == null || seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
+    .map((it) => {
+      const entry = byMaterial.get(it.material_type_id as number)
+      const name = esc(it.material_types?.name || it.description || '-')
+      const mine = thisQty.get(it.material_type_id as number)
+      const u = esc(entry?.unit || mine?.unit || '')
+      const plotCount = entry?.myPlots.length ?? 0
+      const head = `
+        <tr>
+          <td colspan="3" style="background:#f5f5f7; font-weight:700;">
+            ${name}
+            <span style="font-weight:400; color:${c.muted};"> · ใบนี้ ${qty(mine?.qty ?? 0)} ${esc(mine?.unit || '')}${plotCount > 1 ? ` ร่วม ${plotCount} แปลง` : ''}</span>
+          </td>
+        </tr>`
+      if (!entry || entry.myPlots.length === 0) {
+        return `${head}<tr><td colspan="3" style="color:${c.muted};">ใบสั่งซื้อนี้ยังไม่ระบุแปลง - เทียบรายแปลงไม่ได้</td></tr>`
+      }
+
+      // Plots with the same earlier POs are one row, so eight plots read as two lines.
+      const groups = new Map<string, { plots: string[]; orders: typeof entry.orders }>()
+      for (const plot of entry.myPlots) {
+        const orders = entry.orders.filter((o) => o.coveredPlots.includes(plot))
+        const key = orders.map((o) => o.poNo).sort().join('|')
+        const g = groups.get(key) || { plots: [], orders }
+        g.plots.push(plot)
+        groups.set(key, g)
+      }
+      const rows = Array.from(groups.values())
+        .sort((x, y) => y.orders.length - x.orders.length)
+        .map((g) => {
+          if (g.orders.length === 0) {
+            return `
+              <tr>
+                <td>แปลง ${esc(plotRanges(g.plots))}</td>
+                <td class="right nowrap" style="color:${c.muted};">ยังไม่เคยสั่ง</td>
+                <td></td>
+              </tr>`
+          }
+          const total = g.orders.reduce((sum, o) => sum + (o.quantity ?? 0), 0)
+          const unknown = g.orders.some((o) => o.quantity == null)
+          const lines = g.orders
+            .map((o) => {
+              const q = o.quantity != null ? `${qty(o.quantity)} ${u}` : `${qty(o.rawQuantity)} ${esc(o.rawUnit)} (ไม่ทราบหน่วยแปลง)`
+              const pr = o.prNos.length > 0 ? ` · ${o.prNos.map((n) => `PR-${n}`).join(', ')}` : ''
+              const share = o.totalPlots > 1 ? ` · ร่วม ${o.totalPlots} แปลง` : ''
+              return `<div class="alloc-row"><span>${esc(o.poNo)} · ${thaiDate(o.orderDate)}${share}${pr}</span><span>${q}</span></div>`
+            })
+            .join('')
+          return `
+            <tr>
+              <td>แปลง ${esc(plotRanges(g.plots))}</td>
+              <td class="right nowrap"><strong>${qty(total)} ${u}</strong><div style="font-size:8px; color:${c.muted};">${g.orders.length} ใบ${unknown ? ' (ไม่รวมหน่วยที่แปลงไม่ได้)' : ''}</div></td>
+              <td>${lines}</td>
+            </tr>`
+        })
+        .join('')
+      return head + rows
+    })
+    .join('')
+  if (!body) return ''
+  return `
+    <div class="table-card">
+      <div style="padding:8px 10px 0; font-size:9px; font-weight:700; color:${c.muted}; text-transform:uppercase;">
+        สั่งแล้วก่อนใบนี้ - รายแปลง (ตามแปลงที่ระบุในใบสั่งซื้อ)
+      </div>
+      <table>
+        <thead>
+          <tr><th>แปลง</th><th class="right">สั่งแล้วก่อนใบนี้</th><th>ใบสั่งซื้อเดิม</th></tr>
+        </thead>
+        <tbody>${body}</tbody>
       </table>
     </div>`
 }
@@ -200,7 +365,7 @@ export function buildPurchaseOrderHtml(
    * consolidated line per material - which request/plot each slice came from
    * is our own bookkeeping, so it is only printed when explicitly asked for.
    * The over-BOQ check is internal too and follows the same flag. */
-  options: { showAllocations?: boolean } = {}
+  options: { showAllocations?: boolean; pastOrders?: PastOrdersForMaterial[] | null } = {}
 ): string {
   if (!cachedRegular) cachedRegular = fontBase64('Sarabun-Regular.ttf')
   if (!cachedBold) cachedBold = fontBase64('Sarabun-Bold.ttf')
@@ -556,7 +721,8 @@ export function buildPurchaseOrderHtml(
       </table>
     </div>
 
-    ${options.showAllocations ? boqCheckBlock(boqCheck, order.outside_boq_reason) : ''}
+    ${options.showAllocations ? pastOrdersBlock(order, options.pastOrders) : ''}
+    ${options.showAllocations ? boqCheckBlock(boqCheck, order.outside_boq_reason, options.pastOrders) : ''}
 
     <div class="bottom-row">
       <div class="words-card">
