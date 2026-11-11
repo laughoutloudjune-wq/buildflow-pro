@@ -25,8 +25,11 @@ import {
   updatePurchaseOrder,
   getPurchaseRequestById,
   getLastMaterialOrderPrice,
+  getMaterialPriceHistory,
 } from '@/actions/procurement-actions'
 import { getBoqCheckForDraft } from '@/actions/procurement/boq-control'
+import { buildPriceHint } from '@/lib/procurement/priceHint'
+import type { MaterialPriceRow } from '@/actions/procurement/orders'
 import { getUnitConversions } from '@/actions/procurement/unit-conversions'
 import UnitConversionNote from '@/components/procurement/UnitConversionNote'
 import { toBaseQty, type UnitConversions } from '@/lib/procurement/units'
@@ -363,6 +366,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   // lines share one fetch. A missing key means "not fetched yet"; an
   // explicit null means "fetched, no prior order found" - both read as
   // falsy, so the effect below only checks key presence via `in`.
+  const [priceHistory, setPriceHistory] = useState<MaterialPriceRow[]>([])
   const [lastPrices, setLastPrices] = useState<Record<number, LastMaterialOrderPrice | null>>({})
 
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false)
@@ -698,6 +702,22 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     }
   }, [materialIdsKey, conversionsReload])
   const conversionsKey = useMemo(() => JSON.stringify(conversions), [conversions])
+
+  // Prices paid in the last 6 months, for the "ราคาที่เคยซื้อ" hint under each
+  // unit price. Fetched once per set of materials; a convenience only.
+  useEffect(() => {
+    if (!materialIdsKey) return
+    let cancelled = false
+    getMaterialPriceHistory(materialIdsKey.split(',').map(Number), mode === 'edit' ? orderId : undefined)
+      .then((rows) => {
+        if (!cancelled) setPriceHistory(rows)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialIdsKey])
 
   useEffect(() => {
     if (!materialIdsKey) return
@@ -2200,9 +2220,21 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                           disabled={readOnly}
                         />
                         {(() => {
+                          const current = Number(line.unit_price) || 0
+                          const rows = priceHistory.filter((r) => r.materialTypeId === line.material_type_id)
+                          const hint = line.material_type_id ? buildPriceHint(rows, (line.unit ?? '').trim() || line.material_unit || '', supplierId, current) : null
+                          if (hint) {
+                            const when = (d: string) => new Date(d).toLocaleDateString('th-TH', { month: 'short', year: '2-digit' })
+                            return (
+                              <div className={`mt-1 text-right text-[10px] ${hint.warn ? 'text-amber-600' : 'text-slate-500'}`}>
+                                ถูกสุด ฿{formatMoney(hint.cheapest.unitPrice)} {hint.cheapest.supplierName} ({when(hint.cheapest.orderDate)})
+                                {hint.fromSupplier && <> · ร้านนี้ล่าสุด ฿{formatMoney(hint.fromSupplier.unitPrice)}</>}
+                                {hint.warn && <> · สูงกว่า {hint.overPct.toFixed(0)}%</>}
+                              </div>
+                            )
+                          }
                           const last = line.material_type_id ? lastPrices[line.material_type_id] : undefined
                           if (!last) return null
-                          const current = Number(line.unit_price) || 0
                           const diff = current - last.unitPrice
                           const pct = last.unitPrice > 0 ? (diff / last.unitPrice) * 100 : 0
                           const tone = diff > 0 ? 'text-rose-600' : diff < 0 ? 'text-emerald-600' : 'text-slate-400'

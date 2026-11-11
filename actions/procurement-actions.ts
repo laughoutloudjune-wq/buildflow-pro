@@ -36,6 +36,7 @@ import {
   getPurchaseOrders as getPurchaseOrdersImpl,
   getPurchaseOrderById as getPurchaseOrderByIdImpl,
   getLastMaterialOrderPrice as getLastMaterialOrderPriceImpl,
+  getMaterialPriceHistory as getMaterialPriceHistoryImpl,
   createPurchaseOrder as createPurchaseOrderImpl,
   updatePurchaseOrder as updatePurchaseOrderImpl,
   setPurchaseOrderStatus as setPurchaseOrderStatusImpl,
@@ -188,6 +189,10 @@ export async function getPurchaseOrders(filters: PurchaseOrderFilters = {}) {
 
 export async function getPurchaseOrderById(id: string) {
   return getPurchaseOrderByIdImpl(id)
+}
+
+export async function getMaterialPriceHistory(materialTypeIds: number[], excludeOrderId?: string) {
+  return getMaterialPriceHistoryImpl(materialTypeIds, excludeOrderId)
 }
 
 export async function getLastMaterialOrderPrice(materialTypeId: number, excludeOrderId?: string) {
