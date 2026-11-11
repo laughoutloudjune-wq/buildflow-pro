@@ -448,60 +448,76 @@ export type PastOrderEntry = {
   quantity: number | null
   rawQuantity: number
   rawUnit: string
+  /** Names of THIS PO's plots that the earlier PO is also assigned to. */
+  coveredPlots: string[]
+  /** How many plots the earlier PO is assigned to in all. */
+  totalPlots: number
+  /** Request numbers the line was raised from. Reference only: nothing else is
+   * read from the request. */
+  prNos: number[]
 }
 
 export type PastOrdersForMaterial = {
   materialTypeId: number
   unit: string
-  /** Sum of the convertible entries, in the master unit. */
+  /** The plots this PO's line(s) for the material are assigned to. */
+  myPlots: string[]
+  /** Sum of the convertible earlier orders, in the master unit. */
   totalQty: number
   orders: PastOrderEntry[]
 }
 
 /**
- * Earlier purchases of each material on this PO, for the internal print. This
- * is deliberately independent of the BOQ: a material with no BOQ line, a PO
- * with no plot, or a "buy outside BOQ" PO still shows what was ordered before.
- * Scope: same project, narrowed to orders that touch this PO's plots (its plot,
- * plot group or ad-hoc plot list; a consolidated line counts only the requests
- * for those plots, as the BOQ rollup does). Drafts and cancelled POs are not purchases, so they are left out.
+ * Earlier purchases of each material on this PO, for the internal print, read
+ * entirely from the purchase orders: a PO is "for" the plots written on it (a
+ * line's own plot or plot group, else the PO's plot, plot group or plot list).
+ * The request a line came from adds only its number, nothing else.
+ *
+ * Independent of the BOQ on purpose: a material with no BOQ line, or a "buy
+ * outside BOQ" PO, still shows what was ordered before. Drafts and cancelled
+ * POs are not purchases, so they are left out.
  */
 export async function getPastOrdersForPurchaseOrder(poId: string): Promise<PastOrdersForMaterial[]> {
   await requireModuleAccess('procurement')
   const supabase = await createClient()
 
+  type PlotRef = { plot_id: string }
+  type PoHeader = {
+    plot_id: string | null
+    plot_group_id: string | null
+    purchase_order_plots: PlotRef[] | null
+  }
+  const header = `plot_id, plot_group_id, purchase_order_plots (plot_id)`
+
   const { data: po, error } = await supabase
     .from('purchase_orders')
     .select(
-      `id, project_id, plot_id, plot_group_id,
-       purchase_order_plots (plot_id),
-       purchase_order_items (material_type_id, material_types (unit))`
+      `id, project_id, ${header},
+       purchase_order_items (material_type_id, plot_id, plot_group_id, material_types (unit))`
     )
     .eq('id', poId)
     .maybeSingle()
   if (error) throw new Error(error.message)
   if (!po) return []
 
-  const items = (po.purchase_order_items || []) as unknown as {
+  const myItems = (po.purchase_order_items || []) as unknown as {
     material_type_id: number
+    plot_id: string | null
+    plot_group_id: string | null
     material_types: { unit: string } | { unit: string }[] | null
   }[]
-  const materialIds = Array.from(new Set(items.map((i) => i.material_type_id)))
+  const materialIds = Array.from(new Set(myItems.map((i) => i.material_type_id)))
   if (materialIds.length === 0) return []
   const masterUnit = new Map<number, string>()
-  for (const i of items) masterUnit.set(i.material_type_id, asSingle(i.material_types)?.unit || '')
+  for (const i of myItems) masterUnit.set(i.material_type_id, asSingle(i.material_types)?.unit || '')
 
   const { data: rows, error: rowsErr } = await supabase
     .from('purchase_order_items')
     .select(
       `id, material_type_id, quantity_ordered, unit, plot_id, plot_group_id,
-       purchase_orders!inner (id, po_no, order_date, status, project_id, plot_id, plot_group_id,
-         suppliers (name), purchase_order_plots (plot_id)),
+       purchase_orders!inner (id, po_no, order_date, status, project_id, ${header}, suppliers (name)),
        purchase_order_item_allocations (
-         quantity_allocated,
-         purchase_request_items (
-           purchase_requests (plot_id, plot_group_id, purchase_request_plots (plot_id))
-         )
+         purchase_request_items (purchase_requests (pr_no))
        )`
     )
     .in('material_type_id', materialIds)
@@ -510,7 +526,6 @@ export async function getPastOrdersForPurchaseOrder(poId: string): Promise<PastO
     .not('purchase_orders.status', 'in', '(draft,cancelled)')
   if (rowsErr) throw new Error(rowsErr.message)
 
-  type PrScope = { plot_id: string | null; plot_group_id: string | null; purchase_request_plots: { plot_id: string }[] | null }
   type Row = {
     material_type_id: number
     quantity_ordered: number
@@ -518,23 +533,19 @@ export async function getPastOrdersForPurchaseOrder(poId: string): Promise<PastO
     plot_id: string | null
     plot_group_id: string | null
     purchase_orders:
-      | {
+      | (PoHeader & {
           id: string
           po_no: string
           order_date: string
           status: string
-          plot_id: string | null
-          plot_group_id: string | null
           suppliers: { name: string } | { name: string }[] | null
-          purchase_order_plots: { plot_id: string }[] | null
-        }
+        })
       | null
     purchase_order_item_allocations:
       | {
-          quantity_allocated: number
           purchase_request_items:
-            | { purchase_requests: PrScope | PrScope[] | null }
-            | { purchase_requests: PrScope | PrScope[] | null }[]
+            | { purchase_requests: { pr_no: number } | { pr_no: number }[] | null }
+            | { purchase_requests: { pr_no: number } | { pr_no: number }[] | null }[]
             | null
         }[]
       | null
@@ -543,15 +554,14 @@ export async function getPastOrdersForPurchaseOrder(poId: string): Promise<PastO
 
   // Plot groups expand to their member plots, the same way the BOQ rollup does.
   const groupIds = new Set<string>()
-  if (po.plot_group_id) groupIds.add(po.plot_group_id)
+  const noteGroup = (id: string | null | undefined) => {
+    if (id) groupIds.add(id)
+  }
+  noteGroup(po.plot_group_id)
+  for (const i of myItems) noteGroup(i.plot_group_id)
   for (const r of typedRows) {
-    if (r.plot_group_id) groupIds.add(r.plot_group_id)
-    const o = asSingle(r.purchase_orders)
-    if (o?.plot_group_id) groupIds.add(o.plot_group_id)
-    for (const al of r.purchase_order_item_allocations || []) {
-      const pr = asSingle(asSingle(al.purchase_request_items)?.purchase_requests)
-      if (pr?.plot_group_id) groupIds.add(pr.plot_group_id)
-    }
+    noteGroup(r.plot_group_id)
+    noteGroup(asSingle(r.purchase_orders)?.plot_group_id)
   }
   const membersByGroup = new Map<string, string[]>()
   if (groupIds.size > 0) {
@@ -566,56 +576,66 @@ export async function getPastOrdersForPurchaseOrder(poId: string): Promise<PastO
       membersByGroup.set(m.group_id, list)
     }
   }
-  const plotsOf = (plotId: string | null, groupId: string | null, adHoc: { plot_id: string }[] | null): Set<string> => {
+  /** A line's own plot / group wins; otherwise the PO's plot, group, or plot list. */
+  const plotsOf = (
+    line: { plot_id: string | null; plot_group_id: string | null },
+    head: PoHeader
+  ): Set<string> => {
     const out = new Set<string>()
-    if (plotId) out.add(plotId)
-    else if (groupId) for (const id of membersByGroup.get(groupId) || []) out.add(id)
-    else for (const p of adHoc || []) out.add(p.plot_id)
+    if (line.plot_id) out.add(line.plot_id)
+    else if (line.plot_group_id) for (const id of membersByGroup.get(line.plot_group_id) || []) out.add(id)
+    else if (head.plot_id) out.add(head.plot_id)
+    else if (head.plot_group_id) for (const id of membersByGroup.get(head.plot_group_id) || []) out.add(id)
+    else for (const p of head.purchase_order_plots || []) out.add(p.plot_id)
     return out
   }
 
-  const myPlots = plotsOf(po.plot_id, po.plot_group_id, po.purchase_order_plots as { plot_id: string }[] | null)
-  const overlaps = (set: Set<string>) => Array.from(set).some((id) => myPlots.has(id))
+  // This PO's plots, per material.
+  const myPlotsByMaterial = new Map<number, Set<string>>()
+  for (const i of myItems) {
+    const set = myPlotsByMaterial.get(i.material_type_id) || new Set<string>()
+    for (const id of plotsOf(i, po as unknown as PoHeader)) set.add(id)
+    myPlotsByMaterial.set(i.material_type_id, set)
+  }
+  const allMine = new Set<string>()
+  for (const set of myPlotsByMaterial.values()) for (const id of set) allMine.add(id)
+  const plotNames = new Map<string, string>()
+  if (allMine.size > 0) {
+    const { data: plotRows, error: pErr } = await supabase.from('plots').select('id, name').in('id', Array.from(allMine))
+    if (pErr) throw new Error(pErr.message)
+    for (const p of (plotRows || []) as { id: string; name: string }[]) plotNames.set(p.id, p.name)
+  }
 
   const conversions = await loadUnitConversions(supabase, materialIds)
   const byMaterial = new Map<number, PastOrdersForMaterial>()
+  for (const materialId of materialIds) {
+    const mine = myPlotsByMaterial.get(materialId) || new Set<string>()
+    byMaterial.set(materialId, {
+      materialTypeId: materialId,
+      unit: masterUnit.get(materialId) || '',
+      myPlots: Array.from(mine).map((id) => plotNames.get(id) || id),
+      totalQty: 0,
+      orders: [],
+    })
+  }
   for (const r of typedRows) {
     const other = asSingle(r.purchase_orders)
-    if (!other) continue
+    const entry = byMaterial.get(r.material_type_id)
+    if (!other || !entry) continue
+    const mine = myPlotsByMaterial.get(r.material_type_id) || new Set<string>()
+    const theirs = plotsOf(r, other)
+    // With no plot on this PO there is nothing to narrow by: every earlier order counts.
+    const covered = Array.from(theirs).filter((id) => mine.has(id))
+    if (mine.size > 0 && covered.length === 0) continue
 
-    // How much of this line belongs to this PO's plots. A line split across
-    // requests counts only the requests whose plots overlap; an unsplit line
-    // follows its own override, else the PO's plot tag. With no plot on this
-    // PO there is nothing to narrow by, so every earlier order counts.
-    let rawQty = toNumber(r.quantity_ordered)
-    if (myPlots.size > 0) {
-      const allocs = r.purchase_order_item_allocations || []
-      if (allocs.length > 0) {
-        let sum = 0
-        for (const al of allocs) {
-          const pr = asSingle(asSingle(al.purchase_request_items)?.purchase_requests)
-          if (pr && overlaps(plotsOf(pr.plot_id, pr.plot_group_id, pr.purchase_request_plots))) {
-            sum += toNumber(al.quantity_allocated)
-          }
-        }
-        if (sum <= 0) continue
-        rawQty = sum
-      } else {
-        const own = r.plot_id || r.plot_group_id
-          ? plotsOf(r.plot_id, r.plot_group_id, null)
-          : plotsOf(other.plot_id, other.plot_group_id, other.purchase_order_plots)
-        if (!overlaps(own)) continue
-      }
-    }
-
-    const unit = masterUnit.get(r.material_type_id) || ''
-    const base = toBaseQty(conversions, r.material_type_id, unit, r.unit, rawQty)
-    let entry = byMaterial.get(r.material_type_id)
-    if (!entry) {
-      entry = { materialTypeId: r.material_type_id, unit, totalQty: 0, orders: [] }
-      byMaterial.set(r.material_type_id, entry)
-    }
+    const rawQty = toNumber(r.quantity_ordered)
+    const base = toBaseQty(conversions, r.material_type_id, entry.unit, r.unit, rawQty)
     if (base != null) entry.totalQty += base
+    const prNos = new Set<number>()
+    for (const al of r.purchase_order_item_allocations || []) {
+      const pr = asSingle(asSingle(al.purchase_request_items)?.purchase_requests)
+      if (pr?.pr_no != null) prNos.add(pr.pr_no)
+    }
     entry.orders.push({
       poNo: other.po_no,
       orderDate: other.order_date,
@@ -623,7 +643,10 @@ export async function getPastOrdersForPurchaseOrder(poId: string): Promise<PastO
       status: other.status,
       quantity: base,
       rawQuantity: rawQty,
-      rawUnit: r.unit || unit,
+      rawUnit: r.unit || entry.unit,
+      coveredPlots: covered.map((id) => plotNames.get(id) || id),
+      totalPlots: theirs.size,
+      prNos: Array.from(prNos).sort((x, y) => x - y),
     })
   }
   for (const entry of byMaterial.values()) {

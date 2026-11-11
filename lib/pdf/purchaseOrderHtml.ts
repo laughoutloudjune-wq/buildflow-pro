@@ -129,7 +129,11 @@ export type PurchaseOrderBoqCheck = {
 /** Same table the on-screen BoqCheckPanel shows, so the paper being signed
  * carries the same numbers as the screen (BOQ_CONTROL_PLAN.md 9.4). Renders
  * every PO line with its BOQ quantity (internal copy only), flagging over-BOQ. */
-function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsideBoqReason: string | null): string {
+function boqCheckBlock(
+  boqCheck: PurchaseOrderBoqCheck | null | undefined,
+  outsideBoqReason: string | null,
+  past: PastOrdersForMaterial[] | null | undefined
+): string {
   if (!boqCheck) return ''
   if (boqCheck.isOutsideBoq) {
     return `
@@ -149,9 +153,17 @@ function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsi
   // copy needs the planned quantity next to what is being ordered, and an
   // over-BOQ line is flagged (warning only - printing is never blocked).
   const overrideByMaterial = new Map(boqCheck.existingOverrides.map((o) => [o.materialTypeId, o]))
-  const overLines = boqCheck.lines.filter(isBoqCheckLineOver)
+  // The "ordered before" figure comes from the purchase orders' own plots (same
+  // as the trail above), not from the request-weighted BOQ rollup.
+  const pastByMaterial = new Map((past || []).map((p) => [p.materialTypeId, p]))
+  const lines = boqCheck.lines.map((line) => {
+    const p = pastByMaterial.get(line.materialTypeId)
+    if (!p || line.unconverted) return line
+    return { ...line, alreadyQty: p.totalQty, totalAfter: p.totalQty + line.thisDocQty }
+  })
+  const overLines = lines.filter(isBoqCheckLineOver)
 
-  const rows = boqCheck.lines
+  const rows = lines
     .map((line) => {
       const u = esc(line.unit)
       const scope = line.scopeLabel ? `<span style="color:${c.muted}; font-size:8px;"> · ${esc(line.scopeLabel)}</span>` : ''
@@ -227,14 +239,44 @@ function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsi
     </div>`
 }
 
-/** Earlier purchases of each material on this PO (internal copy only).
- * Shown whether or not the material has a BOQ line. */
+/** "120, 121, 122, 124" -> "120–122, 124": plot names that are numbers collapse into ranges. */
+function plotRanges(names: string[]): string {
+  const nums = names.map((n) => (/^\d+$/.test(n) ? Number(n) : NaN))
+  if (nums.some((n) => Number.isNaN(n))) return names.join(', ')
+  const sorted = Array.from(new Set(nums)).sort((x, y) => x - y)
+  const parts: string[] = []
+  let start = sorted[0]
+  let prev = sorted[0]
+  for (let i = 1; i <= sorted.length; i++) {
+    const n = sorted[i]
+    if (n === prev + 1) {
+      prev = n
+      continue
+    }
+    parts.push(start === prev ? `${start}` : `${start}–${prev}`)
+    start = n
+    prev = n
+  }
+  return parts.join(', ')
+}
+
+/** Material trail for the internal copy: for each material on this PO, which of
+ * this PO's plots have already been ordered, and on which earlier POs. Everything
+ * is read from the purchase orders (their assigned plots and quantities); the
+ * request a line came from shows only as its PR number. Shown whether or not the
+ * material has a BOQ line. */
 function pastOrdersBlock(order: PurchaseOrder, past: PastOrdersForMaterial[] | null | undefined): string {
   if (!past) return ''
   const byMaterial = new Map(past.map((p) => [p.materialTypeId, p]))
+  const thisQty = new Map<number, { qty: number; unit: string }>()
+  for (const it of order.purchase_order_items || []) {
+    const id = it.material_type_id as number
+    const cur = thisQty.get(id) || { qty: 0, unit: it.unit || it.material_types?.unit || '' }
+    cur.qty += Number(it.quantity_ordered) || 0
+    thisQty.set(id, cur)
+  }
   const seen = new Set<number>()
-  const MAX = 5
-  const rows = (order.purchase_order_items || [])
+  const body = (order.purchase_order_items || [])
     .filter((it) => {
       const id = it.material_type_id
       if (id == null || seen.has(id)) return false
@@ -244,37 +286,72 @@ function pastOrdersBlock(order: PurchaseOrder, past: PastOrdersForMaterial[] | n
     .map((it) => {
       const entry = byMaterial.get(it.material_type_id as number)
       const name = esc(it.material_types?.name || it.description || '-')
-      if (!entry || entry.orders.length === 0) {
-        return `<tr><td>${name}</td><td colspan="2" style="color:${c.muted};">ไม่เคยสั่งมาก่อน</td></tr>`
+      const mine = thisQty.get(it.material_type_id as number)
+      const u = esc(entry?.unit || mine?.unit || '')
+      const plotCount = entry?.myPlots.length ?? 0
+      const head = `
+        <tr>
+          <td colspan="3" style="background:#f5f5f7; font-weight:700;">
+            ${name}
+            <span style="font-weight:400; color:${c.muted};"> · ใบนี้ ${qty(mine?.qty ?? 0)} ${esc(mine?.unit || '')}${plotCount > 1 ? ` ร่วม ${plotCount} แปลง` : ''}</span>
+          </td>
+        </tr>`
+      if (!entry || entry.myPlots.length === 0) {
+        return `${head}<tr><td colspan="3" style="color:${c.muted};">ใบสั่งซื้อนี้ยังไม่ระบุแปลง - เทียบรายแปลงไม่ได้</td></tr>`
       }
-      const u = esc(entry.unit)
-      const shown = entry.orders.slice(0, MAX)
-      const more = entry.orders.length - shown.length
-      const lines = shown
-        .map((o) => {
-          const q = o.quantity != null ? `${qty(o.quantity)} ${u}` : `${qty(o.rawQuantity)} ${esc(o.rawUnit)} (ไม่ทราบหน่วยแปลง)`
-          return `<div class="alloc-row"><span>${esc(o.poNo)} · ${thaiDate(o.orderDate)}${o.supplierName ? ` · ${esc(o.supplierName)}` : ''}</span><span>${q}</span></div>`
+
+      // Plots with the same earlier POs are one row, so eight plots read as two lines.
+      const groups = new Map<string, { plots: string[]; orders: typeof entry.orders }>()
+      for (const plot of entry.myPlots) {
+        const orders = entry.orders.filter((o) => o.coveredPlots.includes(plot))
+        const key = orders.map((o) => o.poNo).sort().join('|')
+        const g = groups.get(key) || { plots: [], orders }
+        g.plots.push(plot)
+        groups.set(key, g)
+      }
+      const rows = Array.from(groups.values())
+        .sort((x, y) => y.orders.length - x.orders.length)
+        .map((g) => {
+          if (g.orders.length === 0) {
+            return `
+              <tr>
+                <td>แปลง ${esc(plotRanges(g.plots))}</td>
+                <td class="right nowrap" style="color:${c.muted};">ยังไม่เคยสั่ง</td>
+                <td></td>
+              </tr>`
+          }
+          const total = g.orders.reduce((sum, o) => sum + (o.quantity ?? 0), 0)
+          const unknown = g.orders.some((o) => o.quantity == null)
+          const lines = g.orders
+            .map((o) => {
+              const q = o.quantity != null ? `${qty(o.quantity)} ${u}` : `${qty(o.rawQuantity)} ${esc(o.rawUnit)} (ไม่ทราบหน่วยแปลง)`
+              const pr = o.prNos.length > 0 ? ` · ${o.prNos.map((n) => `PR-${n}`).join(', ')}` : ''
+              const share = o.totalPlots > 1 ? ` · ร่วม ${o.totalPlots} แปลง` : ''
+              return `<div class="alloc-row"><span>${esc(o.poNo)} · ${thaiDate(o.orderDate)}${share}${pr}</span><span>${q}</span></div>`
+            })
+            .join('')
+          return `
+            <tr>
+              <td>แปลง ${esc(plotRanges(g.plots))}</td>
+              <td class="right nowrap"><strong>${qty(total)} ${u}</strong><div style="font-size:8px; color:${c.muted};">${g.orders.length} ใบ${unknown ? ' (ไม่รวมหน่วยที่แปลงไม่ได้)' : ''}</div></td>
+              <td>${lines}</td>
+            </tr>`
         })
         .join('')
-      return `
-        <tr>
-          <td>${name}</td>
-          <td>${lines}${more > 0 ? `<div style="font-size:8px; color:${c.muted};">และอีก ${more} ใบ</div>` : ''}</td>
-          <td class="right nowrap"><strong>${qty(entry.totalQty)} ${u}</strong><div style="font-size:8px; color:${c.muted};">${entry.orders.length} ใบ</div></td>
-        </tr>`
+      return head + rows
     })
     .join('')
-  if (!rows) return ''
+  if (!body) return ''
   return `
     <div class="table-card">
       <div style="padding:8px 10px 0; font-size:9px; font-weight:700; color:${c.muted}; text-transform:uppercase;">
-        ประวัติการสั่งซื้อก่อนหน้า (ไม่รวมใบนี้)
+        สั่งแล้วก่อนใบนี้ - รายแปลง (ตามแปลงที่ระบุในใบสั่งซื้อ)
       </div>
       <table>
         <thead>
-          <tr><th>วัสดุ</th><th>ใบสั่งซื้อเดิม</th><th class="right">รวมสั่งแล้ว</th></tr>
+          <tr><th>แปลง</th><th class="right">สั่งแล้วก่อนใบนี้</th><th>ใบสั่งซื้อเดิม</th></tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody>${body}</tbody>
       </table>
     </div>`
 }
@@ -645,7 +722,7 @@ export function buildPurchaseOrderHtml(
     </div>
 
     ${options.showAllocations ? pastOrdersBlock(order, options.pastOrders) : ''}
-    ${options.showAllocations ? boqCheckBlock(boqCheck, order.outside_boq_reason) : ''}
+    ${options.showAllocations ? boqCheckBlock(boqCheck, order.outside_boq_reason, options.pastOrders) : ''}
 
     <div class="bottom-row">
       <div class="words-card">
