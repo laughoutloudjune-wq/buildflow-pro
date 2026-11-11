@@ -4,6 +4,7 @@ import { bahtText } from '@/lib/bahtText'
 import type { PurchaseOrder, PurchaseOrderItem } from '@/lib/types/procurement'
 import { allocationRows } from '@/lib/procurement/allocations'
 import type { SignatureSlot } from '@/lib/types/signatures'
+import type { PastOrdersForMaterial } from '@/actions/procurement/boq-control'
 import { isBoqCheckLineOver, type BoqCheckLine, type BoqCheckOverride } from '@/lib/procurement/boqControl'
 
 // Fonts are embedded as base64 data URIs rather than linked - Puppeteer's
@@ -226,6 +227,58 @@ function boqCheckBlock(boqCheck: PurchaseOrderBoqCheck | null | undefined, outsi
     </div>`
 }
 
+/** Earlier purchases of each material on this PO (internal copy only).
+ * Shown whether or not the material has a BOQ line. */
+function pastOrdersBlock(order: PurchaseOrder, past: PastOrdersForMaterial[] | null | undefined): string {
+  if (!past) return ''
+  const byMaterial = new Map(past.map((p) => [p.materialTypeId, p]))
+  const seen = new Set<number>()
+  const MAX = 5
+  const rows = (order.purchase_order_items || [])
+    .filter((it) => {
+      const id = it.material_type_id
+      if (id == null || seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
+    .map((it) => {
+      const entry = byMaterial.get(it.material_type_id as number)
+      const name = esc(it.material_types?.name || it.description || '-')
+      if (!entry || entry.orders.length === 0) {
+        return `<tr><td>${name}</td><td colspan="2" style="color:${c.muted};">ไม่เคยสั่งมาก่อน</td></tr>`
+      }
+      const u = esc(entry.unit)
+      const shown = entry.orders.slice(0, MAX)
+      const more = entry.orders.length - shown.length
+      const lines = shown
+        .map((o) => {
+          const q = o.quantity != null ? `${qty(o.quantity)} ${u}` : `${qty(o.rawQuantity)} ${esc(o.rawUnit)} (ไม่ทราบหน่วยแปลง)`
+          return `<div class="alloc-row"><span>${esc(o.poNo)} · ${thaiDate(o.orderDate)}${o.supplierName ? ` · ${esc(o.supplierName)}` : ''}</span><span>${q}</span></div>`
+        })
+        .join('')
+      return `
+        <tr>
+          <td>${name}</td>
+          <td>${lines}${more > 0 ? `<div style="font-size:8px; color:${c.muted};">และอีก ${more} ใบ</div>` : ''}</td>
+          <td class="right nowrap"><strong>${qty(entry.totalQty)} ${u}</strong><div style="font-size:8px; color:${c.muted};">${entry.orders.length} ใบ</div></td>
+        </tr>`
+    })
+    .join('')
+  if (!rows) return ''
+  return `
+    <div class="table-card">
+      <div style="padding:8px 10px 0; font-size:9px; font-weight:700; color:${c.muted}; text-transform:uppercase;">
+        ประวัติการสั่งซื้อก่อนหน้า (ไม่รวมใบนี้)
+      </div>
+      <table>
+        <thead>
+          <tr><th>วัสดุ</th><th>ใบสั่งซื้อเดิม</th><th class="right">รวมสั่งแล้ว</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`
+}
+
 export function buildPurchaseOrderHtml(
   order: PurchaseOrder,
   fallbackSignatureUrl: string | null | undefined,
@@ -235,7 +288,7 @@ export function buildPurchaseOrderHtml(
    * consolidated line per material - which request/plot each slice came from
    * is our own bookkeeping, so it is only printed when explicitly asked for.
    * The over-BOQ check is internal too and follows the same flag. */
-  options: { showAllocations?: boolean } = {}
+  options: { showAllocations?: boolean; pastOrders?: PastOrdersForMaterial[] | null } = {}
 ): string {
   if (!cachedRegular) cachedRegular = fontBase64('Sarabun-Regular.ttf')
   if (!cachedBold) cachedBold = fontBase64('Sarabun-Bold.ttf')
@@ -591,6 +644,7 @@ export function buildPurchaseOrderHtml(
       </table>
     </div>
 
+    ${options.showAllocations ? pastOrdersBlock(order, options.pastOrders) : ''}
     ${options.showAllocations ? boqCheckBlock(boqCheck, order.outside_boq_reason) : ''}
 
     <div class="bottom-row">

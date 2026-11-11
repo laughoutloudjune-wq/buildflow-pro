@@ -438,6 +438,136 @@ export async function getBoqCheckForPurchaseOrder(poId: string): Promise<{
   return { lines, scopeLabel: resolved.scopeLabel, isOutsideBoq: false, existingOverrides }
 }
 
+export type PastOrderEntry = {
+  poNo: string
+  orderDate: string
+  supplierName: string | null
+  status: string
+  /** In the material's master unit; null when the line's unit has no known
+   * conversion (then rawQuantity/rawUnit are shown instead). */
+  quantity: number | null
+  rawQuantity: number
+  rawUnit: string
+}
+
+export type PastOrdersForMaterial = {
+  materialTypeId: number
+  unit: string
+  /** Sum of the convertible entries, in the master unit. */
+  totalQty: number
+  orders: PastOrderEntry[]
+}
+
+/**
+ * Earlier purchases of each material on this PO, for the internal print. This
+ * is deliberately independent of the BOQ: a material with no BOQ line, a PO
+ * with no plot, or a "buy outside BOQ" PO still shows what was ordered before.
+ * Scope: same project, narrowed to the same plot(s) / plot group when this PO
+ * has them. Drafts and cancelled POs are not purchases, so they are left out.
+ */
+export async function getPastOrdersForPurchaseOrder(poId: string): Promise<PastOrdersForMaterial[]> {
+  await requireModuleAccess('procurement')
+  const supabase = await createClient()
+
+  const { data: po, error } = await supabase
+    .from('purchase_orders')
+    .select(
+      `id, project_id, plot_id, plot_group_id,
+       purchase_order_plots (plot_id),
+       purchase_order_items (material_type_id, material_types (unit))`
+    )
+    .eq('id', poId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!po) return []
+
+  const items = (po.purchase_order_items || []) as unknown as {
+    material_type_id: number
+    material_types: { unit: string } | { unit: string }[] | null
+  }[]
+  const materialIds = Array.from(new Set(items.map((i) => i.material_type_id)))
+  if (materialIds.length === 0) return []
+  const masterUnit = new Map<number, string>()
+  for (const i of items) masterUnit.set(i.material_type_id, asSingle(i.material_types)?.unit || '')
+
+  const myPlotIds = new Set<string>(
+    [po.plot_id, ...((po.purchase_order_plots || []) as { plot_id: string }[]).map((p) => p.plot_id)].filter(
+      (x): x is string => !!x
+    )
+  )
+
+  const { data: rows, error: rowsErr } = await supabase
+    .from('purchase_order_items')
+    .select(
+      `material_type_id, quantity_ordered, unit, plot_id,
+       purchase_orders!inner (id, po_no, order_date, status, project_id, plot_id, plot_group_id,
+         suppliers (name), purchase_order_plots (plot_id))`
+    )
+    .in('material_type_id', materialIds)
+    .neq('purchase_order_id', poId)
+    .eq('purchase_orders.project_id', po.project_id)
+    .not('purchase_orders.status', 'in', '(draft,cancelled)')
+  if (rowsErr) throw new Error(rowsErr.message)
+
+  type Row = {
+    material_type_id: number
+    quantity_ordered: number
+    unit: string | null
+    plot_id: string | null
+    purchase_orders:
+      | {
+          id: string
+          po_no: string
+          order_date: string
+          status: string
+          plot_id: string | null
+          plot_group_id: string | null
+          suppliers: { name: string } | { name: string }[] | null
+          purchase_order_plots: { plot_id: string }[] | null
+        }
+      | null
+  }
+
+  const conversions = await loadUnitConversions(supabase, materialIds)
+  const byMaterial = new Map<number, PastOrdersForMaterial>()
+  for (const r of (rows || []) as unknown as Row[]) {
+    const other = asSingle(r.purchase_orders)
+    if (!other) continue
+    if (myPlotIds.size > 0) {
+      const otherPlots = new Set<string>(
+        [other.plot_id, r.plot_id, ...(other.purchase_order_plots || []).map((p) => p.plot_id)].filter(
+          (x): x is string => !!x
+        )
+      )
+      if (!Array.from(myPlotIds).some((id) => otherPlots.has(id))) continue
+    } else if (po.plot_group_id) {
+      if (other.plot_group_id !== po.plot_group_id) continue
+    }
+    const unit = masterUnit.get(r.material_type_id) || ''
+    const raw = toNumber(r.quantity_ordered)
+    const base = toBaseQty(conversions, r.material_type_id, unit, r.unit, raw)
+    let entry = byMaterial.get(r.material_type_id)
+    if (!entry) {
+      entry = { materialTypeId: r.material_type_id, unit, totalQty: 0, orders: [] }
+      byMaterial.set(r.material_type_id, entry)
+    }
+    if (base != null) entry.totalQty += base
+    entry.orders.push({
+      poNo: other.po_no,
+      orderDate: other.order_date,
+      supplierName: asSingle(other.suppliers)?.name ?? null,
+      status: other.status,
+      quantity: base,
+      rawQuantity: raw,
+      rawUnit: r.unit || unit,
+    })
+  }
+  for (const entry of byMaterial.values()) {
+    entry.orders.sort((a, b) => (a.orderDate < b.orderDate ? 1 : a.orderDate > b.orderDate ? -1 : 0))
+  }
+  return Array.from(byMaterial.values())
+}
+
 /**
  * The BOQ check for a payment voucher about to be created from one or more
  * goods receipts. Receipts may span several POs, so this groups by PO and
