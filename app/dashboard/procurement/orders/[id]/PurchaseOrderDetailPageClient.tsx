@@ -31,7 +31,6 @@ import { getBoqCheckForPurchaseOrder, setPoBoqOverrides } from '@/actions/procur
 import { PO_STATUS_LABEL as STATUS_LABEL } from '@/lib/status-labels'
 import type { GoodsReceipt, PurchaseOrder } from '@/lib/types/procurement'
 import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
-import PoQuotesPanel from '@/components/procurement/PoQuotesPanel'
 
 function formatDate(value: string | null) {
   if (!value) return null
@@ -501,7 +500,6 @@ export default function PurchaseOrderDetailPageClient({
         onStateChange={onFormStateChange}
       />
 
-      <PoQuotesPanel purchaseOrderId={id} canEdit />
 
       <DocumentHistoryPanel key={`${id}-${fetchedAt}`} target={{ kind: 'po', id }} />
 

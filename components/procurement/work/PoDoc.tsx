@@ -17,7 +17,6 @@ import {
 import { docNo } from '@/lib/status-labels'
 import { buildChain, orderIsLate, isReceiptPaid } from '@/lib/procurement/workQueue'
 import RequestPoLinkSheet from '@/components/procurement/RequestPoLinkSheet'
-import PoQuotesPanel from '@/components/procurement/PoQuotesPanel'
 import DocumentHistoryPanel from '@/components/procurement/DocumentHistoryPanel'
 import { DocFacts, DocModal, DocSteps, DocTable, WarnTag, fmtDate, qtyText, type MoreItem } from './docUi'
 import { daysBetween, nowOf } from '@/lib/procurement/nowStatus'
@@ -234,7 +233,6 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
             <p className="text-slate-600">เครดิต: {order.payment_terms || '-'}</p>
             {order.delivery_address && <p className="text-slate-600">ส่งที่: {order.delivery_address}</p>}
             {order.note && <p className="text-slate-600">หมายเหตุ: {order.note}</p>}
-            <PoQuotesPanel purchaseOrderId={id} canEdit={order.status !== 'cancelled' && order.status !== 'paid'} />
             <DocumentHistoryPanel key={id} target={{ kind: 'po', id }} />
           </div>
         </details>

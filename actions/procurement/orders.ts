@@ -158,6 +158,54 @@ export async function getLastMaterialOrderPrice(
   return null
 }
 
+export type MaterialPriceRow = {
+  materialTypeId: number
+  unit: string
+  unitPrice: number
+  supplierId: string
+  supplierName: string
+  orderDate: string
+}
+
+/** Prices actually paid on sent (non-draft, non-cancelled) POs in the last 6
+ * months, newest first, so the PO form can show the cheapest recent price and
+ * this supplier's last price per material without any typing. */
+export async function getMaterialPriceHistory(materialTypeIds: number[], excludeOrderId?: string): Promise<MaterialPriceRow[]> {
+  await requireModuleAccess('procurement')
+  const ids = Array.from(new Set(materialTypeIds.filter((n) => Number.isFinite(n) && n > 0)))
+  if (ids.length === 0) return []
+  const supabase = await createClient()
+  const since = new Date()
+  since.setMonth(since.getMonth() - 6)
+  let query = supabase
+    .from('purchase_order_items')
+    .select('material_type_id, unit, unit_price, purchase_order_id, material_types(unit), purchase_orders!inner(order_date, status, supplier_id, suppliers(name))')
+    .in('material_type_id', ids)
+    .gt('unit_price', 0)
+    .gte('purchase_orders.order_date', since.toISOString().slice(0, 10))
+    .not('purchase_orders.status', 'in', '(draft,cancelled)')
+    .limit(2000)
+  if (excludeOrderId) query = query.neq('purchase_order_id', excludeOrderId)
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? v[0] ?? null : v ?? null)
+  const rows: MaterialPriceRow[] = []
+  for (const r of (data || []) as unknown as Array<Record<string, unknown>>) {
+    const po = one(r.purchase_orders as { order_date: string; supplier_id: string; suppliers: { name: string } | { name: string }[] | null } | null)
+    if (!po) continue
+    const mat = one(r.material_types as { unit: string | null } | null)
+    rows.push({
+      materialTypeId: Number(r.material_type_id),
+      unit: String(r.unit || mat?.unit || '').trim(),
+      unitPrice: Number(r.unit_price),
+      supplierId: po.supplier_id,
+      supplierName: one(po.suppliers)?.name || '',
+      orderDate: po.order_date,
+    })
+  }
+  return rows.sort((a, b) => (a.orderDate < b.orderDate ? 1 : -1))
+}
+
 // Next.js strips the message off anything thrown across a Server Action
 // boundary in production (replaced with a generic digest, to avoid leaking
 // server internals by default) - so a plain `throw` here would turn even a
