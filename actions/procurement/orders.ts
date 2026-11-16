@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import { requireAuthRole } from '@/actions/_shared/user-role'
 import { translateError as translatePoError } from '@/lib/errors'
+import { BRANCH_REQUIRED_MESSAGE } from '@/lib/procurement/supplierBranch'
 import type { LastMaterialOrderPrice, PurchaseOrder, PurchaseOrderInput, PurchaseOrderStatus } from '@/lib/types/procurement'
 
 const SELECT_WITH_RELATIONS = `
@@ -168,6 +169,25 @@ export async function getLastMaterialOrderPrice(
 // translateError) covers the raw RPC exception text (English, from the SQL
 // function) with the Thai the rest of the form is in.
 
+/** Server-side twin of the form's branch rule, so duplicate / any other
+ * caller can't save a PO for a supplier with branches and no branch. Only
+ * active branches count: a supplier whose branches were all deactivated
+ * behaves like one with none. */
+async function assertBranchChosen(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  supplierId: string,
+  branchId: string | null | undefined
+) {
+  if (branchId) return
+  const { count, error } = await supabase
+    .from('supplier_branches')
+    .select('id', { count: 'exact', head: true })
+    .eq('supplier_id', supplierId)
+    .eq('is_active', true)
+  if (error) throw new Error(error.message)
+  if ((count || 0) > 0) throw new Error(BRANCH_REQUIRED_MESSAGE)
+}
+
 export async function createPurchaseOrder(
   input: PurchaseOrderInput & { status?: 'draft' | 'sent' }
 ): Promise<{ id: string; po_no: string } | { error: string }> {
@@ -178,6 +198,7 @@ export async function createPurchaseOrder(
     if (!input.supplier_id) throw new Error('Supplier is required')
     if (!input.company_id) throw new Error('Company is required')
     if (!input.project_id) throw new Error('Project is required')
+    await assertBranchChosen(supabase, input.supplier_id, input.supplier_branch_id)
     const { payload, itemCount } = buildPayload(input)
     if (itemCount === 0) throw new Error('At least one material line is required')
 
@@ -205,6 +226,7 @@ export async function updatePurchaseOrder(
     if (!input.supplier_id) throw new Error('Supplier is required')
     if (!input.company_id) throw new Error('Company is required')
     if (!input.project_id) throw new Error('Project is required')
+    await assertBranchChosen(supabase, input.supplier_id, input.supplier_branch_id)
     const { payload, itemCount } = buildPayload(input)
     if (itemCount === 0) throw new Error('At least one material line is required')
 
@@ -224,6 +246,11 @@ export async function setPurchaseOrderStatus(id: string, status: 'draft' | 'sent
   try {
     await requireAuthRole(['admin', 'pm'], 'Only PM/Admin can change purchase order status')
     const supabase = await createClient()
+    if (status === 'sent') {
+      // Sending a draft that predates the rule must not slip past it.
+      const { data: po } = await supabase.from('purchase_orders').select('supplier_id, supplier_branch_id').eq('id', id).maybeSingle()
+      if (po) await assertBranchChosen(supabase, po.supplier_id, po.supplier_branch_id)
+    }
     const { error } = await supabase.rpc('po_set_status', { p_id: id, p_status: status })
     if (error) return { error: translatePoError(error.message) }
     revalidatePath('/dashboard/procurement/orders')

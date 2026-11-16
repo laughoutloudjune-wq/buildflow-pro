@@ -33,6 +33,7 @@ import { toBaseQty, type UnitConversions } from '@/lib/procurement/units'
 import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
 import PurchasePurposePicker, { usePurchasePurpose } from '@/components/procurement/PurchasePurposePicker'
 import type { ControlScope } from '@/lib/procurement/boqControl'
+import { BRANCH_REQUIRED_MESSAGE } from '@/lib/procurement/supplierBranch'
 import { requestScopeLabel } from '@/lib/procurement/allocations'
 import AddRequestLinesModal, { type RequestPick } from '@/components/procurement/AddRequestLinesModal'
 import { allocationTotal, takeCombineDraft, type LineAllocationDraft } from '@/lib/procurement/combineDraft'
@@ -323,6 +324,9 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
    * suppliers that actually have branches; '' means the supplier's own
    * record supplies the branch code and address, exactly as before. */
   const [supplierBranchId, setSupplierBranchId] = useState('')
+  // Shown right under the branch field: a toast alone disappears while the
+  // field that needs fixing may be off-screen in a long form.
+  const [branchError, setBranchError] = useState('')
   const [companyId, setCompanyId] = useState('')
   const [vatOption, setVatOption] = useState('vat7_exclusive')
   const [orderDate, setOrderDate] = useState(() => todayInBangkok())
@@ -926,6 +930,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     // real choice, since leaving it blank would just be a required click.
     const branches = supplier?.supplier_branches || []
     setSupplierBranchId(branches.length === 1 ? branches[0].id : '')
+    setBranchError('')
   }
 
   function handleStatusPillClick(next: 'draft' | 'sent') {
@@ -1267,6 +1272,14 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
   function handleSubmit() {
     if (!projectId) return toast.error(purpose === 'store' ? 'ไม่พบโครงการสโตร์กลางในระบบ' : 'กรุณาเลือกโครงการ')
     if (!supplierId) return toast.error('กรุณาเลือกผู้จำหน่าย')
+    // A supplier with branches must name the branch that issues the invoice
+    // (suppliers without branches never reach this - supplierBranches is empty).
+    if (supplierBranches.length > 0 && !supplierBranchId) {
+      setBranchError(BRANCH_REQUIRED_MESSAGE)
+      toast.error(BRANCH_REQUIRED_MESSAGE)
+      document.getElementById('po-supplier-branch')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      return
+    }
     if (!companyId) return toast.error('กรุณาเลือกบริษัทผู้ซื้อ')
     if (plotScope === 'plot' && !plotId) return toast.error('กรุณาเลือกแปลง')
     if (plotScope === 'group' && !plotGroupId) return toast.error('กรุณาเลือกกลุ่มแปลง')
@@ -1514,8 +1527,10 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             {/* Only vendors that actually have branches get a picker - for the
               * single-location majority this row never appears. */}
             {selectedSupplier && supplierBranches.length > 0 && (
-              <div>
-                <label className={fieldLabel}>สาขาที่ออกบิล</label>
+              <div id="po-supplier-branch">
+                <label className={fieldLabel}>
+                  สาขาที่ออกบิล{!readOnly && <span className="text-red-500"> *</span>}
+                </label>
                 <SearchableSelect
                   options={supplierBranches.map((branch) => ({
                     value: branch.id,
@@ -1525,10 +1540,14 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                         : `${branch.name} (สาขา ${branch.branch_code})`,
                   }))}
                   value={supplierBranchId}
-                  onChange={setSupplierBranchId}
+                  onChange={(id) => {
+                    setSupplierBranchId(id)
+                    setBranchError('')
+                  }}
                   placeholder="เลือกสาขา"
                   disabled={readOnly}
                 />
+                {branchError && <p className="mt-1 text-xs font-medium text-red-600">{branchError}</p>}
               </div>
             )}
             {selectedSupplier ? (
