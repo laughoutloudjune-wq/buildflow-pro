@@ -80,6 +80,44 @@ export async function getMaterialCatalog(activeOnly = false): Promise<MaterialCa
 // is about avoiding a redundant round-trip on the click that already has
 // the answer, not about skipping cache invalidation.
 
+// A server action that throws shows the user only Next's generic "An error
+// occurred in the Server Components render" in production - the real message
+// is stripped. So material save returns a result object with a Thai message
+// instead of throwing.
+export type MaterialSaveResult = { ok: true; data: MaterialType } | { ok: false; error: string }
+
+type PgLikeError = { code?: string; message?: string }
+
+function describeMaterialSaveError(error: PgLikeError): string {
+  if (error.code === '23505' || /duplicate key/i.test(error.message ?? '')) {
+    return 'มีวัสดุชื่อนี้อยู่ในระบบแล้ว กรุณาใช้ชื่ออื่น หรือแก้ไขรายการเดิมแทน'
+  }
+  if (error.code === '42501' || /row-level security/i.test(error.message ?? '')) {
+    return 'คุณไม่มีสิทธิ์แก้ไขข้อมูลวัสดุ'
+  }
+  return `บันทึกวัสดุไม่สำเร็จ: ${error.message ?? 'ไม่ทราบสาเหตุ'}`
+}
+
+/** Looks for another material with exactly this name. Uses .eq (the value
+ * travels as a parameter, never spliced into a filter string), so quotes,
+ * commas and parentheses in a name are safe. Returns a Thai message naming the
+ * clash, or null if the name is free. Inactive materials count too - the DB
+ * unique constraint on name covers them. */
+async function findDuplicateMaterialName(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  name: string,
+  excludeId?: number
+): Promise<string | null> {
+  let query = supabase.from('material_types').select('id, name, is_active').eq('name', name).limit(1)
+  if (excludeId != null) query = query.neq('id', excludeId)
+  const { data } = await query
+  const hit = data?.[0]
+  if (!hit) return null
+  return hit.is_active === false
+    ? `มีวัสดุชื่อนี้อยู่แล้วแต่ถูกปิดใช้งาน (รหัส ${hit.id}) กรุณาเปิดใช้งานรายการเดิม หรือใช้ชื่ออื่น`
+    : `มีวัสดุชื่อนี้อยู่แล้ว (รหัส ${hit.id}) กรุณาใช้ชื่ออื่น หรือแก้ไขรายการเดิมแทน`
+}
+
 export async function createMaterialType(
   name: string,
   unit: string,
@@ -88,13 +126,16 @@ export async function createMaterialType(
   reorderPoint?: number | null,
   isRequestable = true,
   leadTimeDays?: number | null
-): Promise<MaterialType> {
+): Promise<MaterialSaveResult> {
   await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
   const user = await getCurrentUser()
 
   const trimmedName = name.trim()
-  if (!trimmedName) throw new Error('Material name is required')
+  if (!trimmedName) return { ok: false, error: 'กรุณาใส่ชื่อวัสดุ' }
+
+  const duplicate = await findDuplicateMaterialName(supabase, trimmedName)
+  if (duplicate) return { ok: false, error: duplicate }
 
   const { data, error } = await supabase
     .from('material_types')
@@ -114,9 +155,9 @@ export async function createMaterialType(
     .select()
     .single()
 
-  if (error) throw new Error(error.message)
+  if (error) return { ok: false, error: describeMaterialSaveError(error) }
   revalidatePath('/dashboard/settings/materials')
-  return data
+  return { ok: true, data }
 }
 
 /** Updates name/unit/category/reorder point/requestable flag/lead time. Use
@@ -130,12 +171,15 @@ export async function updateMaterialType(
   reorderPoint?: number | null,
   isRequestable = true,
   leadTimeDays?: number | null
-): Promise<MaterialType> {
+): Promise<MaterialSaveResult> {
   await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
 
   const trimmedName = name.trim()
-  if (!trimmedName) throw new Error('Material name is required')
+  if (!trimmedName) return { ok: false, error: 'กรุณาใส่ชื่อวัสดุ' }
+
+  const duplicate = await findDuplicateMaterialName(supabase, trimmedName, id)
+  if (duplicate) return { ok: false, error: duplicate }
 
   const { data, error } = await supabase
     .from('material_types')
@@ -151,9 +195,9 @@ export async function updateMaterialType(
     .select()
     .single()
 
-  if (error) throw new Error(error.message)
+  if (error) return { ok: false, error: describeMaterialSaveError(error) }
   revalidatePath('/dashboard/settings/materials')
-  return data
+  return { ok: true, data }
 }
 
 export async function updateMaterialPrice(id: number, currentPrice: number): Promise<MaterialType> {

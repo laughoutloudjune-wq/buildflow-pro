@@ -992,12 +992,17 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     }
     setIsSavingMaterial(true)
     try {
-      const created = await createMaterialType(
+      const result = await createMaterialType(
         materialDraft.name,
         materialDraft.unit,
         Number.isFinite(price) ? price : 0,
         materialDraft.category
       )
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+      const created = result.data
       setMaterials((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name, 'th')))
       if (materialModalLineIndex !== null) {
         updateLine(materialModalLineIndex, { material_type_id: created.id })

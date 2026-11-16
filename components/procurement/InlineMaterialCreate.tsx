@@ -69,7 +69,12 @@ export default function InlineMaterialCreate({
       // Price 0 on purpose: the real figure is typed on the order line
       // moments from now, and a guess here would look like a real catalog
       // price to every later order that prefills from it.
-      const created = await createMaterialType(name, unit.trim(), 0, category.trim() || undefined)
+      const result = await createMaterialType(name, unit.trim(), 0, category.trim() || undefined)
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+      const created = result.data
       onCreated({ id: created.id, name: created.name, unit: created.unit, category: created.category })
       toast.success(`เพิ่ม "${created.name}" แล้ว`)
       reset()

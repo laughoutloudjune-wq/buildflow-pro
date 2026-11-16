@@ -216,7 +216,7 @@ export default function MaterialTypesPageClient({
     startTransition(async () => {
       try {
         if (editingMaterial) {
-          let updated = await updateMaterialType(
+          const saved = await updateMaterialType(
             editingMaterial.id,
             nameDraft,
             unitDraft,
@@ -225,13 +225,22 @@ export default function MaterialTypesPageClient({
             isRequestableDraft,
             leadTimeDays
           )
+          if (!saved.ok) {
+            toast.error(saved.error)
+            return
+          }
+          let updated = saved.data
           if (price !== editingMaterial.current_price) {
             updated = await updateMaterialPrice(editingMaterial.id, price)
           }
           patchMaterial(updated)
         } else {
-          const created = await createMaterialType(nameDraft, unitDraft, price, categoryDraft, reorderPoint, isRequestableDraft, leadTimeDays)
-          insertMaterial(created)
+          const result = await createMaterialType(nameDraft, unitDraft, price, categoryDraft, reorderPoint, isRequestableDraft, leadTimeDays)
+          if (!result.ok) {
+            toast.error(result.error)
+            return
+          }
+          insertMaterial(result.data)
         }
         closeModal()
         toast.success('บันทึกข้อมูลวัสดุเรียบร้อยแล้ว')
