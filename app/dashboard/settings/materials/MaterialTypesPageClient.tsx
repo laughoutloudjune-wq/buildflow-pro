@@ -20,7 +20,7 @@ import {
   bulkSetMaterialRequestable,
   bulkSetMaterialUnit,
   createMaterialType,
-  deactivateMaterialType,
+  removeMaterialType,
   getMaterialCatalog,
   reactivateMaterialType,
   updateMaterialPrice,
@@ -352,12 +352,21 @@ export default function MaterialTypesPageClient({
     const material = deactivateTarget
     startTransition(async () => {
       try {
-        const updated = await deactivateMaterialType(material.id)
-        patchMaterial(updated)
+        const result = await removeMaterialType(material.id)
+        if (!result.ok) {
+          toast.error(result.error)
+          return
+        }
         setDeactivateTarget(null)
-        toast.success('ปิดใช้งานวัสดุแล้ว')
+        if (result.outcome === 'deleted') {
+          setMaterials((prev) => prev.filter((m) => m.id !== result.id))
+          toast.success('ลบวัสดุแล้ว (ไม่เคยถูกใช้งาน)')
+        } else {
+          patchMaterial(result.data)
+          toast.warning(result.reason)
+        }
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ปิดใช้งานไม่สำเร็จ')
+        toast.error(error instanceof Error ? error.message : 'ลบวัสดุไม่สำเร็จ')
       }
     })
   }
@@ -531,7 +540,7 @@ export default function MaterialTypesPageClient({
                         items={[
                           { label: 'แก้ไข', icon: <Pencil />, disabled: isPending, onClick: () => openEditModal(material) },
                           material.is_active
-                            ? { label: 'ปิดใช้งาน', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeactivateTarget(material) }
+                            ? { label: 'ลบ / ปิดใช้งาน', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeactivateTarget(material) }
                             : { label: 'เปิดใช้งานอีกครั้ง', icon: <RotateCcw />, disabled: isPending, onClick: () => handleReactivate(material) },
                         ]}
                       />
@@ -761,9 +770,9 @@ export default function MaterialTypesPageClient({
 
       <ConfirmDialog
         isOpen={deactivateTarget !== null}
-        title="ปิดใช้งานวัสดุ"
-        message={deactivateTarget ? `ยืนยันปิดใช้งานวัสดุ "${deactivateTarget.name}"? รายการนี้จะไม่ปรากฏให้เลือกใหม่ แต่ประวัติเดิมยังอยู่ครบ` : ''}
-        confirmLabel={isPending ? 'กำลังบันทึก...' : 'ปิดใช้งาน'}
+        title="ลบวัสดุ"
+        message={deactivateTarget ? `ยืนยันลบวัสดุ "${deactivateTarget.name}"? ถ้าไม่เคยถูกใช้งานเลย ระบบจะลบถาวร (ชื่อนี้ใช้ซ้ำได้อีก) ถ้าเคยถูกใช้แล้ว ระบบจะปิดใช้งานแทนและประวัติเดิมยังอยู่ครบ` : ''}
+        confirmLabel={isPending ? 'กำลังบันทึก...' : 'ลบ'}
         cancelLabel="ยกเลิก"
         tone="danger"
         busy={isPending}

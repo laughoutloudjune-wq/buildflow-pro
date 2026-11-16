@@ -236,6 +236,49 @@ export async function deactivateMaterialType(id: number): Promise<MaterialType> 
   return data
 }
 
+export type MaterialRemoveResult =
+  | { ok: true; outcome: 'deleted'; id: number }
+  | { ok: true; outcome: 'deactivated'; data: MaterialType; reason: string }
+  | { ok: false; error: string }
+
+/** Removes a material the right way: a real delete if it was never used, a
+ * soft deactivate if it was. The database foreign keys are the judge of
+ * "used" (BOQ lines, PR/PO lines, PO BOQ overrides, stock balances and stock
+ * movements all block the delete), so any table added later that references
+ * material_types is covered automatically - no list to keep in sync here.
+ * Unit conversions cascade, which is right: they are only this material's
+ * own settings. Returns a result instead of throwing so production shows the
+ * Thai message. */
+export async function removeMaterialType(id: number): Promise<MaterialRemoveResult> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+
+  const { data: deleted, error } = await supabase.from('material_types').delete().eq('id', id).select('id')
+  if (!error) {
+    if (!deleted || deleted.length === 0) return { ok: false, error: 'ไม่พบวัสดุนี้ หรือไม่มีสิทธิ์ลบ' }
+    revalidatePath('/dashboard/settings/materials')
+    return { ok: true, outcome: 'deleted', id }
+  }
+
+  // 23503 = foreign_key_violation: the material is referenced somewhere.
+  if (error.code !== '23503') return { ok: false, error: `ลบวัสดุไม่สำเร็จ: ${error.message}` }
+
+  const { data, error: deactivateError } = await supabase
+    .from('material_types')
+    .update({ is_active: false })
+    .eq('id', id)
+    .select()
+    .single()
+  if (deactivateError) return { ok: false, error: `ปิดใช้งานวัสดุไม่สำเร็จ: ${deactivateError.message}` }
+  revalidatePath('/dashboard/settings/materials')
+  return {
+    ok: true,
+    outcome: 'deactivated',
+    data,
+    reason: 'วัสดุนี้เคยถูกใช้แล้ว (ใบขอซื้อ/ใบสั่งซื้อ/BOQ/สต็อก) จึงลบไม่ได้ ระบบปิดใช้งานแทน ประวัติเดิมยังอยู่ครบ',
+  }
+}
+
 export async function reactivateMaterialType(id: number): Promise<MaterialType> {
   await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
