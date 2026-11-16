@@ -249,14 +249,13 @@ export type MaterialRemoveResult =
  * Unit conversions cascade, which is right: they are only this material's
  * own settings. Returns a result instead of throwing so production shows the
  * Thai message. */
-export async function removeMaterialType(id: number): Promise<MaterialRemoveResult> {
-  await requireAuthRole(['admin', 'pm'])
-  const supabase = await createClient()
-
+async function removeOne(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  id: number
+): Promise<MaterialRemoveResult> {
   const { data: deleted, error } = await supabase.from('material_types').delete().eq('id', id).select('id')
   if (!error) {
     if (!deleted || deleted.length === 0) return { ok: false, error: 'ไม่พบวัสดุนี้ หรือไม่มีสิทธิ์ลบ' }
-    revalidatePath('/dashboard/settings/materials')
     return { ok: true, outcome: 'deleted', id }
   }
 
@@ -270,13 +269,45 @@ export async function removeMaterialType(id: number): Promise<MaterialRemoveResu
     .select()
     .single()
   if (deactivateError) return { ok: false, error: `ปิดใช้งานวัสดุไม่สำเร็จ: ${deactivateError.message}` }
-  revalidatePath('/dashboard/settings/materials')
   return {
     ok: true,
     outcome: 'deactivated',
     data,
     reason: 'วัสดุนี้เคยถูกใช้แล้ว (ใบขอซื้อ/ใบสั่งซื้อ/BOQ/สต็อก) จึงลบไม่ได้ ระบบปิดใช้งานแทน ประวัติเดิมยังอยู่ครบ',
   }
+}
+
+export async function removeMaterialType(id: number): Promise<MaterialRemoveResult> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  const result = await removeOne(supabase, id)
+  if (result.ok) revalidatePath('/dashboard/settings/materials')
+  return result
+}
+
+export type BulkRemoveResult = {
+  deletedIds: number[]
+  deactivated: MaterialType[]
+  failed: number
+  firstError: string | null
+}
+
+/** Same rule as removeMaterialType, for many rows: never-used materials are
+ * deleted, used ones are deactivated. One row failing doesn't stop the rest. */
+export async function bulkRemoveMaterialTypes(ids: number[]): Promise<BulkRemoveResult> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  const out: BulkRemoveResult = { deletedIds: [], deactivated: [], failed: 0, firstError: null }
+  for (const id of Array.from(new Set(ids))) {
+    const r = await removeOne(supabase, id)
+    if (!r.ok) {
+      out.failed++
+      out.firstError ??= r.error
+    } else if (r.outcome === 'deleted') out.deletedIds.push(r.id)
+    else out.deactivated.push(r.data)
+  }
+  revalidatePath('/dashboard/settings/materials')
+  return out
 }
 
 export async function reactivateMaterialType(id: number): Promise<MaterialType> {
