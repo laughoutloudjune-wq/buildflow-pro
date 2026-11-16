@@ -76,6 +76,51 @@ export async function getMaterialPopularity(): Promise<Record<number, number>> {
   return counts
 }
 
+/** Photo per material id, for the picker. Separate from
+ * getMaterialPickerOptions so the picker keeps working (just without
+ * photos) if the image_url column isn't there yet. */
+export async function getMaterialImages(): Promise<Record<number, string>> {
+  await requireModuleAccess(['materials', 'foreman', 'procurement'])
+  const supabase = await createClient()
+  try {
+    const rows = await fetchAllRows<{ id: number; image_url: string | null }>((from, to) =>
+      supabase.from('material_types').select('id, image_url').not('image_url', 'is', null).order('id').range(from, to)
+    )
+    return Object.fromEntries(rows.filter((r) => r.image_url).map((r) => [r.id, r.image_url as string]))
+  } catch {
+    return {}
+  }
+}
+
+/** Who may add or change a material's photo (same people who edit materials). */
+export async function canEditMaterialImages(): Promise<boolean> {
+  const { role } = await requireModuleAccess(['materials', 'foreman', 'procurement'])
+  return role === 'admin' || role === 'pm'
+}
+
+/** Upload a photo for one material and save its URL. The browser shrinks the
+ * picture first, so files are small; 3MB is only a safety cap. */
+export async function uploadMaterialImage(materialTypeId: number, formData: FormData): Promise<{ url: string } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'])
+    const supabase = await createClient()
+    const file = formData.get('file') as File | null
+    if (!file || file.size === 0) throw new Error('กรุณาเลือกรูป')
+    if (!file.type.startsWith('image/')) throw new Error('ไฟล์ต้องเป็นรูปภาพเท่านั้น')
+    if (file.size > 3 * 1024 * 1024) throw new Error('รูปต้องไม่เกิน 3MB')
+    const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg'
+    const filePath = `materials/${materialTypeId}-${Date.now()}.${extension}`
+    const { error: uploadError } = await supabase.storage.from('assets').upload(filePath, file, { contentType: file.type })
+    if (uploadError) throw new Error(`อัปโหลดไม่สำเร็จ: ${uploadError.message}`)
+    const { data } = supabase.storage.from('assets').getPublicUrl(filePath)
+    const { error } = await supabase.from('material_types').update({ image_url: data.publicUrl }).eq('id', materialTypeId)
+    if (error) throw new Error(error.message)
+    return { url: data.publicUrl }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'อัปโหลดไม่สำเร็จ' }
+  }
+}
+
 /** Same rows as getMaterialTypes, trimmed to the columns the materials
  * settings page table actually renders - see MaterialCatalogRow. This is the
  * only caller that needs both active and inactive rows, which on a 1000+ row

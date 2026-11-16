@@ -1,9 +1,40 @@
 'use client'
 
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, Minus, Plus, Search, ShoppingCart, X } from 'lucide-react'
+import {
+  Bath,
+  BrickWall,
+  BriefcaseMedical,
+  Bolt,
+  Camera,
+  Construction,
+  CookingPot,
+  ChevronLeft,
+  DoorOpen,
+  Droplets,
+  Fence,
+  Grid2x2,
+  Hammer,
+  HardHat,
+  House,
+  Layers,
+  Minus,
+  Package,
+  Paintbrush,
+  PenLine,
+  Plus,
+  Search,
+  ShoppingCart,
+  SprayCan,
+  TreePine,
+  Truck,
+  X,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react'
 import Modal from '@/components/ui/Modal'
-import { getMaterialPopularity } from '@/actions/material-actions'
+import { canEditMaterialImages, getMaterialImages, getMaterialPopularity, uploadMaterialImage } from '@/actions/material-actions'
+import { useToast } from '@/components/ui/Toast'
 import type { MaterialPickerOption } from '@/lib/types/materials'
 import type { BoqRemainingRow } from '@/actions/procurement/boq-control'
 import {
@@ -19,6 +50,45 @@ const PAGE = 60
 const POPULAR_MIN = 4
 
 type Row = IndexedMaterial<MaterialPickerOption> & { approximate?: boolean }
+
+// A picture for materials that have no photo yet: one icon per category,
+// matched on words in the (existing) category name.
+const CATEGORY_ICONS: [RegExp, LucideIcon][] = [
+  [/ท่อ|ประปา/, Droplets],
+  [/เหล็ก|โลหะ/, Construction],
+  [/สกรู|ตะปู|พุก|น็อต|ยึด/, Bolt],
+  [/สี|กาว|เคลือบ/, Paintbrush],
+  [/เครื่องมือ/, Hammer],
+  [/หลังคา|ฝ้า|ผนัง/, House],
+  [/เครื่องเขียน|สำนักงาน/, PenLine],
+  [/ทำความสะอาด/, SprayCan],
+  [/ปูน|คอนกรีต|มวลรวม/, Layers],
+  [/อิฐ|บล็อก/, BrickWall],
+  [/กระเบื้อง|ปูพื้น/, Grid2x2],
+  [/ประตู|หน้าต่าง/, DoorOpen],
+  [/ไฟฟ้า/, Zap],
+  [/สุขภัณฑ์|ห้องน้ำ/, Bath],
+  [/ไม้/, TreePine],
+  [/บริการ|ขนส่ง|ค่าแรง/, Truck],
+  [/ครัว|ภาชนะ/, CookingPot],
+  [/รั้ว|นั่งร้าน/, Fence],
+  [/พยาบาล/, BriefcaseMedical],
+  [/นิรภัย/, HardHat],
+]
+function categoryIcon(category: string): LucideIcon {
+  return CATEGORY_ICONS.find(([re]) => re.test(category))?.[1] || Package
+}
+
+/** Shrink a phone photo to at most 640px on its long side, as JPEG. */
+async function shrinkImage(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, 640 / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('แปลงรูปไม่สำเร็จ'))), 'image/jpeg', 0.8))
+}
 
 /**
  * The "shop" for picking materials on a purchase request (mockup tab 22):
@@ -60,13 +130,21 @@ export default function MaterialShop({
   const [limit, setLimit] = useState(PAGE)
   const [popularity, setPopularity] = useState<Map<number, number>>(new Map())
   const [popularityLoaded, setPopularityLoaded] = useState(false)
+  const [images, setImages] = useState<Record<number, string>>({})
+  const [canEditImages, setCanEditImages] = useState(false)
+  const [uploadingId, setUploadingId] = useState<number | null>(null)
+  const [preview, setPreview] = useState<{ url: string; name: string } | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     if (!isOpen || popularityLoaded) return
     let cancelled = false
-    getMaterialPopularity()
-      .then((counts) => {
-        if (!cancelled) setPopularity(new Map(Object.entries(counts).map(([id, n]) => [Number(id), n])))
+    Promise.all([getMaterialPopularity(), getMaterialImages().catch(() => ({})), canEditMaterialImages().catch(() => false)])
+      .then(([counts, imgs, canEdit]) => {
+        if (cancelled) return
+        setPopularity(new Map(Object.entries(counts).map(([id, n]) => [Number(id), n])))
+        setImages(imgs)
+        setCanEditImages(canEdit)
       })
       .catch(() => {})
       .finally(() => {
@@ -130,6 +208,64 @@ export default function MaterialShop({
   const basketCount = quantities.size
   const tokens = result?.tokens || []
 
+  async function uploadPhoto(materialId: number, file: File) {
+    setUploadingId(materialId)
+    try {
+      const small = await shrinkImage(file).catch(() => file)
+      const form = new FormData()
+      form.append('file', new File([small], 'photo.jpg', { type: small.type || 'image/jpeg' }))
+      const res = await uploadMaterialImage(materialId, form)
+      if ('error' in res) toast.error(res.error)
+      else {
+        setImages((prev) => ({ ...prev, [materialId]: res.url }))
+        toast.success('บันทึกรูปแล้ว')
+      }
+    } finally {
+      setUploadingId(null)
+    }
+  }
+
+  function renderThumb(r: Row) {
+    const url = images[r.item.id]
+    const Icon = categoryIcon(r.category)
+    const box = 'relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-slate-400'
+    const picture = url ? (
+      // eslint-disable-next-line @next/next/no-img-element -- small public storage thumbnails; no Next image optimisation needed
+      <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
+    ) : (
+      <Icon className="h-6 w-6" aria-hidden />
+    )
+    if (url && !canEditImages) {
+      return (
+        <button type="button" className={box} aria-label={`ดูรูป ${r.item.name}`} onClick={() => setPreview({ url, name: r.item.name })}>
+          {picture}
+        </button>
+      )
+    }
+    if (!canEditImages) return <div className={box}>{picture}</div>
+    return (
+      <label className={`${box} cursor-pointer`} title={url ? 'เปลี่ยนรูป' : 'เพิ่มรูป'}>
+        {picture}
+        <span className="absolute bottom-0 right-0 rounded-tl-md bg-white/90 p-0.5 text-indigo-600">
+          <Camera className="h-3 w-3" aria-hidden />
+        </span>
+        {uploadingId === r.item.id && <span className="absolute inset-0 animate-pulse bg-white/70" />}
+        <input
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          aria-label={`${url ? 'เปลี่ยนรูป' : 'เพิ่มรูป'} ${r.item.name}`}
+          disabled={uploadingId != null}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) void uploadPhoto(r.item.id, file)
+          }}
+        />
+      </label>
+    )
+  }
+
   function renderRow(r: Row) {
     const m = r.item
     const qty = quantities.get(m.id)
@@ -138,7 +274,8 @@ export default function MaterialShop({
     const sameUnit = (units.get(m.id) || m.unit) === (remaining?.unit || m.unit)
     const over = remaining != null && sameUnit && qtyNum > remaining.remaining
     return (
-      <div key={m.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-slate-100 py-2.5 first:border-t-0">
+      <div key={m.id} className="grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-slate-100 py-2.5 first:border-t-0">
+        <div className="row-span-2 self-center">{renderThumb(r)}</div>
         <p className="line-clamp-3 min-w-0 break-words text-sm leading-snug text-slate-800">
           {highlightParts(m.name, tokens).map((p, i) =>
             p.hit ? (
@@ -193,7 +330,7 @@ export default function MaterialShop({
             </button>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+        <div className="col-start-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
           <span>{m.unit}</span>
           <span aria-hidden>·</span>
           <span>
@@ -410,6 +547,18 @@ export default function MaterialShop({
           </>
         )}
       </div>
+      {preview && (
+        <button
+          type="button"
+          onClick={() => setPreview(null)}
+          aria-label="ปิดรูป"
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-slate-900/80 p-6 text-white"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- public storage photo */}
+          <img src={preview.url} alt={preview.name} className="max-h-[70%] max-w-full rounded-xl object-contain" />
+          <span className="text-center text-sm">{preview.name}</span>
+        </button>
+      )}
     </Modal>
   )
 }
