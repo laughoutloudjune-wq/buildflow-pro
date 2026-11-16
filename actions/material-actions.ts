@@ -55,6 +55,27 @@ export async function getMaterialPickerOptions(): Promise<MaterialPickerOption[]
   )
 }
 
+/** How often each material was asked for or ordered before, for the "ขอบ่อย"
+ * shelf and ranking in the purchase request picker: PO lines count once,
+ * request lines twice (they are what foremen themselves pick). Reads only
+ * material ids - no prices, suppliers or quantities leave the server. */
+export async function getMaterialPopularity(): Promise<Record<number, number>> {
+  await requireModuleAccess(['materials', 'foreman', 'procurement'])
+  const supabase = await createClient()
+  const [poLines, requestLines] = await Promise.all([
+    fetchAllRows<{ material_type_id: number | null }>((from, to) =>
+      supabase.from('purchase_order_items').select('material_type_id').order('id').range(from, to)
+    ),
+    fetchAllRows<{ material_type_id: number | null }>((from, to) =>
+      supabase.from('purchase_request_items').select('material_type_id').order('id').range(from, to)
+    ),
+  ])
+  const counts: Record<number, number> = {}
+  for (const l of poLines) if (l.material_type_id) counts[l.material_type_id] = (counts[l.material_type_id] || 0) + 1
+  for (const l of requestLines) if (l.material_type_id) counts[l.material_type_id] = (counts[l.material_type_id] || 0) + 2
+  return counts
+}
+
 /** Same rows as getMaterialTypes, trimmed to the columns the materials
  * settings page table actually renders - see MaterialCatalogRow. This is the
  * only caller that needs both active and inactive rows, which on a 1000+ row

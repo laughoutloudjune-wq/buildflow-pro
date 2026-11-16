@@ -15,6 +15,7 @@ import { getBoqRemainingForRequest, type BoqRemainingRow } from '@/actions/procu
 import { getUnitConversions } from '@/actions/procurement/unit-conversions'
 import UnitConversionNote from '@/components/procurement/UnitConversionNote'
 import { toBaseQty, UNKNOWN_CONVERSION_LABEL, type UnitConversions } from '@/lib/procurement/units'
+import MaterialShop from '@/components/procurement/MaterialShop'
 import PurchasePurposePicker, { usePurchasePurpose, type PurchasePurpose } from '@/components/procurement/PurchasePurposePicker'
 
 type PlotScope = 'none' | 'plot' | 'group' | 'multi'
@@ -196,26 +197,6 @@ function PurchaseRequestEditForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
-  // Picking a material from the search box adds a row and moves the cursor to
-  // its quantity; Enter there returns to the search box for the next one.
-  function addMaterial(material: MaterialPickerOption) {
-    const index = lines.length
-    setLines((prev) => [
-      ...prev,
-      {
-        material_type_id: material.id,
-        quantity_requested: '',
-        unit: material.unit || '',
-        masterUnit: material.unit || '',
-        otherUnit: false,
-        note: '',
-        boq_id: null,
-        material_name: material.name,
-      },
-    ])
-    setTimeout(() => document.getElementById(`pr-qty-${index}`)?.focus(), 0)
-  }
-
   // The BOQ job picker's options: every job belonging to any plot currently
   // in scope's house model. Resolved the same way regardless of which of
   // the three plot-scope shapes is active, since a saved group's members
@@ -277,6 +258,56 @@ function PurchaseRequestEditForm({
       cancelled = true
     }
   }, [materialIdsKey, conversionsRev])
+
+  // The shop's basket is the lines themselves: one entry per material (the
+  // first line for it, if a material appears twice for different jobs).
+  const [shopOpen, setShopOpen] = useState(false)
+  const basketQuantities = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const l of lines) if (!map.has(l.material_type_id)) map.set(l.material_type_id, l.quantity_requested)
+    return map
+  }, [lines])
+  const basketUnits = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const l of lines) if (!map.has(l.material_type_id)) map.set(l.material_type_id, l.unit)
+    return map
+  }, [lines])
+  const scopeLabel = useMemo(() => {
+    if (purpose !== 'project') return null
+    if (plotScope === 'group') return plotGroups.find((g) => g.id === plotGroupId)?.name || null
+    const names = resolvedPlotIds.map((id) => plots.find((p) => p.id === id)?.name).filter(Boolean) as string[]
+    if (names.length === 0) return null
+    const shown = names.slice(0, 4).join(', ')
+    return `แปลง ${shown}${names.length > 4 ? ` และอีก ${names.length - 4} แปลง` : ''}`
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [purpose, plotScope, plotGroupId, plotGroups, plots, resolvedPlotIds.join(',')])
+
+  function addFromShop(material: MaterialPickerOption) {
+    setLines((prev) => [
+      ...prev,
+      {
+        material_type_id: material.id,
+        quantity_requested: '1',
+        unit: material.unit || '',
+        masterUnit: material.unit || '',
+        otherUnit: false,
+        note: '',
+        boq_id: null,
+        material_name: material.name,
+      },
+    ])
+  }
+
+  function setShopQuantity(materialId: number, quantity: string) {
+    setLines((prev) => {
+      const at = prev.findIndex((l) => l.material_type_id === materialId)
+      if (at < 0) return prev
+      // 0 removes the item, like taking it out of a shopping basket; an
+      // empty box while typing keeps the item (the shop sends 0 on blur).
+      if (quantity !== '' && !(Number(quantity) > 0)) return prev.filter((_, i) => i !== at)
+      return prev.map((l, i) => (i === at ? { ...l, quantity_requested: quantity } : l))
+    })
+  }
 
   function updateLine(index: number, patch: Partial<Line>) {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
@@ -442,7 +473,7 @@ function PurchaseRequestEditForm({
               return (
               <div key={i} className="rounded-lg border border-slate-200 p-2">
                 <div className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800" title={lineName}>
+                  <div className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-medium text-slate-800" title={lineName}>
                     {lineName}
                   </div>
                   <input
@@ -453,10 +484,8 @@ function PurchaseRequestEditForm({
                     value={line.quantity_requested}
                     onChange={(e) => updateLine(i, { quantity_requested: e.target.value })}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        document.getElementById('pr-material-search')?.focus()
-                      }
+                      // Enter must not submit the form from a quantity box.
+                      if (e.key === 'Enter') e.preventDefault()
                     }}
                     placeholder="จำนวน"
                     className="w-24"
@@ -548,11 +577,28 @@ function PurchaseRequestEditForm({
           </div>
         )}
 
-        <MaterialSearch
+        {lines.length === 0 && (
+          <p className="mb-2 rounded-lg border border-dashed border-slate-200 py-4 text-center text-sm text-slate-500">
+            ยังไม่มีรายการ กด &quot;+ เพิ่มวัสดุ&quot; เพื่อเลือก
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => setShopOpen(true)}
+          className={`flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50 py-3 text-base font-semibold text-indigo-700 hover:border-indigo-500 ${lines.length > 0 ? 'mt-3' : ''}`}
+        >
+          <Plus className="h-4 w-4" /> เพิ่มวัสดุ
+        </button>
+        <MaterialShop
+          isOpen={shopOpen}
+          onClose={() => setShopOpen(false)}
           materials={materials}
           remainingByMaterial={remainingByMaterial}
-          hasLines={lines.length > 0}
-          onPick={addMaterial}
+          scopeLabel={scopeLabel}
+          quantities={basketQuantities}
+          units={basketUnits}
+          onAdd={addFromShop}
+          onSetQuantity={setShopQuantity}
         />
       </div>
 
@@ -615,99 +661,6 @@ function LineHints({
       )}
       {qty > 0 && base == null && line.unit.trim() !== '' && (
         <p className="mt-0.5 text-[11px] text-slate-500">{UNKNOWN_CONVERSION_LABEL}</p>
-      )}
-    </div>
-  )
-}
-
-/** The one way to add a material: a big search box under the list. Only
- * materials already in the catalog can be picked. */
-function MaterialSearch({
-  materials,
-  remainingByMaterial,
-  hasLines,
-  onPick,
-}: {
-  materials: MaterialPickerOption[]
-  remainingByMaterial: Map<number, BoqRemainingRow>
-  hasLines: boolean
-  onPick: (m: MaterialPickerOption) => void
-}) {
-  const [query, setQuery] = useState('')
-  const [open, setOpen] = useState(false)
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const matched = q ? materials.filter((m) => m.name.toLowerCase().includes(q)) : materials
-    // Materials the BOQ allows for these plots come first.
-    return [...matched]
-      .sort((a, b) => Number(remainingByMaterial.has(b.id)) - Number(remainingByMaterial.has(a.id)))
-      .slice(0, 30)
-  }, [materials, query, remainingByMaterial])
-
-  function pick(m: MaterialPickerOption) {
-    onPick(m)
-    setQuery('')
-    setOpen(false)
-  }
-
-  return (
-    <div className={`relative ${hasLines ? 'mt-3' : ''}`}>
-      {!hasLines && (
-        <p className="mb-2 rounded-lg border border-dashed border-slate-200 py-4 text-center text-sm text-slate-500">
-          ยังไม่มีรายการ พิมพ์ชื่อวัสดุด้านล่างเพื่อเพิ่ม
-        </p>
-      )}
-      <div className="relative">
-        <Plus className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-500" />
-        <input
-          id="pr-material-search"
-          type="text"
-          value={query}
-          autoComplete="off"
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setOpen(true)
-          }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              if (results[0]) pick(results[0])
-            }
-          }}
-          placeholder="+ พิมพ์ชื่อวัสดุที่จะขอ"
-          className="w-full rounded-xl border-2 border-indigo-200 py-3 pl-9 pr-3 text-base focus:border-indigo-500"
-        />
-      </div>
-      {open && (
-        <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-          {results.length === 0 ? (
-            <p className="px-3 py-3 text-sm text-slate-500">ไม่พบวัสดุนี้ในรายการ หากต้องการวัสดุใหม่ ให้แจ้งฝ่ายจัดซื้อเพิ่มให้</p>
-          ) : (
-            results.map((m) => {
-              const r = remainingByMaterial.get(m.id)
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => pick(m)}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-indigo-50"
-                >
-                  <span className="min-w-0 truncate text-slate-800">
-                    {m.name} <span className="text-slate-400">({m.unit})</span>
-                  </span>
-                  {r && (
-                    <span className="shrink-0 text-xs text-slate-500">
-                      BOQ เหลือ {fmt(Math.max(r.remaining, 0))} {r.unit}
-                    </span>
-                  )}
-                </button>
-              )
-            })
-          )}
-        </div>
       )}
     </div>
   )
