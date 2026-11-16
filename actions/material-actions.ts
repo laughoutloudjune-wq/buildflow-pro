@@ -294,18 +294,74 @@ export type BulkRemoveResult = {
 
 /** Same rule as removeMaterialType, for many rows: never-used materials are
  * deleted, used ones are deactivated. One row failing doesn't stop the rest. */
+const USAGE_TABLES = [
+  ['boq_material_items', 'material_type_id'],
+  ['po_boq_overrides', 'material_type_id'],
+  ['purchase_order_items', 'material_type_id'],
+  ['purchase_request_items', 'material_type_id'],
+  ['stock_balances', 'material_type_id'],
+  ['stock_movements', 'material_type_id'],
+  ['material_types', 'generic_material_id'],
+] as const
+
 export async function bulkRemoveMaterialTypes(ids: number[]): Promise<BulkRemoveResult> {
   await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
   const out: BulkRemoveResult = { deletedIds: [], deactivated: [], failed: 0, firstError: null }
-  for (const id of Array.from(new Set(ids))) {
-    const r = await removeOne(supabase, id)
-    if (!r.ok) {
-      out.failed++
-      out.firstError ??= r.error
-    } else if (r.outcome === 'deleted') out.deletedIds.push(r.id)
-    else out.deactivated.push(r.data)
+  const uniqueIds = Array.from(new Set(ids))
+
+  // Doing one delete per row would be hundreds of round trips for a "clean up
+  // everything inactive" click, so first ask which ids are referenced anywhere
+  // (a few queries), delete the rest in chunks and deactivate the used ones in
+  // one update. The foreign keys stay the safety net: if a chunk delete is
+  // still refused (a table added after this list), that chunk falls back to
+  // the per-row rule.
+  const used = new Set<number>()
+  for (let i = 0; i < uniqueIds.length; i += BULK_CHUNK_SIZE) {
+    const chunk = uniqueIds.slice(i, i + BULK_CHUNK_SIZE)
+    for (const [table, column] of USAGE_TABLES) {
+      const { data, error } = await supabase.from(table).select(column).in(column, chunk)
+      if (error) {
+        out.failed += chunk.length
+        out.firstError ??= `ตรวจสอบการใช้งานไม่สำเร็จ: ${error.message}`
+        return out
+      }
+      for (const row of (data || []) as unknown as Record<string, number | null>[]) {
+        const v = row[column]
+        if (v != null) used.add(v)
+      }
+    }
   }
+
+  const unused = uniqueIds.filter((id) => !used.has(id))
+  const usedIds = uniqueIds.filter((id) => used.has(id))
+
+  for (let i = 0; i < unused.length; i += BULK_CHUNK_SIZE) {
+    const chunk = unused.slice(i, i + BULK_CHUNK_SIZE)
+    const { data, error } = await supabase.from('material_types').delete().in('id', chunk).select('id')
+    if (!error) {
+      out.deletedIds.push(...(data || []).map((r) => r.id as number))
+      continue
+    }
+    for (const id of chunk) {
+      const r = await removeOne(supabase, id)
+      if (!r.ok) {
+        out.failed++
+        out.firstError ??= r.error
+      } else if (r.outcome === 'deleted') out.deletedIds.push(r.id)
+      else out.deactivated.push(r.data)
+    }
+  }
+
+  if (usedIds.length > 0) {
+    try {
+      out.deactivated.push(...(await bulkUpdate(supabase, usedIds, { is_active: false })))
+    } catch (e) {
+      out.failed += usedIds.length
+      out.firstError ??= e instanceof Error ? e.message : 'ปิดใช้งานไม่สำเร็จ'
+    }
+  }
+
   revalidatePath('/dashboard/settings/materials')
   return out
 }
