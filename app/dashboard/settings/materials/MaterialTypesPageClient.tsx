@@ -14,13 +14,13 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { formatCurrency } from '@/lib/currency'
 import {
-  bulkDeactivateMaterialTypes,
+  bulkRemoveMaterialTypes,
   bulkReactivateMaterialTypes,
   bulkSetMaterialCategory,
   bulkSetMaterialRequestable,
   bulkSetMaterialUnit,
   createMaterialType,
-  deactivateMaterialType,
+  removeMaterialType,
   getMaterialCatalog,
   reactivateMaterialType,
   updateMaterialPrice,
@@ -71,6 +71,7 @@ export default function MaterialTypesPageClient({
   const [isBulkCategoryCustom, setIsBulkCategoryCustom] = useState(false)
   const [isBulkUnitOpen, setIsBulkUnitOpen] = useState(false)
   const [bulkUnitDraft, setBulkUnitDraft] = useState('')
+  const [isCleanupOpen, setIsCleanupOpen] = useState(false)
   const [isBulkDeactivateConfirmOpen, setIsBulkDeactivateConfirmOpen] = useState(false)
   const [deactivateTarget, setDeactivateTarget] = useState<MaterialCatalogRow | null>(null)
 
@@ -216,7 +217,7 @@ export default function MaterialTypesPageClient({
     startTransition(async () => {
       try {
         if (editingMaterial) {
-          let updated = await updateMaterialType(
+          const saved = await updateMaterialType(
             editingMaterial.id,
             nameDraft,
             unitDraft,
@@ -225,13 +226,22 @@ export default function MaterialTypesPageClient({
             isRequestableDraft,
             leadTimeDays
           )
+          if (!saved.ok) {
+            toast.error(saved.error)
+            return
+          }
+          let updated = saved.data
           if (price !== editingMaterial.current_price) {
             updated = await updateMaterialPrice(editingMaterial.id, price)
           }
           patchMaterial(updated)
         } else {
-          const created = await createMaterialType(nameDraft, unitDraft, price, categoryDraft, reorderPoint, isRequestableDraft, leadTimeDays)
-          insertMaterial(created)
+          const result = await createMaterialType(nameDraft, unitDraft, price, categoryDraft, reorderPoint, isRequestableDraft, leadTimeDays)
+          if (!result.ok) {
+            toast.error(result.error)
+            return
+          }
+          insertMaterial(result.data)
         }
         closeModal()
         toast.success('บันทึกข้อมูลวัสดุเรียบร้อยแล้ว')
@@ -256,21 +266,40 @@ export default function MaterialTypesPageClient({
     setMaterials((prev) => prev.map((m) => byId.get(m.id) || m))
   }
 
+  const inactiveIds = materials.filter((m) => m.is_active === false).map((m) => m.id)
+
   function handleBulkDeactivate() {
     setIsBulkDeactivateConfirmOpen(true)
   }
 
-  function handleConfirmBulkDeactivate() {
+  function runBulkRemove(ids: number[], afterDone: () => void) {
     setIsBulkPending(true)
-    bulkDeactivateMaterialTypes(Array.from(selected))
-      .then((updated) => {
-        patchMaterials(updated)
+    bulkRemoveMaterialTypes(ids)
+      .then((r) => {
+        const gone = new Set(r.deletedIds)
+        const byId = new Map(r.deactivated.map((m) => [m.id, m]))
+        setMaterials((prev) => prev.filter((m) => !gone.has(m.id)).map((m) => byId.get(m.id) || m))
         setSelected(new Set())
-        setIsBulkDeactivateConfirmOpen(false)
-        toast.success(`ปิดใช้งานแล้ว ${updated.length} รายการ`)
+        afterDone()
+        const parts = [`ลบแล้ว ${r.deletedIds.length} รายการ`, `ปิดใช้งานแทน ${r.deactivated.length} รายการ (เคยถูกใช้แล้ว)`]
+        if (r.failed > 0) {
+          toast.error(`${parts.join(' · ')} · ไม่สำเร็จ ${r.failed} รายการ: ${r.firstError}`)
+        } else if (r.deactivated.length > 0) {
+          toast.warning(parts.join(' · '))
+        } else {
+          toast.success(parts[0])
+        }
       })
-      .catch((error) => toast.error(error instanceof Error ? error.message : 'ปิดใช้งานไม่สำเร็จ'))
+      .catch((error) => toast.error(error instanceof Error ? error.message : 'ลบวัสดุไม่สำเร็จ'))
       .finally(() => setIsBulkPending(false))
+  }
+
+  function handleConfirmBulkDeactivate() {
+    runBulkRemove(Array.from(selected), () => setIsBulkDeactivateConfirmOpen(false))
+  }
+
+  function handleConfirmCleanup() {
+    runBulkRemove(inactiveIds, () => setIsCleanupOpen(false))
   }
 
   function handleBulkReactivate() {
@@ -343,12 +372,21 @@ export default function MaterialTypesPageClient({
     const material = deactivateTarget
     startTransition(async () => {
       try {
-        const updated = await deactivateMaterialType(material.id)
-        patchMaterial(updated)
+        const result = await removeMaterialType(material.id)
+        if (!result.ok) {
+          toast.error(result.error)
+          return
+        }
         setDeactivateTarget(null)
-        toast.success('ปิดใช้งานวัสดุแล้ว')
+        if (result.outcome === 'deleted') {
+          setMaterials((prev) => prev.filter((m) => m.id !== result.id))
+          toast.success('ลบวัสดุแล้ว (ไม่เคยถูกใช้งาน)')
+        } else {
+          patchMaterial(result.data)
+          toast.warning(result.reason)
+        }
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ปิดใช้งานไม่สำเร็จ')
+        toast.error(error instanceof Error ? error.message : 'ลบวัสดุไม่สำเร็จ')
       }
     })
   }
@@ -410,6 +448,12 @@ export default function MaterialTypesPageClient({
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
           แสดงรายการที่ปิดใช้งานแล้ว
         </label>
+        {inactiveIds.length > 0 && (
+          <Button type="button" variant="secondary" size="sm" onClick={() => setIsCleanupOpen(true)} disabled={isBulkPending}>
+            <Trash2 className="h-3.5 w-3.5" />
+            ล้างรายการที่ปิดใช้งาน ({inactiveIds.length})
+          </Button>
+        )}
         <span className="ml-auto text-sm text-slate-500">{filtered.length} รายการ</span>
       </div>
 
@@ -438,7 +482,7 @@ export default function MaterialTypesPageClient({
             </Button>
             <Button type="button" variant="danger" size="sm" onClick={handleBulkDeactivate} disabled={isBulkPending}>
               {isBulkPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-              ปิดใช้งาน
+              ลบ / ปิดใช้งาน
             </Button>
             <button
               type="button"
@@ -522,7 +566,7 @@ export default function MaterialTypesPageClient({
                         items={[
                           { label: 'แก้ไข', icon: <Pencil />, disabled: isPending, onClick: () => openEditModal(material) },
                           material.is_active
-                            ? { label: 'ปิดใช้งาน', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeactivateTarget(material) }
+                            ? { label: 'ลบ / ปิดใช้งาน', icon: <Trash2 />, danger: true, disabled: isPending, onClick: () => setDeactivateTarget(material) }
                             : { label: 'เปิดใช้งานอีกครั้ง', icon: <RotateCcw />, disabled: isPending, onClick: () => handleReactivate(material) },
                         ]}
                       />
@@ -740,9 +784,9 @@ export default function MaterialTypesPageClient({
 
       <ConfirmDialog
         isOpen={isBulkDeactivateConfirmOpen}
-        title="ปิดใช้งานวัสดุหลายรายการ"
-        message={`ยืนยันปิดใช้งานวัสดุที่เลือก ${selected.size} รายการ?`}
-        confirmLabel={isBulkPending ? 'กำลังบันทึก...' : 'ปิดใช้งาน'}
+        title="ลบวัสดุหลายรายการ"
+        message={`ยืนยันลบวัสดุที่เลือก ${selected.size} รายการ? รายการที่ไม่เคยถูกใช้งานจะถูกลบถาวร รายการที่เคยถูกใช้แล้วจะถูกปิดใช้งานแทน`}
+        confirmLabel={isBulkPending ? 'กำลังบันทึก...' : 'ลบ'}
         cancelLabel="ยกเลิก"
         tone="danger"
         busy={isBulkPending}
@@ -751,10 +795,22 @@ export default function MaterialTypesPageClient({
       />
 
       <ConfirmDialog
+        isOpen={isCleanupOpen}
+        title="ล้างรายการที่ปิดใช้งาน"
+        message={`วัสดุที่ปิดใช้งานอยู่ ${inactiveIds.length} รายการ: รายการที่ไม่เคยถูกใช้งานเลยจะถูกลบถาวร ส่วนรายการที่เคยถูกใช้แล้วจะคงไว้ตามเดิม`}
+        confirmLabel={isBulkPending ? 'กำลังบันทึก...' : 'ล้าง'}
+        cancelLabel="ยกเลิก"
+        tone="danger"
+        busy={isBulkPending}
+        onCancel={() => setIsCleanupOpen(false)}
+        onConfirm={handleConfirmCleanup}
+      />
+
+      <ConfirmDialog
         isOpen={deactivateTarget !== null}
-        title="ปิดใช้งานวัสดุ"
-        message={deactivateTarget ? `ยืนยันปิดใช้งานวัสดุ "${deactivateTarget.name}"? รายการนี้จะไม่ปรากฏให้เลือกใหม่ แต่ประวัติเดิมยังอยู่ครบ` : ''}
-        confirmLabel={isPending ? 'กำลังบันทึก...' : 'ปิดใช้งาน'}
+        title="ลบวัสดุ"
+        message={deactivateTarget ? `ยืนยันลบวัสดุ "${deactivateTarget.name}"? ถ้าไม่เคยถูกใช้งานเลย ระบบจะลบถาวร (ชื่อนี้ใช้ซ้ำได้อีก) ถ้าเคยถูกใช้แล้ว ระบบจะปิดใช้งานแทนและประวัติเดิมยังอยู่ครบ` : ''}
+        confirmLabel={isPending ? 'กำลังบันทึก...' : 'ลบ'}
         cancelLabel="ยกเลิก"
         tone="danger"
         busy={isPending}

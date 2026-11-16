@@ -144,7 +144,12 @@ export default function BoqMaterialItemsModal({ isOpen, onClose, boqId, boqItemN
     setIsSaving(true)
     setError(null)
     try {
-      const created = await createMaterialType(newMaterialName, newMaterialUnit || 'unit', parseFloat(newMaterialPrice) || 0)
+      const result = await createMaterialType(newMaterialName, newMaterialUnit || 'unit', parseFloat(newMaterialPrice) || 0)
+      if (!result.ok) {
+        setError(result.error)
+        return
+      }
+      const created = result.data
       setNewMaterialName('')
       setNewMaterialUnit('')
       setNewMaterialPrice('0')

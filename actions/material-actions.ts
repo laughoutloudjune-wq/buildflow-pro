@@ -80,6 +80,44 @@ export async function getMaterialCatalog(activeOnly = false): Promise<MaterialCa
 // is about avoiding a redundant round-trip on the click that already has
 // the answer, not about skipping cache invalidation.
 
+// A server action that throws shows the user only Next's generic "An error
+// occurred in the Server Components render" in production - the real message
+// is stripped. So material save returns a result object with a Thai message
+// instead of throwing.
+export type MaterialSaveResult = { ok: true; data: MaterialType } | { ok: false; error: string }
+
+type PgLikeError = { code?: string; message?: string }
+
+function describeMaterialSaveError(error: PgLikeError): string {
+  if (error.code === '23505' || /duplicate key/i.test(error.message ?? '')) {
+    return 'มีวัสดุชื่อนี้อยู่ในระบบแล้ว กรุณาใช้ชื่ออื่น หรือแก้ไขรายการเดิมแทน'
+  }
+  if (error.code === '42501' || /row-level security/i.test(error.message ?? '')) {
+    return 'คุณไม่มีสิทธิ์แก้ไขข้อมูลวัสดุ'
+  }
+  return `บันทึกวัสดุไม่สำเร็จ: ${error.message ?? 'ไม่ทราบสาเหตุ'}`
+}
+
+/** Looks for another material with exactly this name. Uses .eq (the value
+ * travels as a parameter, never spliced into a filter string), so quotes,
+ * commas and parentheses in a name are safe. Returns a Thai message naming the
+ * clash, or null if the name is free. Inactive materials count too - the DB
+ * unique constraint on name covers them. */
+async function findDuplicateMaterialName(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  name: string,
+  excludeId?: number
+): Promise<string | null> {
+  let query = supabase.from('material_types').select('id, name, is_active').eq('name', name).limit(1)
+  if (excludeId != null) query = query.neq('id', excludeId)
+  const { data } = await query
+  const hit = data?.[0]
+  if (!hit) return null
+  return hit.is_active === false
+    ? `มีวัสดุชื่อนี้อยู่แล้วแต่ถูกปิดใช้งาน (รหัส ${hit.id}) กรุณาเปิดใช้งานรายการเดิม หรือใช้ชื่ออื่น`
+    : `มีวัสดุชื่อนี้อยู่แล้ว (รหัส ${hit.id}) กรุณาใช้ชื่ออื่น หรือแก้ไขรายการเดิมแทน`
+}
+
 export async function createMaterialType(
   name: string,
   unit: string,
@@ -88,13 +126,16 @@ export async function createMaterialType(
   reorderPoint?: number | null,
   isRequestable = true,
   leadTimeDays?: number | null
-): Promise<MaterialType> {
+): Promise<MaterialSaveResult> {
   await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
   const user = await getCurrentUser()
 
   const trimmedName = name.trim()
-  if (!trimmedName) throw new Error('Material name is required')
+  if (!trimmedName) return { ok: false, error: 'กรุณาใส่ชื่อวัสดุ' }
+
+  const duplicate = await findDuplicateMaterialName(supabase, trimmedName)
+  if (duplicate) return { ok: false, error: duplicate }
 
   const { data, error } = await supabase
     .from('material_types')
@@ -114,9 +155,9 @@ export async function createMaterialType(
     .select()
     .single()
 
-  if (error) throw new Error(error.message)
+  if (error) return { ok: false, error: describeMaterialSaveError(error) }
   revalidatePath('/dashboard/settings/materials')
-  return data
+  return { ok: true, data }
 }
 
 /** Updates name/unit/category/reorder point/requestable flag/lead time. Use
@@ -130,12 +171,15 @@ export async function updateMaterialType(
   reorderPoint?: number | null,
   isRequestable = true,
   leadTimeDays?: number | null
-): Promise<MaterialType> {
+): Promise<MaterialSaveResult> {
   await requireAuthRole(['admin', 'pm'])
   const supabase = await createClient()
 
   const trimmedName = name.trim()
-  if (!trimmedName) throw new Error('Material name is required')
+  if (!trimmedName) return { ok: false, error: 'กรุณาใส่ชื่อวัสดุ' }
+
+  const duplicate = await findDuplicateMaterialName(supabase, trimmedName, id)
+  if (duplicate) return { ok: false, error: duplicate }
 
   const { data, error } = await supabase
     .from('material_types')
@@ -151,9 +195,9 @@ export async function updateMaterialType(
     .select()
     .single()
 
-  if (error) throw new Error(error.message)
+  if (error) return { ok: false, error: describeMaterialSaveError(error) }
   revalidatePath('/dashboard/settings/materials')
-  return data
+  return { ok: true, data }
 }
 
 export async function updateMaterialPrice(id: number, currentPrice: number): Promise<MaterialType> {
@@ -190,6 +234,136 @@ export async function deactivateMaterialType(id: number): Promise<MaterialType> 
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/settings/materials')
   return data
+}
+
+export type MaterialRemoveResult =
+  | { ok: true; outcome: 'deleted'; id: number }
+  | { ok: true; outcome: 'deactivated'; data: MaterialType; reason: string }
+  | { ok: false; error: string }
+
+/** Removes a material the right way: a real delete if it was never used, a
+ * soft deactivate if it was. The database foreign keys are the judge of
+ * "used" (BOQ lines, PR/PO lines, PO BOQ overrides, stock balances and stock
+ * movements all block the delete), so any table added later that references
+ * material_types is covered automatically - no list to keep in sync here.
+ * Unit conversions cascade, which is right: they are only this material's
+ * own settings. Returns a result instead of throwing so production shows the
+ * Thai message. */
+async function removeOne(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  id: number
+): Promise<MaterialRemoveResult> {
+  const { data: deleted, error } = await supabase.from('material_types').delete().eq('id', id).select('id')
+  if (!error) {
+    if (!deleted || deleted.length === 0) return { ok: false, error: 'ไม่พบวัสดุนี้ หรือไม่มีสิทธิ์ลบ' }
+    return { ok: true, outcome: 'deleted', id }
+  }
+
+  // 23503 = foreign_key_violation: the material is referenced somewhere.
+  if (error.code !== '23503') return { ok: false, error: `ลบวัสดุไม่สำเร็จ: ${error.message}` }
+
+  const { data, error: deactivateError } = await supabase
+    .from('material_types')
+    .update({ is_active: false })
+    .eq('id', id)
+    .select()
+    .single()
+  if (deactivateError) return { ok: false, error: `ปิดใช้งานวัสดุไม่สำเร็จ: ${deactivateError.message}` }
+  return {
+    ok: true,
+    outcome: 'deactivated',
+    data,
+    reason: 'วัสดุนี้เคยถูกใช้แล้ว (ใบขอซื้อ/ใบสั่งซื้อ/BOQ/สต็อก) จึงลบไม่ได้ ระบบปิดใช้งานแทน ประวัติเดิมยังอยู่ครบ',
+  }
+}
+
+export async function removeMaterialType(id: number): Promise<MaterialRemoveResult> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  const result = await removeOne(supabase, id)
+  if (result.ok) revalidatePath('/dashboard/settings/materials')
+  return result
+}
+
+export type BulkRemoveResult = {
+  deletedIds: number[]
+  deactivated: MaterialType[]
+  failed: number
+  firstError: string | null
+}
+
+/** Same rule as removeMaterialType, for many rows: never-used materials are
+ * deleted, used ones are deactivated. One row failing doesn't stop the rest. */
+const USAGE_TABLES = [
+  ['boq_material_items', 'material_type_id'],
+  ['po_boq_overrides', 'material_type_id'],
+  ['purchase_order_items', 'material_type_id'],
+  ['purchase_request_items', 'material_type_id'],
+  ['stock_balances', 'material_type_id'],
+  ['stock_movements', 'material_type_id'],
+  ['material_types', 'generic_material_id'],
+] as const
+
+export async function bulkRemoveMaterialTypes(ids: number[]): Promise<BulkRemoveResult> {
+  await requireAuthRole(['admin', 'pm'])
+  const supabase = await createClient()
+  const out: BulkRemoveResult = { deletedIds: [], deactivated: [], failed: 0, firstError: null }
+  const uniqueIds = Array.from(new Set(ids))
+
+  // Doing one delete per row would be hundreds of round trips for a "clean up
+  // everything inactive" click, so first ask which ids are referenced anywhere
+  // (a few queries), delete the rest in chunks and deactivate the used ones in
+  // one update. The foreign keys stay the safety net: if a chunk delete is
+  // still refused (a table added after this list), that chunk falls back to
+  // the per-row rule.
+  const used = new Set<number>()
+  for (let i = 0; i < uniqueIds.length; i += BULK_CHUNK_SIZE) {
+    const chunk = uniqueIds.slice(i, i + BULK_CHUNK_SIZE)
+    for (const [table, column] of USAGE_TABLES) {
+      const { data, error } = await supabase.from(table).select(column).in(column, chunk)
+      if (error) {
+        out.failed += chunk.length
+        out.firstError ??= `ตรวจสอบการใช้งานไม่สำเร็จ: ${error.message}`
+        return out
+      }
+      for (const row of (data || []) as unknown as Record<string, number | null>[]) {
+        const v = row[column]
+        if (v != null) used.add(v)
+      }
+    }
+  }
+
+  const unused = uniqueIds.filter((id) => !used.has(id))
+  const usedIds = uniqueIds.filter((id) => used.has(id))
+
+  for (let i = 0; i < unused.length; i += BULK_CHUNK_SIZE) {
+    const chunk = unused.slice(i, i + BULK_CHUNK_SIZE)
+    const { data, error } = await supabase.from('material_types').delete().in('id', chunk).select('id')
+    if (!error) {
+      out.deletedIds.push(...(data || []).map((r) => r.id as number))
+      continue
+    }
+    for (const id of chunk) {
+      const r = await removeOne(supabase, id)
+      if (!r.ok) {
+        out.failed++
+        out.firstError ??= r.error
+      } else if (r.outcome === 'deleted') out.deletedIds.push(r.id)
+      else out.deactivated.push(r.data)
+    }
+  }
+
+  if (usedIds.length > 0) {
+    try {
+      out.deactivated.push(...(await bulkUpdate(supabase, usedIds, { is_active: false })))
+    } catch (e) {
+      out.failed += usedIds.length
+      out.firstError ??= e instanceof Error ? e.message : 'ปิดใช้งานไม่สำเร็จ'
+    }
+  }
+
+  revalidatePath('/dashboard/settings/materials')
+  return out
 }
 
 export async function reactivateMaterialType(id: number): Promise<MaterialType> {
