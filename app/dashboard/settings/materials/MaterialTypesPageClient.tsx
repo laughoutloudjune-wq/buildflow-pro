@@ -20,6 +20,7 @@ import {
   bulkSetMaterialRequestable,
   bulkSetMaterialUnit,
   createMaterialType,
+  getMaterialImages,
   deactivateMaterialType,
   getMaterialCatalog,
   reactivateMaterialType,
@@ -27,6 +28,7 @@ import {
   updateMaterialType,
 } from '@/actions/material-actions'
 import MaterialImportModal from '@/components/materials/MaterialImportModal'
+import MaterialPhotoField from '@/components/materials/MaterialPhotoField'
 import type { MaterialCatalogRow, MaterialType } from '@/lib/types/materials'
 import { TableFrame } from '@/components/ui/TableFrame'
 
@@ -73,6 +75,13 @@ export default function MaterialTypesPageClient({
   const [bulkUnitDraft, setBulkUnitDraft] = useState('')
   const [isBulkDeactivateConfirmOpen, setIsBulkDeactivateConfirmOpen] = useState(false)
   const [deactivateTarget, setDeactivateTarget] = useState<MaterialCatalogRow | null>(null)
+  // Photos load separately so the page still works if the photo column isn't there.
+  const [images, setImages] = useState<Record<number, string>>({})
+  useEffect(() => {
+    getMaterialImages()
+      .then(setImages)
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (initialError) toast.error(initialError)
@@ -584,6 +593,20 @@ export default function MaterialTypesPageClient({
               />
             )}
           </div>
+          <MaterialPhotoField
+            materialId={editingMaterial?.id ?? null}
+            url={editingMaterial ? images[editingMaterial.id] || null : null}
+            onChange={(url) => {
+              if (!editingMaterial) return
+              const id = editingMaterial.id
+              setImages((prev) => {
+                const next = { ...prev }
+                if (url) next[id] = url
+                else delete next[id]
+                return next
+              })
+            }}
+          />
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">หน่วย</label>

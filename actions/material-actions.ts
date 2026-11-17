@@ -121,6 +121,19 @@ export async function uploadMaterialImage(materialTypeId: number, formData: Form
   }
 }
 
+/** Take a material's photo off (the file stays in storage; nothing is deleted). */
+export async function removeMaterialImage(materialTypeId: number): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireAuthRole(['admin', 'pm'])
+    const supabase = await createClient()
+    const { error } = await supabase.from('material_types').update({ image_url: null }).eq('id', materialTypeId)
+    if (error) throw new Error(error.message)
+    return { ok: true }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'ลบรูปไม่สำเร็จ' }
+  }
+}
+
 /** Same rows as getMaterialTypes, trimmed to the columns the materials
  * settings page table actually renders - see MaterialCatalogRow. This is the
  * only caller that needs both active and inactive rows, which on a 1000+ row
