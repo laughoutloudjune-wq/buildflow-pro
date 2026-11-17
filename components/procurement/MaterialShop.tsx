@@ -2,36 +2,16 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import {
-  Bath,
-  BrickWall,
-  BriefcaseMedical,
-  Bolt,
-  Construction,
-  CookingPot,
   ChevronLeft,
-  DoorOpen,
-  Droplets,
-  Fence,
-  Grid2x2,
-  Hammer,
-  HardHat,
-  House,
-  Layers,
   Minus,
   Package,
-  Paintbrush,
-  PenLine,
   Plus,
   Search,
   ShoppingCart,
-  SprayCan,
-  TreePine,
-  Truck,
   X,
-  Zap,
-  type LucideIcon,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
+import { categoryIcon } from '@/lib/materials/categoryIcon'
 import { getMaterialImages, getMaterialPopularity } from '@/actions/material-actions'
 import type { MaterialPickerOption } from '@/lib/types/materials'
 import type { BoqRemainingRow } from '@/actions/procurement/boq-control'
@@ -48,33 +28,6 @@ const POPULAR_MIN = 4
 
 type Row = IndexedMaterial<MaterialPickerOption> & { approximate?: boolean }
 
-// A picture for materials that have no photo yet: one icon per category,
-// matched on words in the (existing) category name.
-const CATEGORY_ICONS: [RegExp, LucideIcon][] = [
-  [/ท่อ|ประปา/, Droplets],
-  [/เหล็ก|โลหะ/, Construction],
-  [/สกรู|ตะปู|พุก|น็อต|ยึด/, Bolt],
-  [/สี|กาว|เคลือบ/, Paintbrush],
-  [/เครื่องมือ/, Hammer],
-  [/หลังคา|ฝ้า|ผนัง/, House],
-  [/เครื่องเขียน|สำนักงาน/, PenLine],
-  [/ทำความสะอาด/, SprayCan],
-  [/ปูน|คอนกรีต|มวลรวม/, Layers],
-  [/อิฐ|บล็อก/, BrickWall],
-  [/กระเบื้อง|ปูพื้น/, Grid2x2],
-  [/ประตู|หน้าต่าง/, DoorOpen],
-  [/ไฟฟ้า/, Zap],
-  [/สุขภัณฑ์|ห้องน้ำ/, Bath],
-  [/ไม้/, TreePine],
-  [/บริการ|ขนส่ง|ค่าแรง/, Truck],
-  [/ครัว|ภาชนะ/, CookingPot],
-  [/รั้ว|นั่งร้าน/, Fence],
-  [/พยาบาล/, BriefcaseMedical],
-  [/นิรภัย/, HardHat],
-]
-function categoryIcon(category: string): LucideIcon {
-  return CATEGORY_ICONS.find(([re]) => re.test(category))?.[1] || Package
-}
 
 
 /**

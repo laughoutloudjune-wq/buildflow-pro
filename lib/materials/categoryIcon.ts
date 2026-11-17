@@ -1,0 +1,52 @@
+import {
+  Bath,
+  BrickWall,
+  BriefcaseMedical,
+  Bolt,
+  Construction,
+  CookingPot,
+  DoorOpen,
+  Droplets,
+  Fence,
+  Grid2x2,
+  Hammer,
+  HardHat,
+  House,
+  Layers,
+  Package,
+  Paintbrush,
+  PenLine,
+  SprayCan,
+  TreePine,
+  Truck,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react'
+
+// A picture for materials that have no photo yet: one icon per category,
+// matched on words in the (existing) category name.
+const CATEGORY_ICONS: [RegExp, LucideIcon][] = [
+  [/ท่อ|ประปา/, Droplets],
+  [/เหล็ก|โลหะ/, Construction],
+  [/สกรู|ตะปู|พุก|น็อต|ยึด/, Bolt],
+  [/สี|กาว|เคลือบ/, Paintbrush],
+  [/เครื่องมือ/, Hammer],
+  [/หลังคา|ฝ้า|ผนัง/, House],
+  [/เครื่องเขียน|สำนักงาน/, PenLine],
+  [/ทำความสะอาด/, SprayCan],
+  [/ปูน|คอนกรีต|มวลรวม/, Layers],
+  [/อิฐ|บล็อก/, BrickWall],
+  [/กระเบื้อง|ปูพื้น/, Grid2x2],
+  [/ประตู|หน้าต่าง/, DoorOpen],
+  [/ไฟฟ้า/, Zap],
+  [/สุขภัณฑ์|ห้องน้ำ/, Bath],
+  [/ไม้/, TreePine],
+  [/บริการ|ขนส่ง|ค่าแรง/, Truck],
+  [/ครัว|ภาชนะ/, CookingPot],
+  [/รั้ว|นั่งร้าน/, Fence],
+  [/พยาบาล/, BriefcaseMedical],
+  [/นิรภัย/, HardHat],
+]
+export function categoryIcon(category: string): LucideIcon {
+  return CATEGORY_ICONS.find(([re]) => re.test(category))?.[1] || Package
+}

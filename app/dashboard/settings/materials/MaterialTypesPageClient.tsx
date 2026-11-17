@@ -31,6 +31,7 @@ import MaterialImportModal from '@/components/materials/MaterialImportModal'
 import MaterialPhotoField from '@/components/materials/MaterialPhotoField'
 import type { MaterialCatalogRow, MaterialType } from '@/lib/types/materials'
 import { TableFrame } from '@/components/ui/TableFrame'
+import { categoryIcon } from '@/lib/materials/categoryIcon'
 
 const PAGE_SIZE = 25
 
@@ -77,6 +78,7 @@ export default function MaterialTypesPageClient({
   const [deactivateTarget, setDeactivateTarget] = useState<MaterialCatalogRow | null>(null)
   // Photos load separately so the page still works if the photo column isn't there.
   const [images, setImages] = useState<Record<number, string>>({})
+  const [photoPreview, setPhotoPreview] = useState<{ url: string; name: string } | null>(null)
   useEffect(() => {
     getMaterialImages()
       .then(setImages)
@@ -374,6 +376,32 @@ export default function MaterialTypesPageClient({
     })
   }
 
+  // Small picture beside each name: the material's photo (tap to enlarge),
+  // or its category icon when no photo has been added yet.
+  function renderThumb(material: MaterialCatalogRow) {
+    const url = images[material.id]
+    const box = 'flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-slate-100 text-slate-400'
+    if (!url) {
+      const Icon = categoryIcon(material.category || '')
+      return (
+        <div className={box}>
+          <Icon className="h-5 w-5" aria-hidden />
+        </div>
+      )
+    }
+    return (
+      <button
+        type="button"
+        className={`${box} cursor-zoom-in`}
+        aria-label={`ดูรูป ${material.name}`}
+        onClick={() => setPhotoPreview({ url, name: material.name })}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- small public storage thumbnails */}
+        <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
+      </button>
+    )
+  }
+
   return (
     <PageContainer width="standard">
       <div>
@@ -495,7 +523,10 @@ export default function MaterialTypesPageClient({
                     <td className="px-4 py-3">
                       <input type="checkbox" checked={selected.has(material.id)} onChange={() => toggleSelectOne(material.id)} />
                     </td>
-                    <td className="px-4 py-3 font-medium text-slate-800">
+                    <td className="px-4 py-2 font-medium text-slate-800">
+                      <div className="flex items-center gap-3">
+                      {renderThumb(material)}
+                      <div className="min-w-0">
                       {material.name}
                       {!material.is_active && (
                         <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">ปิดใช้งาน</span>
@@ -508,6 +539,8 @@ export default function MaterialTypesPageClient({
                           รับเข้าอย่างเดียว
                         </span>
                       )}
+                      </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-slate-500">{material.category || '-'}</td>
                     <td className="px-4 py-3 text-slate-500">{material.unit}</td>
@@ -784,6 +817,18 @@ export default function MaterialTypesPageClient({
         onCancel={() => setDeactivateTarget(null)}
         onConfirm={handleConfirmDeactivate}
       />
+      {photoPreview && (
+        <button
+          type="button"
+          onClick={() => setPhotoPreview(null)}
+          aria-label="ปิดรูป"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-slate-900/80 p-6 text-white"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- public storage photo */}
+          <img src={photoPreview.url} alt={photoPreview.name} className="max-h-[75vh] max-w-full rounded-xl object-contain" />
+          <span className="text-center text-sm">{photoPreview.name}</span>
+        </button>
+      )}
     </PageContainer>
   )
 }
