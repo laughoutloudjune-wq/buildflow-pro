@@ -367,18 +367,45 @@ export default function MaterialShop({
     </div>
   )
 
+  // Wide screens: the categories live in the left side bar under the search.
+  const categoryNav = (
+    <nav aria-label="หมวดวัสดุ" className="hidden flex-col gap-0.5 border-t border-slate-100 pt-3 md:flex">
+      <h4 className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">หมวดวัสดุ</h4>
+      {[[null, index.length] as [string | null, number], ...categories].map(([name, count]) => {
+        const Icon = name ? categoryIcon(name) : Package
+        const active = category === name
+        return (
+          <button
+            key={name ?? '__all'}
+            type="button"
+            onClick={() => pickCategory(name)}
+            aria-current={active ? 'true' : undefined}
+            className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${active ? 'bg-indigo-50 font-semibold text-indigo-700' : 'text-slate-700 hover:bg-slate-50'}`}
+          >
+            <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-indigo-600' : 'text-slate-400'}`} aria-hidden />
+            <span className="min-w-0 flex-1 leading-snug">{name ?? 'ทั้งหมด'}</span>
+            <span className="shrink-0 text-xs tabular-nums text-slate-400">{fmt(count)}</span>
+          </button>
+        )
+      })}
+    </nav>
+  )
+
+  // Two columns of items on very wide screens.
+  const rowsClass = 'xl:grid xl:grid-cols-2 xl:gap-x-8 xl:[&>*:nth-child(2)]:border-t-0'
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={resetAndClose}
-      panelClassName="max-w-2xl h-[min(860px,calc(100dvh-2rem))]"
+      panelClassName="max-w-2xl md:max-w-6xl h-[min(900px,calc(100dvh-2rem))]"
       bodyClassName="p-0 flex flex-col"
       footer={
-        <div className="border-t border-slate-100 p-3">
+        <div className="flex justify-end border-t border-slate-100 p-3">
           <button
             type="button"
             onClick={resetAndClose}
-            className="flex w-full items-center justify-between rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white"
+            className="flex w-full items-center justify-between gap-6 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white md:w-auto md:min-w-[320px]"
           >
             <span className="flex items-center gap-2">
               <ShoppingCart className="h-4 w-4" />
@@ -389,163 +416,181 @@ export default function MaterialShop({
         </div>
       }
     >
-      <div className="flex shrink-0 flex-col gap-2 border-b border-slate-100 px-3 pb-2.5 pt-3">
-        <div className="flex items-center gap-1.5">
-          <button type="button" onClick={resetAndClose} aria-label="กลับ" className="p-1 text-slate-500">
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-500" />
-            <input
-              id="pr-material-search"
-              type="search"
-              autoComplete="off"
-              value={query}
-              onChange={(e) => changeQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return
-                e.preventDefault()
-                const first = result?.rows[0]
-                if (first && !quantities.has(first.item.id)) onAdd(first.item)
-              }}
-              placeholder="ค้นหาวัสดุ เช่น ปูน, ท่อ pvc 1/2"
-              className="w-full rounded-xl border-2 border-indigo-300 py-2.5 pl-9 pr-9 text-base focus:border-indigo-500"
-            />
-            {query && (
-              <button
-                type="button"
-                aria-label="ล้างคำค้น"
-                onClick={() => {
-                  changeQuery('')
-                  document.getElementById('pr-material-search')?.focus()
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <aside className="flex shrink-0 flex-col gap-2 border-b border-slate-100 px-3 pb-2.5 pt-3 md:w-72 md:overflow-y-auto md:overscroll-contain md:border-b-0 md:border-r md:bg-slate-50/60 md:pb-4">
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={resetAndClose} aria-label="กลับ" className="p-1 text-slate-500 md:hidden">
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-500" />
+              <input
+                id="pr-material-search"
+                type="search"
+                autoComplete="off"
+                value={query}
+                onChange={(e) => changeQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  const first = result?.rows[0]
+                  if (first && !quantities.has(first.item.id)) onAdd(first.item)
                 }}
-                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-slate-100 text-slate-500"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
+                placeholder="ค้นหาวัสดุ เช่น ปูน, ท่อ pvc 1/2"
+                className="w-full rounded-xl border-2 border-indigo-300 bg-white py-2.5 pl-9 pr-9 text-base focus:border-indigo-500"
+              />
+              {query && (
+                <button
+                  type="button"
+                  aria-label="ล้างคำค้น"
+                  onClick={() => {
+                    changeQuery('')
+                    document.getElementById('pr-material-search')?.focus()
+                  }}
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-        {scopeLabel && <p className="px-1 text-xs text-slate-500">ขอให้ <span className="font-semibold text-slate-700">{scopeLabel}</span></p>}
-        {!browsing && (
-          <div className="flex flex-wrap gap-1.5">
-            {boqIds.size > 0 && (
-              <button
-                type="button"
-                onClick={() => setOnlyBoq((v) => !v)}
-                className={`rounded-full border px-3 py-0.5 text-sm ${onlyBoq ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200'}`}
-              >
-                เฉพาะ BOQ
-              </button>
-            )}
-            {category != null ? (
-              <button
-                type="button"
-                onClick={() => pickCategory(null)}
-                className="rounded-full border border-indigo-600 bg-indigo-600 px-3 py-0.5 text-sm text-white"
-              >
-                {category} ✕
-              </button>
-            ) : (
-              <button type="button" onClick={() => setShowCategories((v) => !v)} className="rounded-full border border-slate-200 px-3 py-0.5 text-sm">
-                หมวด ▾
-              </button>
-            )}
-            {refine.map((w) => (
-              <button
-                key={w}
-                type="button"
-                onClick={() => changeQuery(`${query.trim()} ${w}`.trim())}
-                className="rounded-full bg-slate-100 px-3 py-0.5 text-sm"
-              >
-                <span className="font-semibold text-indigo-600">+</span> {w}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-3">
-        {home && (
-          <>
-            {home.boq.length > 0 && (
-              <section>
-                <div className="flex items-baseline justify-between gap-2 pb-1">
-                  <h4 className="text-sm font-semibold text-slate-800">ตาม BOQ {scopeLabel || ''}</h4>
-                  {home.boq.length > 5 && (
-                    <button type="button" onClick={() => setOnlyBoq(true)} className="text-sm text-indigo-600">
-                      ดูทั้งหมด {home.boq.length} ›
-                    </button>
-                  )}
-                </div>
-                {home.boq.slice(0, 5).map(renderRow)}
-              </section>
-            )}
-            {home.popular.length > 0 && (
-              <section>
-                <div className="flex items-baseline justify-between gap-2 pb-1">
-                  <h4 className="text-sm font-semibold text-slate-800">ขอบ่อย</h4>
-                  <span className="text-xs text-slate-500">จากใบขอซื้อและใบสั่งซื้อที่ผ่านมา</span>
-                </div>
-                {home.popular.map(renderRow)}
-              </section>
-            )}
-            <section>
-              <div className="flex items-baseline justify-between gap-2 pb-1.5">
-                <h4 className="text-sm font-semibold text-slate-800">หมวดวัสดุ</h4>
-                <span className="text-xs text-slate-500">{fmt(index.length)} รายการ</span>
-              </div>
-              {categoryGrid}
-            </section>
-          </>
-        )}
-
-        {result && (
-          <>
-            {showCategories && (
-              <section>
-                <div className="flex items-baseline justify-between pb-1.5">
-                  <h4 className="text-sm font-semibold text-slate-800">เลือกหมวด</h4>
-                  <button type="button" onClick={() => setShowCategories(false)} className="text-sm text-indigo-600">
-                    ปิด
+          {scopeLabel && <p className="px-1 text-xs text-slate-500">ขอให้ <span className="font-semibold text-slate-700">{scopeLabel}</span></p>}
+          {(boqIds.size > 0 || !browsing) && (
+            <div className="flex flex-wrap gap-1.5">
+              {boqIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setOnlyBoq((v) => !v)}
+                  className={`rounded-full border px-3 py-0.5 text-sm ${onlyBoq ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white'}`}
+                >
+                  เฉพาะ BOQ
+                </button>
+              )}
+              {!browsing &&
+                (category != null ? (
+                  <button
+                    type="button"
+                    onClick={() => pickCategory(null)}
+                    className="rounded-full border border-indigo-600 bg-indigo-600 px-3 py-0.5 text-sm text-white md:hidden"
+                  >
+                    {category} ✕
                   </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowCategories((v) => !v)}
+                    className="rounded-full border border-slate-200 px-3 py-0.5 text-sm md:hidden"
+                  >
+                    หมวด ▾
+                  </button>
+                ))}
+            </div>
+          )}
+          {refine.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <span className="hidden px-1 text-xs text-slate-500 md:block">กรองต่อ</span>
+              <div className="flex flex-wrap gap-1.5">
+                {refine.map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => changeQuery(`${query.trim()} ${w}`.trim())}
+                    className="rounded-full bg-slate-100 px-3 py-0.5 text-sm md:bg-white md:ring-1 md:ring-slate-200"
+                  >
+                    <span className="font-semibold text-indigo-600">+</span> {w}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {categoryNav}
+        </aside>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-3 md:px-6 md:py-4">
+          {home && (
+            <>
+              {home.boq.length > 0 && (
+                <section>
+                  <div className="flex items-baseline justify-between gap-2 pb-1">
+                    <h4 className="text-sm font-semibold text-slate-800">ตาม BOQ {scopeLabel || ''}</h4>
+                    {home.boq.length > 6 && (
+                      <button type="button" onClick={() => setOnlyBoq(true)} className="text-sm text-indigo-600">
+                        ดูทั้งหมด {home.boq.length} ›
+                      </button>
+                    )}
+                  </div>
+                  <div className={rowsClass}>{home.boq.slice(0, 6).map(renderRow)}</div>
+                </section>
+              )}
+              {home.popular.length > 0 && (
+                <section>
+                  <div className="flex items-baseline justify-between gap-2 pb-1">
+                    <h4 className="text-sm font-semibold text-slate-800">ขอบ่อย</h4>
+                    <span className="text-xs text-slate-500">จากใบขอซื้อและใบสั่งซื้อที่ผ่านมา</span>
+                  </div>
+                  <div className={rowsClass}>{home.popular.map(renderRow)}</div>
+                </section>
+              )}
+              <section className="md:hidden">
+                <div className="flex items-baseline justify-between gap-2 pb-1.5">
+                  <h4 className="text-sm font-semibold text-slate-800">หมวดวัสดุ</h4>
+                  <span className="text-xs text-slate-500">{fmt(index.length)} รายการ</span>
                 </div>
                 {categoryGrid}
               </section>
-            )}
-            {result.readAs && (
-              <p className="rounded-lg bg-indigo-50 px-3 py-2 text-xs text-slate-700">
-                ลืมเปลี่ยนภาษา? ค้นหา <span className="font-semibold text-indigo-700">{result.readAs}</span> ให้แทน
-              </p>
-            )}
-            {result.approximate && (
-              <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">ไม่เจอตรงทุกตัวอักษร แสดงชื่อที่ใกล้เคียงด้วย (ป้าย &quot;ใกล้เคียง&quot;)</p>
-            )}
-            {result.rows.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">
-                ไม่พบ &quot;{query}&quot; ในรายการวัสดุ
-                <br />
-                ลองคำสั้นลง หรือเลือกจากหมวด
-                <br />
-                ถ้าเป็นวัสดุใหม่ ให้แจ้งฝ่ายจัดซื้อเพิ่มเข้ารายการ
-              </p>
-            ) : (
-              <section>
-                <p className="pb-1 text-xs text-slate-500">{fmt(result.rows.length)} รายการ</p>
-                {result.rows.slice(0, limit).map(renderRow)}
-                {result.rows.length > limit && (
-                  <button
-                    type="button"
-                    onClick={() => setLimit((l) => l + PAGE)}
-                    className="mt-2 w-full rounded-lg border border-slate-200 py-2 text-sm text-indigo-600"
-                  >
-                    แสดงเพิ่ม ({fmt(result.rows.length - limit)} รายการ)
-                  </button>
-                )}
-              </section>
-            )}
-          </>
-        )}
+            </>
+          )}
+
+          {result && (
+            <>
+              {showCategories && (
+                <section className="md:hidden">
+                  <div className="flex items-baseline justify-between pb-1.5">
+                    <h4 className="text-sm font-semibold text-slate-800">เลือกหมวด</h4>
+                    <button type="button" onClick={() => setShowCategories(false)} className="text-sm text-indigo-600">
+                      ปิด
+                    </button>
+                  </div>
+                  {categoryGrid}
+                </section>
+              )}
+              {result.readAs && (
+                <p className="rounded-lg bg-indigo-50 px-3 py-2 text-xs text-slate-700">
+                  ลืมเปลี่ยนภาษา? ค้นหา <span className="font-semibold text-indigo-700">{result.readAs}</span> ให้แทน
+                </p>
+              )}
+              {result.approximate && (
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">ไม่เจอตรงทุกตัวอักษร แสดงชื่อที่ใกล้เคียงด้วย (ป้าย &quot;ใกล้เคียง&quot;)</p>
+              )}
+              {result.rows.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">
+                  ไม่พบ &quot;{query}&quot; ในรายการวัสดุ
+                  <br />
+                  ลองคำสั้นลง หรือเลือกจากหมวด
+                  <br />
+                  ถ้าเป็นวัสดุใหม่ ให้แจ้งฝ่ายจัดซื้อเพิ่มเข้ารายการ
+                </p>
+              ) : (
+                <section>
+                  <p className="pb-1 text-xs text-slate-500">
+                    {category != null && <span className="font-semibold text-slate-700">{category} · </span>}
+                    {fmt(result.rows.length)} รายการ
+                  </p>
+                  <div className={rowsClass}>{result.rows.slice(0, limit).map(renderRow)}</div>
+                  {result.rows.length > limit && (
+                    <button
+                      type="button"
+                      onClick={() => setLimit((l) => l + PAGE)}
+                      className="mt-2 w-full rounded-lg border border-slate-200 py-2 text-sm text-indigo-600"
+                    >
+                      แสดงเพิ่ม ({fmt(result.rows.length - limit)} รายการ)
+                    </button>
+                  )}
+                </section>
+              )}
+            </>
+          )}
+        </div>
       </div>
       {preview && (
         <button
