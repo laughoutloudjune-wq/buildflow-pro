@@ -35,6 +35,7 @@ import {
 import Modal from '@/components/ui/Modal'
 import { canEditMaterialImages, getMaterialImages, getMaterialPopularity, uploadMaterialImage } from '@/actions/material-actions'
 import { useToast } from '@/components/ui/Toast'
+import { materialPhotoForm } from '@/lib/images/shrinkImage'
 import type { MaterialPickerOption } from '@/lib/types/materials'
 import type { BoqRemainingRow } from '@/actions/procurement/boq-control'
 import {
@@ -78,16 +79,6 @@ function categoryIcon(category: string): LucideIcon {
   return CATEGORY_ICONS.find(([re]) => re.test(category))?.[1] || Package
 }
 
-/** Shrink a phone photo to at most 640px on its long side, as JPEG. */
-async function shrinkImage(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file)
-  const scale = Math.min(1, 640 / Math.max(bitmap.width, bitmap.height))
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.round(bitmap.width * scale)
-  canvas.height = Math.round(bitmap.height * scale)
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('แปลงรูปไม่สำเร็จ'))), 'image/jpeg', 0.8))
-}
 
 /**
  * The "shop" for picking materials on a purchase request (mockup tab 22):
@@ -205,10 +196,7 @@ export default function MaterialShop({
   async function uploadPhoto(materialId: number, file: File) {
     setUploadingId(materialId)
     try {
-      const small = await shrinkImage(file).catch(() => file)
-      const form = new FormData()
-      form.append('file', new File([small], 'photo.jpg', { type: small.type || 'image/jpeg' }))
-      const res = await uploadMaterialImage(materialId, form)
+      const res = await uploadMaterialImage(materialId, await materialPhotoForm(file))
       if ('error' in res) toast.error(res.error)
       else {
         setImages((prev) => ({ ...prev, [materialId]: res.url }))
