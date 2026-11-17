@@ -40,7 +40,6 @@ import type { BoqRemainingRow } from '@/actions/procurement/boq-control'
 import {
   highlightParts,
   indexMaterials,
-  refineWords,
   searchMaterials,
   type IndexedMaterial,
 } from '@/lib/procurement/materialSearch'
@@ -175,11 +174,6 @@ export default function MaterialShop({
     const rows = onlyBoq ? res.rows.filter((r) => boqIds.has(r.item.id)) : res.rows
     return { ...res, rows }
   }, [browsing, index, category, searchQuery, boqIds, onlyBoq])
-
-  const refine = useMemo(
-    () => (result && (searchQuery.trim() || category != null) ? refineWords(result.rows.slice(0, 200), result.tokens) : []),
-    [result, searchQuery, category]
-  )
 
   const home = useMemo(() => {
     if (!browsing) return null
@@ -426,7 +420,8 @@ export default function MaterialShop({
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-500" />
               <input
                 id="pr-material-search"
-                type="search"
+                type="text"
+                enterKeyHint="search"
                 autoComplete="off"
                 value={query}
                 onChange={(e) => changeQuery(e.target.value)}
@@ -486,26 +481,21 @@ export default function MaterialShop({
                 ))}
             </div>
           )}
-          {refine.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <span className="hidden px-1 text-xs text-slate-500 md:block">กรองต่อ</span>
-              <div className="flex flex-wrap gap-1.5">
-                {refine.map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    onClick={() => changeQuery(`${query.trim()} ${w}`.trim())}
-                    className="rounded-full bg-slate-100 px-3 py-0.5 text-sm md:bg-white md:ring-1 md:ring-slate-200"
-                  >
-                    <span className="font-semibold text-indigo-600">+</span> {w}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
           {categoryNav}
         </aside>
 
+        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-6 py-3 md:flex">
+          <h3 className="text-lg font-semibold text-slate-800">เลือกวัสดุ</h3>
+          <button
+            type="button"
+            onClick={resetAndClose}
+            aria-label="ปิด"
+            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+          >
+            <X className="h-5 w-5" aria-hidden />
+          </button>
+        </div>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-3 md:px-6 md:py-4">
           {home && (
             <>
@@ -590,6 +580,7 @@ export default function MaterialShop({
               )}
             </>
           )}
+        </div>
         </div>
       </div>
       {preview && (
