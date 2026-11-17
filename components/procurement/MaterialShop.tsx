@@ -6,7 +6,6 @@ import {
   BrickWall,
   BriefcaseMedical,
   Bolt,
-  Camera,
   Construction,
   CookingPot,
   ChevronLeft,
@@ -33,9 +32,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
-import { canEditMaterialImages, getMaterialImages, getMaterialPopularity, uploadMaterialImage } from '@/actions/material-actions'
-import { useToast } from '@/components/ui/Toast'
-import { materialPhotoForm } from '@/lib/images/shrinkImage'
+import { getMaterialImages, getMaterialPopularity } from '@/actions/material-actions'
 import type { MaterialPickerOption } from '@/lib/types/materials'
 import type { BoqRemainingRow } from '@/actions/procurement/boq-control'
 import {
@@ -121,20 +118,16 @@ export default function MaterialShop({
   const [popularity, setPopularity] = useState<Map<number, number>>(new Map())
   const [popularityLoaded, setPopularityLoaded] = useState(false)
   const [images, setImages] = useState<Record<number, string>>({})
-  const [canEditImages, setCanEditImages] = useState(false)
-  const [uploadingId, setUploadingId] = useState<number | null>(null)
   const [preview, setPreview] = useState<{ url: string; name: string } | null>(null)
-  const toast = useToast()
 
   useEffect(() => {
     if (!isOpen || popularityLoaded) return
     let cancelled = false
-    Promise.all([getMaterialPopularity(), getMaterialImages().catch(() => ({})), canEditMaterialImages().catch(() => false)])
-      .then(([counts, imgs, canEdit]) => {
+    Promise.all([getMaterialPopularity(), getMaterialImages().catch(() => ({}))])
+      .then(([counts, imgs]) => {
         if (cancelled) return
         setPopularity(new Map(Object.entries(counts).map(([id, n]) => [Number(id), n])))
         setImages(imgs)
-        setCanEditImages(canEdit)
       })
       .catch(() => {})
       .finally(() => {
@@ -193,58 +186,28 @@ export default function MaterialShop({
   const basketCount = quantities.size
   const tokens = result?.tokens || []
 
-  async function uploadPhoto(materialId: number, file: File) {
-    setUploadingId(materialId)
-    try {
-      const res = await uploadMaterialImage(materialId, await materialPhotoForm(file))
-      if ('error' in res) toast.error(res.error)
-      else {
-        setImages((prev) => ({ ...prev, [materialId]: res.url }))
-        toast.success('บันทึกรูปแล้ว')
-      }
-    } finally {
-      setUploadingId(null)
-    }
-  }
-
+  // Tapping a photo shows it large; photos are added in Settings > วัสดุ.
   function renderThumb(r: Row) {
     const url = images[r.item.id]
     const Icon = categoryIcon(r.category)
     const box = 'relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-slate-400'
-    const picture = url ? (
-      // eslint-disable-next-line @next/next/no-img-element -- small public storage thumbnails; no Next image optimisation needed
-      <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
-    ) : (
-      <Icon className="h-6 w-6" aria-hidden />
-    )
-    if (url && !canEditImages) {
+    if (!url) {
       return (
-        <button type="button" className={box} aria-label={`ดูรูป ${r.item.name}`} onClick={() => setPreview({ url, name: r.item.name })}>
-          {picture}
-        </button>
+        <div className={box}>
+          <Icon className="h-6 w-6" aria-hidden />
+        </div>
       )
     }
-    if (!canEditImages) return <div className={box}>{picture}</div>
     return (
-      <label className={`${box} cursor-pointer`} title={url ? 'เปลี่ยนรูป' : 'เพิ่มรูป'}>
-        {picture}
-        <span className="absolute bottom-0 right-0 rounded-tl-md bg-white/90 p-0.5 text-indigo-600">
-          <Camera className="h-3 w-3" aria-hidden />
-        </span>
-        {uploadingId === r.item.id && <span className="absolute inset-0 animate-pulse bg-white/70" />}
-        <input
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          aria-label={`${url ? 'เปลี่ยนรูป' : 'เพิ่มรูป'} ${r.item.name}`}
-          disabled={uploadingId != null}
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            e.target.value = ''
-            if (file) void uploadPhoto(r.item.id, file)
-          }}
-        />
-      </label>
+      <button
+        type="button"
+        className={`${box} cursor-zoom-in`}
+        aria-label={`ดูรูป ${r.item.name}`}
+        onClick={() => setPreview({ url, name: r.item.name })}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- small public storage thumbnails */}
+        <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
+      </button>
     )
   }
 
