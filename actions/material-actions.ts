@@ -92,12 +92,6 @@ export async function getMaterialImages(): Promise<Record<number, string>> {
   }
 }
 
-/** Who may add or change a material's photo (same people who edit materials). */
-export async function canEditMaterialImages(): Promise<boolean> {
-  const { role } = await requireModuleAccess(['materials', 'foreman', 'procurement'])
-  return role === 'admin' || role === 'pm'
-}
-
 /** Upload a photo for one material and save its URL. The browser shrinks the
  * picture first, so files are small; 3MB is only a safety cap. */
 export async function uploadMaterialImage(materialTypeId: number, formData: FormData): Promise<{ url: string } | { error: string }> {
