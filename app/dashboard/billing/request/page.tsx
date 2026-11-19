@@ -1,5 +1,7 @@
 import { getBillingOptions, getBillingById } from '@/actions/billing-actions'
 import { getPlotById } from '@/actions/job-actions'
+import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser, getCurrentUserRole } from '@/actions/_shared/user-role'
 import type { BillingAdjustmentForm, BillingAdjustmentRecord } from '@/lib/types/billing'
 import CreateBillingRequestPageClient from './CreateBillingRequestPageClient'
 
@@ -21,6 +23,8 @@ export default async function CreateBillingRequestPage({
   let initialNote = ''
   let initialAdjustments: Adjustment[] = []
   let initialError: string | null = null
+  // A request the PM sent back: the foreman may only fix the jobs it already had.
+  let lockJobs = false
   // "Start from here" links (plot page, contractor balances) pass what is
   // already known; editing a bill always wins over them.
   let initialPlotName = ''
@@ -50,6 +54,13 @@ export default async function CreateBillingRequestPage({
       const billing = await getBillingById(editId)
       if (billing) {
         editingBilling = billing
+        if (billing.status === 'rejected' && billing.type !== 'extra_work') {
+          const user = await getCurrentUser()
+          if (user) {
+            const role = await getCurrentUserRole(await createClient(), user.id)
+            lockJobs = role === 'foreman'
+          }
+        }
         initialSelectedProject = billing.project_id || ''
         initialSelectedContractor = billing.contractor_id || ''
         initialNote = billing.note || ''
@@ -79,6 +90,7 @@ export default async function CreateBillingRequestPage({
       initialNote={initialNote}
       initialAdjustments={initialAdjustments}
       initialError={initialError}
+      lockJobs={lockJobs}
     />
   )
 }
