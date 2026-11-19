@@ -1,5 +1,7 @@
 -- pr_update restated in full from its live definition, adding purpose to the
--- item insert (see 202611190003). Contains a delete, so run it in the Supabase
+-- item insert (see 202611190003) and PR #24's change (a foreman can only edit
+-- a pending request they made themselves), so applying this file alone gives
+-- both. Safe to run before or after #24's own migration. Contains a delete, so run it in the Supabase
 -- dashboard SQL Editor if the connector asks to confirm.
 create or replace function public.pr_update(p_id uuid, p_payload jsonb)
 returns jsonb
@@ -11,6 +13,7 @@ declare
   v_uid uuid := auth.uid();
   v_role text := public._billing_current_role();
   v_status text;
+  v_by uuid;
   v_pr_no text;
   v_plot_ids_count int := jsonb_array_length(coalesce(p_payload->'plot_ids', '[]'::jsonb));
   v_plot_id uuid := case when v_plot_ids_count > 0 then null else public._jsonb_to_uuid(p_payload->'plot_id') end;
@@ -26,9 +29,12 @@ begin
     raise exception 'Choose either a single plot or a plot group, not both' using errcode = '22023';
   end if;
 
-  select status, pr_no::text into v_status, v_pr_no from public.purchase_requests where id = p_id;
+  select status, requested_by, pr_no::text into v_status, v_by, v_pr_no from public.purchase_requests where id = p_id;
   if v_status is null then
     raise exception 'Purchase request not found' using errcode = 'P0002';
+  end if;
+  if v_role = 'foreman' and v_by is distinct from v_uid then
+    raise exception 'No permission to edit this purchase request' using errcode = '42501';
   end if;
   if v_status <> 'pending_review' then
     raise exception 'Cannot edit a purchase request that has already been reviewed' using errcode = '42501';
