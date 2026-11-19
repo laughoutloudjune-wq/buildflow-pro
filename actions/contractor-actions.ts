@@ -221,7 +221,7 @@ function buildBankAccount(formData: FormData) {
 }
 
 // เพิ่มผู้รับเหมาใหม่
-export async function createContractor(formData: FormData) {
+export async function createContractor(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   await requireModuleAccess('contractors')
   const supabase = await createClient()
 
@@ -231,7 +231,7 @@ export async function createContractor(formData: FormData) {
   const bank_account = buildBankAccount(formData)
   const tax_id = formData.get('tax_id') as string
 
-  if (!name || !type_id) return
+  if (!name || !type_id) return { ok: false, error: 'กรุณากรอกชื่อและเลือกประเภทผู้รับเหมา' }
 
   const { error } = await supabase
     .from('contractors')
@@ -243,8 +243,11 @@ export async function createContractor(formData: FormData) {
       tax_id 
     }])
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    return { ok: false, error: error.code === '42501' ? 'ไม่มีสิทธิ์เพิ่มผู้รับเหมา' : `บันทึกไม่สำเร็จ: ${error.message}` }
+  }
   revalidatePath('/dashboard/contractors')
+  return { ok: true }
 }
 
 // ลบผู้รับเหมา
