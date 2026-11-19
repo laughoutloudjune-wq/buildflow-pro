@@ -2,6 +2,7 @@
 
 import { Plus, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
+import NumberInput from '@/components/ui/NumberInput'
 import type { BillingAdjustmentForm } from '@/lib/types/billing'
 
 type Adjustment = BillingAdjustmentForm
@@ -23,13 +24,6 @@ type Props = {
   showSignature?: boolean
   /** Require a plot on every line (DC/extra-work forms) instead of it being optional. */
   requirePlot?: boolean
-}
-
-/** Parses a number input's raw value, coercing anything invalid (empty, NaN) to 0
- * instead of letting NaN flow into totals and render as "NaN" in the UI. */
-function parseSafeNumber(raw: string): number {
-  const n = parseFloat(raw)
-  return Number.isFinite(n) ? n : 0
 }
 
 export default function AdjustmentLineItems({
@@ -137,20 +131,18 @@ export default function AdjustmentLineItems({
               />
             </div>
             <div className="col-span-1">
-              <input
-                type="number"
+              <NumberInput
                 placeholder="จำนวน"
                 value={adj.quantity}
-                onChange={(e) => onChange(index, 'quantity', parseSafeNumber(e.target.value))}
+                onValueChange={(n) => onChange(index, 'quantity', n)}
                 className="w-full p-2 border border-gray-300 rounded-md text-sm text-right"
               />
             </div>
             <div className="col-span-2">
-              <input
-                type="number"
+              <NumberInput
                 placeholder="ราคาต่อหน่วย"
                 value={adj.unit_price}
-                onChange={(e) => onChange(index, 'unit_price', parseSafeNumber(e.target.value))}
+                onValueChange={(n) => onChange(index, 'unit_price', n)}
                 className="w-full p-2 border border-gray-300 rounded-md text-sm text-right"
               />
             </div>
