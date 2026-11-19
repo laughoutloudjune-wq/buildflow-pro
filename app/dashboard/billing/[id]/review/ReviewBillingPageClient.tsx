@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { listUrlWithSavedFilters } from '@/lib/use-url-state'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { getBillingById, approveBilling, rejectBilling, deleteBilling, undoApproveBilling, getJobProgressHistory, getRecordedProgress, getBillingReviewInsights } from '@/actions/billing-actions'
@@ -90,7 +91,7 @@ export default function ReviewBillingPageClient({
       return
     }
     const message = outcome === 'approved' ? 'อนุมัติใบเบิกเรียบร้อยแล้ว ไม่มีใบรอตรวจเหลือ' : 'ปฏิเสธใบเบิกเรียบร้อยแล้ว ไม่มีใบรอตรวจเหลือ'
-    router.push(`/dashboard/billing?type=success&message=${message}`)
+    router.push(listUrlWithSavedFilters('/dashboard/billing', { type: 'success', message: String(message) }))
   }
 
   const isExtraWork = billing?.type === 'extra_work'
@@ -433,7 +434,7 @@ export default function ReviewBillingPageClient({
         setError(result.error)
         return
       }
-      router.push('/dashboard/billing?type=success&message=ลบใบขอเบิกเรียบร้อยแล้ว')
+      router.push(listUrlWithSavedFilters('/dashboard/billing', { type: 'success', message: 'ลบใบขอเบิกเรียบร้อยแล้ว' }))
     } finally {
       setIsSubmitting(false)
       setConfirmAction(null)
@@ -449,7 +450,7 @@ export default function ReviewBillingPageClient({
         setError(result.error)
         return
       }
-      router.push('/dashboard/billing?type=success&message=ยกเลิกการอนุมัติเรียบร้อยแล้ว')
+      router.push(listUrlWithSavedFilters('/dashboard/billing', { type: 'success', message: 'ยกเลิกการอนุมัติเรียบร้อยแล้ว' }))
     } finally {
       setIsSubmitting(false)
       setConfirmAction(null)

@@ -232,7 +232,14 @@ export default function BillingPageClient({
       />
 
       {queryFlash ? (
-        <NoticeBanner tone={queryFlash.tone} message={queryFlash.message} onClose={() => router.replace('/dashboard/billing')} />
+        <NoticeBanner tone={queryFlash.tone} message={queryFlash.message} onClose={() => {
+          // Drop only the flash params; keep the list's filters in the URL.
+          const rest = new URLSearchParams(window.location.search)
+          rest.delete('type')
+          rest.delete('message')
+          const qs = rest.toString()
+          router.replace(qs ? `/dashboard/billing?${qs}` : '/dashboard/billing')
+        }} />
       ) : flash ? (
         <NoticeBanner tone={flash.tone} message={flash.message} onClose={() => setFlash(null)} />
       ) : null}

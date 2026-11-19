@@ -16,6 +16,15 @@ import { useSearchParams } from 'next/navigation'
  *
  * A value equal to its default is removed from the URL to keep it clean.
  */
+/** Remember the list's current query string so pages that send the user back to
+ * the list after an action (approve, delete...) can restore its filters. */
+function saveListSearch() {
+  if (typeof window === 'undefined') return
+  try {
+    sessionStorage.setItem('listSearch:' + window.location.pathname, window.location.search)
+  } catch {}
+}
+
 function writeParam(key: string, value: string | null) {
   if (typeof window === 'undefined') return
   const url = new URL(window.location.href)
@@ -24,6 +33,7 @@ function writeParam(key: string, value: string | null) {
   const next = `${url.pathname}${url.search}${url.hash}`
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`
   if (next !== current) window.history.replaceState(window.history.state, '', next)
+  saveListSearch()
 }
 
 export function useUrlState<T extends string = string>(
@@ -32,6 +42,7 @@ export function useUrlState<T extends string = string>(
   allowed?: readonly T[],
 ): [T, (next: T | ((prev: T) => T)) => void] {
   const params = useSearchParams()
+  useEffect(saveListSearch, [])
   const [value, setValue] = useState<T>(() => {
     const raw = params.get(key)
     if (raw === null) return defaultValue
@@ -93,6 +104,7 @@ export function useUrlObject<T extends Record<string, string | undefined>>(
   prefix = '',
 ): [T, (next: T | ((prev: T) => T)) => void] {
   const params = useSearchParams()
+  useEffect(saveListSearch, [])
   const [value, setValue] = useState<T>(() => {
     const out: Record<string, string | undefined> = {}
     for (const k of keys) {
@@ -137,4 +149,20 @@ export function useSkipFirstEffect(effect: () => void, deps: React.DependencyLis
 /** String-typed convenience (avoids literal-type inference from the default). */
 export function useUrlString(key: string, defaultValue = ''): [string, (next: string | ((prev: string) => string)) => void] {
   return useUrlState<string>(key, defaultValue)
+}
+
+/**
+ * URL of a list page with the filters the user last had on it, plus extra
+ * params (e.g. a success message). Use it when an action sends the user back
+ * to a list, so the list does not come back reset.
+ */
+export function listUrlWithSavedFilters(path: string, extra: Record<string, string> = {}): string {
+  let saved = ''
+  try {
+    saved = sessionStorage.getItem('listSearch:' + path) ?? ''
+  } catch {}
+  const params = new URLSearchParams(saved)
+  for (const [k, v] of Object.entries(extra)) params.set(k, v)
+  const qs = params.toString()
+  return qs ? `${path}?${qs}` : path
 }
