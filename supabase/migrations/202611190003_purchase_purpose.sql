@@ -14,9 +14,8 @@
 -- line has allocation rows, and saving a PO rewrites them, which refires the
 -- trigger. Lines with no linked request keep purpose null.
 --
--- Optional everywhere, never blocks anything. No DROP and no DELETE. Safe to
--- run twice. pr_update is restated in 202611190004 (it contains a delete, which
--- the Supabase connector asks to confirm).
+-- Optional everywhere, never blocks anything. Safe to run twice. pr_update is
+-- restated in 202611190004.
 
 alter table public.purchase_request_items add column if not exists purpose text;
 alter table public.purchase_order_items add column if not exists purpose text;
@@ -49,12 +48,12 @@ security definer
 set search_path = public
 as $$
 begin
-  if tg_op = 'DELETE' then
-    perform public._po_item_refresh_purpose(old.purchase_order_item_id);
-    return old;
+  if tg_op in ('INSERT', 'UPDATE') then
+    perform public._po_item_refresh_purpose(new.purchase_order_item_id);
+    return new;
   end if;
-  perform public._po_item_refresh_purpose(new.purchase_order_item_id);
-  return new;
+  perform public._po_item_refresh_purpose(old.purchase_order_item_id);
+  return old;
 end;
 $$;
 revoke all on function public._po_alloc_refresh_purpose() from public, anon, authenticated;
