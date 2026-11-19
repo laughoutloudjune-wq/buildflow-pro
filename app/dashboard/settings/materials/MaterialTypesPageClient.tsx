@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
+import { useUrlNumber, useSkipFirstEffect, useUrlString } from '@/lib/use-url-state'
 import ActionMenu from '@/components/ui/ActionMenu'
-import Link from 'next/link'
-import { ArrowLeft, Loader2, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Tags, Trash2, Upload, X } from 'lucide-react'
+import { Loader2, PackageCheck, PackageX, Pencil, Plus, RotateCcw, Tags, Trash2, Upload, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import Pagination, { usePagedRows } from '@/components/ui/Pagination'
 import { Button } from '@/components/ui/Button'
@@ -51,9 +52,9 @@ export default function MaterialTypesPageClient({
   const toast = useToast()
 
   const [showInactive, setShowInactive] = useState(false)
-  const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
+  const [categoryFilter, setCategoryFilter] = useUrlString('cat', ALL_CATEGORIES)
+  const [search, setSearch] = useUrlString('q', '')
+  const [page, setPage] = useUrlNumber('page', 1)
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
@@ -131,7 +132,7 @@ export default function MaterialTypesPageClient({
 
   // Narrowing the list should put the user back at the start of it, not on
   // whatever page number they happened to be on.
-  useEffect(() => {
+  useSkipFirstEffect(() => {
     setPage(1)
   }, [showInactive, categoryFilter, search])
 
@@ -405,12 +406,7 @@ export default function MaterialTypesPageClient({
   return (
     <PageContainer width="standard">
       <div>
-        <Link
-          href="/dashboard/settings"
-          className="mb-2 flex w-fit items-center gap-1 text-sm text-slate-500 transition hover:text-indigo-600"
-        >
-          <ArrowLeft className="h-4 w-4" /> กลับไปตั้งค่า
-        </Link>
+        <BackButton fallbackHref="/dashboard/settings" label="กลับไปตั้งค่า" />
         <PageHeader
           title="รายการวัสดุ (Material Catalog)"
           subtitle="จัดการชื่อวัสดุ หน่วย หมวดหมู่ และราคาล่าสุดที่ใช้อ้างอิงเวลาบันทึกการใช้วัสดุในแต่ละงาน"

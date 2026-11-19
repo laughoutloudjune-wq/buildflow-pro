@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useUrlNumber, useUrlState, useSkipFirstEffect, useUrlString } from '@/lib/use-url-state'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowDown, ArrowUp, ArrowUpDown, Copy, Layers, Loader2, PackageCheck, Plus, Trash2 } from 'lucide-react'
@@ -95,17 +96,24 @@ export default function PurchaseOrdersPageClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialError])
 
-  const [search, setSearch] = useState('')
-  const [supplierFilter, setSupplierFilter] = useState('')
-  const [projectFilter, setProjectFilter] = useState('')
-  const [companyFilter, setCompanyFilter] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [sort, setSort] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' })
-  const [page, setPage] = useState(1)
+  const [search, setSearch] = useUrlString('q', '')
+  const [supplierFilter, setSupplierFilter] = useUrlString('supplier', '')
+  const [projectFilter, setProjectFilter] = useUrlString('project', '')
+  const [companyFilter, setCompanyFilter] = useUrlString('company', '')
+  const [dateFrom, setDateFrom] = useUrlString('from', '')
+  const [dateTo, setDateTo] = useUrlString('to', '')
+  const [sortKey, setSortKey] = useUrlState<SortKey>('sort', 'date')
+  const [sortDir, setSortDir] = useUrlState<'asc' | 'desc'>('dir', 'desc', ['asc', 'desc'] as const)
+  const sort = { key: sortKey, direction: sortDir }
+  const setSort = (next: (prev: { key: SortKey; direction: 'asc' | 'desc' }) => { key: SortKey; direction: 'asc' | 'desc' }) => {
+    const n = next(sort)
+    setSortKey(n.key)
+    setSortDir(n.direction)
+  }
+  const [page, setPage] = useUrlNumber('page', 1)
   const collator = useMemo(() => new Intl.Collator('th', { numeric: true, sensitivity: 'base' }), [])
 
-  useEffect(() => {
+  useSkipFirstEffect(() => {
     setPage(1)
   }, [search, supplierFilter, projectFilter, companyFilter, dateFrom, dateTo])
 

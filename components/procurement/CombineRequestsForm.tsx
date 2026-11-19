@@ -1,10 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
 import { TableFrame } from '@/components/ui/TableFrame'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ArrowRight, Layers, Loader2 } from 'lucide-react'
+import { ArrowRight, Layers, Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import SearchableSelect from '@/components/ui/SearchableSelect'
@@ -197,9 +197,7 @@ export default function CombineRequestsForm({
   return (
     <div className="mx-auto max-w-5xl space-y-5 pb-24">
       <div className="flex items-center gap-3">
-        <Link href="/dashboard/procurement/orders" className="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label="กลับ">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallbackHref="/dashboard/procurement/orders" label="กลับ" className="mb-0" />
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
             <Layers className="h-5 w-5 text-indigo-600" /> รวมคำขอซื้อเป็นใบสั่งซื้อเดียว

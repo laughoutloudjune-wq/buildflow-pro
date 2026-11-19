@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
 import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { ArrowLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
@@ -113,12 +113,7 @@ export default function CompaniesPageClient({
   return (
     <PageContainer width="standard">
       <div>
-        <Link
-          href="/dashboard/settings"
-          className="mb-2 flex w-fit items-center gap-1 text-sm text-slate-500 transition hover:text-indigo-600"
-        >
-          <ArrowLeft className="h-4 w-4" /> กลับไปตั้งค่า
-        </Link>
+        <BackButton fallbackHref="/dashboard/settings" label="กลับไปตั้งค่า" />
         <PageHeader
           title="บริษัทในเครือ (Companies)"
           subtitle="รายชื่อนิติบุคคลในเครือที่ใช้เลือกเป็นผู้ซื้อเวลาสร้างใบสั่งซื้อ"

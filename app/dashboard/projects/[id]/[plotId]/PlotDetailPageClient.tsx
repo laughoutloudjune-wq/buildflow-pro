@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useUrlState } from '@/lib/use-url-state'
 import { useRouter } from 'next/navigation'
 import { ClipboardCheck, ClipboardList, Hammer, History, LayoutGrid, Pencil, Tag } from 'lucide-react'
 import { Button, ButtonLink } from '@/components/ui/Button'
@@ -137,7 +138,7 @@ export default function PlotDetailPageClient({
   const refresh = onRefresh ?? (() => router.refresh())
   const toast = useToast()
   const [isPending, startTransition] = useTransition()
-  const [tab, setTab] = useState<Tab>('overview')
+  const [tab, setTab] = useUrlState<Tab>('tab', 'overview')
 
   const [jobs, setJobs] = useState<PlotJobRow[]>(initialJobs)
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>(() => buildPriceDrafts(initialJobs))

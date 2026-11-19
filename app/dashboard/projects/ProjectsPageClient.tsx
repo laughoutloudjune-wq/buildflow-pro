@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import { useUrlString } from '@/lib/use-url-state'
 import ActionMenu from '@/components/ui/ActionMenu'
 import { Plus, MapPin, Trash2, Building2, Search } from 'lucide-react'
 import Link from 'next/link'
@@ -62,7 +63,7 @@ export default function ProjectsPageClient({ projects: initialProjects, progress
   const [projects, setProjects] = useState<Project[]>(initialProjects)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useUrlString('q', '')
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
 

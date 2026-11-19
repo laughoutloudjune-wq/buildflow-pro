@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
+import { useUrlString } from '@/lib/use-url-state'
 import { Building2, FileText, Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -57,9 +58,9 @@ export default function HouseHistoryReportPageClient({
 }) {
   const [projects] = useState<Project[]>(initialProjects)
   const [plots, setPlots] = useState<Plot[]>([])
-  const [projectId, setProjectId] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [projectId, setProjectId] = useUrlString('project', '')
+  const [dateFrom, setDateFrom] = useUrlString('from', '')
+  const [dateTo, setDateTo] = useUrlString('to', '')
   const [rows, setRows] = useState<PlotHistoryBill[]>(initialRows)
   const [loading, setLoading] = useState(false)
 
@@ -93,6 +94,14 @@ export default function HouseHistoryReportPageClient({
       setLoading(false)
     }
   }
+
+
+  // Back from a detail page restores the filters from the URL; re-run so the rows match them.
+  const restoredFilters = useRef(Object.values([projectId, dateFrom, dateTo]).some(Boolean))
+  useEffect(() => {
+    if (restoredFilters.current) void runReport()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const expandedRecords = useMemo<PlotHistoryRecord[]>(() => {
     const out: PlotHistoryRecord[] = []

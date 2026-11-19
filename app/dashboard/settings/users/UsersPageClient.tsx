@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { ArrowLeft, Ban, CheckCircle2 } from 'lucide-react'
+import { BackButton } from '@/components/ui/BackButton'
+import { Ban, CheckCircle2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
@@ -167,10 +168,7 @@ export default function UsersPageClient({
         subtitle="บทบาทหลัก (Admin / PM / Foreman) ใช้ร่วมกับเมทริกซ์สิทธิ์ในเมนู &quot;สิทธิ์ตามบทบาท&quot;"
         actions={
           <>
-        <ButtonLink href="/dashboard/settings" variant="secondary">
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-          กลับไปตั้งค่า
-        </ButtonLink>
+        <BackButton fallbackHref="/dashboard/settings" label="กลับไปตั้งค่า" className="mb-0 rounded-lg border border-slate-200 bg-white px-3 py-2" />
           </>
         }
       />

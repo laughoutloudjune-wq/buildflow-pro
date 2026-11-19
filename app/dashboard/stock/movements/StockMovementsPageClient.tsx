@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
+import { useUrlNumber, useUrlState, useSkipFirstEffect, useUrlString } from '@/lib/use-url-state'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
@@ -53,17 +55,17 @@ export default function StockMovementsPageClient({
   initialError?: string | null
 }) {
   const movements = useMemo(() => collapseDirectToSite(rawMovements), [rawMovements])
-  const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState<string>(ALL)
-  const [sourceFilter, setSourceFilter] = useState<string>(ALL)
-  const [projectFilter, setProjectFilter] = useState<string>(ALL)
-  const [contractorFilter, setContractorFilter] = useState<string>(ALL)
-  const [page, setPage] = useState(1)
+  const [search, setSearch] = useUrlString('q', '')
+  const [typeFilter, setTypeFilter] = useUrlState<string>('type', ALL)
+  const [sourceFilter, setSourceFilter] = useUrlState<string>('source', ALL)
+  const [projectFilter, setProjectFilter] = useUrlState<string>('project', ALL)
+  const [contractorFilter, setContractorFilter] = useUrlState<string>('contractor', ALL)
+  const [page, setPage] = useUrlNumber('page', 1)
   const toast = useToast()
 
   // Any filter change can shrink the result set below the page the user was
   // on - back to page 1 rather than showing an empty table.
-  useEffect(() => {
+  useSkipFirstEffect(() => {
     setPage(1)
   }, [search, typeFilter, sourceFilter, projectFilter, contractorFilter])
 
@@ -95,9 +97,7 @@ export default function StockMovementsPageClient({
 
   return (
     <PageContainer width="standard">
-      <Link href="/dashboard/stock" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800">
-        <ArrowLeft className="h-4 w-4" /> กลับไปหน้าสต็อกวัสดุ
-      </Link>
+      <BackButton fallbackHref="/dashboard/stock" label="กลับไปหน้าสต็อกวัสดุ" />
 
       <PageHeader title="ประวัติการเคลื่อนไหวสต็อก" subtitle="ทุกรายการรับเข้า-เบิกออก ของทุกวัสดุ" />
 

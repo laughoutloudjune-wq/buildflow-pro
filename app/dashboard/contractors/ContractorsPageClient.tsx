@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useTransition } from 'react'
+import { useUrlString } from '@/lib/use-url-state'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Loader2, HardHat, Phone, CreditCard, User, Pencil, Wallet, Search, ShieldCheck } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -50,8 +51,8 @@ export default function ContractorsPageClient({
 }) {
   const router = useRouter()
   const { theme } = useDepartment()
-  const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState('')
+  const [search, setSearch] = useUrlString('q', '')
+  const [typeFilter, setTypeFilter] = useUrlString('type', '')
   const visibleContractors = useMemo(() => {
     const q = search.trim().toLowerCase()
     return contractors.filter((c) => {

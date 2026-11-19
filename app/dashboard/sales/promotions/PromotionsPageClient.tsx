@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
 import ActionMenu from '@/components/ui/ActionMenu'
-import { ArrowLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -142,10 +143,7 @@ export default function PromotionsPageClient({
         subtitle="แต่ละโปรโมชั่นเป็นชุด (bundle) ของรายการของแถม แต่ละรายการมีมูลค่าของตัวเอง เช่น &quot;แถมแอร์ 4 เครื่อง = 48,000 บาท&quot; + &quot;แถมบ้านตกแต่งครบ = 200,000 บาท&quot; เมื่อนำไปใช้กับดีลจริง ฝ่ายขายปรับรายการ/มูลค่า หรือเพิ่มรายการเองได้ตามที่เจรจากับลูกค้า"
         actions={
           <>
-        <ButtonLink href="/dashboard/sales" variant="secondary">
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-          กลับไปผังการขาย
-        </ButtonLink>
+        <BackButton fallbackHref="/dashboard/sales" label="กลับไปผังการขาย" className="mb-0 rounded-lg border border-slate-200 bg-white px-3 py-2" />
           </>
         }
       />

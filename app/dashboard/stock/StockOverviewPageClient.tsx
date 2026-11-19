@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useUrlFlag, useUrlString } from '@/lib/use-url-state'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ListTree, PackageMinus, BarChart3, ClipboardEdit, ClipboardList, Loader2 } from 'lucide-react'
@@ -35,9 +36,9 @@ export default function StockOverviewPageClient({
 }) {
   const router = useRouter()
   const toast = useToast()
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState('ทั้งหมด')
-  const [showAll, setShowAll] = useState(false)
+  const [search, setSearch] = useUrlString('q', '')
+  const [category, setCategory] = useUrlString('cat', 'ทั้งหมด')
+  const [showAll, setShowAll] = useUrlFlag('all', false)
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(Boolean(withdrawPreset))
   // Row being adjusted from the list - lets the Phase 5 yard-count cutover
   // (MATERIAL_FLOW_PLAN.md) walk the whole list without a page navigation

@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ImageIcon, Save } from 'lucide-react'
+import { ImageIcon, Save } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
@@ -71,10 +72,7 @@ export default function BillingInfoPageClient({
         subtitle="ชื่อบริษัทและเลขผู้เสียภาษีที่แสดงบนหัวกระดาษใบเบิกงวดงาน — ข้อมูลบริษัทที่ใช้ซื้อวัสดุ (โลโก้/ลายเซ็นรายบริษัท) อยู่ที่เมนู &quot;บริษัทในเครือ&quot;"
         actions={
           <>
-        <ButtonLink href="/dashboard/settings" variant="secondary">
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-          กลับไปตั้งค่า
-        </ButtonLink>
+        <BackButton fallbackHref="/dashboard/settings" label="กลับไปตั้งค่า" className="mb-0 rounded-lg border border-slate-200 bg-white px-3 py-2" />
           </>
         }
       />

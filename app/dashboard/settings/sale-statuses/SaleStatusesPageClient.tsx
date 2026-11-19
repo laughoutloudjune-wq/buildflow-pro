@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
 import { TableFrame } from '@/components/ui/TableFrame'
-import { ArrowLeft, Loader2, Plus } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
@@ -112,10 +113,7 @@ export default function SaleStatusesPageClient({
         subtitle="เพิ่ม เปลี่ยนชื่อ และเปลี่ยนสีสถานะได้เอง — รหัส (code) แก้ไม่ได้เพราะเป็นตัวอ้างอิงของประวัติการขายเดิม ทุกสถานะต้องระบุ stage เพื่อให้รายงานสรุปได้แม้เพิ่มสถานะใหม่ทีหลัง"
         actions={
           <>
-        <ButtonLink href="/dashboard/settings" variant="secondary">
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-          กลับไปตั้งค่า
-        </ButtonLink>
+        <BackButton fallbackHref="/dashboard/settings" label="กลับไปตั้งค่า" className="mb-0 rounded-lg border border-slate-200 bg-white px-3 py-2" />
           </>
         }
       />
