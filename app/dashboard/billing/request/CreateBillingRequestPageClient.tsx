@@ -32,6 +32,7 @@ export default function CreateBillingRequestPageClient({
   initialNote,
   initialAdjustments,
   initialError,
+  lockJobs = false,
 }: {
   editId: string | null
   initialProjects: ProjectOption[]
@@ -43,6 +44,7 @@ export default function CreateBillingRequestPageClient({
   initialNote: string
   initialAdjustments: Adjustment[]
   initialError: string | null
+  lockJobs?: boolean
 }) {
   const router = useRouter()
 
@@ -65,6 +67,16 @@ export default function CreateBillingRequestPageClient({
   const [submittedData, setSubmittedData] = useState<{ project_id: string; contractor_id: string; net_amount: number; doc_no?: string | number } | null>(null)
   const [editingBilling] = useState<BillingDetail>(initialEditingBilling)
   const [didPrefillJobs, setDidPrefillJobs] = useState(false)
+
+  // Returned request: only the jobs the request already had, none added/removed.
+  const lockedJobIds = useMemo(() => {
+    if (!lockJobs) return null
+    const ids = new Set<string>()
+    for (const row of initialEditingBilling?.billing_jobs || []) {
+      if (row.job_assignments?.id) ids.add(row.job_assignments.id)
+    }
+    return ids
+  }, [lockJobs, initialEditingBilling])
 
   // A new bill with no project given starts on the project used last time.
   useEffect(() => {
@@ -153,6 +165,7 @@ export default function CreateBillingRequestPageClient({
   }, [selectedJobs])
 
   const handleJobSelection = (jobId: string, job: BillableJob) => {
+    if (lockedJobIds) return
     const newSelectedJobs = new Map(selectedJobs)
     const previousProgress = job.previous_progress ?? 0
     if (newSelectedJobs.has(jobId)) {
@@ -238,13 +251,14 @@ export default function CreateBillingRequestPageClient({
   const filteredBillableJobs = useMemo(() => {
     const q = jobSearch.trim().toLowerCase()
     return (billableJobs || []).filter((job: BillableJob) => {
+      if (lockedJobIds && !lockedJobIds.has(job.id)) return false
       const jobName = String(job.boq_master?.item_name || '').toLowerCase()
       const plotName = String(job.plots?.name || '')
       const matchSearch = q.length === 0 || jobName.includes(q) || plotName.toLowerCase().includes(q)
       const matchPlot = !jobPlotFilter || plotName === jobPlotFilter
       return matchSearch && matchPlot
     })
-  }, [billableJobs, jobSearch, jobPlotFilter])
+  }, [billableJobs, jobSearch, jobPlotFilter, lockedJobIds])
 
   const handleSubmit = async () => {
     setError(null)
@@ -348,23 +362,32 @@ export default function CreateBillingRequestPageClient({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">1. โครงการ</label>
-            <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} className="mt-1 block w-full">
+            <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} disabled={lockJobs} className="mt-1 block w-full">
               <option value="">เลือกโครงการ</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">ผู้รับเหมา</label>
-            <select value={selectedContractor} onChange={(e) => setSelectedContractor(e.target.value)} className="mt-1 block w-full">
+            <select value={selectedContractor} onChange={(e) => setSelectedContractor(e.target.value)} disabled={lockJobs} className="mt-1 block w-full">
               <option value="">เลือกผู้รับเหมา</option>
               {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
         </div>
 
+        {lockedJobIds && (
+          <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            ใบขอเบิกนี้ถูก PM ตีกลับ แก้ไขได้เฉพาะงานเดิมที่เคยขอเบิก (แก้ความคืบหน้า/ยอดเงินได้ แต่เพิ่มหรือลบงานไม่ได้)
+            {billableJobs.length > 0 && didPrefillJobs && selectedJobs.size < lockedJobIds.size && (
+              <div className="mt-1 font-semibold text-red-700">งานเดิมบางรายการไม่อยู่ในรายการที่เบิกได้แล้ว กรุณาแจ้ง PM</div>
+            )}
+          </div>
+        )}
+
         {billableJobs.length > 0 && (
           <div className="mt-6">
-            <h2 className="mb-2 text-lg font-semibold text-slate-900">2. เลือกงานที่เบิก</h2>
+            <h2 className="mb-2 text-lg font-semibold text-slate-900">{lockJobs ? '2. งานที่เบิก (งานเดิมของใบนี้)' : '2. เลือกงานที่เบิก'}</h2>
             <div className="mb-3 grid grid-cols-1 md:grid-cols-3 gap-2">
               <input type="text" value={jobSearch} onChange={(e) => setJobSearch(e.target.value)} placeholder="ค้นหาชื่องานหรือแปลง..." className="w-full" />
               <select value={jobPlotFilter} onChange={(e) => setJobPlotFilter(e.target.value)} className="w-full">
@@ -401,7 +424,7 @@ export default function CreateBillingRequestPageClient({
                     return (
                       <Fragment key={job.id}>
                         <tr key={job.id}>
-                          <td className="px-4 py-3"><input type="checkbox" onChange={() => handleJobSelection(job.id, job)} checked={selectedJobs.has(job.id)} /></td>
+                          <td className="px-4 py-3"><input type="checkbox" onChange={() => handleJobSelection(job.id, job)} checked={selectedJobs.has(job.id)} disabled={lockJobs} title={lockJobs ? 'ใบที่ถูกตีกลับ เพิ่มหรือลบงานไม่ได้' : undefined} /></td>
                           <td className="px-4 py-3">{job.boq_master?.item_name || 'งานหลัก'} ({job.plots?.name || '-'})</td>
                           <td className="px-4 py-3 text-right">{formatCurrency(job.totalBoq)}</td>
                           <td className="px-4 py-3 text-right">{formatCurrency(job.paid)}</td>

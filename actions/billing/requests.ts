@@ -219,7 +219,7 @@ export async function updateBillingRequest(id: string, data: BillingPayload): Pr
       },
     })
 
-    if (error) return { success: false, error: error.message }
+    if (error) return { success: false, error: translateBillingError(error.message) }
 
     const row = (result ?? {}) as { id?: string; doc_no?: string | number | null }
     const doc_no = row.doc_no == null ? undefined : row.doc_no

@@ -119,6 +119,7 @@ const ERROR_TRANSLATIONS: [string, string][] = [
   ['Only PM/Admin/Accountant can unmark paid out', 'เฉพาะ PM/Admin/บัญชีเท่านั้นที่สามารถยกเลิกการจ่ายเงินได้'],
   ['One or more billings are not approved or are already paid out', 'มีรายการที่ยังไม่อนุมัติหรือจ่ายเงินไปแล้ว กรุณาโหลดรายการใหม่'],
   ['No billing IDs provided', 'กรุณาเลือกรายการ'],
+  ['Returned request: jobs are locked', 'ใบขอเบิกที่ถูกตีกลับ แก้ไขได้เฉพาะงานเดิมที่เคยขอเบิก ไม่สามารถเพิ่มหรือลบงาน หรือเปลี่ยนโครงการ/ผู้รับเหมาได้'],
   ['Can edit pending review or rejected billing only', 'แก้ไขได้เฉพาะใบเบิกที่รอตรวจสอบหรือถูกปฏิเสธเท่านั้น'],
 
   // Stock
