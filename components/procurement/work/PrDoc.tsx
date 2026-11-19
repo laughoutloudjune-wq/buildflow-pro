@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import ReasonDialog from '@/components/ui/ReasonDialog'
 import { useToast } from '@/components/ui/Toast'
-import { approvePurchaseRequest, rejectPurchaseRequest, getEligibleRequestLinesForOrder } from '@/actions/procurement-actions'
+import { approvePurchaseRequest, rejectPurchaseRequest, cancelPurchaseRequest, getEligibleRequestLinesForOrder } from '@/actions/procurement-actions'
 import { getBoqCheckForPurchaseRequest } from '@/actions/procurement/boq-control'
 import { isBoqCheckLineOver } from '@/lib/procurement/boqControl'
 import { buildCombineDraft } from '@/lib/procurement/combineDraft'
@@ -141,6 +141,20 @@ export default function PrDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
     }
   }
 
+  function cancel() {
+    if (!window.confirm(`ยกเลิกคำขอซื้อ ${docNo('PR', request!.pr_no)} ใช่ไหม`)) return
+    startTransition(async () => {
+      const result = await cancelPurchaseRequest(id)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(`${docNo('PR', request!.pr_no)} ยกเลิกแล้ว`)
+      ctx.refresh()
+      ctx.advance()
+    })
+  }
+
   function reject(reason: string) {
     startTransition(async () => {
       const result = await rejectPurchaseRequest(id, reason)
@@ -161,6 +175,7 @@ export default function PrDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
     more.push({ key: 'skip', label: 'ไม่ซื้อรายการ (ปิดรายการ)', onClick: () => setSettleFor('all') })
   }
   if (request.status === 'pending_review' || request.status === 'approved') more.push({ key: 'edit', label: 'แก้ไขคำขอ', onClick: () => setEditing(true) })
+  if (request.status === 'pending_review' || request.status === 'approved') more.push({ key: 'cancel', label: 'ยกเลิกคำขอ', onClick: cancel })
   more.push({ key: 'print', label: 'พิมพ์ / PDF', href: `/api/procurement/requests/${id}/pdf` })
   more.push({ key: 'full', label: 'เปิดหน้าเต็ม (แก้การปิดรายการ)', href: `/dashboard/procurement/requests/${id}` })
 

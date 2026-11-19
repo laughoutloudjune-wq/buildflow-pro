@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Link2, Loader2, PackageCheck, Pencil, ShoppingCart, Undo2, XCircle } from 'lucide-react'
+import { Ban, CheckCircle2, Link2, Loader2, PackageCheck, Pencil, ShoppingCart, Undo2, XCircle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast'
 import {
   approvePurchaseRequest,
   rejectPurchaseRequest,
+  cancelPurchaseRequest,
   undoPurchaseRequestItemSettlement,
 } from '@/actions/procurement-actions'
 import PurchaseRequestDocActions from '@/components/procurement/PurchaseRequestDocActions'
@@ -186,7 +187,13 @@ function lineTags(request: PurchaseRequest, item: PurchaseRequestItem): { label:
       }
     }
   }
-  if (item.line_status === 'open' && request.needed_by_date && new Date(request.needed_by_date).getTime() < Date.now()) {
+  // Only while the request is still being bought: a received request's lines are history, not "late".
+  if (
+    (request.status === 'approved' || request.status === 'ordered') &&
+    item.line_status === 'open' &&
+    request.needed_by_date &&
+    new Date(request.needed_by_date).getTime() < Date.now()
+  ) {
     tags.push({ label: 'เลยวันที่ต้องการ ยังไม่ได้สั่ง', tone: 'bg-rose-50 text-rose-700' })
   }
   return tags
@@ -324,6 +331,20 @@ export default function PurchaseRequestDetail({
     })
   }
 
+  function handleCancel() {
+    if (!window.confirm(`ยกเลิกคำขอซื้อ #${String(request.pr_no).padStart(4, '0')} ใช่ไหม`)) return
+    startTransition(async () => {
+      const result = await cancelPurchaseRequest(request.id)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      onChanged()
+      toast.success('ยกเลิกคำขอซื้อแล้ว')
+      onDecided?.()
+    })
+  }
+
   function handleUnlink(linkId: string) {
     startTransition(async () => {
       const result = await unlinkRequestFromOrder(linkId, { requestId: request.id })
@@ -349,6 +370,11 @@ export default function PurchaseRequestDetail({
           {request.status === 'pending_review' && (
             <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditModalOpen(true)}>
               <Pencil className="h-3.5 w-3.5" /> แก้ไข
+            </Button>
+          )}
+          {(request.status === 'pending_review' || request.status === 'approved') && (
+            <Button type="button" variant="secondary" size="sm" onClick={handleCancel} disabled={isPending}>
+              <Ban className="h-3.5 w-3.5" /> ยกเลิกคำขอ
             </Button>
           )}
           <PurchaseRequestDocActions requestId={request.id} prNo={request.pr_no} />
@@ -593,7 +619,7 @@ export default function PurchaseRequestDetail({
                     </span>
                     {settlement.note && <span>({settlement.note})</span>}
                     <span>โดย {settlement.settler?.full_name || settlement.settler?.email || '-'}</span>
-                    {request.status === 'approved' && (
+                    {(request.status === 'approved' || request.status === 'ordered') && (
                       <button
                         type="button"
                         onClick={() => handleUndoSettlement(settlement.id)}
