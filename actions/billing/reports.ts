@@ -1,5 +1,6 @@
 'use server'
 
+import { currentProgressAmount } from '@/lib/billing'
 import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess, getDashboardSession } from '@/lib/auth/route-access'
 import { normalizeAdjustmentsWithPlot } from '@/actions/_shared/billing-adjustments'
@@ -391,9 +392,17 @@ export async function getBillingById(id: string) {
       const totalBoq = (job.boq_master?.quantity || 0) * pricePerUnit
       const paid = (job.payments || []).reduce((sum: number, payment) => sum + (payment.amount || 0), 0)
       const previous_progress = totalBoq > 0 ? (paid / totalBoq) * 100 : 0
+      // A request still waiting for review follows the CURRENT job price, so a
+      // price corrected after it was sent shows (and approves) the right total.
+      // Approved/paid bills keep the amount that was approved.
+      const amount =
+        data.status === 'pending_review' && data.type !== 'extra_work'
+          ? currentProgressAmount(Number(billingJob.amount) || 0, totalBoq, paid, billingJob.progress_percent)
+          : billingJob.amount
 
       return {
         ...billingJob,
+        amount,
         totalBoq,
         paid,
         previous_progress,

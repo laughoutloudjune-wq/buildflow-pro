@@ -14,7 +14,7 @@ import type {
   BillingActionSignature,
   BillingApprovalPayload,
 } from '@/lib/types/billing'
-import { assertProgressWithinRange, computeBillingTotals } from '@/lib/billing'
+import { assertProgressWithinRange, computeBillingTotals, currentProgressAmount } from '@/lib/billing'
 import { completeJobsAtFullProgress, reopenJobsAfterUndo } from '@/actions/_shared/job-status'
 
 // The heavy multi-write paths (approve, undo_approve) call the RPCs added in
@@ -53,6 +53,28 @@ export async function approveBilling(id: string, data: BillingApprovalPayload): 
       .filter((job) => job.id)
 
     assertProgressWithinRange(normalizedJobs)
+
+    // The price may have been corrected since the page was opened: re-price
+    // each progress line from the current job price before totals are made.
+    if (approvalType === 'progress') {
+      const withPct = normalizedJobs.filter((j) => j.progress_percent != null)
+      if (withPct.length > 0) {
+        const { data: priced } = await supabase
+          .from('job_assignments')
+          .select('id, agreed_price_per_unit, payments (amount), boq_master:boq_master!job_assignments_boq_item_id_fkey (quantity, price_per_unit)')
+          .in('id', withPct.map((j) => j.id))
+        type Priced = { id: string; agreed_price_per_unit: number | null; payments: { amount: number }[] | null; boq_master: { quantity: number | null; price_per_unit: number | null } | { quantity: number | null; price_per_unit: number | null }[] | null }
+        const byId = new Map(((priced || []) as unknown as Priced[]).map((r) => [r.id, r]))
+        for (const job of normalizedJobs) {
+          const r = byId.get(job.id)
+          if (!r || job.progress_percent == null) continue
+          const boq = Array.isArray(r.boq_master) ? r.boq_master[0] : r.boq_master
+          const totalBoq = Number(boq?.quantity || 0) * Number(r.agreed_price_per_unit ?? boq?.price_per_unit ?? 0)
+          const paid = (r.payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0)
+          job.request_amount = currentProgressAmount(job.request_amount, totalBoq, paid, job.progress_percent)
+        }
+      }
+    }
 
     const normalizedAdjustments = (data.adjustments || []).map((adj) => ({
       type: (adj.type === 'deduction' ? 'deduction' : 'addition') as 'addition' | 'deduction',

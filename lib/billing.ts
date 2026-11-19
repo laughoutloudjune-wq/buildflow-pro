@@ -237,3 +237,19 @@ export function latestRecordedByJob(
   }
   return out
 }
+
+/**
+ * What a progress line should be worth at the CURRENT job price:
+ * BOQ value x percent - already paid. A pending request stores a snapshot
+ * amount from the day it was sent; when the admin later corrects the job's
+ * price that snapshot goes stale. Returns the stored amount unchanged when
+ * it already matches within the rounding slack of a 2-decimal percent (so
+ * requests keyed in by amount are not nudged by a few satang), or when the
+ * line has no percent to derive from.
+ */
+export function currentProgressAmount(storedAmount: number, totalBoq: number, paid: number, percent: number | null | undefined) {
+  if (percent == null || !Number.isFinite(Number(percent))) return storedAmount
+  const fresh = Math.max(0, (totalBoq * Number(percent)) / 100 - paid)
+  const slack = Math.max(1, totalBoq * 0.00005 + 0.01)
+  return Math.abs(fresh - storedAmount) <= slack ? storedAmount : fresh
+}
