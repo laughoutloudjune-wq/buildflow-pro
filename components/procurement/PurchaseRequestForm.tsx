@@ -20,6 +20,7 @@ import PurchasePurposePicker, { usePurchasePurpose, type PurchasePurpose } from 
 
 type PlotScope = 'none' | 'plot' | 'group' | 'multi'
 const OTHER_UNIT = '__other__'
+const OTHER_JOB = '__other_job__'
 const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 })
 type Line = {
   material_type_id: number
@@ -34,6 +35,10 @@ type Line = {
   otherUnit: boolean
   note: string
   boq_id: string | null
+  /** What the line is for when no BOQ job fits (typed). Empty = not typed. */
+  purposeText: string
+  /** "อื่นๆ (พิมพ์เอง)" picked in the job box: the typed box is showing. */
+  purposeOther?: boolean
   /** "+ งาน / หมายเหตุ" clicked: show the job picker and note box. */
   extraOpen?: boolean
   /** This line's own material name, from its joined material_types row
@@ -111,6 +116,8 @@ function PurchaseRequestEditForm({
   // Plots only belong to a project purchase - a scope left over from before
   // switching purpose is ignored, not saved.
   const plotScope: PlotScope = purpose === 'project' ? plotScopeChoice : 'none'
+  // A plot request goes straight to the plot (not central stock), so each line says what it is for.
+  const askJob = purpose === 'project' && plotScope !== 'none'
 
   useEffect(() => {
     async function bootstrap() {
@@ -144,6 +151,8 @@ function PurchaseRequestEditForm({
             otherUnit: false,
             note: i.note || '',
             boq_id: i.boq_id,
+            purposeText: i.purpose || '',
+            purposeOther: !i.boq_id && !!i.purpose,
             material_name: i.material_types?.name || null,
           }))
         )
@@ -159,6 +168,7 @@ function PurchaseRequestEditForm({
               otherUnit: false,
               note: '',
               boq_id: null,
+              purposeText: '',
               material_name: mat?.name || null,
             }
           })
@@ -293,6 +303,7 @@ function PurchaseRequestEditForm({
         otherUnit: false,
         note: '',
         boq_id: null,
+        purposeText: '',
         material_name: material.name,
       },
     ])
@@ -356,7 +367,10 @@ function PurchaseRequestEditForm({
         quantity_requested: Number(l.quantity_requested),
         unit: l.unit.trim() || null,
         note: l.note,
-        boq_id: l.boq_id,
+        // What the line is for only makes sense for a plot request; a
+        // central-store or overhead request skips it.
+        boq_id: askJob ? l.boq_id : null,
+        purpose: askJob && !l.boq_id ? l.purposeText.trim() || null : null,
       })),
     }
 
@@ -469,7 +483,7 @@ function PurchaseRequestEditForm({
               // is not in the active-only list: its own joined name is used.
               const lineName =
                 line.material_name || materials.find((m) => m.id === line.material_type_id)?.name || 'วัสดุที่ปิดใช้งานแล้ว'
-              const extraOpen = !!line.extraOpen || !!line.boq_id || line.note.trim() !== ''
+              const extraOpen = !!line.extraOpen || line.note.trim() !== ''
               return (
               <div key={i} className="rounded-lg border border-slate-200 p-2">
                 <div className="flex items-center gap-2">
@@ -540,41 +554,69 @@ function PurchaseRequestEditForm({
                     canSetConversion={createAction === createPurchaseRequest}
                   />
                 )}
+                {askJob && (
+                  <div className="mt-2">
+                    <div className="mb-1 text-xs text-slate-500">ใช้สำหรับงาน</div>
+                    {boqJobOptions.length > 0 ? (
+                      <SearchableSelect
+                        options={[...boqJobOptions.map((j) => ({ value: j.id, label: j.label })), { value: OTHER_JOB, label: 'อื่นๆ (พิมพ์เอง)' }]}
+                        value={line.boq_id || (line.purposeOther || line.purposeText ? OTHER_JOB : '')}
+                        onChange={(v) => {
+                          if (v === OTHER_JOB) updateLine(i, { boq_id: null, purposeOther: true })
+                          else updateLine(i, { boq_id: v || null, purposeOther: false, purposeText: '' })
+                        }}
+                        placeholder="เลือกงาน…"
+                      />
+                    ) : (
+                      <p className="text-xs text-slate-500">กำลังโหลดรายการงานของแปลง หรือพิมพ์ด้านล่างได้เลย</p>
+                    )}
+                    {(line.purposeOther || line.purposeText || boqJobOptions.length === 0) && !line.boq_id && (
+                      <input
+                        type="text"
+                        value={line.purposeText}
+                        onChange={(e) => updateLine(i, { purposeText: e.target.value, purposeOther: true })}
+                        placeholder="พิมพ์ว่าใช้ทำอะไร เช่น ซ่อมไม้แบบเสา"
+                        className="mt-2 w-full text-sm"
+                      />
+                    )}
+                    {!line.boq_id && !line.purposeText.trim() && (
+                      <p className="mt-1.5 rounded-lg bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                        ยังไม่ได้ระบุว่าใช้ทำอะไร (ส่งใบขอได้ตามปกติ แต่ฝ่ายจัดซื้อจะไม่เห็นว่าใช้กับงานไหน)
+                      </p>
+                    )}
+                  </div>
+                )}
                 {extraOpen ? (
-                  <>
-                    <div className="mt-2">
-                      {boqJobOptions.length > 0 ? (
-                        <SearchableSelect
-                          options={boqJobOptions.map((j) => ({ value: j.id, label: j.label }))}
-                          value={line.boq_id || ''}
-                          onChange={(v) => updateLine(i, { boq_id: v || null })}
-                          placeholder="สำหรับงาน (ไม่ระบุก็ได้)"
-                        />
-                      ) : (
-                        <p className="text-xs text-slate-500">เลือกแปลงก่อน จึงจะระบุได้ว่าวัสดุนี้สำหรับงานใด (ไม่บังคับ)</p>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      value={line.note}
-                      onChange={(e) => updateLine(i, { note: e.target.value })}
-                      placeholder="หมายเหตุสำหรับรายการนี้ (ถ้ามี)"
-                      className="mt-2 w-full text-sm"
-                    />
-                  </>
+                  <input
+                    type="text"
+                    value={line.note}
+                    onChange={(e) => updateLine(i, { note: e.target.value })}
+                    placeholder="หมายเหตุสำหรับรายการนี้ (ถ้ามี)"
+                    className="mt-2 w-full text-sm"
+                  />
                 ) : (
                   <button
                     type="button"
                     onClick={() => updateLine(i, { extraOpen: true })}
                     className="mt-1 text-xs font-medium text-indigo-600 hover:underline"
                   >
-                    + งาน / หมายเหตุ
+                    + หมายเหตุ
                   </button>
                 )}
               </div>
               )
             })}
           </div>
+        )}
+
+        {askJob && lines.length > 1 && (
+          <button
+            type="button"
+            className="mt-2 text-xs font-medium text-indigo-600 hover:underline"
+            onClick={() => setLines((prev) => prev.map((l) => ({ ...l, boq_id: prev[0].boq_id, purposeText: prev[0].purposeText, purposeOther: prev[0].purposeOther })))}
+          >
+            ใช้งานเดียวกันกับรายการแรกทั้งหมด
+          </button>
         )}
 
         {lines.length === 0 && (
