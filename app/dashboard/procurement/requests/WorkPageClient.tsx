@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useUrlState, useUrlString } from '@/lib/use-url-state'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Loader2, MoreHorizontal, Plus, Printer } from 'lucide-react'
@@ -97,10 +98,10 @@ export default function WorkPageClient({
   const data: WorkData = useMemo(() => ({ requests, orders, receipts, vouchers }), [requests, orders, receipts, vouchers])
   const ix = useMemo(() => buildIndex(data), [data])
 
-  const [stage, setStage] = useState<WorkStage>(() => (initialStage && STAGE_FROM_PARAM[initialStage]) || 'appr')
+  const [stage, setStage] = useUrlState<WorkStage>('stage', (initialStage && STAGE_FROM_PARAM[initialStage]) || 'appr', ['appr', 'order', 'recv', 'pay', 'done'] as const)
   const [view, setView] = useState<'req' | 'sup'>('req')
-  const [query, setQuery] = useState('')
-  const [sort, setSort] = useState<WorkSort>('urgent')
+  const [query, setQuery] = useUrlString('q', '')
+  const [sort, setSort] = useUrlState<WorkSort>('sort', 'urgent')
   // Print several requests on one sheet: tick PR rows, then "พิมพ์ที่เลือก".
   const [selectMode, setSelectMode] = useState(false)
   const [printChecked, setPrintChecked] = useState<Set<string>>(new Set())

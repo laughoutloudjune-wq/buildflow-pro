@@ -1,6 +1,7 @@
 'use client'
 
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useMemo, useState, useEffect, useRef } from 'react'
+import { useUrlFlag, useUrlObject, useUrlState, useUrlString } from '@/lib/use-url-state'
 import { ChevronDown, ChevronRight, Loader2, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -71,10 +72,10 @@ export default function LaborBudgetLedgerPageClient({
   const [contractors] = useState<Option[]>(initialContractors)
   const [plotGroups] = useState<PlotGroupOption[]>(initialPlotGroups)
 
-  const [filters, setFilters] = useState<Filters>({})
-  const [groupBy, setGroupBy] = useState<GroupBy>('contractor')
-  const [search, setSearch] = useState('')
-  const [hideSettled, setHideSettled] = useState(false)
+  const [filters, setFilters] = useUrlObject<Filters>(['projectId', 'contractorId', 'plotGroupId'])
+  const [groupBy, setGroupBy] = useUrlState<GroupBy>('groupBy', 'contractor')
+  const [search, setSearch] = useUrlString('q', '')
+  const [hideSettled, setHideSettled] = useUrlFlag('hideSettled')
 
   const [entries, setEntries] = useState<LaborLedgerEntry[]>(initialEntries)
   const [loading, setLoading] = useState(false)
@@ -98,6 +99,14 @@ export default function LaborBudgetLedgerPageClient({
       setLoading(false)
     }
   }
+
+
+  // Back from a detail page restores the filters from the URL; re-run so the rows match them.
+  const restoredFilters = useRef(Object.values(filters).some(Boolean))
+  useEffect(() => {
+    if (restoredFilters.current) void runReport()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // The batch dropdown only makes sense within a project — a group is scoped
   // to one. Clear a stale selection when the project changes underneath it.

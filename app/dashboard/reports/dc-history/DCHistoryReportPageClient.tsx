@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
+import { useUrlObject } from '@/lib/use-url-state'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -41,7 +42,7 @@ export default function DCHistoryReportPageClient({
 }) {
   const [projects] = useState<Project[]>(initialProjects)
   const [plots, setPlots] = useState<Plot[]>([])
-  const [filters, setFilters] = useState<Filters>({})
+  const [filters, setFilters] = useUrlObject<Filters>(['projectId', 'plotId', 'reason', 'dateFrom', 'dateTo'])
   const [data, setData] = useState<ExtraWorkRow[]>(initialData)
   const [loading, setLoading] = useState(false)
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null)
@@ -66,6 +67,14 @@ export default function DCHistoryReportPageClient({
     setData(result || [])
     setLoading(false)
   }
+
+
+  // Back from a detail page restores the filters from the URL; re-run so the rows match them.
+  const restoredFilters = useRef(Object.values(filters).some(Boolean))
+  useEffect(() => {
+    if (restoredFilters.current) void runReport()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const sortedData = useMemo(() => {
     return [...data].sort((a, b) => {

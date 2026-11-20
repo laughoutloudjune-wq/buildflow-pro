@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useUrlNumber, useUrlObject } from '@/lib/use-url-state'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertTriangle, Plus, Eye, Edit, Loader2, Printer } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -57,7 +58,7 @@ export default function BillingPageClient({
   const billings = initialBillings
   const [listError, setListError] = useState(initialError)
   const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null)
-  const [filters, setFilters] = useState<BillingFilters>({})
+  const [filters, setFilters] = useUrlObject<BillingFilters>(['month', 'projectId', 'contractorId', 'status'])
   const [flash, setFlash] = useState<{ tone: 'success' | 'error' | 'info' | 'warning'; message: string } | null>(null)
   const router = useRouter()
   const { theme } = useDepartment()
@@ -152,7 +153,7 @@ export default function BillingPageClient({
       }),
     [filteredBillings]
   )
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useUrlNumber('page', 1)
   // Back to page 1 whenever the filters change (adjusted during render, not in an effect).
   const filterKey = JSON.stringify(filters)
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
@@ -231,7 +232,14 @@ export default function BillingPageClient({
       />
 
       {queryFlash ? (
-        <NoticeBanner tone={queryFlash.tone} message={queryFlash.message} onClose={() => router.replace('/dashboard/billing')} />
+        <NoticeBanner tone={queryFlash.tone} message={queryFlash.message} onClose={() => {
+          // Drop only the flash params; keep the list's filters in the URL.
+          const rest = new URLSearchParams(window.location.search)
+          rest.delete('type')
+          rest.delete('message')
+          const qs = rest.toString()
+          router.replace(qs ? `/dashboard/billing?${qs}` : '/dashboard/billing')
+        }} />
       ) : flash ? (
         <NoticeBanner tone={flash.tone} message={flash.message} onClose={() => setFlash(null)} />
       ) : null}

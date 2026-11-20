@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useUrlState, useUrlString } from '@/lib/use-url-state'
 import { AlertTriangle, Check, Link2, Loader2, Plus, User, X } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -84,9 +85,9 @@ export default function SalesRequestsPageClient({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [requests, setRequests] = useState(initialRequests)
-  const [statusFilter, setStatusFilter] = useState<'open' | WorkRequestStatus>('open')
-  const [projectFilter, setProjectFilter] = useState('')
-  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useUrlState<'open' | WorkRequestStatus>('status', 'open')
+  const [projectFilter, setProjectFilter] = useUrlString('project', '')
+  const [search, setSearch] = useUrlString('q', '')
   const [dcOptionsFor, setDcOptionsFor] = useState<string | null>(null)
   const [dcOptions, setDcOptions] = useState<{ id: string; docNo: number | string | null; billingDate: string | null; netAmount: number | null }[]>([])
   const [rejectTarget, setRejectTarget] = useState<WorkRequestRow | null>(null)

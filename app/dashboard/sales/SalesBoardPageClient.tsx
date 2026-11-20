@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useUrlFlag, useUrlString } from '@/lib/use-url-state'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AlertTriangle, ExternalLink, LayoutGrid, List, Loader2, Map as MapIcon, Pencil, Tag, Upload } from 'lucide-react'
@@ -111,10 +112,10 @@ export default function SalesBoardPageClient({
   const { theme } = useDepartment()
   const [isPending, startTransition] = useTransition()
 
-  const [statusFilter, setStatusFilter] = useState('')
-  const [repFilter, setRepFilter] = useState('')
-  const [modelFilter, setModelFilter] = useState('')
-  const [transferThisMonthOnly, setTransferThisMonthOnly] = useState(false)
+  const [statusFilter, setStatusFilter] = useUrlString('status', '')
+  const [repFilter, setRepFilter] = useUrlString('rep', '')
+  const [modelFilter, setModelFilter] = useUrlString('model', '')
+  const [transferThisMonthOnly, setTransferThisMonthOnly] = useUrlFlag('transfer', false)
   const [overdueDays, setOverdueDays] = useState('')
 
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null)

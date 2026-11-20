@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState, useTransition } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, ArrowDown, ArrowUp, ImageUp, Loader2, Plus, Trash2 } from 'lucide-react'
+import { BackButton } from '@/components/ui/BackButton'
+import { ArrowDown, ArrowUp, ImageUp, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -162,12 +162,7 @@ export default function SignatureSettingsPageClient({
   return (
     <PageContainer width="form">
       <div>
-        <Link
-          href="/dashboard/settings"
-          className="mb-2 flex w-fit items-center gap-1 text-sm text-slate-500 transition hover:text-indigo-600"
-        >
-          <ArrowLeft className="h-4 w-4" /> กลับไปตั้งค่า
-        </Link>
+        <BackButton fallbackHref="/dashboard/settings" label="กลับไปตั้งค่า" />
         <PageHeader
           title="ลายเซ็นในเอกสาร"
           subtitle="กำหนดจำนวน ป้ายชื่อ และรูปลายเซ็นของแต่ละช่องเซ็นชื่อบนเอกสารที่พิมพ์ได้"

@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useUrlObject, useUrlState } from '@/lib/use-url-state'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -58,9 +59,9 @@ export default function ContractorCycleReportPage() {
   const { theme } = useDepartment()
   const [projects, setProjects] = useState<Project[]>([])
   const [contractors, setContractors] = useState<Contractor[]>([])
-  const [filters, setFilters] = useState<Filters>({})
+  const [filters, setFilters] = useUrlObject<Filters>(['projectId', 'contractorId', 'month'])
   const derivedRange = useMemo(() => monthToRange(filters.month), [filters.month])
-  const [activeTab, setActiveTab] = useState<'unpaid' | 'paid'>('unpaid')
+  const [activeTab, setActiveTab] = useUrlState<'unpaid' | 'paid'>('tab', 'unpaid', ['unpaid', 'paid'] as const)
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

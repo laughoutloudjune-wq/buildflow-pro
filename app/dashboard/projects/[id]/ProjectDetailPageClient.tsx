@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useUrlState, useUrlString } from '@/lib/use-url-state'
 import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, MapPin, AlertCircle, Pencil, Users, GaugeCircle, LayoutList, Map as MapIcon } from 'lucide-react'
@@ -97,10 +98,10 @@ export default function ProjectDetailPageClient({
   const [selectedHouseModelId, setSelectedHouseModelId] = useState('')
 
   const [viewMode, setViewMode] = useState<ViewMode>('map')
-  const [search, setSearch] = useState('')
-  const [houseModelFilter, setHouseModelFilter] = useState('')
-  const [sellableFilter, setSellableFilter] = useState<SellableFilter>('all')
-  const [groupFilter, setGroupFilter] = useState('')
+  const [search, setSearch] = useUrlString('q', '')
+  const [houseModelFilter, setHouseModelFilter] = useUrlString('model', '')
+  const [sellableFilter, setSellableFilter] = useUrlState<SellableFilter>('sell', 'all')
+  const [groupFilter, setGroupFilter] = useUrlString('group', '')
 
   // "Hide plots not for sale" is the sellable filter set to เปิดขาย, remembered per browser.
   const HIDE_KEY = 'plots:hideNotSellable'

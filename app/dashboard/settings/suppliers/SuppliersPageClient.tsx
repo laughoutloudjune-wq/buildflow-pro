@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
+import { useUrlNumber } from '@/lib/use-url-state'
 import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { ArrowLeft, Building2, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Building2, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
@@ -47,7 +48,7 @@ export default function SuppliersPageClient({
   const [editing, setEditing] = useState<Supplier | null>(null)
   /** Which supplier's สาขา list is open, if any. */
   const [branchesFor, setBranchesFor] = useState<Supplier | null>(null)
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useUrlNumber('page', 1)
   const [draft, setDraft] = useState<SupplierInput>(emptyDraft)
   const [deactivateTarget, setDeactivateTarget] = useState<Supplier | null>(null)
 
@@ -119,12 +120,7 @@ export default function SuppliersPageClient({
   return (
     <PageContainer width="standard">
       <div>
-        <Link
-          href="/dashboard/settings"
-          className="mb-2 flex w-fit items-center gap-1 text-sm text-slate-500 transition hover:text-indigo-600"
-        >
-          <ArrowLeft className="h-4 w-4" /> กลับไปตั้งค่า
-        </Link>
+        <BackButton fallbackHref="/dashboard/settings" label="กลับไปตั้งค่า" />
         <PageHeader
           title="ผู้จำหน่าย (Suppliers)"
           subtitle="รายชื่อผู้จำหน่ายวัสดุที่ใช้เลือกเวลาสร้างใบสั่งซื้อ"

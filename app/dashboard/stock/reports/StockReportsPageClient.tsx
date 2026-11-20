@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
 import Link from 'next/link'
-import { ArrowLeft, Settings, ShoppingCart } from 'lucide-react'
+import { Settings, ShoppingCart } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -31,9 +32,7 @@ export default function StockReportsPageClient({
 
   return (
     <PageContainer width="standard">
-      <Link href="/dashboard/stock" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800">
-        <ArrowLeft className="h-4 w-4" /> กลับไปหน้าสต็อกวัสดุ
-      </Link>
+      <BackButton fallbackHref="/dashboard/stock" label="กลับไปหน้าสต็อกวัสดุ" />
 
       <PageHeader title="รายงานสต็อก" subtitle="วัสดุใกล้หมด และการเบิกจ่ายตามโครงการ/ผู้รับเหมา" />
 

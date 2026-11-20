@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useTransition } from 'react'
-import { ArrowLeft, Save } from 'lucide-react'
+import { BackButton } from '@/components/ui/BackButton'
+import { Save } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
@@ -49,10 +50,7 @@ export default function FinancialDefaultsPageClient({
         subtitle="ใช้เป็นค่าเริ่มต้นเมื่อสร้างหรือตรวจใบเบิก ปรับแก้รายใบได้ภายหลัง"
         actions={
           <>
-        <ButtonLink href="/dashboard/settings" variant="secondary">
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-          กลับไปตั้งค่า
-        </ButtonLink>
+        <BackButton fallbackHref="/dashboard/settings" label="กลับไปตั้งค่า" className="mb-0 rounded-lg border border-slate-200 bg-white px-3 py-2" />
           </>
         }
       />

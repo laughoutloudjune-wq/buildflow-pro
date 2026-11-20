@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import { useUrlString } from '@/lib/use-url-state'
 import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Home, Ruler, Building, RefreshCw, Pencil } from 'lucide-react'
@@ -39,7 +40,7 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<HouseModel | null>(null)
   const [isPending, startTransition] = useTransition()
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useUrlString('q', '')
   const [deleteTarget, setDeleteTarget] = useState<HouseModel | null>(null)
   const toast = useToast()
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })

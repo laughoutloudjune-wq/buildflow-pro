@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { ArrowLeft, Info, Save } from 'lucide-react'
+import { BackButton } from '@/components/ui/BackButton'
+import { Info, Save } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
@@ -91,10 +92,7 @@ export default function PermissionSettingsPageClient({
         actions={
           <>
         <div className="flex flex-wrap items-center gap-2">
-          <ButtonLink href="/dashboard/settings" variant="secondary">
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-            กลับไปตั้งค่า
-          </ButtonLink>
+          <BackButton fallbackHref="/dashboard/settings" label="กลับไปตั้งค่า" className="mb-0 rounded-lg border border-slate-200 bg-white px-3 py-2" />
           <Button type="button" onClick={handleSave} disabled={isPending}>
             <Save className="h-4 w-4" aria-hidden />
             {isPending ? 'กำลังบันทึก...' : 'บันทึกสิทธิ์'}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useUrlState, useUrlString } from '@/lib/use-url-state'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Wallet } from 'lucide-react'
@@ -46,8 +47,8 @@ export default function ReceiptsPageClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialError])
 
-  const [search, setSearch] = useState('')
-  const [paidFilter, setPaidFilter] = useState<'all' | 'unpaid' | 'paid'>('all')
+  const [search, setSearch] = useUrlString('q', '')
+  const [paidFilter, setPaidFilter] = useUrlState<'all' | 'unpaid' | 'paid'>('paid', 'all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [detailReceipt, setDetailReceipt] = useState<GoodsReceipt | null>(null)
   const [isPayModalOpen, setIsPayModalOpen] = useState(false)

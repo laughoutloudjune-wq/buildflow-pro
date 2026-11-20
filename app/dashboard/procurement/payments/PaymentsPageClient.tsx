@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useUrlString } from '@/lib/use-url-state'
 import { useRouter } from 'next/navigation'
 import { Loader2, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -36,7 +37,7 @@ export default function PaymentsPageClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialError])
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useUrlString('q', '')
   const [voidingId, setVoidingId] = useState<string | null>(null)
   const [voidTarget, setVoidTarget] = useState<PaymentVoucher | null>(null)
 

@@ -1,6 +1,8 @@
 'use client'
 
 import { Fragment, useState, useEffect, useMemo } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
+import { usePathname } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import { getBillableJobs, createBillingRequest, getBillingById, updateBillingRequest, getJobProgressHistory, getRecordedProgress } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
@@ -47,6 +49,7 @@ export default function CreateBillingRequestPageClient({
   lockJobs?: boolean
 }) {
   const router = useRouter()
+  const pathname = usePathname()
 
   const [projects] = useState<ProjectOption[]>(initialProjects)
   const [contractors] = useState<ContractorOption[]>(initialContractors)
@@ -357,6 +360,7 @@ export default function CreateBillingRequestPageClient({
         </Modal>
       )}
 
+      <BackButton fallbackHref={pathname.startsWith('/dashboard/foreman') ? '/dashboard/foreman/create-progress' : '/dashboard/billing'} />
       <PageHeader title="เบิกงวดงานหลัก" subtitle="เลือกโครงการและผู้รับเหมา เลือกงานที่เบิก แล้วส่งให้ PM ตรวจสอบ" />
       <Card className="p-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">

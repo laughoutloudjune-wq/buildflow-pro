@@ -1,9 +1,10 @@
 'use client'
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, useTransition } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, ArrowLeft, Link2, Loader2, MapPin, Plus, Repeat2, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Link2, Loader2, MapPin, Plus, Repeat2, Trash2, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -1444,9 +1445,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
     <div className={`mx-auto max-w-5xl ${readOnly || onClose ? 'pb-10' : 'pb-24'}`}>
       {mode === 'create' && (
         <div className="mb-5">
-          <Link href={backHref} className="mb-2 flex w-fit items-center gap-1 text-sm text-slate-500 transition hover:text-indigo-600">
-            <ArrowLeft className="h-4 w-4" /> กลับไปใบสั่งซื้อ
-          </Link>
+          <BackButton fallbackHref={backHref} label="กลับไปใบสั่งซื้อ" />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h1 className="text-[22px] font-semibold tracking-tight text-slate-900">สร้างใบสั่งซื้อใหม่</h1>
             {fromRequestId && (

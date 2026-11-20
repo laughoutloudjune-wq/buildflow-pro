@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { BackButton } from '@/components/ui/BackButton'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -258,6 +259,7 @@ export default function CreateExtraWorkPageClient({
         </Modal>
       )}
 
+      <BackButton fallbackHref="/dashboard/foreman/create-progress" />
       <PageHeader title="สร้างงานเพิ่ม (DC)" subtitle="ระบุโครงการ แปลง และเหตุผล แนบรูปถ่าย แล้วส่งให้ PM พิจารณา" />
       {workRequestId && (
         <div className="rounded-xl bg-indigo-50 px-4 py-2 text-sm text-indigo-900 ring-1 ring-inset ring-indigo-100">

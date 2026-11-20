@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useUrlState, useUrlString } from '@/lib/use-url-state'
 import { useRouter } from 'next/navigation'
 import { getBillingsByCreator, deleteBilling } from '@/actions/billing-actions'
 import { Card } from '@/components/ui/Card'
@@ -46,10 +47,10 @@ export default function ForemanHistoryPageClient({
   const [billings, setBillings] = useState<Billing[]>(initialBillings)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(initialError ?? null)
-  const [tab, setTab] = useState<Tab>('pending_review')
+  const [tab, setTab] = useUrlState<Tab>('tab', 'pending_review')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useUrlString('q', '')
 
   const load = useCallback(async () => {
     setLoading(true)

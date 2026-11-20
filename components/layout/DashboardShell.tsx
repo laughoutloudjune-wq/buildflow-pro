@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
+import { NavHistoryTracker } from '@/lib/nav-history'
 import { DepartmentProvider } from '@/components/layout/DepartmentContext'
 import type { PermissionModule } from '@/lib/permissions'
 
@@ -40,6 +41,7 @@ export default function DashboardShell({
 
   return (
     <DepartmentProvider permissions={permissions}>
+    <NavHistoryTracker />
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar permissions={permissions} collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
       <div
