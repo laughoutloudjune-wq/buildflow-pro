@@ -35,6 +35,8 @@ type RawOrder = {
   po_no: string
   status: string
   order_date: string | null
+  project_id?: string | null
+  projects?: Many<{ name: string }>
   suppliers: Many<{ name: string }>
   purchase_order_items:
     | {
@@ -48,7 +50,8 @@ type RawOrder = {
 }
 
 const ORDER_SELECT = `
-  id, po_no, status, order_date, created_at,
+  id, po_no, status, order_date, created_at, project_id,
+  projects (name),
   suppliers (name),
   purchase_order_items (id, material_type_id, quantity_ordered, unit, material_types (name, unit, generic_material_id))
 `
@@ -80,6 +83,8 @@ function toLinkOrder(po: RawOrder): LinkOrder {
     poNo: po.po_no,
     status: po.status,
     orderDate: po.order_date,
+    projectId: po.project_id ?? null,
+    projectName: one(po.projects)?.name ?? null,
     supplier: one(po.suppliers)?.name ?? null,
     items: (po.purchase_order_items || []).map<LinkPoItem>((i) => {
       const mt = one(i.material_types)
@@ -99,7 +104,7 @@ function toLinkOrder(po: RawOrder): LinkOrder {
  * project's orders they could be linked to. */
 export async function getRequestLinkCandidates(
   requestId: string
-): Promise<{ lines: LinkLine[]; orders: LinkOrder[] } | { error: string }> {
+): Promise<{ lines: LinkLine[]; orders: LinkOrder[]; projectId: string } | { error: string }> {
   try {
     await requireModuleAccess('procurement')
     const supabase = await createClient()
@@ -139,9 +144,37 @@ export async function getRequestLinkCandidates(
       for (const o of (typed || []) as unknown as RawOrder[]) orders.set(o.id, o)
     }
 
-    return { lines, orders: Array.from(orders.values()).map(toLinkOrder) }
+    return { lines, orders: Array.from(orders.values()).map(toLinkOrder), projectId: raw.project_id }
   } catch (error) {
     return { error: translateError(error instanceof Error ? error.message : 'โหลดข้อมูลไม่สำเร็จ') }
+  }
+}
+
+/** Request page search box: find orders by PO number or shop name in ANY
+ * project, not only the request's own project and its 80 newest orders. An
+ * order bought under another project (or an old one) is still a valid link
+ * target; the sheet shows a warning instead of hiding it. */
+export async function searchOrdersForLink(query: string): Promise<{ orders: LinkOrder[] } | { error: string }> {
+  try {
+    await requireModuleAccess('procurement')
+    const q = query.trim().replace(/[%,()*]/g, ' ').trim()
+    if (q.length < 3) return { orders: [] }
+    const supabase = await createClient()
+    const { data: shops } = await supabase.from('suppliers').select('id').ilike('name', `%${q}%`).limit(20)
+    const shopIds = (shops || []).map((s) => s.id as string)
+    let filter = `po_no.ilike.%${q}%`
+    if (shopIds.length > 0) filter += `,supplier_id.in.(${shopIds.join(',')})`
+    const { data, error } = await supabase
+      .from('purchase_orders')
+      .select(ORDER_SELECT)
+      .neq('status', 'cancelled')
+      .or(filter)
+      .order('created_at', { ascending: false })
+      .limit(30)
+    if (error) throw new Error(error.message)
+    return { orders: ((data || []) as unknown as RawOrder[]).map(toLinkOrder) }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'ค้นหาไม่สำเร็จ') }
   }
 }
 

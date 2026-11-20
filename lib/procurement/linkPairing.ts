@@ -29,6 +29,9 @@ export type LinkOrder = {
   supplier: string | null
   orderDate: string | null
   status: string
+  /** The order's own project; used to warn when it differs from the request's. */
+  projectId?: string | null
+  projectName?: string | null
   items: LinkPoItem[]
 }
 

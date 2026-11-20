@@ -9,6 +9,7 @@ import {
   getOrderLinkCandidates,
   getRequestLinkCandidates,
   linkRequestLinesToOrder,
+  searchOrdersForLink,
 } from '@/actions/procurement/request-links'
 import { orderMatchCount, suggestPairs, type LinkLine, type LinkOrder, type LinkPoItem, type PairTag } from '@/lib/procurement/linkPairing'
 
@@ -39,6 +40,9 @@ export default function RequestPoLinkSheet(props: Props) {
   const [orders, setOrders] = useState<LinkOrder[]>([])
   const [orderId, setOrderId] = useState<string | null>(props.mode === 'order' ? props.orderId : null)
   const [search, setSearch] = useState('')
+  const [requestProjectId, setRequestProjectId] = useState<string | null>(null)
+  const [found, setFound] = useState<LinkOrder[]>([])
+  const [searching, setSearching] = useState(false)
   // request mode: request line id -> order item id. order mode: order item id -> request line id.
   const [picks, setPicks] = useState<Record<string, string>>({})
 
@@ -58,6 +62,7 @@ export default function RequestPoLinkSheet(props: Props) {
         const wanted = onlyLineId ? result.lines.filter((l) => l.id === onlyLineId) : result.lines
         setLines(wanted)
         setOrders(result.orders)
+        setRequestProjectId(result.projectId)
         const typed = initialPoNo ? result.orders.find((o) => o.poNo === initialPoNo) : null
         if (typed) setOrderId(typed.id)
       } else {
@@ -72,7 +77,35 @@ export default function RequestPoLinkSheet(props: Props) {
     }
   }, [key, onlyLineId, initialPoNo])
 
-  const order = orders.find((o) => o.id === orderId) ?? null
+  // Typing a PO number or shop name also searches every project and older orders.
+  useEffect(() => {
+    const q = search.trim()
+    if (props.mode !== 'request' || q.length < 3) {
+      setFound([])
+      setSearching(false)
+      return
+    }
+    setSearching(true)
+    let cancelled = false
+    const t = setTimeout(async () => {
+      const r = await searchOrdersForLink(q)
+      if (cancelled) return
+      setFound('orders' in r ? r.orders : [])
+      setSearching(false)
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [search, props.mode])
+
+  const allOrders = useMemo(() => {
+    const m = new Map(orders.map((o) => [o.id, o]))
+    for (const o of found) if (!m.has(o.id)) m.set(o.id, o)
+    return Array.from(m.values())
+  }, [orders, found])
+  const order = allOrders.find((o) => o.id === orderId) ?? null
+  const otherProject = !!(order && requestProjectId && order.projectId && order.projectId !== requestProjectId)
 
   // Pair the lines with the chosen order once it is picked.
   const suggestions = useMemo(() => {
@@ -89,11 +122,11 @@ export default function RequestPoLinkSheet(props: Props) {
 
   const rankedOrders = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return orders
+    return allOrders
       .filter((o) => !q || o.poNo.toLowerCase().includes(q) || (o.supplier || '').toLowerCase().includes(q))
       .map((o) => ({ order: o, matches: orderMatchCount(lines, o) }))
       .sort((a, b) => b.matches - a.matches)
-  }, [orders, lines, search])
+  }, [allOrders, lines, search])
 
   const chosenCount = Object.values(picks).filter(Boolean).length
 
@@ -140,7 +173,7 @@ export default function RequestPoLinkSheet(props: Props) {
         ) : !order ? (
           <>
             <p className="text-xs text-slate-500">
-              ใบสั่งซื้อของโครงการนี้ เรียงตามที่ตรงกับรายการที่ยังค้างมากสุด
+              ใบสั่งซื้อของโครงการนี้ เรียงตามที่ตรงกับรายการที่ยังค้างมากสุด พิมพ์เลข PO หรือชื่อร้านเพื่อค้นทุกโครงการ
             </p>
             <input
               type="text"
@@ -151,7 +184,7 @@ export default function RequestPoLinkSheet(props: Props) {
             />
             <div className="space-y-2">
               {rankedOrders.length === 0 ? (
-                <p className="py-4 text-center text-sm text-slate-500">ไม่พบใบสั่งซื้อ</p>
+                <p className="py-4 text-center text-sm text-slate-500">{searching ? 'กำลังค้นหา...' : 'ไม่พบใบสั่งซื้อ'}</p>
               ) : (
                 rankedOrders.slice(0, 40).map(({ order: o, matches }) => (
                   <button
@@ -165,6 +198,9 @@ export default function RequestPoLinkSheet(props: Props) {
                       <span className="block truncate text-xs text-slate-500">
                         {o.supplier || '-'}
                         {o.orderDate ? ` · ${new Date(o.orderDate).toLocaleDateString('th-TH')}` : ''}
+                        {requestProjectId && o.projectId && o.projectId !== requestProjectId && o.projectName
+                          ? ` · โครงการ ${o.projectName}`
+                          : ''}
                       </span>
                     </span>
                     {matches > 0 && (
@@ -188,6 +224,11 @@ export default function RequestPoLinkSheet(props: Props) {
               <span className="font-mono font-medium text-slate-800">{order.poNo}</span>
               <span className="text-slate-500">{order.supplier || ''}</span>
             </div>
+            {otherProject && (
+              <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+                PO นี้อยู่คนละโครงการ{order.projectName ? ` (${order.projectName})` : ''} กับคำขอซื้อ ผูกได้ตามปกติ แต่ตรวจให้แน่ใจว่าเป็นของที่ซื้อให้คำขอนี้
+              </p>
+            )}
             <p className="text-xs text-slate-500">ระบบจับคู่ให้แล้ว เปลี่ยนได้ ถ้าไม่ใช่ให้เลือก &ldquo;ไม่ผูก&rdquo;</p>
 
             <div className="divide-y divide-slate-100 rounded-lg border border-slate-200">
