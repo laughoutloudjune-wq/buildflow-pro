@@ -93,7 +93,8 @@ export default function ContractorsPageClient({
       if (editingContractor) {
         await updateContractor(editingContractor.id, formData)
       } else {
-        await createContractor(formData)
+        const res = await createContractor(formData)
+        if (!res.ok) window.alert(res.error)
       }
       router.refresh()
     })
