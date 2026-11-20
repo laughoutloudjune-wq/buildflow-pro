@@ -19,7 +19,7 @@ export async function createForemanPurchaseRequest(input: {
   plot_ids?: string[]
   note?: string
   needed_by_date?: string
-  items: { material_type_id: number; quantity_requested: number; note?: string; boq_id?: string | null; unit?: string | null }[]
+  items: { material_type_id: number; quantity_requested: number; note?: string; boq_id?: string | null; purpose?: string | null; unit?: string | null }[]
 }): Promise<{ id: string; pr_no: string } | { error: string }> {
   try {
     await requireModuleAccess('foreman')

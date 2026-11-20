@@ -224,6 +224,7 @@ export function buildPurchaseOrderHtml(
             <div class="item-name">${esc(item.material_types?.name) || '-'}</div>
             ${item.description ? `<div class="item-desc">${esc(item.description)}</div>` : ''}
             ${discountNote}
+            ${options.showAllocations && item.purpose ? `<div class="item-desc">สำหรับ: ${esc(item.purpose)}</div>` : ''}
             ${options.showAllocations ? allocationBreakdown(item) : ''}
           </td>
           <td class="right nowrap">${qty(item.quantity_ordered)}</td>

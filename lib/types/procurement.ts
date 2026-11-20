@@ -138,6 +138,8 @@ export type PurchaseRequestItem = {
    * traceability only. Null for requests with no single job (office
    * supplies, common area). */
   boq_id: string | null
+  /** What the line is for when no BOQ job fits (typed by the requester). */
+  purpose?: string | null
   material_types?: MaterialType | null
   boq_master?: { item_name: string } | null
   purchase_request_item_settlements?: PurchaseRequestItemSettlement[]
@@ -247,6 +249,10 @@ export type PurchaseOrderItem = {
   unit_price: number
   quantity_received: number
   description: string | null
+  /** What the line is for (BOQ job name or typed purpose), copied from the
+   * request lines it is allocated to. Internal: shown on screen and on the
+   * internal print only. */
+  purpose?: string | null
   discount_type: DiscountType
   discount_value: number
   discount_amount: number

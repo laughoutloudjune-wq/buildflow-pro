@@ -463,6 +463,9 @@ export default function PurchaseOrderDetailPageClient({
                     {item.quantity_ordered.toLocaleString('th-TH')} {item.unit || item.material_types?.unit || ''}
                   </span>
                 </div>
+                {item.purpose && (
+                  <div className="mt-1 inline-block rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">สำหรับ: {item.purpose}</div>
+                )}
                 <ul className="mt-1.5 space-y-0.5 text-xs text-slate-500">
                   {rows.map((row) => (
                     <li key={row.allocationId} className="flex justify-between gap-3">

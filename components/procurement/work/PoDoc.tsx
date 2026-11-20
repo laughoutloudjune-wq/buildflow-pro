@@ -178,6 +178,7 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
                   <td>
                     {item.material_types?.name || '-'}
                     {item.description && <div className="text-xs text-slate-500">{item.description}</div>}
+                    {item.purpose && <div className="mt-0.5 inline-block rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">สำหรับ: {item.purpose}</div>}
                   </td>
                   <td className="n whitespace-nowrap">
                     {qtyText(ordered)} {unit}
