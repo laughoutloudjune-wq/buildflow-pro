@@ -214,6 +214,14 @@ export default function PoDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
               <td className="n">{formatCurrency(subtotal)}</td>
               <td className="hidden sm:table-cell" />
             </tr>
+            {order.vat_type === 'inclusive' && Number(order.vat_percent) > 0 && (
+              <tr>
+                <td colSpan={4} className="hidden sm:table-cell" />
+                <td className="n text-slate-500">ยอดก่อนภาษี</td>
+                <td className="n">{formatCurrency(total - vat)}</td>
+                <td className="hidden sm:table-cell" />
+              </tr>
+            )}
             <tr>
               <td colSpan={4} className="hidden sm:table-cell" />
               <td className="n text-slate-500">VAT {Number(order.vat_percent)}%</td>
