@@ -253,6 +253,15 @@ export function buildPurchaseOrderHtml(
       ? `<div class="kv"><span class="muted">${discountLabel}</span><span class="discount">-${money(order.discount_amount)}</span></div>`
       : ''
 
+  // VAT-inclusive POs store the VAT-inclusive subtotal, so the print would
+  // otherwise jump from "subtotal" straight to the VAT amount. Derive the
+  // pre-VAT figure from the PO's own totals (total - VAT) so every PO, old or
+  // new, shows it.
+  const isVatInclusive = order.vat_type === 'inclusive' && Number(order.vat_percent) > 0
+  const preVatRow = isVatInclusive
+    ? `<div class="kv"><span class="muted">ยอดก่อนภาษี</span><span>${money(Number(order.total_amount) - Number(order.vat_amount))}</span></div>`
+    : ''
+
   const noteBlock = order.note
     ? `<div class="card notes"><div class="card-label">หมายเหตุ / เงื่อนไข</div><div class="notes-text">${esc(order.note)}</div></div>`
     : ''
@@ -565,8 +574,9 @@ export function buildPurchaseOrderHtml(
         <div class="words-text">${esc(bahtText(order.total_amount))}</div>
       </div>
       <div class="totals-card">
-        <div class="kv"><span class="muted">รวมเป็นเงิน</span><span>${money(order.subtotal)}</span></div>
+        <div class="kv"><span class="muted">รวมเป็นเงิน${isVatInclusive ? ' (รวมภาษี)' : ''}</span><span>${money(order.subtotal)}</span></div>
         ${discountRow}
+        ${preVatRow}
         <div class="kv"><span class="muted">ภาษีมูลค่าเพิ่ม ${order.vat_percent > 0 ? `${order.vat_percent}%` : ''}</span><span>${money(order.vat_amount)}</span></div>
         <div class="totals-divider"></div>
         <div class="totals-final"><span>รวมทั้งสิ้น</span><span>฿${money(order.total_amount)}</span></div>

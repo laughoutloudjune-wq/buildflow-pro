@@ -2305,6 +2305,12 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
               <span>-฿{formatMoney(poDiscountAmount)}</span>
             </div>
           )}
+          {vatType === 'inclusive' && vatPercent > 0 && (
+            <div className="flex justify-between text-slate-500">
+              <span>ยอดก่อนภาษี</span>
+              <span>฿{formatMoney(taxable)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-slate-500">
             <span>
               ภาษีมูลค่าเพิ่ม ({vatPercent || 0}%{vatType === 'inclusive' && vatPercent > 0 ? ', รวมในราคาแล้ว' : ''})
