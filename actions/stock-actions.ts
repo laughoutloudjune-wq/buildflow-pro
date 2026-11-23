@@ -236,6 +236,42 @@ export async function createStockWithdrawal(input: {
   }
 }
 
+/** Edit a past withdrawal slip (stock_request_edit, 202611230002): the slip
+ * is restated as it should be now - header plus the TOTAL quantity per
+ * material. Extra quantity is taken from stock (refused if not enough on
+ * hand), reduced/removed quantity goes back into stock. */
+export async function editStockWithdrawal(
+  batchId: string,
+  input: {
+    contractor_id: string
+    plot_id?: string | null
+    plot_group_id?: string | null
+    note?: string
+    items: { material_type_id: number; quantity: number }[]
+  }
+): Promise<{ batch_id: string; issue_no: string | null } | { error: string }> {
+  try {
+    await requireModuleAccess('materials')
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('stock_request_edit', {
+      p_batch_id: batchId,
+      p_payload: {
+        contractor_id: input.contractor_id,
+        plot_id: input.plot_id || null,
+        plot_group_id: input.plot_group_id || null,
+        note: input.note?.trim() || null,
+        items: input.items,
+      },
+    })
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/stock')
+    revalidatePath('/dashboard/stock/movements')
+    return data as { batch_id: string; issue_no: string | null }
+  } catch (error) {
+    return { error: translateError(error instanceof Error ? error.message : 'แก้ไขใบเบิกไม่สำเร็จ') }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Reports (Phase C) - low stock needs the reorder_point column (Settings >
 // Material Catalog sets it); consumption and "most active" read straight off
