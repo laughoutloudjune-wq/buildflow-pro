@@ -124,6 +124,8 @@ const ERROR_TRANSLATIONS: [string, string][] = [
 
   // Stock
   ['Material not found', 'ไม่พบวัสดุนี้'],
+  ['Withdrawal not found', 'ไม่พบใบเบิกนี้'],
+  ['No permission to edit this withdrawal', 'คุณไม่มีสิทธิ์แก้ไขใบเบิกนี้ (โฟร์แมนแก้ได้เฉพาะใบที่ตัวเองเบิก)'],
   ['Not enough stock on hand to withdraw', 'สต็อกไม่เพียงพอสำหรับการเบิกนี้'],
   ['No permission to adjust stock', 'คุณไม่มีสิทธิ์ปรับยอดสต็อก'],
   ['Counted quantity must be zero or more', 'จำนวนที่นับได้ต้องไม่ติดลบ'],
