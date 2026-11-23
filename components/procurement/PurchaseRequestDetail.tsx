@@ -346,7 +346,7 @@ export default function PurchaseRequestDetail({
           {plotLabel(request) ? ` • ${plotLabel(request)}` : ''}
         </p>
         <div className="flex items-center gap-2">
-          {request.status === 'pending_review' && (
+          {['pending_review', 'approved', 'ordered', 'received'].includes(request.status) && (
             <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditModalOpen(true)}>
               <Pencil className="h-3.5 w-3.5" /> แก้ไข
             </Button>

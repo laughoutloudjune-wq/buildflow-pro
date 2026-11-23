@@ -23,6 +23,8 @@ const OTHER_UNIT = '__other__'
 const OTHER_JOB = '__other_job__'
 const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 })
 type Line = {
+  /** Existing request line (edit mode); undefined for a newly added one. */
+  id?: string
   material_type_id: number
   quantity_requested: string
   /** Prefilled from the picked material's catalog unit, editable - for a
@@ -141,6 +143,7 @@ function PurchaseRequestEditForm({
         setNeededByDate(initialRequest.needed_by_date || '')
         setLines(
           (initialRequest.purchase_request_items || []).map((i) => ({
+            id: i.id,
             material_type_id: i.material_type_id,
             quantity_requested: String(i.quantity_requested),
             // Falls back to the material's current catalog unit for a line
@@ -324,6 +327,10 @@ function PurchaseRequestEditForm({
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
   }
 
+  // Approved/ordered/received requests are edited in place: existing lines
+  // can't be removed (use "ไม่ซื้อรายการ" to close one), project/plot are fixed.
+  const reviewedEdit = mode === 'edit' && !!initialRequest && ['approved', 'ordered', 'received'].includes(initialRequest.status)
+
   function removeLine(index: number) {
     setLines((prev) => prev.filter((_, i) => i !== index))
   }
@@ -349,6 +356,10 @@ function PurchaseRequestEditForm({
       toast.error('กรุณาเลือกแปลงอย่างน้อย 1 แปลง')
       return
     }
+    if (reviewedEdit && lines.some((l) => l.id && !(Number(l.quantity_requested) > 0))) {
+      toast.error('จำนวนต้องมากกว่า 0 — ถ้าไม่ต้องการรายการนี้แล้ว ให้ใช้ "ไม่ซื้อรายการ" ในใบคำขอ')
+      return
+    }
     const validLines = lines.filter((l) => l.material_type_id && Number(l.quantity_requested) > 0)
     if (validLines.length === 0) {
       toast.error('กรุณาเพิ่มรายการวัสดุอย่างน้อย 1 รายการ')
@@ -363,6 +374,7 @@ function PurchaseRequestEditForm({
       note,
       needed_by_date: neededByDate,
       items: validLines.map((l) => ({
+        id: l.id ?? null,
         material_type_id: l.material_type_id,
         quantity_requested: Number(l.quantity_requested),
         unit: l.unit.trim() || null,
@@ -402,6 +414,12 @@ function PurchaseRequestEditForm({
     <div className="space-y-4">
       <PurchasePurposePicker value={purpose} onChange={setPurpose} />
 
+      {reviewedEdit && (
+        <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          ใบนี้อนุมัติแล้ว: เพิ่มรายการ / แก้จำนวน / แก้หมายเหตุ ได้ — ใบสั่งซื้อที่ผูกอยู่ไม่เปลี่ยน ส่วนที่เพิ่มจะกลับไปรอสั่งซื้อ (โครงการ/แปลงและการลบรายการแก้ไม่ได้ ใช้ &quot;ไม่ซื้อรายการ&quot; แทน)
+        </div>
+      )}
+      <fieldset disabled={reviewedEdit} className="min-w-0 space-y-4 border-0 p-0 disabled:opacity-60">
       {purpose !== 'store' && (
         <div className="grid grid-cols-2 gap-4">
           <div className={purpose === 'project' ? '' : 'col-span-2'}>
@@ -468,6 +486,7 @@ function PurchaseRequestEditForm({
           )}
         </div>
       )}
+      </fieldset>
 
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">ต้องการภายในวันที่</label>
@@ -541,9 +560,11 @@ function PurchaseRequestEditForm({
                       </>
                     )
                   })()}
-                  <button type="button" aria-label="ลบรายการ" onClick={() => removeLine(i)} className="rounded-lg p-2 text-slate-300 hover:bg-red-50 hover:text-red-500">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {!(reviewedEdit && line.id) && (
+                    <button type="button" aria-label="ลบรายการ" onClick={() => removeLine(i)} className="rounded-lg p-2 text-slate-300 hover:bg-red-50 hover:text-red-500">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
                 {line.material_type_id > 0 && (
                   <LineHints
