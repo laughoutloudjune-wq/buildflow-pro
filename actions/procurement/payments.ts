@@ -15,7 +15,8 @@ const SELECT_WITH_RELATIONS = `
 `
 
 export async function getPaymentVouchers(): Promise<PaymentVoucher[]> {
-  await requireModuleAccess('procurement')
+  // `billing` (accountant) may read vouchers without the rest of procurement.
+  await requireModuleAccess(['procurement', 'billing'])
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('payment_vouchers')
@@ -28,7 +29,7 @@ export async function getPaymentVouchers(): Promise<PaymentVoucher[]> {
 
 /** One voucher by id - for the printable PP and its window. */
 export async function getPaymentVoucherById(id: string): Promise<PaymentVoucher | null> {
-  await requireModuleAccess('procurement')
+  await requireModuleAccess(['procurement', 'billing'])
   const supabase = await createClient()
   const { data, error } = await supabase.from('payment_vouchers').select(SELECT_WITH_RELATIONS).eq('id', id).maybeSingle()
   if (error) throw new Error(error.message)

@@ -158,7 +158,7 @@ export const DEPARTMENTS: Department[] = [
       { icon: ShoppingCart, label: 'คำขอซื้อ (PR)', href: '/dashboard/procurement/requests', permission: 'procurement' },
       { icon: Truck, label: 'ใบสั่งซื้อ (PO)', href: '/dashboard/procurement/orders', permission: 'procurement' },
       { icon: PackageCheck, label: 'ใบรับสินค้า', href: '/dashboard/procurement/receipts', permission: 'procurement' },
-      { icon: Wallet, label: 'ใบสำคัญจ่าย', href: '/dashboard/procurement/payments', permission: 'procurement' },
+      { icon: Wallet, label: 'ใบสำคัญจ่าย', href: '/dashboard/procurement/payments', permission: ['procurement', 'billing'] },
       { icon: History, label: 'ประวัติเอกสาร', href: '/dashboard/procurement/history', permission: 'procurement' },
     ],
   },
@@ -188,7 +188,7 @@ export const DEPARTMENTS: Department[] = [
     items: [
       { icon: BarChart3, label: 'รายงานงานเพิ่ม (DC)', href: '/dashboard/reports/dc-history', permission: 'reports' },
       { icon: BarChart3, label: 'ประวัติบ้านเลขที่', href: '/dashboard/reports/house-history', permission: 'reports' },
-      { icon: BarChart3, label: 'รอบจ่ายผู้รับเหมา', href: '/dashboard/reports/contractor-cycle', permission: 'reports' },
+      { icon: BarChart3, label: 'รอบจ่ายผู้รับเหมา', href: '/dashboard/reports/contractor-cycle', permission: ['reports', 'billing'] },
       { icon: BarChart3, label: 'สมุดบัญชีค่าแรง', href: '/dashboard/reports/labor-budget', permission: 'reports' },
       { icon: Settings, label: 'ตั้งค่า', href: '/dashboard/settings', permission: 'settings' },
     ],
