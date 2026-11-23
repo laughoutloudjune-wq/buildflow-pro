@@ -22,7 +22,7 @@ import { PageToolbar } from '@/components/ui/PageToolbar'
 const numberFormat = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 })
 
 export default function StockOverviewPageClient({
-  rows,
+  rows: allRows,
   canAdjust,
   initialError,
   withdrawPreset = null,
@@ -36,6 +36,10 @@ export default function StockOverviewPageClient({
 }) {
   const router = useRouter()
   const toast = useToast()
+  // Receive-only materials (marked รับเข้าอย่างเดียว in Settings > วัสดุ) are
+  // never drawn down, so the stock list leaves them out; their receipts are
+  // still visible in the movements history.
+  const rows = useMemo(() => allRows.filter((r) => r.is_requestable), [allRows])
   const [search, setSearch] = useUrlString('q', '')
   const [category, setCategory] = useUrlString('cat', 'ทั้งหมด')
   const [showAll, setShowAll] = useUrlFlag('all', false)

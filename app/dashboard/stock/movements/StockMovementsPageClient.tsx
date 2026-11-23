@@ -5,6 +5,9 @@ import { BackButton } from '@/components/ui/BackButton'
 import { useUrlNumber, useUrlState, useSkipFirstEffect, useUrlString } from '@/lib/use-url-state'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { Pencil } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import EditWithdrawalModal from '@/components/stock/EditWithdrawalModal'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
@@ -62,6 +65,9 @@ export default function StockMovementsPageClient({
   const [contractorFilter, setContractorFilter] = useUrlState<string>('contractor', ALL)
   const [page, setPage] = useUrlNumber('page', 1)
   const toast = useToast()
+  const router = useRouter()
+  const [editingBatch, setEditingBatch] = useState<string | null>(null)
+  const editingRows = editingBatch ? rawMovements.filter((m) => m.source_id === editingBatch && m.source_type === 'manual_request') : []
 
   // Any filter change can shrink the result set below the page the user was
   // on - back to page 1 rather than showing an empty table.
@@ -158,12 +164,13 @@ export default function StockMovementsPageClient({
                 <th className="px-4 py-3">ที่มา</th>
                 <th className="px-4 py-3">โครงการ / แปลง / ผู้รับเหมา</th>
                 <th className="px-4 py-3 text-right">จำนวน</th>
+                <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               {pagedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center italic text-slate-500">
+                  <td colSpan={7} className="px-4 py-8 text-center italic text-slate-500">
                     ไม่พบรายการที่ตรงกับเงื่อนไข
                   </td>
                 </tr>
@@ -196,6 +203,17 @@ export default function StockMovementsPageClient({
                       {m.type === 'in' ? '+' : '-'}
                       {numberFormat.format(m.quantity)}
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      {m.source_type === 'manual_request' && m.type === 'out' && m.source_id && (
+                        <button
+                          type="button"
+                          onClick={() => setEditingBatch(m.source_id)}
+                          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> แก้ไขใบเบิก
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}
@@ -204,6 +222,16 @@ export default function StockMovementsPageClient({
         
         <Pagination currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} />
       </TableFrame>
+      {editingBatch && editingRows.length > 0 && (
+        <EditWithdrawalModal
+          rows={editingRows}
+          onClose={() => setEditingBatch(null)}
+          onSaved={() => {
+            setEditingBatch(null)
+            router.refresh()
+          }}
+        />
+      )}
     </PageContainer>
   )
 }
