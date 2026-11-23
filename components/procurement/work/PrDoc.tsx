@@ -160,7 +160,7 @@ export default function PrDoc({ id, ctx }: { id: string; ctx: DocCtx }) {
   if (open.length > 0 && !isPendingReview) {
     more.push({ key: 'skip', label: 'ไม่ซื้อรายการ (ปิดรายการ)', onClick: () => setSettleFor('all') })
   }
-  if (['pending_review', 'approved', 'ordered', 'received'].includes(request.status)) more.push({ key: 'edit', label: 'แก้ไขคำขอ', onClick: () => setEditing(true) })
+  if (request.status === 'pending_review' || request.status === 'approved') more.push({ key: 'edit', label: 'แก้ไขคำขอ', onClick: () => setEditing(true) })
   more.push({ key: 'print', label: 'พิมพ์ / PDF', href: `/api/procurement/requests/${id}/pdf` })
   more.push({ key: 'full', label: 'เปิดหน้าเต็ม (แก้การปิดรายการ)', href: `/dashboard/procurement/requests/${id}` })
 

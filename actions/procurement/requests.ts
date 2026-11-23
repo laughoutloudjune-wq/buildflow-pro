@@ -237,9 +237,7 @@ export async function updatePurchaseRequest(
     plot_ids?: string[]
     note?: string
     needed_by_date?: string
-    /** `id` = an existing request line (kept in place when the request was
-     * already approved); no id = a new line. */
-    items: { id?: string | null; material_type_id: number; quantity_requested: number; note?: string; boq_id?: string | null; purpose?: string | null; unit?: string | null }[]
+    items: { material_type_id: number; quantity_requested: number; note?: string; boq_id?: string | null; purpose?: string | null; unit?: string | null }[]
   }
 ): Promise<{ id: string; pr_no: string } | { error: string }> {
   try {
@@ -250,12 +248,7 @@ export async function updatePurchaseRequest(
     const items = input.items.filter((i) => i.material_type_id && Number(i.quantity_requested) > 0)
     if (items.length === 0) throw new Error('At least one material line is required')
 
-    // An approved/ordered/received request is edited in place (pr_edit_reviewed):
-    // lines keep their ids so PO links, allocations and closed lines survive.
-    const { data: current } = await supabase.from('purchase_requests').select('status').eq('id', id).maybeSingle()
-    const reviewed = !!current && ['approved', 'ordered', 'received'].includes(current.status as string)
-
-    const { data, error } = await supabase.rpc(reviewed ? 'pr_edit_reviewed' : 'pr_update', {
+    const { data, error } = await supabase.rpc('pr_update', {
       p_id: id,
       p_payload: {
         project_id: input.project_id,
