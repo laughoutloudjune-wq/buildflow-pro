@@ -25,9 +25,11 @@ const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
 export default function PaymentsPageClient({
   vouchers,
   initialError,
+  canVoid = true,
 }: {
   vouchers: PaymentVoucher[]
   initialError?: string | null
+  canVoid?: boolean
 }) {
   const router = useRouter()
   const toast = useToast()
@@ -134,9 +136,11 @@ export default function PaymentsPageClient({
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">฿{formatCurrency(v.total_amount)}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
-                        <Button type="button" variant="secondary" size="sm" onClick={() => setVoidTarget(v)} disabled={voidingId === v.id}>
-                          {voidingId === v.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />} ยกเลิก
-                        </Button>
+                        {canVoid && (
+                          <Button type="button" variant="secondary" size="sm" onClick={() => setVoidTarget(v)} disabled={voidingId === v.id}>
+                            {voidingId === v.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />} ยกเลิก
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   )

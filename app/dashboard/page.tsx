@@ -16,6 +16,8 @@ import { formatCurrency } from '@/lib/currency'
 import { WORK_REQUEST_CATEGORY_LABEL } from '@/lib/sales/workRequestCategories'
 import { formatWeekRange } from '@/lib/weekly-plan'
 
+type Kpi = { title: string; value: string | number; hint: string; icon: React.ReactNode; href: string; attention?: boolean }
+
 function riskLevelTone(level: string) {
   if (level === 'high') return 'danger'
   if (level === 'medium') return 'warning'
@@ -36,6 +38,83 @@ export default async function DashboardPage() {
   }
 
   const theme = DEFAULT_THEME // the overview's accent is indigo
+
+  // Accounting-only viewer (the accountant with Settings ticks left at the
+  // default): a short money overview instead of the construction one - no
+  // project/plot counts, work requests or weekly plan. Driven by the Settings
+  // ticks, not the role name, so changing the ticks changes the page.
+  const accountingOnly =
+    perms.billing && !perms.projects && !perms.foreman && !perms.cost_control && !perms.reports && !perms.procurement && !perms.sales
+  if (accountingOnly) {
+    const s = await getDashboardStats()
+    const cards: Kpi[] = [
+      {
+        title: 'ใบเบิกรอตรวจสอบ',
+        value: s.pendingApprovals,
+        hint: 'รอ PM ตรวจสอบ',
+        icon: <Clock3 className="h-5 w-5" />,
+        href: '/dashboard/billing',
+      },
+      {
+        title: 'รอจ่ายผู้รับเหมา',
+        value: s.recentlyApproved?.unpaidCount || 0,
+        hint: 'อนุมัติ 7 วันล่าสุดและยังไม่จ่าย',
+        icon: <Wallet className="h-5 w-5" />,
+        href: '/dashboard/reports/contractor-cycle',
+        attention: (s.recentlyApproved?.unpaidCount || 0) > 0,
+      },
+      {
+        title: 'จ่ายเดือนนี้',
+        value: `฿${formatCurrency(s.paidOutThisMonth?.amount || 0)}`,
+        hint: `${s.paidOutThisMonth?.count || 0} รายการที่จ่ายแล้ว`,
+        icon: <BadgeCheck className="h-5 w-5" />,
+        href: '/dashboard/reports/contractor-cycle',
+      },
+      {
+        title: 'อนุมัติเดือนนี้',
+        value: `฿${formatCurrency(s.approvedThisMonth || 0)}`,
+        hint: 'ยอดสุทธิใบเบิกที่อนุมัติแล้ว',
+        icon: <TrendingUp className="h-5 w-5" />,
+        href: '/dashboard/reports/contractor-cycle',
+      },
+      {
+        title: 'จ่ายผู้รับเหมาแล้วสะสม',
+        value: `฿${formatCurrency(s.paidOutTotal)}`,
+        hint: 'ยอดที่โอนจ่ายจริงสะสม',
+        icon: <CheckCircle2 className="h-5 w-5" />,
+        href: '/dashboard/billing',
+      },
+    ]
+    return (
+      <PageContainer width="wide" className="space-y-8">
+        <PageHeader
+          title="ภาพรวมบัญชี"
+          subtitle="สรุปการเบิกจ่ายและการจ่ายเงินผู้รับเหมา"
+          actions={
+            <>
+              <ButtonLink variant="secondary" href="/dashboard/billing">รายการเบิกจ่าย</ButtonLink>
+              <ButtonLink href="/dashboard/reports/contractor-cycle">รอบจ่ายผู้รับเหมา</ButtonLink>
+            </>
+          }
+        />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {cards.map((kpi) => (
+            <Link key={kpi.title} href={kpi.href} className="group block h-full">
+              <Card interactive className={`flex h-full min-h-[132px] flex-col p-4 ${kpi.attention ? 'border-amber-300 bg-amber-50/50' : ''}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-medium text-slate-500">{kpi.title}</p>
+                  <div className={`rounded-lg p-2 ${kpi.attention ? 'bg-amber-100 text-amber-700' : theme.soft}`}>{kpi.icon}</div>
+                </div>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{kpi.value}</p>
+                <p className={`mt-1 text-xs ${kpi.attention ? 'font-medium text-amber-800' : 'text-slate-500'}`}>{kpi.hint}</p>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </PageContainer>
+    )
+  }
+
   const [stats, week] = await Promise.all([getDashboardStats(), getDashboardWeek()])
   // Not everyone who lands on /dashboard cares about the work-request queue
   // (an accountant, say) - only show the card to roles that can actually do
@@ -46,7 +125,6 @@ export default async function DashboardPage() {
   // only the modules that have any legitimate reason to see it get it.
   const showMoney = perms.billing || perms.reports || perms.cost_control || perms.foreman
 
-  type Kpi = { title: string; value: string | number; hint: string; icon: React.ReactNode; href: string; attention?: boolean }
   const staleCount = stats.foremanQuality?.summary?.stale_requests || 0
 
   const kpis: Kpi[] = [
