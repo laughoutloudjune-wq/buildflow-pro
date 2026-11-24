@@ -1116,7 +1116,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
             ...line,
             purchase_request_item_id: null,
             allocations: merged,
-            quantity_ordered: String(allocationTotal(merged)),
+            quantity_ordered: String(allocationTotal(merged) + extraBeyondRequests(line)),
             closes_request_line: false,
           }
         } else {
@@ -1210,9 +1210,16 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       prev.map((l, i) => {
         if (i !== lineIndex || !l.allocations) return l
         const allocations = l.allocations.map((a, j) => (j === allocIndex ? { ...a, quantity } : a))
-        return { ...l, allocations, quantity_ordered: String(allocationTotal(allocations)) }
+        return { ...l, allocations, quantity_ordered: String(allocationTotal(allocations) + extraBeyondRequests(l)) }
       })
     )
+  }
+
+  /** Quantity on a combined line bought on top of what the requests asked
+   * for (the line total minus its allocations, never negative). */
+  function extraBeyondRequests(l: Line): number {
+    if (!l.allocations) return 0
+    return Math.max(0, (Number(l.quantity_ordered) || 0) - allocationTotal(l.allocations))
   }
 
   function removeAllocation(lineIndex: number, allocIndex: number) {
@@ -1220,7 +1227,7 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
       prev.map((l, i) => {
         if (i !== lineIndex || !l.allocations) return l
         const allocations = l.allocations.filter((_, j) => j !== allocIndex)
-        return { ...l, allocations, quantity_ordered: String(allocationTotal(allocations)) }
+        return { ...l, allocations, quantity_ordered: String(allocationTotal(allocations) + extraBeyondRequests(l)) }
       })
     )
   }
@@ -1318,8 +1325,8 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
         allocations: l.allocations
           ? l.allocations.map((a) => ({ purchase_request_item_id: a.purchase_request_item_id, quantity: Number(a.quantity) || 0 }))
           : undefined,
-        // A consolidated line's total is the sum of its allocations.
-        quantity_ordered: l.allocations ? allocationTotal(l.allocations) : Number(l.quantity_ordered),
+        // A consolidated line's total is at least the sum of its allocations; anything above is extra bought beyond the requests.
+        quantity_ordered: l.allocations ? Math.max(allocationTotal(l.allocations), Number(l.quantity_ordered) || 0) : Number(l.quantity_ordered),
         closes_request_line: !l.allocations && Boolean(l.purchase_request_item_id) && l.closes_request_line,
         unit: l.unit?.trim() && l.unit.trim() !== catalogUnit(l) ? l.unit.trim() : null,
         unit_price: Number(l.unit_price) || 0,
@@ -2034,6 +2041,14 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             </div>
                           </div>
                         )}
+                        {line.allocations && extraBeyondRequests(line) > 0 && (
+                          <p className="mt-1 text-[11px] text-amber-700">
+                            สั่งเพิ่มเกินที่คำขอซื้อขอไว้ {extraBeyondRequests(line).toLocaleString('th-TH', { maximumFractionDigits: 4 })} {materialUnit(line) || ''} (ไม่ผูกกับคำขอซื้อใบใด)
+                          </p>
+                        )}
+                        {line.allocations && (Number(line.quantity_ordered) || 0) < allocationTotal(line.allocations) && (
+                          <p className="mt-1 text-[11px] text-amber-700">จำนวนสั่งน้อยกว่าผลรวมที่จัดสรรจากคำขอซื้อ - จะใช้ยอดรวมที่จัดสรรแทน</p>
+                        )}
                         {sourceRequestNo != null && !line.allocations && <RequestLinkNote line={line} requestLines={requestLines} />}
                         {/* Purchasing's answer to the request line. When the
                           * two sides count the same way the arithmetic still
@@ -2178,8 +2193,6 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             onChange={(e) => updateLine(i, { quantity_ordered: e.target.value })}
                             className="w-full text-right"
                             disabled={readOnly}
-                            readOnly={Boolean(line.allocations)}
-                            title={line.allocations ? 'ผลรวมของจำนวนที่จัดสรรจากคำขอซื้อแต่ละใบ' : undefined}
                           />
                           <input
                             value={line.unit ?? ''}
