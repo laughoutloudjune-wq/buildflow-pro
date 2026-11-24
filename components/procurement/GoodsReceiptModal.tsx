@@ -9,6 +9,8 @@ import { useDepartment } from '@/components/layout/DepartmentContext'
 import { todayInBangkok } from '@/lib/utils'
 import { createGoodsReceipt, getLastStockConversions } from '@/actions/procurement-actions'
 import { getBoqCheckForGoodsReceiptDraft } from '@/actions/procurement/boq-control'
+import { getUnitConversions } from '@/actions/procurement/unit-conversions'
+import { unitFactor, type UnitConversions } from '@/lib/procurement/units'
 import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
 import type { PurchaseOrder } from '@/lib/types/procurement'
 
@@ -43,6 +45,8 @@ export default function GoodsReceiptModal({
   // Conversion seen on this supplier's last delivery of each material (stock
   // units per received unit). Pre-fills the stock quantity until it is typed.
   const [lastRatios, setLastRatios] = useState<Record<number, number>>({})
+  // Conversions stored once on the material ("1 ลัง = 12 ตัว"); they win over the last delivery's ratio.
+  const [conversions, setConversions] = useState<UnitConversions>({})
   const [stockTouched, setStockTouched] = useState<Record<string, boolean>>({})
   const [deliveryNoteNo, setDeliveryNoteNo] = useState('')
   const [receivedAt, setReceivedAt] = useState(() => todayInBangkok())
@@ -83,6 +87,7 @@ export default function GoodsReceiptModal({
     setStockQuantities({})
     setStockTouched({})
     setLastRatios({})
+    setConversions({})
     setDeliveryNoteNo('')
     setReceivedAt(todayInBangkok())
 
@@ -104,6 +109,24 @@ export default function GoodsReceiptModal({
           : ''
     }
     setDestinations(initialDestinations)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, order.id])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const ids = receivableItems.filter(({ item }) => needsConversion(item)).map(({ item }) => item.material_type_id)
+    if (ids.length === 0) return
+    let cancelled = false
+    getUnitConversions(ids)
+      .then((found) => {
+        if (!cancelled) setConversions(found)
+      })
+      .catch(() => {
+        // Pre-fill is a convenience only.
+      })
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, order.id])
 
@@ -132,7 +155,9 @@ export default function GoodsReceiptModal({
    * delivery's conversion applied to the quantity received now. */
   function stockQtyFor(item: NonNullable<PurchaseOrder['purchase_order_items']>[number]): string {
     if (stockTouched[item.id]) return stockQuantities[item.id] ?? ''
-    const ratio = lastRatios[item.material_type_id]
+    // The stored conversion is exact; the last delivery's ratio is only a guess.
+    const factor = unitFactor(conversions, item.material_type_id, item.material_types?.unit || '', item.unit)
+    const ratio = factor ? 1 / factor : lastRatios[item.material_type_id]
     const qty = Number(quantities[item.id]) || 0
     if (!ratio || qty <= 0) return ''
     return String(Math.round(qty * ratio * 10000) / 10000)

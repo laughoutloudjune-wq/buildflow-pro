@@ -1,5 +1,6 @@
 'use server'
 
+import { buildUnitIndex, suggestUnit } from '@/lib/materials/unit-suggest'
 import { revalidatePath } from 'next/cache'
 import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/server'
@@ -451,10 +452,14 @@ export async function importMaterialTypes(
   // applies to a single unpaginated request - fetchAllRows pages past it,
   // otherwise a catalog over 1000 rows silently under-reports existing
   // names and the upsert can create a duplicate instead of updating.
-  const existingRows = await fetchAllRows<{ name: string }>((from, to) =>
-    supabase.from('material_types').select('name').order('id').range(from, to)
+  const existingRows = await fetchAllRows<{ name: string; unit: string | null }>((from, to) =>
+    supabase.from('material_types').select('name, unit').order('id').range(from, to)
   )
   const existingNames = new Set(existingRows.map((r) => r.name))
+  // A row imported without a unit gets one suggested from look-alike materials
+  // already in the catalog; failing that it keeps the placeholder and learns
+  // its unit the first time it is ordered.
+  const unitIndex = buildUnitIndex(existingRows)
 
   const CHUNK_SIZE = 200
   let inserted = 0
@@ -474,7 +479,7 @@ export async function importMaterialTypes(
       const { error } = await supabase.from('material_types').upsert(
         toUpsert.map((r) => ({
           name: r.name,
-          unit: r.unit.trim() || 'unit',
+          unit: r.unit.trim() || suggestUnit(r.name, unitIndex)?.unit || 'unit',
           category: r.category.trim() || null,
           current_price: Math.max(0, Number(r.price) || 0),
           price_updated_at: new Date().toISOString(),

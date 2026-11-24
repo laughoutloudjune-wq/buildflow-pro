@@ -1,5 +1,6 @@
 'use client'
 
+import { buildUnitIndex, isPlaceholderUnit, suggestUnit } from '@/lib/materials/unit-suggest'
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { BackButton } from '@/components/ui/BackButton'
 import { useUrlNumber, useSkipFirstEffect, useUrlString } from '@/lib/use-url-state'
@@ -116,6 +117,14 @@ export default function MaterialTypesPageClient({
     const set = new Set(materials.map((m) => m.category).filter((c): c is string => !!c && c.trim() !== ''))
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'))
   }, [materials])
+
+  // Unit suggestion for the add/edit box: from look-alike materials already in
+  // the catalog (or a pack written in the name), never a fixed list.
+  const unitIndex = useMemo(() => buildUnitIndex(materials), [materials])
+  const unitSuggestion = useMemo(
+    () => (nameDraft.trim() ? suggestUnit(nameDraft, unitIndex) : null),
+    [nameDraft, unitIndex]
+  )
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -645,6 +654,17 @@ export default function MaterialTypesPageClient({
                 className="w-full"
                 placeholder="แกลลอน / ถุง / กก."
               />
+              {isPlaceholderUnit(unitDraft) && (
+                <div className="mt-1 text-xs text-amber-700">
+                  {unitSuggestion ? (
+                    <button type="button" onClick={() => setUnitDraft(unitSuggestion.unit)} className="text-left underline">
+                      แนะนำ: {unitSuggestion.unit} ({unitSuggestion.why}) — กดเพื่อใช้
+                    </button>
+                  ) : (
+                    <span>ยังไม่ใส่หน่วยก็ได้ ระบบจะจำหน่วยจากใบสั่งซื้อครั้งแรก</span>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">ราคา/หน่วยล่าสุด (บาท)</label>

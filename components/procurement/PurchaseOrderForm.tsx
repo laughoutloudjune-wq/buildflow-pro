@@ -30,6 +30,8 @@ import {
 import { getBoqCheckForDraft } from '@/actions/procurement/boq-control'
 import { getUnitConversions } from '@/actions/procurement/unit-conversions'
 import UnitConversionNote from '@/components/procurement/UnitConversionNote'
+import LearnMaterialUnit from '@/components/procurement/LearnMaterialUnit'
+import { isPlaceholderUnit } from '@/lib/materials/unit-suggest'
 import { toBaseQty, type UnitConversions } from '@/lib/procurement/units'
 import BoqCheckPanel, { type BoqCheckLine } from '@/components/procurement/BoqCheckPanel'
 import PurchasePurposePicker, { usePurchasePurpose } from '@/components/procurement/PurchasePurposePicker'
@@ -2204,7 +2206,22 @@ const PurchaseOrderForm = forwardRef<PurchaseOrderFormHandle, {
                             disabled={readOnly}
                           />
                         </div>
-                        {line.unit?.trim() && line.material_type_id > 0 && !readOnly && (
+                        {line.material_type_id > 0 && !readOnly && isPlaceholderUnit(catalogUnit(line)) && (
+                          line.unit?.trim() && !isPlaceholderUnit(line.unit) ? (
+                            <LearnMaterialUnit
+                              materialTypeId={line.material_type_id}
+                              unit={line.unit}
+                              onLearned={(baseUnit) => {
+                                const id = line.material_type_id
+                                setMaterials((prev) => prev.map((m) => (m.id === id ? { ...m, unit: baseUnit } : m)))
+                                setConversionsReload((n) => n + 1)
+                              }}
+                            />
+                          ) : (
+                            <p className="mt-1 text-[11px] text-amber-700">วัสดุนี้ยังไม่มีหน่วย — พิมพ์หน่วยที่สั่ง แล้วระบบจะจำไว้ให้</p>
+                          )
+                        )}
+                        {line.unit?.trim() && line.material_type_id > 0 && !readOnly && !isPlaceholderUnit(catalogUnit(line)) && (
                           <UnitConversionNote
                             materialTypeId={line.material_type_id}
                             masterUnit={catalogUnit(line)}
