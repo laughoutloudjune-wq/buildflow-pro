@@ -126,6 +126,7 @@ export default function PlotConstructionTab({
   expectedPercent,
   progressHealth,
   extraWork,
+  onOpenJob,
 }: {
   jobs: PlotJobRow[]
   contractors: Contractor[]
@@ -141,6 +142,8 @@ export default function PlotConstructionTab({
   expectedPercent?: number | null
   progressHealth?: ProgressState
   extraWork?: PlotExtraWorkRow[]
+  /** Opens the job's two-pane popup (plot hub). */
+  onOpenJob?: (jobId: string) => void
 }) {
   const toast = useToast()
   // Sales (canSeeCost=false, so every job.cost is null) sees job name and
@@ -307,7 +310,13 @@ export default function PlotConstructionTab({
           )}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="min-w-0 text-sm text-slate-800">{job.itemName}</span>
+              {onOpenJob ? (
+                <button type="button" onClick={() => onOpenJob(job.id)} className="min-w-0 text-left text-sm text-slate-800 hover:text-indigo-700 hover:underline" title="ดูรายละเอียดงาน ใบเบิก และแก้ไข">
+                  {job.itemName}
+                </button>
+              ) : (
+                <span className="min-w-0 text-sm text-slate-800">{job.itemName}</span>
+              )}
               {canEdit ? (
                 <button
                   type="button"

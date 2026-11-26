@@ -181,13 +181,23 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
       }))
   const jobsDone = jobs.filter((j) => j.status === 'completed').length
 
-  // The batch this plot is built with ("กลุ่ม 120-124"), shown beside the house type.
+  // The batch this plot is built with ("กลุ่ม 120-124"), shown beside the house
+  // type, plus its plots so the plot hub can step to the previous / next plot.
   let plotGroupName: string | null = null
+  let plotGroup: { id: string; name: string; plots: { id: string; name: string }[] } | null = null
   try {
     const supabase = await createClient()
-    const { data } = await supabase.from('plot_group_members').select('plot_groups (name)').eq('plot_id', plotId).maybeSingle()
-    const g = (data as { plot_groups: { name: string | null } | { name: string | null }[] | null } | null)?.plot_groups
+    const { data } = await supabase.from('plot_group_members').select('group_id, plot_groups (name)').eq('plot_id', plotId).maybeSingle()
+    const g = (data as { group_id: string; plot_groups: { name: string | null } | { name: string | null }[] | null } | null)?.plot_groups
     plotGroupName = (Array.isArray(g) ? g[0]?.name : g?.name) || null
+    if (data?.group_id) {
+      const { data: members } = await supabase.from('plot_group_members').select('plots (id, name)').eq('group_id', data.group_id)
+      const plots = ((members || []) as unknown as { plots: { id: string; name: string } | { id: string; name: string }[] | null }[])
+        .map((m) => (Array.isArray(m.plots) ? m.plots[0] : m.plots))
+        .filter((p): p is { id: string; name: string } => Boolean(p))
+        .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true }))
+      plotGroup = { id: data.group_id as string, name: plotGroupName || '', plots }
+    }
   } catch (error) {
     console.error(error)
   }
@@ -308,9 +318,11 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     extraWork,
     expectedPercent,
     plotGroupName,
+    plotGroup,
     canSeeCost,
     canEditConstruction,
     canEditSales,
+    canReviewBills: perms.billing,
     quickLinks,
   }
 }
