@@ -5,6 +5,7 @@ import { requireModuleAccess } from '@/lib/auth/route-access'
 import { fetchAllRows } from '@/actions/_shared/fetch-all-rows'
 import { getPlotNameMap } from '@/actions/_shared/plot-maps'
 import { houseTypeLabel } from '@/lib/house-type'
+import { decodeAdjustmentDescription } from '@/actions/_shared/billing-adjustments'
 
 /**
  * Read-only data for the construction hubs (project board, group hub,
@@ -123,7 +124,9 @@ async function loadBills(filter: { projectId?: string; contractorId?: string }):
       if (item) lines.push(item)
     }
     for (const a of b.billing_adjustments || []) {
-      if (a.description) lines.push(`${a.type === 'deduction' ? 'หัก' : 'เพิ่ม'}: ${a.description}`)
+      // Descriptions carry hidden [PLOT:..] / [SIG:..] tags; show the text and plot only.
+      const d = decodeAdjustmentDescription(a.description)
+      if (d.description.trim()) lines.push(`${a.type === 'deduction' ? 'หัก' : 'เพิ่ม'}: ${d.description.trim()}${d.plot_name ? ` (แปลง ${d.plot_name})` : ''}`)
     }
     if (b.reason_for_dc && lines.length === 0) lines.push(b.reason_for_dc)
     return {
