@@ -19,6 +19,7 @@ import { getMaterialsSummaryForProject } from '@/actions/procurement-actions'
 import type { MaterialsSummaryRow } from '@/actions/procurement/materials-summary'
 import BoqScopeTab from '@/components/construction/BoqScopeTab'
 import BillsPanel from '@/components/construction/BillsPanel'
+import { useJobIssue } from '@/components/construction/useJobIssue'
 import { useHubModal } from '@/components/construction/useHubModal'
 import MaterialCostTab from '@/components/cost-control/MaterialCostTab'
 import { MONEY, StatusPill, Tile, baht, pct, type HubStatus } from '@/components/construction/vocab'
@@ -27,7 +28,7 @@ type Board = Awaited<ReturnType<typeof getCostBoard>>
 type Tab = 'plots' | 'boq' | 'bills' | 'dc' | 'matcost'
 type SortKey = 'plot' | 'attention' | 'paid'
 
-const EMPTY_EXTRAS: BoardPlotExtras = { pendingBills: 0, pendingAmount: 0, noCrewJobs: 0, paidNotDone: [] }
+const EMPTY_EXTRAS: BoardPlotExtras = { pendingBills: 0, pendingAmount: 0, noCrewJobs: 0, paidNotDone: [], noCrewList: [] }
 const byName = (a: string, b: string) => a.localeCompare(b, 'th', { numeric: true })
 
 type FlagKind = 'overpaid' | 'paidNotDone' | 'behind' | 'bills' | 'noCrew' | 'material'
@@ -119,6 +120,7 @@ export default function ProjectBoardClient({
     return [...map.values()].sort((a, b) => a.level - b.level || b.plots.length - a.plots.length)
   }, [attention])
   const hubModal = useHubModal()
+  const issue = useJobIssue({ projectId, canEdit: canSeeLabor, canReview: canBilling })
   const hubClick = hubModal.click
   const [openKinds, setOpenKinds] = useState<Record<string, boolean>>({})
 
@@ -294,11 +296,31 @@ export default function ProjectBoardClient({
                         </button>
                         {open && (
                           <div className="mt-2 flex flex-wrap gap-1.5 pl-4">
-                            {shown.map((p) => (
-                              <Link key={p.plotId} href={`/dashboard/projects/${projectId}/${p.plotId}${g.tab ? `?tab=${g.tab}` : ''}`} onClick={hubClick(`/dashboard/projects/${projectId}/${p.plotId}${g.tab ? `?tab=${g.tab}` : ''}`, `แปลง ${p.plotName}`)} className="rounded-full border border-slate-200 px-2.5 py-0.5 text-xs text-indigo-700 hover:bg-indigo-50">
-                                {p.plotName}
-                              </Link>
-                            ))}
+                            {shown.map((p) => {
+                              const x = xOf(p.plotId)
+                              const chip = 'rounded-full border border-slate-200 px-2.5 py-0.5 text-xs text-indigo-700 hover:bg-indigo-50'
+                              if (g.kind === 'paidNotDone') {
+                                // One chip per job: opens that job's problem, not the plot.
+                                return x.paidNotDone.map((j) => (
+                                  <button key={j.jobId} type="button" onClick={() => issue.open(j.jobId)} className={chip}>
+                                    {p.plotName} · {j.name}
+                                  </button>
+                                ))
+                              }
+                              if (g.kind === 'noCrew' && x.noCrewList.length > 0) {
+                                return (
+                                  <button key={p.plotId} type="button" onClick={() => issue.open(x.noCrewList[0].jobId, x.noCrewList)} className={chip}>
+                                    {p.plotName} · {x.noCrewList.length} งาน
+                                  </button>
+                                )
+                              }
+                              const href = `/dashboard/projects/${projectId}/${p.plotId}${g.tab ? `?tab=${g.tab}` : ''}`
+                              return (
+                                <Link key={p.plotId} href={href} onClick={hubClick(href, `แปลง ${p.plotName}`)} className={chip}>
+                                  {p.plotName}
+                                </Link>
+                              )
+                            })}
                           </div>
                         )}
                       </li>
@@ -391,6 +413,7 @@ export default function ProjectBoardClient({
         </>
       )}
     {hubModal.node}
+      {issue.node}
     </PageContainer>
   )
 }

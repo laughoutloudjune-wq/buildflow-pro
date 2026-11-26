@@ -12,6 +12,7 @@ import { useDepartment } from '@/components/layout/DepartmentContext'
 import { getScopeBills, type GroupHubData, type GroupHubJob, type ScopeBill } from '@/actions/construction-hubs'
 import type { getCostBoard } from '@/actions/procurement/cost-board'
 import BillsPanel from '@/components/construction/BillsPanel'
+import { useJobIssue } from '@/components/construction/useJobIssue'
 import { useHubModal } from '@/components/construction/useHubModal'
 import BoqScopeTab from '@/components/construction/BoqScopeTab'
 import { MONEY, Tile, baht, pct } from '@/components/construction/vocab'
@@ -39,6 +40,7 @@ const CELL_SYMBOL: Record<Cell, { ch: string; cls: string; label: string }> = {
 
 export default function GroupHubClient({ hub, board, canSeeLabor, canBoq, canReview }: { hub: GroupHubData; board: Board | null; canSeeLabor: boolean; canBoq: boolean; canReview: boolean }) {
     const plotModal = useHubModal()
+    const issue = useJobIssue({ projectId: hub.group.projectId, canEdit: canSeeLabor, canReview })
   const { theme } = useDepartment()
   const projectId = hub.group.projectId
   const [tab, setTab] = useUrlState<Tab>('tab', 'plots', ['plots', 'jobs', 'bills', 'dc', 'boq', 'cost'] as const)
@@ -143,7 +145,14 @@ export default function GroupHubClient({ hub, board, canSeeLabor, canBoq, canRev
       )}
       {canSeeLabor && alerts.length > 0 && (
         <div className="rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-800 ring-1 ring-inset ring-red-200" role="alert">
-          จ่ายครบแล้วแต่สถานะยังไม่เสร็จ {alerts.length} งาน (ดูช่องสีแดงในแท็บงานและช่าง)
+          จ่ายครบแล้วแต่สถานะยังไม่เสร็จ {alerts.length} งาน:{' '}
+          {alerts.slice(0, 6).map((j, i) => (
+            <button key={j.id} type="button" onClick={() => issue.open(j.id)} className="font-medium underline">
+              {i > 0 ? ', ' : ''}
+              {hub.plots.find((p) => p.id === j.plotId)?.name} {j.name}
+            </button>
+          ))}
+          {alerts.length > 6 ? ` และอีก ${alerts.length - 6} งาน (ดูช่อง ! สีแดงในแท็บงานและช่าง)` : ''}
         </div>
       )}
 
@@ -211,7 +220,7 @@ export default function GroupHubClient({ hub, board, canSeeLabor, canBoq, canRev
             <tbody>
               {grid.length === 0 && <tr><td className="px-4 py-6 text-center text-slate-500" colSpan={scopePlots.length + 2}>ยังไม่มีงาน</td></tr>}
               {grid.map(([trade, jobs]) => (
-                <GridTrade key={trade} trade={trade} jobs={jobs} plots={scopePlots} projectId={projectId} linkClick={plotModal.click} />
+                <GridTrade key={trade} trade={trade} jobs={jobs} plots={scopePlots} onOpenJob={issue.open} />
               ))}
             </tbody>
           </table>
@@ -262,11 +271,12 @@ export default function GroupHubClient({ hub, board, canSeeLabor, canBoq, canRev
         </Card>
       )}
     {plotModal.node}
+    {issue.node}
     </PageContainer>
   )
 }
 
-function GridTrade({ trade, jobs, plots, projectId, linkClick }: { trade: string; jobs: { name: string; cells: Map<string, GroupHubJob>; crews: Set<string> }[]; plots: { id: string; name: string }[]; projectId: string; linkClick: (href: string, title: string) => (e: React.MouseEvent) => void }) {
+function GridTrade({ trade, jobs, plots, onOpenJob }: { trade: string; jobs: { name: string; cells: Map<string, GroupHubJob>; crews: Set<string> }[]; plots: { id: string; name: string }[]; onOpenJob: (jobId: string) => void }) {
   return (
     <>
       <tr className="bg-slate-50/70">
@@ -280,9 +290,13 @@ function GridTrade({ trade, jobs, plots, projectId, linkClick }: { trade: string
             const c = CELL_SYMBOL[cellOf(job)]
             return (
               <td key={p.id} className="px-1 py-1.5 text-center">
-                <Link href={`/dashboard/projects/${projectId}/${p.id}?tab=construction`} onClick={linkClick(`/dashboard/projects/${projectId}/${p.id}?tab=construction`, `แปลง ${p.name}`)} className={`inline-block min-w-5 text-center ${c.cls}`} title={`${c.label}${job?.contractorName ? ` · ${job.contractorName}` : job ? ' · ยังไม่มีช่าง' : ''}`}>
-                  {c.ch}
-                </Link>
+                {job ? (
+                  <button type="button" onClick={() => onOpenJob(job.id)} className={`inline-block min-w-5 text-center hover:underline ${c.cls}`} title={`${c.label}${job.contractorName ? ` · ${job.contractorName}` : ' · ยังไม่มีช่าง'} (กดดูรายละเอียดงานนี้)`}>
+                    {c.ch}
+                  </button>
+                ) : (
+                  <span className={`inline-block min-w-5 text-center ${c.cls}`} title={c.label}>{c.ch}</span>
+                )}
               </td>
             )
           })}

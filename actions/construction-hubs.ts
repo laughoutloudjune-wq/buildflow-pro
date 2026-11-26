@@ -170,6 +170,8 @@ export type BoardPlotExtras = {
   noCrewJobs: number
   /** Jobs paid in full (or more) that are still not marked completed. */
   paidNotDone: { jobId: string; name: string; paid: number; value: number }[]
+  /** The jobs with no crew, so the board can open that exact list. */
+  noCrewList: { jobId: string; name: string }[]
 }
 
 export type BoardExtras = {
@@ -211,13 +213,16 @@ export async function getBoardExtras(projectId: string): Promise<BoardExtras> {
   ])
 
   const byPlot: Record<string, BoardPlotExtras> = {}
-  const at = (plotId: string) => (byPlot[plotId] ||= { pendingBills: 0, pendingAmount: 0, noCrewJobs: 0, paidNotDone: [] })
+  const at = (plotId: string) => (byPlot[plotId] ||= { pendingBills: 0, pendingAmount: 0, noCrewJobs: 0, paidNotDone: [], noCrewList: [] })
   const contractors = new Map<string, { id: string; name: string; plotIds: Set<string> }>()
 
   for (const j of jobs) {
     const row = at(j.plot_id)
-    if (!j.contractor_id) row.noCrewJobs += 1
     const boq = one(j.boq_master)
+    if (!j.contractor_id) {
+      row.noCrewJobs += 1
+      row.noCrewList.push({ jobId: j.id, name: boq?.item_name || '-' })
+    }
     const value = num(boq?.quantity) * num(j.agreed_price_per_unit ?? boq?.price_per_unit)
     const paid = (j.payments || []).reduce((s, p) => s + num(p.amount), 0)
     if (value > 0 && paid >= value - 0.005 && j.status !== 'completed') {
@@ -479,4 +484,47 @@ export async function getSiblingJobsWithoutCrew(plotId: string, itemName: string
   return ((data || []) as unknown as { id: string; plot_id: string; plots: { name: string | null } | { name: string | null }[] | null }[])
     .map((r) => ({ jobId: r.id, plotId: r.plot_id, plotName: one(r.plots)?.name || '' }))
     .sort((a, b) => a.plotName.localeCompare(b.plotName, 'th', { numeric: true }))
+}
+
+
+// ---------------------------------------------------------------------------
+// One job, for the focused issue popup
+// ---------------------------------------------------------------------------
+
+export type JobIssue = {
+  jobId: string
+  plotId: string
+  plotName: string
+  name: string
+  status: string
+  contractorId: string | null
+  contractorName: string | null
+  value: number
+  paid: number
+}
+
+export async function getJobIssue(jobId: string): Promise<JobIssue | null> {
+  await requireModuleAccess([...MONEY_MODULES])
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('job_assignments')
+    .select(
+      'id, plot_id, status, contractor_id, agreed_price_per_unit, boq_master:boq_master!job_assignments_boq_item_id_fkey (item_name, quantity, price_per_unit), contractors (name), payments (amount), plots (name)'
+    )
+    .eq('id', jobId)
+    .maybeSingle()
+  if (!data) return null
+  const j = data as unknown as ExtraJobRow & { plots: { name: string | null } | { name: string | null }[] | null }
+  const boq = one(j.boq_master)
+  return {
+    jobId: j.id,
+    plotId: j.plot_id,
+    plotName: one(j.plots)?.name || '',
+    name: boq?.item_name || '-',
+    status: j.status || 'pending',
+    contractorId: j.contractor_id,
+    contractorName: one(j.contractors)?.name || null,
+    value: num(boq?.quantity) * num(j.agreed_price_per_unit ?? boq?.price_per_unit),
+    paid: (j.payments || []).reduce((sum, p) => sum + num(p.amount), 0),
+  }
 }
