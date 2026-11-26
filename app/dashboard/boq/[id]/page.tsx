@@ -23,7 +23,8 @@ export default async function BOQDetailPage({ params }: { params: Promise<{ id: 
     model = m
     items = i || []
     types = t || []
-    allModels = (hm || []).filter((x) => x.id !== id)
+    // Copy source must be a house type of the same project (June, 2026-11-26).
+    allModels = (hm || []).filter((x) => x.id !== id && !!m?.project_id && x.project_id === m.project_id)
     phaseTemplate = pt
   } catch (error) {
     console.error('Error loading BOQ Detail:', error)
