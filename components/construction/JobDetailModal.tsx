@@ -117,8 +117,8 @@ export default function JobDetailModal({
   }
 
   return (
-    <Modal isOpen onClose={onClose} title={job.itemName} panelClassName="w-full max-w-4xl" bodyClassName="p-0">
-      <div className="grid gap-0 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+    <Modal isOpen onClose={onClose} title={job.itemName} panelClassName="w-full max-w-[min(1100px,96vw)]" bodyClassName="p-0">
+      <div className="grid gap-0 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="space-y-4 p-4 md:border-r md:border-slate-100">
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             {[
@@ -145,14 +145,14 @@ export default function JobDetailModal({
             ) : rows.length === 0 ? (
               <p className="text-xs text-slate-500">ยังไม่มีใบเบิก</p>
             ) : (
-              <table className="w-full table-fixed text-xs [&_td]:py-1 [&_th]:py-1 [&_th]:text-left [&_th]:font-medium [&_th]:text-slate-500">
+              <table className="w-full table-fixed text-sm [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:text-slate-500 [&_td]:whitespace-nowrap">
                 <thead>
                   <tr>
-                    <th className="w-[30%]">สร้างเมื่อ</th>
-                    <th className="w-[18%]">เลขที่</th>
-                    <th className="w-[14%] text-right">สะสม</th>
-                    <th className="w-[22%] text-right">ยอด</th>
-                    <th className="w-[16%]">สถานะ</th>
+                    <th className="w-[28%]">สร้างเมื่อ</th>
+                    <th className="w-[13%]">เลขที่</th>
+                    <th className="w-[12%] text-right">สะสม</th>
+                    <th className="w-[23%] text-right">ยอด</th>
+                    <th className="w-[24%] pl-4">สถานะ</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -162,7 +162,7 @@ export default function JobDetailModal({
                       <td>#{String(r.doc_no ?? '').padStart(4, '0')}</td>
                       <td className="text-right tabular-nums">{r.progress_percent == null ? '—' : `${Math.round(r.progress_percent)}%`}</td>
                       <td className="text-right tabular-nums">{baht(r.amount)}</td>
-                      <td>{r.status === 'approved' ? 'อนุมัติแล้ว' : r.status === 'pending_review' ? BILL_STAGE_LABEL.review : r.status === 'rejected' ? BILL_STAGE_LABEL.returned : r.status}</td>
+                      <td className="pl-4">{r.status === 'approved' ? 'อนุมัติแล้ว' : r.status === 'pending_review' ? BILL_STAGE_LABEL.review : r.status === 'rejected' ? BILL_STAGE_LABEL.returned : r.status}</td>
                     </tr>
                   ))}
                 </tbody>
