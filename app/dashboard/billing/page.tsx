@@ -1,27 +1,26 @@
-import { getBillings, getBillingOptions } from '@/actions/billing-actions'
-import BillingPageClient from './BillingPageClient'
+import { getBillingOptions } from '@/actions/billing-actions'
+import { getDashboardSession, permissionsForRole } from '@/lib/auth/route-access'
+import BillsInboxClient from './BillsInboxClient'
 
-export default async function BillingListPage() {
-  const [billingsResult, optionsResult] = await Promise.allSettled([
-    getBillings(),
-    getBillingOptions(),
-  ])
-
-  const billings = billingsResult.status === 'fulfilled' ? billingsResult.value : []
-  const listError =
-    billingsResult.status === 'rejected'
-      ? billingsResult.reason instanceof Error
-        ? billingsResult.reason.message
-        : 'โหลดรายการไม่สำเร็จ'
-      : null
-  const options = optionsResult.status === 'fulfilled' ? optionsResult.value : { projects: [], contractors: [] }
-
+/**
+ * Bills inbox: the one place for money going to contractors. It replaces the
+ * bill list and the payout-cycle report: รอตรวจ → รอจ่าย → จ่ายแล้ว, main-work
+ * and DC bills kept apart by a chip.
+ */
+export default async function BillingInboxPage() {
+  const { role, permissions } = await getDashboardSession()
+  const perms = permissionsForRole(role, permissions)
+  let options: Awaited<ReturnType<typeof getBillingOptions>> = { projects: [], contractors: [] }
+  try {
+    options = await getBillingOptions()
+  } catch (error) {
+    console.error(error)
+  }
   return (
-    <BillingPageClient
-      initialBillings={billings}
-      initialError={listError}
-      projects={options.projects || []}
-      contractors={options.contractors || []}
+    <BillsInboxClient
+      projects={(options.projects || []).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name }))}
+      contractors={(options.contractors || []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }))}
+      canCreate={perms.foreman || perms.projects}
     />
   )
 }

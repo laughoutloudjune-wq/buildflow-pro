@@ -60,7 +60,7 @@ export default async function DashboardPage() {
         value: s.recentlyApproved?.unpaidCount || 0,
         hint: 'อนุมัติ 7 วันล่าสุดและยังไม่จ่าย',
         icon: <Wallet className="h-5 w-5" />,
-        href: '/dashboard/reports/contractor-cycle',
+        href: '/dashboard/billing?tab=pay',
         attention: (s.recentlyApproved?.unpaidCount || 0) > 0,
       },
       {
@@ -68,14 +68,14 @@ export default async function DashboardPage() {
         value: `฿${formatCurrency(s.paidOutThisMonth?.amount || 0)}`,
         hint: `${s.paidOutThisMonth?.count || 0} รายการที่จ่ายแล้ว`,
         icon: <BadgeCheck className="h-5 w-5" />,
-        href: '/dashboard/reports/contractor-cycle',
+        href: '/dashboard/billing?tab=pay',
       },
       {
         title: 'อนุมัติเดือนนี้',
         value: `฿${formatCurrency(s.approvedThisMonth || 0)}`,
         hint: 'ยอดสุทธิใบเบิกที่อนุมัติแล้ว',
         icon: <TrendingUp className="h-5 w-5" />,
-        href: '/dashboard/reports/contractor-cycle',
+        href: '/dashboard/billing?tab=pay',
       },
       {
         title: 'จ่ายผู้รับเหมาแล้วสะสม',
@@ -93,7 +93,7 @@ export default async function DashboardPage() {
           actions={
             <>
               <ButtonLink variant="secondary" href="/dashboard/billing">รายการเบิกจ่าย</ButtonLink>
-              <ButtonLink href="/dashboard/reports/contractor-cycle">รอบจ่ายผู้รับเหมา</ButtonLink>
+              <ButtonLink href="/dashboard/billing?tab=pay">รอบจ่ายผู้รับเหมา</ButtonLink>
             </>
           }
         />
@@ -150,28 +150,28 @@ export default async function DashboardPage() {
       value: `฿${formatCurrency(stats.paidOutTotal)}`,
       hint: 'ยอดที่โอนจ่ายจริงสะสม',
       icon: <Wallet className="h-5 w-5" />,
-      href: '/dashboard/reports/house-history',
+      href: '/dashboard/billing?tab=paid',
     },
     {
       title: 'อนุมัติเดือนนี้',
       value: `฿${formatCurrency(stats.approvedThisMonth || 0)}`,
       hint: 'ยอดสุทธิใบเบิกที่อนุมัติแล้ว',
       icon: <TrendingUp className="h-5 w-5" />,
-      href: '/dashboard/reports/contractor-cycle',
+      href: '/dashboard/billing?tab=pay',
     },
     {
       title: 'จ่ายเดือนนี้',
       value: stats.paidOutThisMonth?.count || 0,
       hint: `฿${formatCurrency(stats.paidOutThisMonth?.amount || 0)} • รายการที่จ่ายแล้ว`,
       icon: <BadgeCheck className="h-5 w-5" />,
-      href: '/dashboard/reports/contractor-cycle',
+      href: '/dashboard/billing?tab=pay',
     },
     {
       title: 'อนุมัติล่าสุด',
       value: stats.recentlyApproved?.count || 0,
       hint: `฿${formatCurrency(stats.recentlyApproved?.amount || 0)} • 7 วันล่าสุด${stats.recentlyApproved?.unpaidCount ? ` • รอจ่าย ${stats.recentlyApproved.unpaidCount} รายการ` : ''}`,
       icon: <Sparkles className="h-5 w-5" />,
-      href: '/dashboard/reports/contractor-cycle',
+      href: '/dashboard/billing?tab=pay',
     },
     {
       title: 'ต้องตรวจสอบ',
@@ -191,7 +191,7 @@ export default async function DashboardPage() {
         actions={
           <>
             <ButtonLink variant="secondary" href="/dashboard/billing">คิวรอ PM ตรวจสอบ</ButtonLink>
-            <ButtonLink href="/dashboard/reports/contractor-cycle">รอบจ่ายผู้รับเหมา</ButtonLink>
+            <ButtonLink href="/dashboard/billing?tab=pay">รอบจ่ายผู้รับเหมา</ButtonLink>
           </>
         }
       />

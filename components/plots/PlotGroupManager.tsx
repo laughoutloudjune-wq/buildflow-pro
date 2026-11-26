@@ -160,9 +160,9 @@ export default function PlotGroupManager({ isOpen, onClose, projectId, plots, on
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         <Link
-                          href={`/dashboard/cost-control?project=${projectId}&group=${group.id}`}
+                          href={`/dashboard/projects/${projectId}/groups/${group.id}`}
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
-                          title="คุม BOQ & ต้นทุน"
+                          title="ดูกลุ่มนี้: งาน ใบเบิก วัสดุ ต้นทุน"
                         >
                           <GaugeCircle className="h-4 w-4" />
                         </Link>

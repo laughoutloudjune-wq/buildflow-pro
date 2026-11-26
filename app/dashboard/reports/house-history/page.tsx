@@ -1,22 +1,11 @@
-import { getBillingOptions, getPlotHistoryReport } from '@/actions/billing-actions'
+import { redirect } from 'next/navigation'
 import { requireModuleAccess } from '@/lib/auth/route-access'
-import HouseHistoryReportPageClient from './HouseHistoryReportPageClient'
 
-export default async function HouseHistoryReportPage() {
-  // The layout also allows `billing`-only accountant through (for
-  // contractor-cycle) - this report isn't part of that (W-02).
+/** ประวัติบ้านเลขที่: a plot's bills now live on its hub (ใบเบิก tab). */
+export default async function HouseHistoryRedirect({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   await requireModuleAccess('reports')
-  let projects: Awaited<ReturnType<typeof getBillingOptions>>['projects'] = []
-  let rows: Awaited<ReturnType<typeof getPlotHistoryReport>> = []
-
-  try {
-    const [options, result] = await Promise.all([getBillingOptions(), getPlotHistoryReport({})])
-    const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
-    projects = (options.projects || []).slice().sort((a, b) => collator.compare(a?.name || '', b?.name || ''))
-    rows = result || []
-  } catch (error) {
-    console.error(error)
-  }
-
-  return <HouseHistoryReportPageClient initialProjects={projects} initialRows={rows} />
+  const { projectId, plotId } = await searchParams
+  if (projectId && plotId) redirect(`/dashboard/projects/${projectId}/${plotId}?tab=bills`)
+  if (projectId) redirect(`/dashboard/projects/${projectId}/board`)
+  redirect('/dashboard/board')
 }

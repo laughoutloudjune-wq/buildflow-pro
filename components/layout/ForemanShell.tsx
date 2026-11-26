@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ClipboardCheck, ClipboardPlus, History, ShoppingCart } from 'lucide-react'
+import { useInFrame } from '@/lib/use-in-frame'
 
 const navItems = [
   { href: '/dashboard/foreman/create-progress', label: 'เบิกงวดงานหลัก', icon: ClipboardCheck },
@@ -13,6 +14,8 @@ const navItems = [
 
 export default function ForemanShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const inFrame = useInFrame()
+  if (inFrame) return <>{children}</>
 
   return (
     <div className="space-y-6">

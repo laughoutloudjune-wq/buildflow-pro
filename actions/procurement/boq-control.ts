@@ -5,7 +5,9 @@ import { createClient } from '@/lib/supabase/server'
 import { requireModuleAccess } from '@/lib/auth/route-access'
 import {
   ceilingQty,
+  excessValue,
   isBoqCheckLineOver,
+  rowStatus,
   totalUsedQty,
   type BoqCheckLine,
   type BoqCheckOverride,
@@ -145,6 +147,41 @@ export async function getBoqControl(scope: ControlScope): Promise<{
   }))
 
   return { rows, unassigned, outsideBoq }
+}
+
+/**
+ * Material status per batch (plot group) for the project board: how many
+ * materials are over / near their BOQ ceiling in each batch. One rollup call
+ * per batch, run in parallel, so the board never makes one call per plot.
+ * Warning information only.
+ */
+export async function getBatchMaterialStatus(projectId: string): Promise<Record<string, { over: number; watch: number; overValue: number }>> {
+  await requireModuleAccess('cost_control')
+  const supabase = await createClient()
+  const { data: groups, error } = await supabase.from('plot_groups').select('id').eq('project_id', projectId)
+  if (error) throw new Error(error.message)
+  const out: Record<string, { over: number; watch: number; overValue: number }> = {}
+  await Promise.all(
+    (groups || []).map(async (g) => {
+      try {
+        const rows = await fetchRollupRows(supabase, { projectId, plotGroupId: g.id as string })
+        let over = 0
+        let watch = 0
+        let overValue = 0
+        for (const r of rows) {
+          const st = rowStatus(r)
+          if (st === 'over') {
+            over += 1
+            overValue += excessValue(r)
+          } else if (st === 'watch') watch += 1
+        }
+        out[g.id as string] = { over, watch, overValue }
+      } catch (e) {
+        console.error(e)
+      }
+    })
+  )
+  return out
 }
 
 /** The documents behind one row of the rollup, for the row-expansion panel. */

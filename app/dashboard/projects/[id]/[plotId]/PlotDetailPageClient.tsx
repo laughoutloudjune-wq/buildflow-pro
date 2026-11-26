@@ -3,7 +3,9 @@
 import { useState, useTransition } from 'react'
 import { useUrlState } from '@/lib/use-url-state'
 import { useRouter } from 'next/navigation'
-import { ClipboardCheck, ClipboardList, Hammer, History, LayoutGrid, Pencil, Tag } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, ChevronRight, ClipboardCheck, ClipboardList, Hammer, History, LayoutGrid, Pencil, Plus, Tag } from 'lucide-react'
+import Link from 'next/link'
+import { useInFrame } from '@/lib/use-in-frame'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import type { PlotQuickLink } from '@/actions/plot-detail-bundle'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -21,8 +23,16 @@ import type { PlotExtraWorkRow } from '@/actions/_shared/plot-cost'
 import { progressState, summarizeProgress } from '@/lib/cost-control/progress'
 import PlotHistoryTab from '@/components/plots/PlotHistoryTab'
 import PlotWorkRequestsTab from '@/components/plots/PlotWorkRequestsTab'
+import { BackButton } from '@/components/ui/BackButton'
+import BillsPanel from '@/components/construction/BillsPanel'
+import EmbeddedFrameModal from '@/components/construction/EmbeddedFrameModal'
+import JobDetailModal from '@/components/construction/JobDetailModal'
+import PlotCostTab from '@/components/construction/PlotCostTab'
+import { MONEY, Tile, baht, pct } from '@/components/construction/vocab'
+import { getScopeBills } from '@/actions/construction-hubs'
 import {
   assignContractor,
+  finishPlotConstruction,
   getJobAssignments,
   getPlotById,
   syncPlotJobs,
@@ -47,7 +57,7 @@ type Plot = Awaited<ReturnType<typeof getPlotById>>
 type Contractor = Awaited<ReturnType<typeof getContractors>>[number]
 type HouseModel = Awaited<ReturnType<typeof getHouseModels>>[number]
 
-export type PlotDetailTab = 'overview' | 'sales' | 'construction' | 'materials' | 'requests' | 'history'
+export type PlotDetailTab = 'overview' | 'sales' | 'construction' | 'bills' | 'dc' | 'materials' | 'cost' | 'requests' | 'history'
 type Tab = PlotDetailTab
 
 function buildPriceDrafts(jobs: PlotJobRow[]): Record<string, string> {
@@ -63,6 +73,7 @@ export default function PlotDetailPageClient({
   plotId,
   plot,
   plotGroupName,
+  plotGroup,
   jobs: initialJobs,
   jobsDone,
   contractors,
@@ -72,6 +83,7 @@ export default function PlotDetailPageClient({
   promotions,
   promotionItems,
   history,
+  materials,
   workRequests,
   payments,
   progressCurve,
@@ -81,6 +93,7 @@ export default function PlotDetailPageClient({
   canSeeCost,
   canEditConstruction,
   canEditSales,
+  canReviewBills = false,
   quickLinks = [],
   onClose,
   onRefresh,
@@ -95,6 +108,8 @@ export default function PlotDetailPageClient({
   plotId: string
   plot: Plot
   plotGroupName?: string | null
+  /** The batch and its plots, for the previous / next plot arrows. */
+  plotGroup?: { id: string; name: string; plots: { id: string; name: string }[] } | null
   jobs: PlotJobRow[]
   jobsDone: number
   contractors: Contractor[]
@@ -114,6 +129,8 @@ export default function PlotDetailPageClient({
   canSeeCost: boolean
   canEditConstruction: boolean
   canEditSales: boolean
+  /** May approve bills (billing module): waiting bills open in the review popup. */
+  canReviewBills?: boolean
   /** Forms that open with this plot already chosen (getPlotDetailBundle). */
   quickLinks?: PlotQuickLink[]
   /** Set when rendered inside PlotDetailModal (the map's quick-view) instead
@@ -138,7 +155,8 @@ export default function PlotDetailPageClient({
   const refresh = onRefresh ?? (() => router.refresh())
   const toast = useToast()
   const [isPending, startTransition] = useTransition()
-  const [tab, setTab] = useUrlState<Tab>('tab', 'overview')
+  const inFrame = useInFrame()
+  const [rawTab, setTab] = useUrlState<Tab>('tab', 'overview')
 
   const [jobs, setJobs] = useState<PlotJobRow[]>(initialJobs)
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>(() => buildPriceDrafts(initialJobs))
@@ -153,7 +171,11 @@ export default function PlotDetailPageClient({
   })()
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [openJobId, setOpenJobId] = useState<string | null>(null)
+  const [frame, setFrame] = useState<PlotQuickLink | null>(null)
+  const [billsRefresh, setBillsRefresh] = useState(0)
   const [isSyncConfirmOpen, setIsSyncConfirmOpen] = useState(false)
+  const [finish, setFinish] = useState<{ pendingBills: number | null } | null>(null)
 
   const getHouseModelLabel = (model: HouseModel) => {
     const projectName = model?.projects?.name
@@ -219,6 +241,27 @@ export default function PlotDetailPageClient({
     })
   }
 
+  const openFinish = () => {
+    setFinish({ pendingBills: null })
+    getScopeBills({ projectId, plotIds: [plotId] })
+      .then((rows) => setFinish({ pendingBills: rows.filter((b) => b.status === 'pending_review').length }))
+      .catch(() => setFinish({ pendingBills: 0 }))
+  }
+  const handleConfirmFinish = () => {
+    setFinish(null)
+    setJobs((prev) => prev.map((j) => ({ ...j, status: 'completed' })))
+    startTransition(async () => {
+      try {
+        const r = await finishPlotConstruction(plotId, projectId)
+        toast.success(r.updated > 0 ? `จบงานก่อสร้างแปลงนี้แล้ว (${r.updated} งาน)` : 'ทุกงานเสร็จอยู่แล้ว')
+        refresh()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+        refresh()
+      }
+    })
+  }
+
   const handleSync = () => {
     if (!plot) return
     setIsSyncConfirmOpen(true)
@@ -250,6 +293,14 @@ export default function PlotDetailPageClient({
     })
   }
 
+  const handleSavePrice = (jobId: string, next: number | null) => {
+    setJobs((prev) => prev.map((j) => (j.id === jobId && j.cost ? { ...j, cost: { ...j.cost, agreedPricePerUnit: next, effectivePrice: next ?? j.cost.boqPricePerUnit, totalBoq: j.quantity * (next ?? j.cost.boqPricePerUnit) } } : j)))
+    setPriceDrafts((prev) => ({ ...prev, [jobId]: next == null ? '' : String(next) }))
+    startTransition(async () => {
+      await updateAgreedPricePerUnit(jobId, next, plotId, projectId)
+    })
+  }
+
   const handleResetVariablePrice = (job: PlotJobRow) => {
     setPriceDrafts((prev) => ({ ...prev, [job.id]: '' }))
     setJobs((prev) => prev.map((j) => (j.id === job.id && j.cost ? { ...j, cost: { ...j.cost, agreedPricePerUnit: null } } : j)))
@@ -267,11 +318,22 @@ export default function PlotDetailPageClient({
 
   if (!plot) return <div className="p-8 text-center text-red-500">ไม่พบข้อมูลแปลง</div>
 
+  const hubTabs = canSeeCost && canEditConstruction && !visibleTabs && !onClose
+  // Links to the hub-only tabs (bills / DC / cost) fall back to ภาพรวม for viewers without them.
+  const tab: Tab = !hubTabs && (rawTab === 'bills' || rawTab === 'dc' || rawTab === 'cost') ? 'overview' : rawTab
   const ALL_TABS: { key: Tab; label: string; icon: typeof LayoutGrid }[] = [
     { key: 'overview', label: 'ภาพรวม', icon: LayoutGrid },
-    { key: 'sales', label: 'การขาย', icon: Tag },
-    { key: 'construction', label: 'งานก่อสร้าง', icon: Hammer },
-    { key: 'materials', label: 'วัสดุ', icon: ClipboardList },
+    ...(hubTabs ? [] : ([{ key: 'sales', label: 'การขาย', icon: Tag }] as { key: Tab; label: string; icon: typeof LayoutGrid }[])),
+    { key: 'construction', label: hubTabs ? 'งานและช่าง' : 'งานก่อสร้าง', icon: Hammer },
+    ...(hubTabs
+      ? ([
+          { key: 'bills', label: 'ใบเบิก', icon: ClipboardList },
+          { key: 'dc', label: 'งานเพิ่ม (DC)', icon: Plus },
+        ] as { key: Tab; label: string; icon: typeof LayoutGrid }[])
+      : []),
+    { key: 'materials', label: hubTabs ? 'วัสดุ BOQ' : 'วัสดุ', icon: ClipboardList },
+    ...(hubTabs ? ([{ key: 'cost', label: 'ต้นทุน', icon: Tag }] as { key: Tab; label: string; icon: typeof LayoutGrid }[]) : []),
+    ...(hubTabs ? ([{ key: 'sales', label: 'การขาย', icon: Tag }] as { key: Tab; label: string; icon: typeof LayoutGrid }[]) : []),
     { key: 'requests', label: 'คำขอจากฝ่ายขาย', icon: ClipboardCheck },
     { key: 'history', label: 'ประวัติ', icon: History },
   ]
@@ -281,9 +343,24 @@ export default function PlotDetailPageClient({
   // regardless of the viewer's own construction permission.
   const showConstructionTab = !visibleTabs || visibleTabs.includes('construction')
 
+  // Previous / next plot of the same batch (plot hub only).
+  const batchNeighbors = (() => {
+    const list = plotGroup?.plots || []
+    const at = list.findIndex((p) => p.id === plotId)
+    return at < 0 ? { prev: null, next: null } : { prev: list[at - 1] ?? null, next: list[at + 1] ?? null }
+  })()
+  // Hub tiles. Same sources as the board row, so the two never disagree.
+  const hubContract = jobs.reduce((sum, j) => sum + (j.cost?.totalBoq ?? 0), 0)
+  const hubPaid = jobs.reduce((sum, j) => sum + (j.cost?.paid ?? 0), 0)
+  const hubDc = extraWork.filter((e) => e.status === 'approved').reduce((sum, e) => sum + e.value, 0)
+  const hubMaterial = materials.reduce((sum, m) => sum + (m.issuedValue ?? 0), 0)
+  const paidNotDone = jobs.filter((j) => j.cost && j.cost.totalBoq > 0 && j.cost.paid >= j.cost.totalBoq - 0.005 && j.status !== 'completed')
+  const frameLink = frame
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
+        {!onClose && !inFrame && <BackButton fallbackHref={`/dashboard/projects/${projectId}/board`} label="กลับ" />}
         {!onClose && (
           <Breadcrumb
             items={[
@@ -312,11 +389,32 @@ export default function PlotDetailPageClient({
           actions={
             canEditConstruction && showConstructionTab ? (
               <>
-                {quickLinks.map((link) => (
-                  <ButtonLink key={link.key} href={link.href} variant="secondary" size="sm">
-                    {link.label}
-                  </ButtonLink>
-                ))}
+                {hubTabs && batchNeighbors.prev && (
+                  <Link href={`/dashboard/projects/${projectId}/${batchNeighbors.prev.id}?tab=${tab}`} className="inline-flex items-center rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50" title={`แปลงก่อนหน้าในกลุ่ม: ${batchNeighbors.prev.name}`}>
+                    <ChevronLeft className="h-4 w-4" aria-hidden /> {batchNeighbors.prev.name}
+                  </Link>
+                )}
+                {hubTabs && batchNeighbors.next && (
+                  <Link href={`/dashboard/projects/${projectId}/${batchNeighbors.next.id}?tab=${tab}`} className="inline-flex items-center rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50" title={`แปลงถัดไปในกลุ่ม: ${batchNeighbors.next.name}`}>
+                    {batchNeighbors.next.name} <ChevronRight className="h-4 w-4" aria-hidden />
+                  </Link>
+                )}
+                {quickLinks.map((link) =>
+                  hubTabs && link.key !== 'withdraw' ? (
+                    <Button key={link.key} variant="secondary" size="sm" onClick={() => setFrame(link)}>
+                      <Plus className="h-3.5 w-3.5" aria-hidden /> {link.key === 'purchase' ? 'ขอซื้อวัสดุ' : link.label}
+                    </Button>
+                  ) : (
+                    <ButtonLink key={link.key} href={link.href} variant="secondary" size="sm">
+                      {link.label}
+                    </ButtonLink>
+                  )
+                )}
+                {hubTabs && jobs.length > 0 && jobsDone < jobs.length && (
+                  <Button variant="secondary" size="sm" onClick={openFinish} disabled={isPending}>
+                    จบงานก่อสร้าง
+                  </Button>
+                )}
                 <Button variant="secondary" size="sm" onClick={handleSync} disabled={isPending}>
                   ดึง BOQ
                 </Button>
@@ -336,6 +434,33 @@ export default function PlotDetailPageClient({
         targetCompletionDate={plot.target_completion_date ?? null}
         landAreaSqwa={plot.land_area_sqwa ?? null}
       />
+
+      {hubTabs && (
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <Tile label={MONEY.contract} value={baht(hubContract)} />
+            <Tile label={MONEY.paid} value={baht(hubPaid)} sub={hubContract > 0 ? `${pct((hubPaid / hubContract) * 100)} ของสัญญา` : undefined} />
+            <Tile label={MONEY.left} value={baht(Math.max(0, hubContract - hubPaid))} />
+            <Tile label={MONEY.dc} value={baht(hubDc)} />
+            <Tile label={MONEY.material} value={baht(hubMaterial)} sub="เบิกจากสโตร์" />
+          </div>
+          {paidNotDone.length > 0 && (
+            <div className="flex flex-wrap items-start gap-2 rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-800 ring-1 ring-inset ring-red-200" role="alert">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span className="min-w-0 flex-1">
+                จ่ายครบแล้วแต่สถานะยังไม่เสร็จ {paidNotDone.length} งาน:{' '}
+                {paidNotDone.slice(0, 3).map((j, i) => (
+                  <button key={j.id} type="button" onClick={() => { setTab('construction'); setOpenJobId(j.id) }} className="font-medium underline">
+                    {i > 0 ? ', ' : ''}
+                    {j.itemName}
+                  </button>
+                ))}
+                {paidNotDone.length > 3 ? ` และอีก ${paidNotDone.length - 3} งาน` : ''}
+              </span>
+            </div>
+          )}
+        </>
+      )}
 
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="หมวดข้อมูลแปลง">
         {TABS.map((t) => (
@@ -398,8 +523,12 @@ export default function PlotDetailPageClient({
           expectedPercent={expectedPercent}
           progressHealth={liveProgress.health}
           extraWork={extraWork}
+          onOpenJob={hubTabs ? setOpenJobId : undefined}
         />
       )}
+      {hubTabs && tab === 'bills' && <BillsPanel projectId={projectId} plotIds={[plotId]} kind="main" showPlots={false} refreshKey={billsRefresh} canReview={canReviewBills} />}
+      {hubTabs && tab === 'dc' && <BillsPanel projectId={projectId} plotIds={[plotId]} kind="dc" showPlots={false} refreshKey={billsRefresh} canReview={canReviewBills} />}
+      {hubTabs && tab === 'cost' && <PlotCostTab jobs={jobs} extraWork={extraWork} materials={materials} />}
       {tab === 'materials' && <PlotMaterialsTab plotId={plotId} />}
       {tab === 'requests' && (
         <PlotWorkRequestsTab plotId={plotId} requests={workRequests} canCreate={canEditSales} />
@@ -454,6 +583,56 @@ export default function PlotDetailPageClient({
           </form>
         </Modal>
       )}
+
+      {hubTabs && (
+        <JobDetailModal
+          job={jobs.find((j) => j.id === openJobId) ?? null}
+          contractors={contractors}
+          canEdit={canEditConstruction}
+          plotId={plotId}
+          projectId={projectId}
+          onAssign={handleAssign}
+          onStatus={handleStatusChange}
+          onSavePrice={handleSavePrice}
+          onClose={() => setOpenJobId(null)}
+        />
+      )}
+      {hubTabs && frameLink && (
+        <EmbeddedFrameModal
+          isOpen
+          title={frameLink.key === 'progress' ? `เบิกงวด · แปลง ${plot.name}` : frameLink.key === 'dc' ? `งานเพิ่ม (DC) · แปลง ${plot.name}` : `ขอซื้อวัสดุ · แปลง ${plot.name}`}
+          src={frameLink.href}
+          stayWhile={(p) => p === frameLink.href.split('?')[0]}
+          onClose={() => setFrame(null)}
+          onDone={() => {
+            setFrame(null)
+            setBillsRefresh((n) => n + 1)
+            refresh()
+          }}
+        />
+      )}
+
+      {(() => {
+        const open = jobs.filter((j) => j.status !== 'completed')
+        const unpaid = open.filter((j) => j.cost && j.cost.totalBoq > 0 && j.cost.paid < j.cost.totalBoq - 0.005)
+        const warn = [
+          unpaid.length > 0 ? `${unpaid.length} งานยังจ่ายไม่ครบตามสัญญา` : '',
+          finish?.pendingBills ? `มีใบเบิกรอตรวจ ${finish.pendingBills} ใบ` : '',
+        ].filter(Boolean)
+        return (
+          <ConfirmDialog
+            isOpen={finish !== null}
+            title={`จบงานก่อสร้างแปลง ${plot.name}`}
+            message={`จะทำเครื่องหมายเสร็จสิ้นให้ ${open.length} งานที่เหลือ${warn.length ? ` · คำเตือน: ${warn.join(' · ')} (ไม่ปิดกั้น ยังเบิกและจ่ายต่อได้)` : ''}`}
+            confirmLabel="จบงานก่อสร้าง"
+            cancelLabel="ยกเลิก"
+            tone="primary"
+            busy={isPending}
+            onCancel={() => setFinish(null)}
+            onConfirm={handleConfirmFinish}
+          />
+        )
+      })()}
 
       <ConfirmDialog
         isOpen={isSyncConfirmOpen}

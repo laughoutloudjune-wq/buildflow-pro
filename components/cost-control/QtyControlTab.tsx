@@ -29,8 +29,8 @@ import { formatCurrency } from '@/lib/currency'
 const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 })
 
 const CHIP: Partial<Record<BoqControlStatus, { text: string; cls: string }>> = {
-  over: { text: 'เกิน BOQ', cls: 'bg-red-50 text-red-700' },
-  watch: { text: 'ใกล้เต็ม', cls: 'bg-amber-50 text-amber-800' },
+  over: { text: 'เกิน', cls: 'bg-red-50 text-red-700' },
+  watch: { text: 'ต้องดู', cls: 'bg-amber-50 text-amber-800' },
   not_in_boq: { text: 'ไม่มีใน BOQ', cls: 'bg-slate-100 text-slate-600' },
 }
 
