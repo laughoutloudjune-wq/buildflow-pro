@@ -7,10 +7,11 @@ import Link from 'next/link'
 import { Plus, Printer } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
-import { ButtonLink } from '@/components/ui/Button'
+import { Button, ButtonLink } from '@/components/ui/Button'
 import { PageToolbar } from '@/components/ui/PageToolbar'
 import { useUrlObject, useUrlState } from '@/lib/use-url-state'
 import { useDepartment } from '@/components/layout/DepartmentContext'
+import { useHubModal } from '@/components/construction/useHubModal'
 import BillsPanel from '@/components/construction/BillsPanel'
 import ContractorCycleReport from '@/components/billings/ContractorCycleReport'
 
@@ -50,6 +51,8 @@ function Inbox({ projects, contractors, canCreate }: { projects: { id: string; n
   const router = useRouter()
   const searchParams = useSearchParams()
   const [dismissed, setDismissed] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const formModal = useHubModal(() => setRefreshKey((n) => n + 1))
   const message = searchParams.get('message')
   const type = searchParams.get('type')
   const flashTone = type === 'error' || type === 'warning' || type === 'info' ? type : 'success'
@@ -75,12 +78,12 @@ function Inbox({ projects, contractors, canCreate }: { projects: { id: string; n
             )}
             {canCreate && (
               <>
-                <ButtonLink href="/dashboard/foreman/create-progress" variant="secondary">
+                <Button variant="secondary" onClick={() => formModal.open('/dashboard/foreman/create-progress', 'เบิกงวดงานหลัก', true)}>
                   <Plus className="h-4 w-4" /> เบิกงวด
-                </ButtonLink>
-                <ButtonLink href="/dashboard/foreman/create-dc">
+                </Button>
+                <Button onClick={() => formModal.open('/dashboard/foreman/create-dc', 'งานเพิ่ม (DC)', true)}>
                   <Plus className="h-4 w-4" /> งานเพิ่ม (DC)
-                </ButtonLink>
+                </Button>
               </>
             )}
           </>
@@ -144,6 +147,7 @@ function Inbox({ projects, contractors, canCreate }: { projects: { id: string; n
 
           <BillsPanel
             key={`${tab}-${kind}`}
+            refreshKey={refreshKey}
             projectId={filters.projectId}
             contractorId={filters.contractorId}
             month={filters.month}
@@ -157,6 +161,7 @@ function Inbox({ projects, contractors, canCreate }: { projects: { id: string; n
           </p>
         </>
       )}
+    {formModal.node}
     </PageContainer>
   )
 }

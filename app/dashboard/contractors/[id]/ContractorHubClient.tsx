@@ -6,13 +6,14 @@ import { Phone } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PageContainer } from '@/components/ui/PageContainer'
 import { Card } from '@/components/ui/Card'
-import { Button, ButtonLink } from '@/components/ui/Button'
+import { Button } from '@/components/ui/Button'
 import { BackButton } from '@/components/ui/BackButton'
 import { useUrlState } from '@/lib/use-url-state'
 import { useDepartment } from '@/components/layout/DepartmentContext'
 import { getContractorApprovedHistory } from '@/actions/contractor-actions'
 import { computeActualPayout } from '@/lib/billing'
 import type { ContractorHubData } from '@/actions/construction-hubs'
+import { useHubModal } from '@/components/construction/useHubModal'
 import BillsPanel from '@/components/construction/BillsPanel'
 import { MONEY, Tile, baht, fmtDateTime, pct } from '@/components/construction/vocab'
 
@@ -24,6 +25,7 @@ const byName = (a: string, b: string) => a.localeCompare(b, 'th', { numeric: tru
 
 export default function ContractorHubClient({ hub, canPay }: { hub: ContractorHubData; canPay: boolean }) {
   const { theme } = useDepartment()
+  const hubModal = useHubModal()
   const [tab, setTab] = useUrlState<Tab>('tab', 'jobs', ['jobs', 'bills', 'dc', 'pay'] as const)
   const [projectFilter, setProjectFilter] = useUrlState<string>('project', '')
   const [openPlots, setOpenPlots] = useState<Set<string>>(new Set())
@@ -112,8 +114,8 @@ export default function ContractorHubClient({ hub, canPay }: { hub: ContractorHu
         actions={
           canPay ? (
             <>
-              <ButtonLink href={`/dashboard/billing/request?contractorId=${hub.contractor.id}`} variant="secondary" size="sm">เบิกงวด</ButtonLink>
-              <ButtonLink href={payHref} size="sm">จ่ายเงิน {toPay.length > 0 ? `(${toPay.length} ใบ)` : ''}</ButtonLink>
+              <Button variant="secondary" size="sm" onClick={() => hubModal.open(`/dashboard/billing/request?contractorId=${hub.contractor.id}`, `เบิกงวด · ${hub.contractor.name}`, true)}>เบิกงวด</Button>
+              <Button size="sm" onClick={() => hubModal.open(payHref, `จ่ายเงิน · ${hub.contractor.name}`, true)}>จ่ายเงิน {toPay.length > 0 ? `(${toPay.length} ใบ)` : ''}</Button>
             </>
           ) : null
         }
@@ -165,7 +167,7 @@ export default function ContractorHubClient({ hub, canPay }: { hub: ContractorHu
                 {byPlot.map((p) => {
                   const open = openPlots.has(p.key)
                   return (
-                    <PlotRows key={p.key} open={open} onToggle={() => setOpenPlots((prev) => { const n = new Set(prev); if (n.has(p.key)) n.delete(p.key); else n.add(p.key); return n })} p={p} projectId={p.jobs[0]?.projectId || ''} showProject={projects.length > 1} />
+                    <PlotRows key={p.key} linkClick={hubModal.click} open={open} onToggle={() => setOpenPlots((prev) => { const n = new Set(prev); if (n.has(p.key)) n.delete(p.key); else n.add(p.key); return n })} p={p} projectId={p.jobs[0]?.projectId || ''} showProject={projects.length > 1} />
                   )
                 })}
                 <tr className="border-t-2 border-slate-200 bg-slate-50 text-right font-semibold tabular-nums">
@@ -195,7 +197,7 @@ export default function ContractorHubClient({ hub, canPay }: { hub: ContractorHu
                 <Tile label="เงินประกันผลงานที่หักไว้" value={baht(retentionHeld)} />
                 <Tile label="รอจ่าย" value={baht(toPay.reduce((s, b) => s + b.netAmount, 0))} sub={`${toPay.length} ใบ`} />
                 <div className="flex items-center">
-                  {canPay && toPay.length > 0 && <Button onClick={() => (window.location.href = payHref)}>ไปบันทึกจ่าย</Button>}
+                  {canPay && toPay.length > 0 && <Button onClick={() => hubModal.open(payHref, `จ่ายเงิน · ${hub.contractor.name}`, true)}>บันทึกจ่าย</Button>}
                 </div>
               </div>
               <Card className="overflow-hidden p-0">
@@ -234,16 +236,17 @@ export default function ContractorHubClient({ hub, canPay }: { hub: ContractorHu
           )}
         </div>
       )}
+    {hubModal.node}
     </PageContainer>
   )
 }
 
-function PlotRows({ p, open, onToggle, projectId, showProject }: { p: { key: string; project: string; plot: string; value: number; paid: number; pending: number; jobs: { id: string; name: string; status: string; value: number; paid: number; pending: number }[] }; open: boolean; onToggle: () => void; projectId: string; showProject: boolean }) {
+function PlotRows({ p, open, onToggle, projectId, showProject, linkClick }: { p: { key: string; project: string; plot: string; value: number; paid: number; pending: number; jobs: { id: string; name: string; status: string; value: number; paid: number; pending: number }[] }; open: boolean; onToggle: () => void; projectId: string; showProject: boolean; linkClick: (href: string, title: string) => (e: React.MouseEvent) => void }) {
   return (
     <>
       <tr onClick={onToggle} className="cursor-pointer border-t border-slate-100 text-right tabular-nums hover:bg-slate-50">
         <td className="text-left">
-          <Link href={`/dashboard/projects/${projectId}/${p.key}`} onClick={(e) => e.stopPropagation()} className="font-semibold text-indigo-700 hover:underline">แปลง {p.plot}</Link>
+          <Link href={`/dashboard/projects/${projectId}/${p.key}`} onClick={linkClick(`/dashboard/projects/${projectId}/${p.key}`, `แปลง ${p.plot}`)} className="font-semibold text-indigo-700 hover:underline">แปลง {p.plot}</Link>
           <span className="ml-2 text-xs text-slate-500">{showProject ? `${p.project} · ` : ''}{p.jobs.length} งาน {open ? '▾' : '▸'}</span>
         </td>
         <td>{baht(p.value)}</td>
