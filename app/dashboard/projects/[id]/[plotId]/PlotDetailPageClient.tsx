@@ -29,8 +29,10 @@ import EmbeddedFrameModal from '@/components/construction/EmbeddedFrameModal'
 import JobDetailModal from '@/components/construction/JobDetailModal'
 import PlotCostTab from '@/components/construction/PlotCostTab'
 import { MONEY, Tile, baht, pct } from '@/components/construction/vocab'
+import { getScopeBills } from '@/actions/construction-hubs'
 import {
   assignContractor,
+  finishPlotConstruction,
   getJobAssignments,
   getPlotById,
   syncPlotJobs,
@@ -173,6 +175,7 @@ export default function PlotDetailPageClient({
   const [frame, setFrame] = useState<PlotQuickLink | null>(null)
   const [billsRefresh, setBillsRefresh] = useState(0)
   const [isSyncConfirmOpen, setIsSyncConfirmOpen] = useState(false)
+  const [finish, setFinish] = useState<{ pendingBills: number | null } | null>(null)
 
   const getHouseModelLabel = (model: HouseModel) => {
     const projectName = model?.projects?.name
@@ -235,6 +238,27 @@ export default function PlotDetailPageClient({
     setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j)))
     startTransition(async () => {
       await updateJobStatus(jobId, newStatus, plotId, projectId)
+    })
+  }
+
+  const openFinish = () => {
+    setFinish({ pendingBills: null })
+    getScopeBills({ projectId, plotIds: [plotId] })
+      .then((rows) => setFinish({ pendingBills: rows.filter((b) => b.status === 'pending_review').length }))
+      .catch(() => setFinish({ pendingBills: 0 }))
+  }
+  const handleConfirmFinish = () => {
+    setFinish(null)
+    setJobs((prev) => prev.map((j) => ({ ...j, status: 'completed' })))
+    startTransition(async () => {
+      try {
+        const r = await finishPlotConstruction(plotId, projectId)
+        toast.success(r.updated > 0 ? `จบงานก่อสร้างแปลงนี้แล้ว (${r.updated} งาน)` : 'ทุกงานเสร็จอยู่แล้ว')
+        refresh()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+        refresh()
+      }
     })
   }
 
@@ -385,6 +409,11 @@ export default function PlotDetailPageClient({
                       {link.label}
                     </ButtonLink>
                   )
+                )}
+                {hubTabs && jobs.length > 0 && jobsDone < jobs.length && (
+                  <Button variant="secondary" size="sm" onClick={openFinish} disabled={isPending}>
+                    จบงานก่อสร้าง
+                  </Button>
                 )}
                 <Button variant="secondary" size="sm" onClick={handleSync} disabled={isPending}>
                   ดึง BOQ
@@ -582,6 +611,28 @@ export default function PlotDetailPageClient({
           }}
         />
       )}
+
+      {(() => {
+        const open = jobs.filter((j) => j.status !== 'completed')
+        const unpaid = open.filter((j) => j.cost && j.cost.totalBoq > 0 && j.cost.paid < j.cost.totalBoq - 0.005)
+        const warn = [
+          unpaid.length > 0 ? `${unpaid.length} งานยังจ่ายไม่ครบตามสัญญา` : '',
+          finish?.pendingBills ? `มีใบเบิกรอตรวจ ${finish.pendingBills} ใบ` : '',
+        ].filter(Boolean)
+        return (
+          <ConfirmDialog
+            isOpen={finish !== null}
+            title={`จบงานก่อสร้างแปลง ${plot.name}`}
+            message={`จะทำเครื่องหมายเสร็จสิ้นให้ ${open.length} งานที่เหลือ${warn.length ? ` · คำเตือน: ${warn.join(' · ')} (ไม่ปิดกั้น ยังเบิกและจ่ายต่อได้)` : ''}`}
+            confirmLabel="จบงานก่อสร้าง"
+            cancelLabel="ยกเลิก"
+            tone="primary"
+            busy={isPending}
+            onCancel={() => setFinish(null)}
+            onConfirm={handleConfirmFinish}
+          />
+        )
+      })()}
 
       <ConfirmDialog
         isOpen={isSyncConfirmOpen}

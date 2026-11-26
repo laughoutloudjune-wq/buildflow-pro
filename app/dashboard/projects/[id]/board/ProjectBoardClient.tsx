@@ -376,7 +376,7 @@ export default function ProjectBoardClient({
                           )}
                           {canSeeLabor && <td className="text-right tabular-nums max-lg:hidden">{r.extraWorkApproved ? baht(r.extraWorkApproved) : '—'}</td>}
                           <td className="text-right tabular-nums max-lg:hidden">{r.materialUsed ? baht(r.materialUsed) : '—'}</td>
-                          <td>{canSeeLabor ? <StatusPill status={status} /> : <span className="text-xs text-slate-400">—</span>}</td>
+                          <td>{canSeeLabor ? <StatusPill status={status} label={status === 'ok' && r.jobCount > 0 && r.jobsDone >= r.jobCount ? 'เสร็จแล้ว' : undefined} /> : <span className="text-xs text-slate-400">—</span>}</td>
                         </tr>
                       )
                     })}
