@@ -74,7 +74,7 @@ export default function JobDetailModal({
 
   // Fresh form values each time a different job opens (adjusted during render).
   const [shownJobId, setShownJobId] = useState<string | null>(null)
-  if (jobId !== shownJobId) {
+  if ((jobId ?? null) !== shownJobId) {
     setShownJobId(jobId ?? null)
     setCrew(job?.contractorId || '')
     setPrice(job?.cost?.agreedPricePerUnit == null ? '' : String(job.cost.agreedPricePerUnit))
