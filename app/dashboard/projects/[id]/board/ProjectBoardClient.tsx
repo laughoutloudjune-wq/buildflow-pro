@@ -29,18 +29,18 @@ type SortKey = 'plot' | 'attention' | 'paid'
 const EMPTY_EXTRAS: BoardPlotExtras = { pendingBills: 0, pendingAmount: 0, noCrewJobs: 0, paidNotDone: [] }
 const byName = (a: string, b: string) => a.localeCompare(b, 'th', { numeric: true })
 
-type Flag = { text: string; level: 0 | 1; tab?: string }
+type FlagKind = 'overpaid' | 'paidNotDone' | 'behind' | 'bills' | 'noCrew' | 'material'
+type Flag = { text: string; level: 0 | 1; tab?: string; kind: FlagKind; n?: number }
 
 /** Why a plot needs a look. Level 0 = เกิน (red), level 1 = ต้องดู (amber). */
 function plotFlags(r: CostBoardRow, x: BoardPlotExtras, batchOver: number): Flag[] {
   const flags: Flag[] = []
-  if ((r.paidAhead || 0) > 0) flags.push({ level: 0, tab: 'construction', text: `จ่ายเกินงานที่ทำได้ ${baht(r.paidAhead)} ใน ${r.paidAheadJobs} งาน` })
-  for (const j of x.paidNotDone.slice(0, 2)) flags.push({ level: 1, tab: 'construction', text: `${j.name} จ่ายครบ ${baht(j.paid)} แต่สถานะยังไม่เสร็จ` })
-  if (x.paidNotDone.length > 2) flags.push({ level: 1, tab: 'construction', text: `อีก ${x.paidNotDone.length - 2} งานจ่ายครบแต่ยังไม่เสร็จ` })
-  if (r.health === 'behind' && r.expectedPercent != null && r.actualPercent != null) flags.push({ level: 1, tab: 'construction', text: `ช้ากว่าแผน ${Math.round(r.expectedPercent - r.actualPercent)}%` })
-  if (x.pendingBills > 0) flags.push({ level: 1, tab: 'bills', text: `ใบเบิกรอตรวจ ${x.pendingBills} ใบ (${baht(x.pendingAmount)})` })
-  if (x.noCrewJobs > 0 && r.jobCount > 0) flags.push({ level: 1, tab: 'construction', text: `${x.noCrewJobs} งานยังไม่มีช่าง` })
-  if (batchOver > 0) flags.push({ level: 1, tab: 'materials', text: `วัสดุเกิน BOQ ${batchOver} รายการ (ทั้งกลุ่ม)` })
+  if ((r.paidAhead || 0) > 0) flags.push({ kind: 'overpaid', level: 0, tab: 'construction', n: r.paidAheadJobs || 1, text: `จ่ายเกินงานที่ทำได้ ${baht(r.paidAhead)} ใน ${r.paidAheadJobs} งาน` })
+  if (x.paidNotDone.length > 0) flags.push({ kind: 'paidNotDone', level: 1, tab: 'construction', n: x.paidNotDone.length, text: `${x.paidNotDone.length} งานจ่ายครบแต่ยังไม่เสร็จ` })
+  if (r.health === 'behind' && r.expectedPercent != null && r.actualPercent != null) flags.push({ kind: 'behind', level: 1, tab: 'construction', text: `ช้ากว่าแผน ${Math.round(r.expectedPercent - r.actualPercent)}%` })
+  if (x.pendingBills > 0) flags.push({ kind: 'bills', level: 1, tab: 'bills', n: x.pendingBills, text: `ใบเบิกรอตรวจ ${x.pendingBills} ใบ (${baht(x.pendingAmount)})` })
+  if (x.noCrewJobs > 0 && r.jobCount > 0) flags.push({ kind: 'noCrew', level: 1, tab: 'construction', n: x.noCrewJobs, text: `${x.noCrewJobs} งานยังไม่มีช่าง` })
+  if (batchOver > 0) flags.push({ kind: 'material', level: 1, tab: 'materials', n: batchOver, text: `วัสดุเกิน BOQ ${batchOver} รายการ (ทั้งกลุ่ม)` })
   return flags
 }
 
@@ -73,7 +73,6 @@ export default function ProjectBoardClient({
   const [tab, setTab] = useUrlState<Tab>('tab', 'plots', ['plots', 'boq', 'bills', 'dc', 'matcost'] as const)
   const [sort, setSort] = useUrlState<SortKey>('sort', 'plot', ['plot', 'attention', 'paid'] as const)
   const [search, setSearch] = useUrlState<string>('q', '')
-  const [attentionOpen, setAttentionOpen] = useState(false)
 
   // Remember this project so the menu entry opens it next time.
   useEffect(() => {
@@ -99,6 +98,26 @@ export default function ProjectBoardClient({
         .sort((a, b) => a.level - b.level || byName(a.plot.plotName, b.plot.plotName)),
     [model]
   )
+
+  const KIND_LABEL: Record<FlagKind, { label: string; unit: string }> = {
+    overpaid: { label: 'จ่ายเกินงานที่ทำได้', unit: 'งาน' },
+    paidNotDone: { label: 'จ่ายครบแต่สถานะยังไม่เสร็จ', unit: 'งาน' },
+    bills: { label: 'ใบเบิกรอตรวจ', unit: 'ใบ' },
+    noCrew: { label: 'งานยังไม่มีช่าง', unit: 'งาน' },
+    behind: { label: 'ช้ากว่าแผน', unit: '' },
+    material: { label: 'วัสดุเกิน BOQ (ทั้งกลุ่ม)', unit: 'รายการ' },
+  }
+  const summary = useMemo(() => {
+    const map = new Map<FlagKind, { kind: FlagKind; level: 0 | 1; tab?: string; plots: CostBoardRow[]; total: number }>()
+    for (const a of attention) {
+      const g = map.get(a.kind) || { kind: a.kind, level: a.level, tab: a.tab, plots: [] as CostBoardRow[], total: 0 }
+      g.plots.push(a.plot)
+      g.total += a.n || 0
+      map.set(a.kind, g)
+    }
+    return [...map.values()].sort((a, b) => a.level - b.level || b.plots.length - a.plots.length)
+  }, [attention])
+  const [openKinds, setOpenKinds] = useState<Record<string, boolean>>({})
 
   const groups = useMemo(() => {
     const map = new Map<string, { id: string; name: string; items: typeof model }>()
@@ -162,7 +181,6 @@ export default function ProjectBoardClient({
     { key: 'dc', label: 'งานเพิ่ม (DC)', show: canSeeLabor },
     { key: 'matcost', label: 'ต้นทุนวัสดุ', show: true },
   ]
-  const shownAttention = attentionOpen ? attention : attention.slice(0, 6)
 
   return (
     <PageContainer width="wide">
@@ -254,30 +272,36 @@ export default function ProjectBoardClient({
 
           {canSeeLabor && (
             <Card className="p-4">
-              <h3 className="mb-2 text-sm font-semibold text-slate-800">ต้องดู {attention.length > 0 ? `(${attention.length})` : ''}</h3>
-              {attention.length === 0 ? (
+              <h3 className="mb-2 text-sm font-semibold text-slate-800">ต้องดู {summary.length > 0 ? `(${attention.length} แปลง-เรื่อง)` : ''}</h3>
+              {summary.length === 0 ? (
                 <p className="text-sm text-emerald-700">ไม่มีแปลงที่ต้องดู</p>
               ) : (
-                <>
-                  <ul className="space-y-1.5">
-                    {shownAttention.map((a, i) => (
-                      <li key={`${a.plot.plotId}-${i}`} className="flex gap-2 text-sm">
-                        <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${a.level === 0 ? 'bg-red-500' : 'bg-amber-500'}`} aria-hidden />
-                        <span>
-                          <Link href={`/dashboard/projects/${projectId}/${a.plot.plotId}${a.tab ? `?tab=${a.tab}` : ''}`} className="font-medium text-indigo-600 hover:underline">
-                            {a.plot.plotName}
-                          </Link>{' '}
-                          <span className="text-slate-700">{a.text}</span>
-                        </span>
+                <ul className="divide-y divide-slate-100">
+                  {summary.map((g) => {
+                    const open = !!openKinds[g.kind] || (g.level === 0 && g.plots.length <= 5)
+                    const info = KIND_LABEL[g.kind]
+                    const shown = open ? g.plots : g.plots.slice(0, 0)
+                    return (
+                      <li key={g.kind} className="py-2 text-sm">
+                        <button type="button" onClick={() => setOpenKinds((o) => ({ ...o, [g.kind]: !o[g.kind] }))} className="flex w-full items-center gap-2 text-left">
+                          <span className={`h-2 w-2 shrink-0 rounded-full ${g.level === 0 ? 'bg-red-500' : 'bg-amber-500'}`} aria-hidden />
+                          <span className="font-medium text-slate-800">{info.label}</span>
+                          <span className="text-slate-600">{g.plots.length} แปลง{g.total > 0 && info.unit ? ` · ${g.total} ${info.unit}` : ''}</span>
+                          <span className="ml-auto text-xs text-indigo-600">{open ? 'ซ่อน' : 'ดูแปลง'}</span>
+                        </button>
+                        {open && (
+                          <div className="mt-2 flex flex-wrap gap-1.5 pl-4">
+                            {shown.map((p) => (
+                              <Link key={p.plotId} href={`/dashboard/projects/${projectId}/${p.plotId}${g.tab ? `?tab=${g.tab}` : ''}`} className="rounded-full border border-slate-200 px-2.5 py-0.5 text-xs text-indigo-700 hover:bg-indigo-50">
+                                {p.plotName}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
                       </li>
-                    ))}
-                  </ul>
-                  {attention.length > 6 && (
-                    <button type="button" onClick={() => setAttentionOpen((v) => !v)} className="mt-2 text-xs font-medium text-indigo-600 hover:underline">
-                      {attentionOpen ? 'ย่อรายการ' : `ดูทั้งหมด ${attention.length} รายการ`}
-                    </button>
-                  )}
-                </>
+                    )
+                  })}
+                </ul>
               )}
             </Card>
           )}
