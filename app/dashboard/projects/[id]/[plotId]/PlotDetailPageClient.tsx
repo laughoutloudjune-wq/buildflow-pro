@@ -5,6 +5,7 @@ import { useUrlState } from '@/lib/use-url-state'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, ChevronLeft, ChevronRight, ClipboardCheck, ClipboardList, Hammer, History, LayoutGrid, Pencil, Plus, Tag } from 'lucide-react'
 import Link from 'next/link'
+import { useInFrame } from '@/lib/use-in-frame'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import type { PlotQuickLink } from '@/actions/plot-detail-bundle'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -152,6 +153,7 @@ export default function PlotDetailPageClient({
   const refresh = onRefresh ?? (() => router.refresh())
   const toast = useToast()
   const [isPending, startTransition] = useTransition()
+  const inFrame = useInFrame()
   const [rawTab, setTab] = useUrlState<Tab>('tab', 'overview')
 
   const [jobs, setJobs] = useState<PlotJobRow[]>(initialJobs)
@@ -334,7 +336,7 @@ export default function PlotDetailPageClient({
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
-        {!onClose && <BackButton fallbackHref={`/dashboard/projects/${projectId}/board`} label="กลับ" />}
+        {!onClose && !inFrame && <BackButton fallbackHref={`/dashboard/projects/${projectId}/board`} label="กลับ" />}
         {!onClose && (
           <Breadcrumb
             items={[

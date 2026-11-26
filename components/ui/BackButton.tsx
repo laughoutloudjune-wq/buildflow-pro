@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canGoBackInApp } from '@/lib/nav-history'
+import { useInFrame } from '@/lib/use-in-frame'
 
 /**
  * Goes back to the page the user came from, using browser history so the list
@@ -24,6 +25,9 @@ export function BackButton({
   className?: string
 }) {
   const router = useRouter()
+  const inFrame = useInFrame()
+  // Inside a hub popup the popup's X is the way out.
+  if (inFrame) return null
   return (
     <button
       type="button"

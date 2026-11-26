@@ -19,6 +19,7 @@ import { getMaterialsSummaryForProject } from '@/actions/procurement-actions'
 import type { MaterialsSummaryRow } from '@/actions/procurement/materials-summary'
 import BoqScopeTab from '@/components/construction/BoqScopeTab'
 import BillsPanel from '@/components/construction/BillsPanel'
+import EmbeddedFrameModal from '@/components/construction/EmbeddedFrameModal'
 import MaterialCostTab from '@/components/cost-control/MaterialCostTab'
 import { MONEY, StatusPill, Tile, baht, pct, type HubStatus } from '@/components/construction/vocab'
 
@@ -117,6 +118,14 @@ export default function ProjectBoardClient({
     }
     return [...map.values()].sort((a, b) => a.level - b.level || b.plots.length - a.plots.length)
   }, [attention])
+  // Plot / batch / contractor hubs open in a wide popup over the board, so the
+  // board's filters and scroll position stay exactly as they were.
+  const [hub, setHub] = useState<{ href: string; title: string } | null>(null)
+  const hubClick = (href: string, title: string) => (e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+    e.preventDefault()
+    setHub({ href, title })
+  }
   const [openKinds, setOpenKinds] = useState<Record<string, boolean>>({})
 
   const groups = useMemo(() => {
@@ -260,7 +269,7 @@ export default function ProjectBoardClient({
                   <p className="px-4 py-3 text-sm text-slate-500">ไม่พบ &ldquo;{search}&rdquo;</p>
                 ) : (
                   hits.map((h) => (
-                    <Link key={h.key} href={h.href} className="flex items-center justify-between gap-3 px-4 py-2 text-sm hover:bg-indigo-50">
+                    <Link key={h.key} href={h.href} onClick={hubClick(h.href, h.label)} className="flex items-center justify-between gap-3 px-4 py-2 text-sm hover:bg-indigo-50">
                       <span className="font-medium text-slate-800">{h.label}</span>
                       <span className="truncate text-xs text-slate-500">{h.sub}</span>
                     </Link>
@@ -292,7 +301,7 @@ export default function ProjectBoardClient({
                         {open && (
                           <div className="mt-2 flex flex-wrap gap-1.5 pl-4">
                             {shown.map((p) => (
-                              <Link key={p.plotId} href={`/dashboard/projects/${projectId}/${p.plotId}${g.tab ? `?tab=${g.tab}` : ''}`} className="rounded-full border border-slate-200 px-2.5 py-0.5 text-xs text-indigo-700 hover:bg-indigo-50">
+                              <Link key={p.plotId} href={`/dashboard/projects/${projectId}/${p.plotId}${g.tab ? `?tab=${g.tab}` : ''}`} onClick={hubClick(`/dashboard/projects/${projectId}/${p.plotId}${g.tab ? `?tab=${g.tab}` : ''}`, `แปลง ${p.plotName}`)} className="rounded-full border border-slate-200 px-2.5 py-0.5 text-xs text-indigo-700 hover:bg-indigo-50">
                                 {p.plotName}
                               </Link>
                             ))}
@@ -322,7 +331,7 @@ export default function ProjectBoardClient({
               <Card key={g.id || '~none'} className="overflow-hidden p-0">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2">
                   {g.id ? (
-                    <Link href={`/dashboard/projects/${projectId}/groups/${g.id}`} className="text-sm font-semibold text-indigo-700 hover:underline">
+                    <Link href={`/dashboard/projects/${projectId}/groups/${g.id}`} onClick={hubClick(`/dashboard/projects/${projectId}/groups/${g.id}`, `กลุ่ม ${g.name || ''}`)} className="text-sm font-semibold text-indigo-700 hover:underline">
                       {g.name || 'กลุ่ม'} ›
                     </Link>
                   ) : (
@@ -352,7 +361,7 @@ export default function ProjectBoardClient({
                       const done = r.actualPercent == null ? null : Math.min(100, r.actualPercent)
                       const paidTick = r.paidPercent == null ? null : Math.min(100, r.paidPercent)
                       return (
-                        <tr key={r.plotId} onClick={() => router.push(`/dashboard/projects/${projectId}/${r.plotId}`)} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" title={flags.map((f) => f.text).join(' · ') || undefined}>
+                        <tr key={r.plotId} onClick={() => setHub({ href: `/dashboard/projects/${projectId}/${r.plotId}`, title: `แปลง ${r.plotName}` })} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" title={flags.map((f) => f.text).join(' · ') || undefined}>
                           <td className="font-semibold text-indigo-700">{r.plotName}</td>
                           <td className="truncate text-xs text-slate-600 max-sm:hidden">{r.houseModel || '—'}</td>
                           <td>
@@ -386,6 +395,19 @@ export default function ProjectBoardClient({
             แถบ = งานที่ทำได้ตามมูลค่า · เส้นดำ = จ่ายแล้วกี่ % · {MONEY.material} = เบิกจากสโตร์ (เบิกของกลุ่มแบ่งเท่ากันทุกแปลง) · สถานะ ต้องดู/เกิน เป็นคำเตือน ไม่ได้ปิดกั้นการทำงาน · วัสดุ BOQ เทียบรายกลุ่ม ดูรายแปลงได้ในหน้าแปลง
           </p>
         </>
+      )}
+    {hub && (
+        <EmbeddedFrameModal
+          isOpen
+          title={hub.title}
+          src={hub.href}
+          stayWhile={(p) => p.startsWith(`/dashboard/projects/${projectId}/`) || p.startsWith('/dashboard/contractors/')}
+          onClose={() => setHub(null)}
+          onDone={() => {
+            setHub(null)
+            router.refresh()
+          }}
+        />
       )}
     </PageContainer>
   )
