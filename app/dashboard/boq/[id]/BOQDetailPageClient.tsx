@@ -396,7 +396,13 @@ export default function BOQDetailPageClient({
                             </td>
                             <td className="px-4 py-3 text-right">{item.quantity}</td>
                             <td className="px-4 py-3 text-right text-slate-500">{item.unit}</td>
-                            <td className="px-4 py-3 text-right">฿{formatCurrency(item.price_per_unit)}</td>
+                            <td className="px-4 py-3 text-right">
+                              {Number(item.price_per_unit || 0) > 0 ? (
+                                <>฿{formatCurrency(item.price_per_unit)}</>
+                              ) : (
+                                <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">ยังไม่มีราคา</span>
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-right font-semibold text-slate-700">
                               ฿{formatCurrency(item.total_price || 0)}
                             </td>
@@ -479,8 +485,9 @@ export default function BOQDetailPageClient({
             <label className="mb-1 block text-sm font-medium text-slate-700">ราคาต่อหน่วย (บาท)</label>
             <div className="relative">
                 <Coins className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <input name="price_per_unit" type="number" step="0.01" required className="w-full pl-9" placeholder="0.00" defaultValue={editingItem?.price_per_unit} />
+                <input name="price_per_unit" type="number" step="0.01" min="0" className="w-full pl-9" placeholder="0.00" defaultValue={editingItem?.price_per_unit || ''} />
             </div>
+            <p className="mt-1 text-xs text-slate-500">ยังไม่รู้ราคา เว้นว่างไว้ได้ (นับเป็น 0) แล้วมาใส่ทีหลัง งานที่ยังไม่ตกลงราคาจะตามราคานี้เมื่อใส่แล้ว</p>
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useInFrame } from '@/lib/use-in-frame'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
 import { NavHistoryTracker } from '@/lib/nav-history'
@@ -30,6 +31,7 @@ export default function DashboardShell({
   children: React.ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(initialCollapsed)
+  const inFrame = useInFrame()
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -37,6 +39,15 @@ export default function DashboardShell({
       document.cookie = `${SIDEBAR_COLLAPSED_COOKIE}=${next ? '1' : '0'}; path=/; max-age=${ONE_YEAR_SECONDS}; samesite=lax`
       return next
     })
+  }
+
+  if (inFrame) {
+    // Inside a hub popup: just the page, no sidebar or header.
+    return (
+      <DepartmentProvider permissions={permissions}>
+        <div className="min-h-screen bg-background p-4">{children}</div>
+      </DepartmentProvider>
+    )
   }
 
   return (

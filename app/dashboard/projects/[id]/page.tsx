@@ -2,7 +2,7 @@ import { getProjectById } from '@/actions/project-actions'
 import { getPlotsByProjectId } from '@/actions/plot-actions'
 import { getHouseModels } from '@/actions/boq-actions'
 import { getPlotGroups } from '@/actions/material-actions'
-import { requireModuleAccess } from '@/lib/auth/route-access'
+import { getDashboardSession, requireModuleAccess } from '@/lib/auth/route-access'
 import type { PlotGroup } from '@/lib/types/materials'
 import ProjectDetailPageClient from './ProjectDetailPageClient'
 
@@ -11,6 +11,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   // page itself is construction-only.
   await requireModuleAccess('projects')
   const { id: projectId } = await params
+  const { role } = await getDashboardSession()
 
   let project: Awaited<ReturnType<typeof getProjectById>> = null
   let plots: Awaited<ReturnType<typeof getPlotsByProjectId>> = []
@@ -48,6 +49,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       initialPlots={plots}
       houseModels={houseModels}
       initialPlotGroups={plotGroups}
+      isAdmin={role === 'admin'}
     />
   )
 }

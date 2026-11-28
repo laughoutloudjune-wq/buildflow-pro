@@ -103,6 +103,32 @@ export async function updateJobStatus(jobId: string, status: string, plotId: str
   revalidatePath(`/dashboard/projects/${projectId}/${plotId}`)
 }
 
+/**
+ * Marks every unfinished job of a plot as completed ("จบงานก่อสร้างแปลงนี้").
+ * There is no plot-level status column, so a plot counts as finished when all of
+ * its jobs are completed; this just does that in one step. Warnings (unpaid
+ * jobs, bills still waiting) are shown by the caller and never block.
+ */
+export async function finishPlotConstruction(plotId: string, projectId: string, jobIds?: string[]) {
+  await requireModuleAccess('projects')
+  const supabase = await createClient()
+  // jobIds = the jobs the user ticked (any job, with or without progress or
+  // a contractor). Without it every open job on the plot is finished.
+  if (jobIds && jobIds.length === 0) return { updated: 0 }
+  let q = supabase
+    .from('job_assignments')
+    .update({ status: 'completed' })
+    .eq('plot_id', plotId)
+    .neq('status', 'completed')
+  if (jobIds) q = q.in('id', jobIds)
+  const { data, error } = await q.select('id')
+
+  if (error) throw new Error(error.message)
+  revalidatePath(`/dashboard/projects/${projectId}/${plotId}`)
+  revalidatePath(`/dashboard/projects/${projectId}/board`)
+  return { updated: data?.length ?? 0 }
+}
+
 export async function updateAgreedPricePerUnit(
   jobId: string,
   agreedPricePerUnit: number | null,

@@ -12,14 +12,15 @@ const PREFIX_TITLES: [string, string][] = [
   ['/dashboard/foreman/create-dc', 'สร้างงานเพิ่ม (DC)'],
   ['/dashboard/foreman/history', 'ประวัติ Foreman'],
   ['/dashboard/foreman', 'ตรวจหน้างาน'],
-  ['/dashboard/billing', 'รายการเบิกจ่าย'],
+  ['/dashboard/billing', 'ใบเบิกช่าง'],
   ['/dashboard/reports/contractor-cycle/print', 'พิมพ์รอบจ่ายผู้รับเหมา'],
   ['/dashboard/reports/contractor-cycle', 'รอบจ่ายผู้รับเหมา'],
   ['/dashboard/reports/dc-history', 'รายงานงานเพิ่ม (DC)'],
   ['/dashboard/reports/house-history', 'ประวัติบ้านเลขที่'],
   ['/dashboard/reports/labor-budget', 'สมุดบัญชีค่าแรง'],
   ['/dashboard/reports', 'รายงาน'],
-  ['/dashboard/cost-control', 'ควบคุมต้นทุน'],
+  ['/dashboard/cost-control', 'ภาพรวมโครงการ'],
+  ['/dashboard/board', 'ภาพรวมโครงการ'],
   ['/dashboard/settings/permissions', 'สิทธิ์ตามบทบาท'],
   ['/dashboard/settings/contractor-types', 'ประเภทผู้รับเหมา'],
   ['/dashboard/settings', 'ตั้งค่า'],
@@ -54,6 +55,8 @@ const PREFIX_TITLES: [string, string][] = [
 export function getDashboardPageTitle(pathname: string | null): string {
   if (!pathname || pathname === '/dashboard') return 'ภาพรวม'
 
+  if (/\/dashboard\/projects\/[^/]+\/board/.test(pathname)) return 'ภาพรวมโครงการ'
+  if (/\/dashboard\/projects\/[^/]+\/groups\//.test(pathname)) return 'กลุ่มแปลง'
   if (/\/dashboard\/billing\/[^/]+\/review/.test(pathname)) return 'ตรวจสอบใบขอเบิก'
   if (/\/dashboard\/billing\/[^/]+\/print/.test(pathname)) return 'พิมพ์ใบเบิก'
 

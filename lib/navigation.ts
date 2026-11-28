@@ -12,7 +12,6 @@ import {
   Package,
   PackageCheck,
   Wallet,
-  GaugeCircle,
   Tag,
   ClipboardCheck,
   CalendarDays,
@@ -116,6 +115,7 @@ export const DEPARTMENTS: Department[] = [
     theme: THEMES.orange,
     label: 'ก่อสร้าง',
     prefixes: [
+      '/dashboard/board',
       '/dashboard/projects',
       '/dashboard/contractors',
       '/dashboard/billing',
@@ -124,12 +124,12 @@ export const DEPARTMENTS: Department[] = [
       '/dashboard/sales-requests',
     ],
     items: [
-      { icon: Building2, label: 'โครงการ', href: '/dashboard/projects', permission: 'projects' },
+      { icon: Building2, label: 'ภาพรวมโครงการ', href: '/dashboard/board', permission: ['projects', 'cost_control'] },
       { icon: CalendarDays, label: 'แผนงาน', href: '/dashboard/weekly-plan', permission: 'projects' },
       { icon: HardHat, label: 'ตรวจหน้างาน', href: '/dashboard/foreman/create-progress', permission: 'foreman' },
-      { icon: FileText, label: 'รายการเบิกจ่าย', href: '/dashboard/billing', permission: 'billing' },
-      { icon: Wallet, label: 'ยอดคงเหลือผู้รับเหมา', href: '/dashboard/billing/balances', permission: 'billing' },
+      { icon: FileText, label: 'ใบเบิกช่าง', href: '/dashboard/billing', permission: 'billing' },
       { icon: Users, label: 'ผู้รับเหมา', href: '/dashboard/contractors', permission: 'contractors' },
+      { icon: ClipboardList, label: 'แบบบ้าน & BOQ', href: '/dashboard/boq', permission: 'boq' },
       {
         icon: ClipboardCheck,
         label: 'คำขอจากฝ่ายขาย (SR)',
@@ -143,11 +143,9 @@ export const DEPARTMENTS: Department[] = [
     id: 'boq',
     theme: THEMES.violet,
     label: 'BOQ & ต้นทุน',
+    // The menu entries moved into ก่อสร้าง; the prefixes stay so these pages keep their colour and title.
     prefixes: ['/dashboard/boq', '/dashboard/cost-control'],
-    items: [
-      { icon: ClipboardList, label: 'แบบบ้าน & BOQ', href: '/dashboard/boq', permission: 'boq' },
-      { icon: GaugeCircle, label: 'คุม BOQ & ต้นทุน', href: '/dashboard/cost-control', permission: 'cost_control' },
-    ],
+    items: [],
   },
   {
     id: 'procurement',
@@ -186,10 +184,6 @@ export const DEPARTMENTS: Department[] = [
     label: 'รายงานและระบบ',
     prefixes: ['/dashboard/reports', '/dashboard/settings'],
     items: [
-      { icon: BarChart3, label: 'รายงานงานเพิ่ม (DC)', href: '/dashboard/reports/dc-history', permission: 'reports' },
-      { icon: BarChart3, label: 'ประวัติบ้านเลขที่', href: '/dashboard/reports/house-history', permission: 'reports' },
-      { icon: BarChart3, label: 'รอบจ่ายผู้รับเหมา', href: '/dashboard/reports/contractor-cycle', permission: ['reports', 'billing'] },
-      { icon: BarChart3, label: 'สมุดบัญชีค่าแรง', href: '/dashboard/reports/labor-budget', permission: 'reports' },
       { icon: Settings, label: 'ตั้งค่า', href: '/dashboard/settings', permission: 'settings' },
     ],
   },

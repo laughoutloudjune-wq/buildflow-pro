@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useUrlState, useUrlString } from '@/lib/use-url-state'
 import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, MapPin, AlertCircle, Pencil, Users, GaugeCircle, LayoutList, Map as MapIcon } from 'lucide-react'
+import { Plus, Trash2, MapPin, AlertCircle, Pencil, Users, GaugeCircle, LayoutList, Map as MapIcon, Shuffle } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button, ButtonLink } from '@/components/ui/Button'
@@ -17,6 +17,7 @@ import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import PlotGroupManager from '@/components/plots/PlotGroupManager'
+import HouseTypeChangeWizard from '@/components/plots/HouseTypeChangeWizard'
 import SitePlanMap, { type SitePlanMarker } from '@/components/plots/SitePlanMap'
 import { getProjectById, updateProject } from '@/actions/project-actions'
 import { getPlotsByProjectId, createPlot, deletePlot, setPlotSellable } from '@/actions/plot-actions'
@@ -77,12 +78,14 @@ export default function ProjectDetailPageClient({
   initialPlots,
   houseModels,
   initialPlotGroups,
+  isAdmin = false,
 }: {
   projectId: string
   project: Project
   initialPlots: Plot[]
   houseModels: HouseModelOption[]
   initialPlotGroups: PlotGroup[]
+  isAdmin?: boolean
 }) {
   const router = useRouter()
   const { theme } = useDepartment()
@@ -94,6 +97,7 @@ export default function ProjectDetailPageClient({
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isGroupManagerOpen, setIsGroupManagerOpen] = useState(false)
+  const [isHouseTypeWizardOpen, setIsHouseTypeWizardOpen] = useState(false)
 
   const [selectedHouseModelId, setSelectedHouseModelId] = useState('')
 
@@ -291,14 +295,20 @@ export default function ProjectDetailPageClient({
           }
           actions={
             <>
-              <ButtonLink href={`/dashboard/cost-control?project=${projectId}`} variant="secondary">
+              <ButtonLink href={`/dashboard/projects/${projectId}/board`} variant="secondary">
                 <GaugeCircle className="h-4 w-4" />
-                คุม BOQ & ต้นทุน
+                ภาพรวมโครงการ
               </ButtonLink>
               <Button variant="secondary" onClick={() => setIsGroupManagerOpen(true)}>
                 <Users className="h-4 w-4" />
                 จัดกลุ่มแปลง
               </Button>
+              {isAdmin && (
+                <Button variant="secondary" onClick={() => setIsHouseTypeWizardOpen(true)}>
+                  <Shuffle className="h-4 w-4" />
+                  เปลี่ยนแบบบ้าน
+                </Button>
+              )}
               <Button
                 onClick={() => {
                   setSelectedHouseModelId('')
@@ -481,6 +491,16 @@ export default function ProjectDetailPageClient({
             )}
           
         </TableFrame>
+      )}
+
+      {isAdmin && isHouseTypeWizardOpen && (
+        <HouseTypeChangeWizard
+          projectId={projectId}
+          onClose={() => setIsHouseTypeWizardOpen(false)}
+          onChanged={() => {
+            void refreshPlots()
+          }}
+        />
       )}
 
       <Modal
