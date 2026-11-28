@@ -89,7 +89,7 @@ export async function getPlotDetailBundle(projectId: string, plotId: string) {
     contractors = canSeeCost
       ? cData || []
       : (cData || []).map((c) => ({ ...c, total_paid: 0, total_retention: 0 }))
-    houseModels = hmData || []
+    houseModels = (hmData || []).filter((m) => !m.project_id || m.project_id === projectId)
     saleDetail = saleData
     saleStatuses = statusesData
     promotions = promotionsData

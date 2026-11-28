@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useUrlString } from '@/lib/use-url-state'
 import ActionMenu from '@/components/ui/ActionMenu'
 import { useRouter } from 'next/navigation'
@@ -41,6 +41,8 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
   const [editingModel, setEditingModel] = useState<HouseModel | null>(null)
   const [isPending, startTransition] = useTransition()
   const [search, setSearch] = useUrlString('q', '')
+  // Project picker: kept in the URL (Back restores it) and remembered per browser.
+  const [projectId, setProjectId] = useUrlString('project', '')
   const [deleteTarget, setDeleteTarget] = useState<HouseModel | null>(null)
   const toast = useToast()
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
@@ -81,12 +83,34 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
     })
   }
 
+  const projectsWithModels = useMemo(() => {
+    const ids = new Set(models.map((m) => m.project_id).filter(Boolean))
+    return projects.filter((p) => ids.has(p.id))
+  }, [models, projects])
+
+  useEffect(() => {
+    if (projectId) return
+    try {
+      const saved = localStorage.getItem('boq:project')
+      if (saved === 'all') { setProjectId('all'); return }
+      if (saved && projects.some((p) => p.id === saved)) { setProjectId(saved); return }
+    } catch {}
+    if (projectsWithModels[0]) setProjectId(projectsWithModels[0].id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const chooseProject = (v: string) => {
+    setProjectId(v)
+    try { localStorage.setItem('boq:project', v || 'all') } catch {}
+  }
+  const projectFiltered = projectId && projectId !== 'all' ? models.filter((m) => m.project_id === projectId) : models
+
   const projectMetaById = new Map(projects.map((p: any) => [p.id, p]))
   const searchedModels = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return models
-    return models.filter((m) => `${m.name} ${m.code} ${m.projects?.name || ''}`.toLowerCase().includes(q))
-  }, [models, search])
+    if (!q) return projectFiltered
+    return projectFiltered.filter((m) => `${m.name} ${m.code} ${m.projects?.name || ''}`.toLowerCase().includes(q))
+  }, [projectFiltered, search])
   const groupedModels = searchedModels
     .slice()
     .sort((a, b) => {
@@ -122,6 +146,21 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
           </Button>
         }
       />
+
+      <div className="mb-3 flex items-center gap-2">
+        <label htmlFor="boq-project" className="text-sm font-medium text-slate-700">โครงการ</label>
+        <select
+          id="boq-project"
+          value={projectId || 'all'}
+          onChange={(e) => chooseProject(e.target.value)}
+          className="min-w-[16rem]"
+        >
+          <option value="all">ทุกโครงการ</option>
+          {projectsWithModels.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </div>
 
       <PageToolbar
         search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาชื่อแบบบ้าน / รหัสแบบ / โครงการ' }}
@@ -228,7 +267,7 @@ export default function HouseModelsPageClient({ models, projects }: { models: Ho
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">ใช้สำหรับโครงการ (Optional)</label>
-            <select name="project_id" className="w-full" defaultValue={editingModel?.project_id || ''}>
+            <select name="project_id" className="w-full" defaultValue={editingModel?.project_id || (projectId && projectId !== 'all' ? projectId : '')}>
               <option value="">-- ใช้ได้ทุกโครงการ --</option>
               {projects.map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>

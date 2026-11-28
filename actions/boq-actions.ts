@@ -266,6 +266,16 @@ export async function importBOQItems(payload: ImportBOQPayload) {
     throw new Error('Target house model is missing project. Please set project first.')
   }
 
+  const { data: sourceModel, error: sourceModelError } = await supabase
+    .from('house_models')
+    .select('project_id')
+    .eq('id', payload.source_model_id)
+    .maybeSingle()
+  if (sourceModelError) throw new Error(sourceModelError.message)
+  if (sourceModel?.project_id !== targetModel.project_id) {
+    throw new Error('คัดลอก BOQ ได้เฉพาะแบบบ้านของโครงการเดียวกัน')
+  }
+
   const { data: sourceItems, error: sourceItemsError } = await supabase
     .from('boq_master')
     .select('id, item_name, contractor_type_id, unit, quantity')
