@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useTransition } from 'react'
 import { useUrlString } from '@/lib/use-url-state'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Loader2, HardHat, Phone, CreditCard, User, Pencil, Wallet, Search, ShieldCheck } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -238,7 +239,7 @@ export default function ContractorsPageClient({
                     <User className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-slate-800">{c.name}</h3>
+                    <h3 className="font-bold text-slate-800"><Link href={`/dashboard/contractors/${c.id}`} className="hover:text-indigo-700 hover:underline" title="เปิดหน้าผู้รับเหมา: งาน ใบเบิก การจ่ายเงิน">{c.name}</Link></h3>
                     <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200">
                       {c.contractor_types?.name || 'ไม่ระบุประเภท'}
                     </span>

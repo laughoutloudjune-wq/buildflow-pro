@@ -295,9 +295,9 @@ export default function ProjectDetailPageClient({
           }
           actions={
             <>
-              <ButtonLink href={`/dashboard/cost-control?project=${projectId}`} variant="secondary">
+              <ButtonLink href={`/dashboard/projects/${projectId}/board`} variant="secondary">
                 <GaugeCircle className="h-4 w-4" />
-                คุม BOQ & ต้นทุน
+                ภาพรวมโครงการ
               </ButtonLink>
               <Button variant="secondary" onClick={() => setIsGroupManagerOpen(true)}>
                 <Users className="h-4 w-4" />

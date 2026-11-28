@@ -21,6 +21,10 @@ export type CostBoardRow = {
   houseModel: string
   /** The batch (plot group) this plot belongs to; '' when none. */
   groupName: string
+  /** The batch's id; '' when the plot has none. */
+  groupId: string
+  /** Jobs marked completed. */
+  jobsDone: number
   /** True when the weekly plan has jobs for this plot (so ควรเสร็จ comes from it). */
   hasWeeklyPlan: boolean
   jobCount: number
@@ -65,6 +69,7 @@ type PlotRow = {
 type JobRow = {
   id: string
   plot_id: string
+  status: string | null
   created_at: string
   agreed_price_per_unit: number | null
   boq_master: { quantity: number | null; price_per_unit: number | null; contractor_type_id: number | null } | { quantity: number | null; price_per_unit: number | null; contractor_type_id: number | null }[] | null
@@ -159,6 +164,7 @@ export async function getCostBoard(
 
   // ---- labor, progress, extra work (labor viewers only) -------------------
   const jobsByPlot = new Map<string, ProgressJob[]>()
+  const jobsDoneByPlot = new Map<string, number>()
   const planJobsByPlot = new Map<string, { value: number; planned: number | null }[]>()
   const jobValueByPlotType = new Map<string, Map<number, number>>()
   const startByPlot = new Map<string, string>()
@@ -175,7 +181,7 @@ export async function getCostBoard(
           supabase
             .from('job_assignments')
             .select(
-              'id, plot_id, created_at, agreed_price_per_unit, boq_master:boq_master!job_assignments_boq_item_id_fkey (quantity, price_per_unit, contractor_type_id), payments (amount), plots!inner (project_id)'
+              'id, plot_id, status, created_at, agreed_price_per_unit, boq_master:boq_master!job_assignments_boq_item_id_fkey (quantity, price_per_unit, contractor_type_id), payments (amount), plots!inner (project_id)'
             )
             .eq('plots.project_id', scope.projectId)
             .range(from, to) as unknown as PromiseLike<{ data: JobRow[] | null; error: { message: string } | null }>
@@ -206,6 +212,7 @@ export async function getCostBoard(
       const list = jobsByPlot.get(job.plot_id) || []
       list.push({ value, progressPercent: progress.get(job.id)?.percent ?? null, paid })
       jobsByPlot.set(job.plot_id, list)
+      if (job.status === 'completed') jobsDoneByPlot.set(job.plot_id, (jobsDoneByPlot.get(job.plot_id) || 0) + 1)
       const planList = planJobsByPlot.get(job.plot_id) || []
       planList.push({ value, planned: planned.get(job.id) ?? null })
       planJobsByPlot.set(job.plot_id, planList)
@@ -259,6 +266,8 @@ export async function getCostBoard(
       plotName: plot.name,
       houseModel: houseTypeLabel(asSingle(plot.house_models)?.name, asSingle(plot.house_models)?.code),
       groupName: groupNames.get(groupOfPlot.get(plot.id) || '') || '',
+      groupId: groupOfPlot.get(plot.id) || '',
+      jobsDone: jobsDoneByPlot.get(plot.id) || 0,
       hasWeeklyPlan: fromWeeklyPlan != null,
       jobCount: jobs.length,
       contract: canSeeLabor ? summary.contract : null,
