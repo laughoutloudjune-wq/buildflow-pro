@@ -226,6 +226,7 @@ $$;
 --
 -- p_plan = {
 --   plot_id, new_house_model_id,
+--   dry_run?: true = do everything, run the money check, then roll back (message DRY_RUN_OK),
 --   moves:    [{ job_id, target_boq_id | copy_from_boq_id, accept_new_qty? }],
 --   new_jobs: [{ boq_id | copy_from_boq_id }]   -- lines to give a job with no contractor
 -- }
@@ -286,7 +287,8 @@ begin
   end if;
 
   -- Every job must have exactly one move.
-  select count(*) into v_job_count from job_assignments where plot_id = v_plot.id;
+  -- jobs with no BOQ line at all (should not exist) carry no contract and stay as they are
+  select count(*) into v_job_count from job_assignments where plot_id = v_plot.id and boq_item_id is not null;
   v_moves_count := coalesce(jsonb_array_length(p_plan->'moves'), 0);
   if v_job_count <> v_moves_count then
     raise exception 'แผนไม่ครบ: แปลงมี % งาน แต่แผนระบุ % งาน', v_job_count, v_moves_count using errcode = '22023';
@@ -378,8 +380,14 @@ begin
 
   -- Weekly plan lines stay linked (same job id); a no-op update lets the
   -- existing trigger refresh their title to the new line's name.
-  update weekly_plan_items set job_assignment_id = job_assignment_id
-  where job_assignment_id = any (v_moved);
+  -- Cosmetic only, so a future lock/validation rule on weekly plan lines must
+  -- not be able to fail the whole move.
+  begin
+    update weekly_plan_items set job_assignment_id = job_assignment_id
+    where job_assignment_id = any (v_moved);
+  exception when others then
+    null;
+  end;
 
   -- Jobs whose new quantity was approved follow the current price like any
   -- pending bill does (PR #36 rule); everything else is untouched.
@@ -391,6 +399,17 @@ begin
   v_diffs := public._htc_money_diff(v_before, v_after, v_accepted);
   if jsonb_array_length(v_diffs) > 0 then
     raise exception 'MONEY_CHECK_FAILED' using errcode = 'P0001', detail = v_diffs::text;
+  end if;
+
+  -- Dry run ("check without saving"): everything above really ran, including
+  -- every constraint, trigger and the money check. Roll it all back and report.
+  if coalesce((p_plan->>'dry_run')::boolean, false) then
+    raise exception 'DRY_RUN_OK' using errcode = 'P0001', detail = jsonb_build_object(
+      'moved', coalesce(array_length(v_moved, 1), 0),
+      'copied_lines', coalesce(array_length(v_created_boq, 1), 0),
+      'new_jobs', coalesce(array_length(v_created_jobs, 1), 0),
+      'accepted_new_qty', coalesce(array_length(v_accepted, 1), 0),
+      'paid_total', v_after->'paid_total')::text;
   end if;
 
   insert into house_type_change_runs (
@@ -476,8 +495,12 @@ begin
   update plots set house_model_id = v_run.old_house_model_id where id = v_plot.id;
 
   -- Titles on weekly plan lines follow the restored line again.
-  update weekly_plan_items set job_assignment_id = job_assignment_id
-  where job_assignment_id = any (v_restored);
+  begin
+    update weekly_plan_items set job_assignment_id = job_assignment_id
+    where job_assignment_id = any (v_restored);
+  exception when others then
+    null;
+  end;
 
   -- Pending bills of jobs whose new quantity was approved were re-priced by the
   -- run; put those bill lines back to the amounts saved in the backup (only

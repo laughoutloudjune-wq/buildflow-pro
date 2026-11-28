@@ -7,11 +7,13 @@ import Modal from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import {
   applyHouseTypeChanges,
+  checkHouseTypeChanges,
   getHouseTypeChangeOverview,
   getHouseTypeChangeReview,
   listHouseTypeChangeRuns,
   revertHouseTypeChange,
   type HtcApplyResult,
+  type HtcCheckResult,
   type HtcModel,
   type HtcOverview,
   type HtcPlotSummary,
@@ -57,6 +59,8 @@ export default function HouseTypeChangeWizard({
   const [reviewing, setReviewing] = useState(false)
   const [focus, setFocus] = useState<string | null>(null)
 
+  const [checking, setChecking] = useState(false)
+  const [checks, setChecks] = useState<Record<string, HtcCheckResult>>({})
   const [running, setRunning] = useState(false)
   const [results, setResults] = useState<HtcApplyResult[] | null>(null)
   const [revertMsg, setRevertMsg] = useState<Record<string, { ok: boolean; text: string }>>({})
@@ -183,10 +187,27 @@ export default function HouseTypeChangeWizard({
   }
 
   const readyPlots = runnable.filter((p) => reviews[p.id] && plotState[p.id])
+  // Plots that passed "check without saving" are the only ones that run.
+  const passedPlots = readyPlots.filter((p) => checks[p.id]?.ok)
+
+  async function goConfirm() {
+    setStep(3)
+    setChecking(true)
+    setChecks({})
+    const plans = readyPlots.map((p) => planFor(p.id)).filter((x): x is HtcPlan => !!x)
+    try {
+      const res = await checkHouseTypeChanges(plans)
+      setChecks(Object.fromEntries(res.map((r) => [r.plotId, r])))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'ตรวจไม่สำเร็จ'
+      setChecks(Object.fromEntries(plans.map((p) => [p.plotId, { ok: false as const, plotId: p.plotId, money: false, error: msg }])))
+    }
+    setChecking(false)
+  }
 
   async function run() {
     setRunning(true)
-    const plans = readyPlots.map((p) => planFor(p.id)).filter((x): x is HtcPlan => !!x)
+    const plans = passedPlots.map((p) => planFor(p.id)).filter((x): x is HtcPlan => !!x)
     try {
       const res = await applyHouseTypeChanges(projectId, plans)
       setResults(res)
@@ -609,8 +630,8 @@ export default function HouseTypeChangeWizard({
         <div className="flex gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <div>
-            แต่ละแปลงทำทีละแปลงแบบ “ทั้งหมดหรือไม่ทำเลย” ระบบเช็กยอดจ่าย ใบเบิก และมูลค่าสัญญาอีกรอบก่อนบันทึก ถ้าต่างแม้ 1 บาทจะย้อนกลับเฉพาะแปลงนั้น
-            และบันทึกสำรองของงาน ใบเบิก การจ่ายเงิน และแผนรายสัปดาห์ไว้ให้ ใช้ปุ่ม “คืนค่า” ย้อนกลับได้ภายหลัง
+            ระบบ “ลองทำจริงโดยไม่บันทึก” กับแต่ละแปลงก่อน (ผ่านทุกกฎของฐานข้อมูลและเช็กยอดจ่าย ใบเบิก มูลค่าสัญญาทุกบาท) แล้วย้อนกลับให้ทั้งหมด
+            เฉพาะแปลงที่ผ่านเท่านั้นที่กดเปลี่ยนจริงได้ เมื่อทำจริงจะบันทึกสำรองไว้ และใช้ปุ่ม “คืนค่า” ย้อนกลับได้ภายหลัง
           </div>
         </div>
         <table className="w-full text-sm">
@@ -622,6 +643,7 @@ export default function HouseTypeChangeWizard({
               <th className="py-1 text-right font-medium">รายการที่คัดลอก</th>
               <th className="py-1 text-right font-medium">งานใหม่</th>
               <th className="py-1 text-right font-medium">จ่ายแล้ว</th>
+              <th className="py-1 pl-3 text-left font-medium">ผลตรวจ</th>
             </tr>
           </thead>
           <tbody className="tabular-nums">
@@ -640,6 +662,22 @@ export default function HouseTypeChangeWizard({
                   <td className="py-1.5 text-right">{pr.copies}</td>
                   <td className="py-1.5 text-right">{plan?.newJobs.length ?? 0}</td>
                   <td className="py-1.5 text-right">{baht(r.totals.paid)}</td>
+                  <td className="py-1.5 pl-3 font-sans text-xs">
+                    {checking || !checks[p.id] ? (
+                      <span className="text-slate-500">กำลังตรวจ…</span>
+                    ) : checks[p.id].ok ? (
+                      <span className="text-emerald-700">✓ ผ่าน ยอดตรงกัน</span>
+                    ) : (
+                      <span className="text-red-700">
+                        ✗ {(checks[p.id] as { error: string }).error}
+                        {((checks[p.id] as { diffs?: { job_id: string | null; field: string }[] }).diffs ?? []).slice(0, 3).map((d, i) => (
+                          <span key={i} className="block text-[11px]">
+                            {r.jobs.find((j) => j.id === d.job_id)?.name ?? 'รวมทั้งแปลง'} · {d.field}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </td>
                 </tr>
               )
             })}
@@ -804,7 +842,8 @@ export default function HouseTypeChangeWizard({
       <div className="flex w-full flex-wrap items-center gap-2">
         <span className="flex-1 text-xs text-slate-500">
           {step === 1 && `${runnable.length} แปลงพร้อมตรวจ`}
-          {step === 2 && `${readyPlots.length} แปลงพร้อมยืนยัน`}
+          {step === 2 && `${readyPlots.length} แปลงพร้อมตรวจ`}
+          {step === 3 && !checking && `ผ่าน ${passedPlots.length} จาก ${readyPlots.length} แปลง`}
         </span>
         {step === 1 && (
           <>
@@ -815,14 +854,14 @@ export default function HouseTypeChangeWizard({
         {step === 2 && (
           <>
             <Button variant="secondary" onClick={() => setStep(1)}>ย้อนกลับ</Button>
-            <Button disabled={reviewing || readyPlots.length === 0} onClick={() => setStep(3)}>ถัดไป: ยืนยัน</Button>
+            <Button disabled={reviewing || readyPlots.length === 0} onClick={goConfirm}>ถัดไป: ตรวจก่อนทำจริง</Button>
           </>
         )}
         {step === 3 && (
           <>
-            <Button variant="secondary" disabled={running} onClick={() => setStep(2)}>ย้อนกลับ</Button>
-            <Button disabled={running || readyPlots.length === 0} onClick={run}>
-              {running ? 'กำลังเปลี่ยน…' : `เปลี่ยนแบบบ้าน ${readyPlots.length} แปลง`}
+            <Button variant="secondary" disabled={running || checking} onClick={() => setStep(2)}>ย้อนกลับ</Button>
+            <Button disabled={running || checking || passedPlots.length === 0} onClick={run}>
+              {running ? 'กำลังเปลี่ยน…' : `เปลี่ยนแบบบ้าน ${passedPlots.length} แปลง`}
             </Button>
           </>
         )}

@@ -259,8 +259,9 @@ function parseDiffs(details: string | null | undefined): HtcDiff[] | undefined {
   }
 }
 
-function toDbPlan(plan: HtcPlan) {
+function toDbPlan(plan: HtcPlan, dryRun = false) {
   return {
+    dry_run: dryRun,
     plot_id: plan.plotId,
     new_house_model_id: plan.newHouseModelId,
     moves: plan.moves.map((m) => ({
@@ -271,6 +272,45 @@ function toDbPlan(plan: HtcPlan) {
     })),
     new_jobs: plan.newJobs.map((n) => ({ boq_id: n.boqId ?? null, copy_from_boq_id: n.copyFromBoqId ?? null })),
   }
+}
+
+export type HtcCheckResult =
+  | { ok: true; plotId: string; moved: number; copiedLines: number; newJobs: number; acceptedNewQty: number }
+  | { ok: false; plotId: string; error: string; money: boolean; diffs?: HtcDiff[] }
+
+/**
+ * "Check without saving": the database does the whole change for real (every
+ * constraint, trigger and the money check) and rolls it back. Anything that
+ * would fail in the real run fails here first, with nothing changed.
+ */
+export async function checkHouseTypeChanges(plans: HtcPlan[]): Promise<HtcCheckResult[]> {
+  await requireAuthRole(['admin'], 'เฉพาะแอดมินเท่านั้น')
+  const supabase = await createClient()
+  const out: HtcCheckResult[] = []
+  for (const plan of plans) {
+    const { error } = await supabase.rpc('house_type_change_apply', { p_plan: toDbPlan(plan, true) })
+    if (error && error.message === 'DRY_RUN_OK') {
+      let d: { moved?: number; copied_lines?: number; new_jobs?: number; accepted_new_qty?: number } = {}
+      try {
+        d = JSON.parse((error as { details?: string }).details ?? '{}')
+      } catch {
+        // counts are informational only
+      }
+      out.push({ ok: true, plotId: plan.plotId, moved: d.moved ?? 0, copiedLines: d.copied_lines ?? 0, newJobs: d.new_jobs ?? 0, acceptedNewQty: d.accepted_new_qty ?? 0 })
+    } else if (error) {
+      const isMoney = error.message === 'MONEY_CHECK_FAILED'
+      out.push({
+        ok: false,
+        plotId: plan.plotId,
+        money: isMoney,
+        error: isMoney ? 'ยอดเงินจะไม่ตรงกับก่อนเปลี่ยน' : error.message,
+        diffs: isMoney ? parseDiffs((error as { details?: string }).details) : undefined,
+      })
+    } else {
+      out.push({ ok: false, plotId: plan.plotId, money: false, error: 'ระบบตรวจไม่ได้ผลลัพธ์ที่คาดไว้ จึงไม่อนุญาตให้เปลี่ยน' })
+    }
+  }
+  return out
 }
 
 /**
