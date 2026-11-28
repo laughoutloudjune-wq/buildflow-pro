@@ -176,6 +176,7 @@ export default function PlotDetailPageClient({
   const [billsRefresh, setBillsRefresh] = useState(0)
   const [isSyncConfirmOpen, setIsSyncConfirmOpen] = useState(false)
   const [finish, setFinish] = useState<{ pendingBills: number | null } | null>(null)
+  const [finishPick, setFinishPick] = useState<Set<string>>(new Set())
 
   const getHouseModelLabel = (model: HouseModel) => {
     const projectName = model?.projects?.name
@@ -242,17 +243,19 @@ export default function PlotDetailPageClient({
   }
 
   const openFinish = () => {
+    setFinishPick(new Set(jobs.filter((j) => j.status !== 'completed').map((j) => j.id)))
     setFinish({ pendingBills: null })
     getScopeBills({ projectId, plotIds: [plotId] })
       .then((rows) => setFinish({ pendingBills: rows.filter((b) => b.status === 'pending_review').length }))
       .catch(() => setFinish({ pendingBills: 0 }))
   }
   const handleConfirmFinish = () => {
+    const ids = [...finishPick]
     setFinish(null)
-    setJobs((prev) => prev.map((j) => ({ ...j, status: 'completed' })))
+    setJobs((prev) => prev.map((j) => (finishPick.has(j.id) ? { ...j, status: 'completed' } : j)))
     startTransition(async () => {
       try {
-        const r = await finishPlotConstruction(plotId, projectId)
+        const r = await finishPlotConstruction(plotId, projectId, ids)
         toast.success(r.updated > 0 ? `จบงานก่อสร้างแปลงนี้แล้ว (${r.updated} งาน)` : 'ทุกงานเสร็จอยู่แล้ว')
         refresh()
       } catch (e) {
@@ -614,23 +617,75 @@ export default function PlotDetailPageClient({
 
       {(() => {
         const open = jobs.filter((j) => j.status !== 'completed')
-        const unpaid = open.filter((j) => j.cost && j.cost.totalBoq > 0 && j.cost.paid < j.cost.totalBoq - 0.005)
+        const picked = open.filter((j) => finishPick.has(j.id))
+        const unpaid = picked.filter((j) => j.cost && j.cost.totalBoq > 0 && j.cost.paid < j.cost.totalBoq - 0.005)
         const warn = [
-          unpaid.length > 0 ? `${unpaid.length} งานยังจ่ายไม่ครบตามสัญญา` : '',
+          unpaid.length > 0 ? `${unpaid.length} งานที่เลือกยังจ่ายไม่ครบตามสัญญา` : '',
           finish?.pendingBills ? `มีใบเบิกรอตรวจ ${finish.pendingBills} ใบ` : '',
         ].filter(Boolean)
+        const toggle = (id: string) =>
+          setFinishPick((prev) => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+          })
+        const allOn = open.length > 0 && picked.length === open.length
         return (
-          <ConfirmDialog
+          <Modal
             isOpen={finish !== null}
+            onClose={() => setFinish(null)}
             title={`จบงานก่อสร้างแปลง ${plot.name}`}
-            message={`จะทำเครื่องหมายเสร็จสิ้นให้ ${open.length} งานที่เหลือ${warn.length ? ` · คำเตือน: ${warn.join(' · ')} (ไม่ปิดกั้น ยังเบิกและจ่ายต่อได้)` : ''}`}
-            confirmLabel="จบงานก่อสร้าง"
-            cancelLabel="ยกเลิก"
-            tone="primary"
-            busy={isPending}
-            onCancel={() => setFinish(null)}
-            onConfirm={handleConfirmFinish}
-          />
+            panelClassName="max-w-2xl"
+            footer={
+              <div className="flex items-center justify-end gap-2 p-3">
+                <Button variant="secondary" onClick={() => setFinish(null)}>ยกเลิก</Button>
+                <Button disabled={isPending || picked.length === 0} onClick={handleConfirmFinish}>
+                  ทำเครื่องหมายเสร็จสิ้น {picked.length} งาน
+                </Button>
+              </div>
+            }
+          >
+            <div className="space-y-3 p-4">
+              <p className="text-sm text-slate-600">เลือกงานที่จะทำเครื่องหมายเสร็จสิ้น เลือกได้ทุกงาน แม้ยังไม่มีความคืบหน้าหรือยังไม่ได้เลือกผู้รับเหมา</p>
+              {open.length === 0 ? (
+                <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">ทุกงานเสร็จสิ้นแล้ว</p>
+              ) : (
+                <>
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={allOn}
+                      onChange={() => setFinishPick(allOn ? new Set() : new Set(open.map((j) => j.id)))}
+                    />
+                    เลือกทั้งหมด ({picked.length}/{open.length})
+                  </label>
+                  <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                    {open.map((j) => (
+                      <li key={j.id}>
+                        <label className="flex cursor-pointer items-start gap-2 px-3 py-2 text-sm hover:bg-slate-50">
+                          <input type="checkbox" className="mt-1" checked={finishPick.has(j.id)} onChange={() => toggle(j.id)} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium text-slate-800">{j.itemName}</span>
+                            <span className="block text-xs text-slate-500">
+                              {j.cost?.contractorName || 'ยังไม่เลือกผู้รับเหมา'}
+                              {' · '}
+                              {j.progressPercent != null ? `ความคืบหน้า ${Math.round(j.progressPercent)}%` : 'ยังไม่มีความคืบหน้า'}
+                            </span>
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {warn.length > 0 && (
+                <p className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
+                  คำเตือน: {warn.join(' · ')} (ไม่ปิดกั้น ยังเบิกและจ่ายต่อได้)
+                </p>
+              )}
+            </div>
+          </Modal>
         )
       })()}
 

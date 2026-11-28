@@ -109,15 +109,19 @@ export async function updateJobStatus(jobId: string, status: string, plotId: str
  * its jobs are completed; this just does that in one step. Warnings (unpaid
  * jobs, bills still waiting) are shown by the caller and never block.
  */
-export async function finishPlotConstruction(plotId: string, projectId: string) {
+export async function finishPlotConstruction(plotId: string, projectId: string, jobIds?: string[]) {
   await requireModuleAccess('projects')
   const supabase = await createClient()
-  const { data, error } = await supabase
+  // jobIds = the jobs the user ticked (any job, with or without progress or
+  // a contractor). Without it every open job on the plot is finished.
+  if (jobIds && jobIds.length === 0) return { updated: 0 }
+  let q = supabase
     .from('job_assignments')
     .update({ status: 'completed' })
     .eq('plot_id', plotId)
     .neq('status', 'completed')
-    .select('id')
+  if (jobIds) q = q.in('id', jobIds)
+  const { data, error } = await q.select('id')
 
   if (error) throw new Error(error.message)
   revalidatePath(`/dashboard/projects/${projectId}/${plotId}`)
