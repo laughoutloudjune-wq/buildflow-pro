@@ -149,7 +149,7 @@ export async function updatePlot(id: string, projectId: string, formData: FormDa
         .eq('plot_id', id)
       if (jobsCountError) return { success: false, error: jobsCountError.message } satisfies PlotActionResult
       if (count && count > 0) {
-        return { success: false, error: 'แปลงนี้มีรายการงานของแบบบ้านเดิมแล้ว เปลี่ยนแบบบ้านไม่ได้' } satisfies PlotActionResult
+        return { success: false, error: 'แปลงนี้มีรายการงานของแบบบ้านเดิมแล้ว เปลี่ยนแบบบ้านไม่ได้ (แอดมินใช้ปุ่ม “เปลี่ยนแบบบ้าน” ในหน้าโครงการ ซึ่งย้ายงานเดิมโดยไม่แตะยอดเงิน)' } satisfies PlotActionResult
       }
     }
 
