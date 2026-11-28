@@ -206,9 +206,10 @@ begin
     return;
   end if;
 
-  insert into boq_master (project_id, contractor_type_id, house_model_id, item_name, price, unit, description, price_per_unit, quantity, total_price)
+  -- total_price is a generated column (price_per_unit * quantity): never insert it.
+  insert into boq_master (project_id, contractor_type_id, house_model_id, item_name, price, unit, description, price_per_unit, quantity)
   values (v_src.project_id, v_src.contractor_type_id, p_new_model, v_src.item_name, v_src.price, v_src.unit, v_src.description,
-          v_price, v_src.quantity, coalesce(v_src.quantity, 0) * coalesce(v_price, 0))
+          v_price, v_src.quantity)
   returning id into line_id;
 
   insert into boq_material_items (boq_id, material_type_id, planned_quantity, waste_percent)
